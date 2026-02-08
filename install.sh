@@ -31,18 +31,7 @@ TARGET_DIR="$(cd "$TARGET_DIR" && pwd)"
 echo "Installing agent-skills into: $TARGET_DIR"
 echo ""
 
-install_skills_via_cli() {
-  if command -v npx &>/dev/null; then
-    echo "[skills] Installing SKILL.md files via npx skills add..."
-    if npx skills add "$REPO_DIR" --agent opencode --yes 2>/dev/null; then
-      echo "[skills] Installed via skills CLI"
-      return 0
-    fi
-  fi
-  return 1
-}
-
-install_skills_direct() {
+install_skills() {
   local skills_dir="$TARGET_DIR/.opencode/skills"
   mkdir -p "$skills_dir"
 
@@ -82,10 +71,7 @@ install_plugins() {
 }
 
 echo "--- Skills (SKILL.md) ---"
-if ! install_skills_via_cli; then
-  echo "[skills] skills CLI not available, copying directly..."
-  install_skills_direct
-fi
+install_skills
 
 echo ""
 echo "--- Plugins (OpenCode) ---"
