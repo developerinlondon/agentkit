@@ -2,43 +2,43 @@
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TARGET_DIR="${1:-.}"
+GLOBAL=false
+TARGET_DIR=""
 
 usage() {
   cat <<'USAGE'
-Usage: ./install.sh [target-project-dir]
+Usage: ./install.sh [options] [target-project-dir]
 
-Installs agent-skills into an OpenCode project:
-  1. Skills (SKILL.md) via npx skills add (if available) or direct copy
-  2. Plugins (.ts) copied to .opencode/plugins/
+Installs agent-skills into a project or globally.
 
 Options:
+  --global             Install skills to ~/.agents/skills/ (available in all projects)
   target-project-dir   Project directory to install into (default: current dir)
 
 Examples:
-  ./install.sh                    # Install into current project
-  ./install.sh ~/code/my-project  # Install into specific project
+  ./install.sh --global               # Install skills globally
+  ./install.sh                        # Install into current project (.opencode/skills/)
+  ./install.sh ~/code/my-project      # Install into specific project
 USAGE
   exit 1
 }
 
-if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
-  usage
-fi
-
-TARGET_DIR="$(cd "$TARGET_DIR" && pwd)"
-
-echo "Installing agent-skills into: $TARGET_DIR"
-echo ""
+for arg in "$@"; do
+  case "$arg" in
+    -h|--help) usage ;;
+    --global) GLOBAL=true ;;
+    *) TARGET_DIR="$arg" ;;
+  esac
+done
 
 install_skills() {
-  local skills_dir="$TARGET_DIR/.opencode/skills"
-  mkdir -p "$skills_dir"
+  local dest="$1"
+  mkdir -p "$dest"
 
   for skill_dir in "$REPO_DIR"/skills/*/; do
     local skill_name
     skill_name="$(basename "$skill_dir")"
-    local target="$skills_dir/$skill_name"
+    local target="$dest/$skill_name"
 
     if [[ -d "$target" ]]; then
       echo "[skills] Updating: $skill_name"
@@ -52,7 +52,7 @@ install_skills() {
 }
 
 install_plugins() {
-  local plugins_dir="$TARGET_DIR/.opencode/plugins"
+  local plugins_dir="$1/.opencode/plugins"
   mkdir -p "$plugins_dir"
 
   for plugin_file in "$REPO_DIR"/plugins/*.ts; do
@@ -70,16 +70,32 @@ install_plugins() {
   done
 }
 
-echo "--- Skills (SKILL.md) ---"
-install_skills
+if [[ "$GLOBAL" == true ]]; then
+  DEST="$HOME/.agents/skills"
+  echo "Installing skills globally to: $DEST"
+  echo ""
+  echo "--- Skills (SKILL.md) ---"
+  install_skills "$DEST"
+  echo ""
+  echo "Done. Skills available globally via ~/.agents/skills/"
+  echo "  OpenCode: auto-discovered"
+  echo "  Claude Code: reference in ~/.claude/settings.json userInstructions"
+else
+  TARGET_DIR="${TARGET_DIR:-.}"
+  TARGET_DIR="$(cd "$TARGET_DIR" && pwd)"
+  DEST="$TARGET_DIR/.opencode/skills"
 
-echo ""
-echo "--- Plugins (OpenCode) ---"
-install_plugins
-
-echo ""
-echo "Done. Installed into $TARGET_DIR"
-echo ""
-echo "Verify with:"
-echo "  ls $TARGET_DIR/.opencode/skills/"
-echo "  ls $TARGET_DIR/.opencode/plugins/"
+  echo "Installing agent-skills into: $TARGET_DIR"
+  echo ""
+  echo "--- Skills (SKILL.md) ---"
+  install_skills "$DEST"
+  echo ""
+  echo "--- Plugins (OpenCode) ---"
+  install_plugins "$TARGET_DIR"
+  echo ""
+  echo "Done. Installed into $TARGET_DIR"
+  echo ""
+  echo "Verify with:"
+  echo "  ls $DEST/"
+  echo "  ls $TARGET_DIR/.opencode/plugins/"
+fi
