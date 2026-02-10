@@ -12,6 +12,7 @@ Reusable AI agent skills and plugins for OpenCode, Claude Code, and other AI cod
 | **autonomous-workflow** | Proposal-first development, commit hygiene, decision authority |
 | **code-quality** | Warnings-as-errors, no underscore prefixes, test coverage |
 | **documentation** | ASCII diagrams, structured plan format, formatting rules |
+| **issue-raiser** | GitLab issue creation with root cause analysis and git-history-based assignees |
 
 ### Plugins (OpenCode only -- runtime hooks)
 
@@ -30,16 +31,24 @@ npx skills add developerinlondon/agent-skills
 
 This installs SKILL.md files for your AI agent (Claude Code, OpenCode, Cursor, etc.).
 
-### Option 2: Install script (skills + plugins, OpenCode)
+### Option 2: Install globally (all projects)
 
 ```bash
 git clone git@github.com:developerinlondon/agent-skills.git
+./agent-skills/install.sh --global
+```
+
+Installs skills to `~/.agents/skills/` where both OpenCode and Claude Code auto-discover them.
+
+### Option 3: Install into a specific project
+
+```bash
 ./agent-skills/install.sh /path/to/your/project
 ```
 
-This copies both skills AND OpenCode plugins into your project.
+Copies skills + OpenCode plugins into the project's `.opencode/` directory.
 
-### Option 3: Manual
+### Option 4: Manual
 
 Copy what you need:
 
