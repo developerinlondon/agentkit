@@ -44,6 +44,8 @@ Exceptions: bug fixes in already-approved work, read-only research, formatting.
 - Never use --force, --no-verify, HUSKY=0 without explicit permission
 - Never commit .env files, credentials, or secrets
 - Atomic commits: one logical change per commit
+- Never add `Co-authored-by`, `Ultraworked with`, or any AI agent attribution to commits, PRs/MRs,
+  comments, or changelogs. Keep commit messages clean and focused on the change itself.
 
 ## Fresh Context for Large Work
 
