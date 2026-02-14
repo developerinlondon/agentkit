@@ -18,8 +18,10 @@ Reusable AI agent skills and plugins for OpenCode, Claude Code, and other AI cod
 
 | Plugin | Description |
 |--------|-------------|
-| **version-check.ts** | Auto-checks Helm/npm/Cargo dependency versions on file write |
-| **dprint-autoformat.ts** | Auto-formats files on write using dprint |
+| **version-police.ts** | Auto-checks Helm/npm/Cargo dependency versions on file write |
+| **format-police.ts** | Auto-formats files on write using dprint |
+| **kubectl-police.ts** | Blocks kubectl create/apply for Kargo CRDs (unconditionally) |
+| **git-police.ts** | Blocks commits to main/master, force push, --no-verify, AI attribution, push to protected branches |
 
 ## Installation
 
@@ -38,7 +40,9 @@ git clone git@github.com:developerinlondon/agent-skills.git
 ./agent-skills/install.sh --global
 ```
 
-Installs skills to `~/.agents/skills/` where both OpenCode and Claude Code auto-discover them.
+Installs skills to `~/.agents/skills/` and plugins to `~/.agents/plugins/`. Skills are
+auto-discovered by OpenCode. For global plugins, add `file://` entries to your opencode config
+(the installer prints the exact entries to add).
 
 ### Option 3: Install into a specific project
 
@@ -54,7 +58,7 @@ Copy what you need:
 
 ```bash
 cp -r skills/gitops-master/ your-project/.opencode/skills/
-cp plugins/version-check.ts your-project/.opencode/plugins/
+cp plugins/version-police.ts your-project/.opencode/plugins/
 ```
 
 ## gitops-master Setup
@@ -79,13 +83,26 @@ values.
 ## Plugins
 
 Plugins are OpenCode-specific (they use the `@opencode-ai/plugin` TypeScript API). They hook into
-OpenCode's `tool.execute.after` event to run automatically when you edit/write files.
+OpenCode's tool execution lifecycle to enforce safety and quality gates.
 
-**version-check.ts**: Checks if Helm chart dependencies, npm packages, or Cargo crates are outdated
+**version-police.ts**: Checks if Helm chart dependencies, npm packages, or Cargo crates are outdated
 whenever you modify a `Chart.yaml`, `package.json`, or `Cargo.toml`.
 
-**dprint-autoformat.ts**: Auto-formats files after every write/edit using dprint. Auto-discovers the
+**format-police.ts**: Auto-formats files after every write/edit using dprint. Auto-discovers the
 dprint binary from PATH or mise.
+
+**kubectl-police.ts**: Intercepts bash commands before execution (`tool.execute.before`) and
+unconditionally blocks `kubectl create/apply` for Kargo CRDs (Promotion, Stage, Freight, Warehouse).
+These poison the Kargo stage state machine when created via kubectl. Read-only commands
+(`kubectl get/describe/logs`) and recovery commands (`kubectl delete`) are always allowed.
+
+**git-police.ts**: Intercepts git commands before execution and blocks:
+
+- Commits directly to main/master -- must use feature branches
+- Force push (`--force`, `--force-with-lease`) -- rewrites history
+- `--no-verify` flag -- bypasses pre-commit hooks and quality gates
+- AI attribution trailers (`Co-authored-by`) in commit messages
+- Push directly to protected branches -- must use PRs
 
 ## Contributing
 
