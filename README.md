@@ -1,6 +1,6 @@
 # agent-skills
 
-Reusable AI agent skills and plugins for OpenCode, Claude Code, and other AI coding agents.
+Reusable AI agent skills, rules, and plugins for OpenCode, Claude Code, and other AI coding agents.
 
 ## What's Included
 
@@ -13,6 +13,12 @@ Reusable AI agent skills and plugins for OpenCode, Claude Code, and other AI cod
 | **code-quality** | Warnings-as-errors, no underscore prefixes, test coverage |
 | **documentation** | ASCII diagrams, structured plan format, formatting rules |
 | **issue-raiser** | GitLab issue creation with root cause analysis and git-history-based assignees |
+
+### Rules (auto-loaded by file glob match)
+
+| Rule | Glob | Description |
+|------|------|-------------|
+| **credential-bootstrap** | `gitops/**/*.yaml` | OpenBao + ESO credential bootstrap pattern for GitOps apps |
 
 ### Plugins (OpenCode only -- runtime hooks)
 
@@ -40,9 +46,9 @@ git clone git@github.com:developerinlondon/agent-skills.git
 ./agent-skills/install.sh --global
 ```
 
-Installs skills to `~/.agents/skills/` and plugins to `~/.agents/plugins/`. Skills are
-auto-discovered by OpenCode. For global plugins, add `file://` entries to your opencode config
-(the installer prints the exact entries to add).
+Installs skills to `~/.agents/skills/`, rules to `~/.agents/rules/`, and plugins to
+`~/.agents/plugins/`. Skills are auto-discovered by OpenCode. For global plugins, add `file://`
+entries to your opencode config (the installer prints the exact entries to add).
 
 ### Option 3: Install into a specific project
 
@@ -50,7 +56,7 @@ auto-discovered by OpenCode. For global plugins, add `file://` entries to your o
 ./agent-skills/install.sh /path/to/your/project
 ```
 
-Copies skills + OpenCode plugins into the project's `.opencode/` directory.
+Copies skills, rules, and plugins into the project's `.opencode/` directory.
 
 ### Option 4: Manual
 
@@ -58,6 +64,7 @@ Copy what you need:
 
 ```bash
 cp -r skills/gitops-master/ your-project/.opencode/skills/
+cp rules/credential-bootstrap.md your-project/.opencode/rules/
 cp plugins/version-police.ts your-project/.opencode/plugins/
 ```
 
@@ -104,8 +111,18 @@ These poison the Kargo stage state machine when created via kubectl. Read-only c
 - AI attribution trailers (`Co-authored-by`) in commit messages
 - Push directly to protected branches -- must use PRs
 
+## Rules
+
+Rules are auto-loaded by OpenCode when you edit files matching their glob pattern. Unlike skills
+(which must be explicitly loaded), rules are always-on context.
+
+**credential-bootstrap.md**: Activated when editing `gitops/**/*.yaml`. Provides the full OpenBao +
+ESO credential bootstrap pattern -- 3 template files (presync-rbac, presync-bootstrap,
+externalsecret) that auto-generate and manage secrets for any GitOps app.
+
 ## Contributing
 
 1. Skills follow the [skills.sh](https://skills.sh) / [agentskills.io](https://agentskills.io) standard
 2. Each skill lives in `skills/<name>/SKILL.md` with optional `references/` and `scripts/` subdirs
-3. Plugins live in `plugins/<name>.ts` and implement the OpenCode plugin API
+3. Rules live in `rules/<name>.md` with frontmatter globs for auto-loading
+4. Plugins live in `plugins/<name>.ts` and implement the OpenCode plugin API
