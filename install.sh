@@ -9,15 +9,15 @@ usage() {
   cat <<'USAGE'
 Usage: ./install.sh [options] [target-project-dir]
 
-Installs agent-skills into a project or globally.
+Installs agent-skills (skills + plugins) into a project or globally.
 
 Options:
-  --global             Install skills to ~/.agents/skills/ (available in all projects)
+  --global             Install to ~/.agents/ (skills + plugins available in all projects)
   target-project-dir   Project directory to install into (default: current dir)
 
 Examples:
-  ./install.sh --global               # Install skills globally
-  ./install.sh                        # Install into current project (.opencode/skills/)
+  ./install.sh --global               # Install globally (~/.agents/skills/ + ~/.agents/plugins/)
+  ./install.sh                        # Install into current project (.opencode/)
   ./install.sh ~/code/my-project      # Install into specific project
 USAGE
   exit 1
@@ -51,9 +51,29 @@ install_skills() {
   done
 }
 
+DEPRECATED_PLUGINS=(
+  "version-check.ts"
+  "dprint-autoformat.ts"
+  "kubectl-safety.ts"
+  "kubectl-enforcer.ts"
+  "git-enforcer.ts"
+)
+
+cleanup_deprecated_plugins() {
+  local plugins_dir="$1"
+  for old_name in "${DEPRECATED_PLUGINS[@]}"; do
+    if [[ -f "$plugins_dir/$old_name" ]]; then
+      echo "[plugins] Removing deprecated: $old_name"
+      rm "$plugins_dir/$old_name"
+    fi
+  done
+}
+
 install_plugins() {
-  local plugins_dir="$1/.opencode/plugins"
+  local plugins_dir="$1"
   mkdir -p "$plugins_dir"
+
+  cleanup_deprecated_plugins "$plugins_dir"
 
   for plugin_file in "$REPO_DIR"/plugins/*.ts; do
     [[ -f "$plugin_file" ]] || continue
@@ -70,32 +90,60 @@ install_plugins() {
   done
 }
 
+print_global_plugin_instructions() {
+  local plugins_dir="$1"
+  local config_dir="$HOME/.config/opencode"
+
+  echo ""
+  echo "[plugins] To use global plugins, add file:// entries to your opencode config plugin array:"
+  echo ""
+  for plugin_file in "$plugins_dir"/*.ts; do
+    [[ -f "$plugin_file" ]] || continue
+    echo "  \"file://$plugin_file\""
+  done
+
+  if [[ -f "$config_dir/opencode.jsonc" ]]; then
+    echo ""
+    echo "[plugins] Config: $config_dir/opencode.jsonc"
+  elif [[ -f "$config_dir/opencode.json" ]]; then
+    echo ""
+    echo "[plugins] Config: $config_dir/opencode.json"
+  fi
+}
+
 if [[ "$GLOBAL" == true ]]; then
-  DEST="$HOME/.agents/skills"
-  echo "Installing skills globally to: $DEST"
+  SKILLS_DEST="$HOME/.agents/skills"
+  PLUGINS_DEST="$HOME/.agents/plugins"
+
+  echo "Installing agent-skills globally"
   echo ""
   echo "--- Skills (SKILL.md) ---"
-  install_skills "$DEST"
+  install_skills "$SKILLS_DEST"
   echo ""
-  echo "Done. Skills available globally via ~/.agents/skills/"
-  echo "  OpenCode: auto-discovered"
-  echo "  Claude Code: reference in ~/.claude/settings.json userInstructions"
+  echo "--- Plugins (OpenCode) ---"
+  install_plugins "$PLUGINS_DEST"
+  print_global_plugin_instructions "$PLUGINS_DEST"
+  echo ""
+  echo "Done."
+  echo "  Skills: $SKILLS_DEST/ (auto-discovered by OpenCode)"
+  echo "  Plugins: $PLUGINS_DEST/ (add file:// entries to opencode config)"
 else
   TARGET_DIR="${TARGET_DIR:-.}"
   TARGET_DIR="$(cd "$TARGET_DIR" && pwd)"
-  DEST="$TARGET_DIR/.opencode/skills"
+  SKILLS_DEST="$TARGET_DIR/.opencode/skills"
+  PLUGINS_DEST="$TARGET_DIR/.opencode/plugins"
 
   echo "Installing agent-skills into: $TARGET_DIR"
   echo ""
   echo "--- Skills (SKILL.md) ---"
-  install_skills "$DEST"
+  install_skills "$SKILLS_DEST"
   echo ""
   echo "--- Plugins (OpenCode) ---"
-  install_plugins "$TARGET_DIR"
+  install_plugins "$PLUGINS_DEST"
   echo ""
   echo "Done. Installed into $TARGET_DIR"
   echo ""
   echo "Verify with:"
-  echo "  ls $DEST/"
-  echo "  ls $TARGET_DIR/.opencode/plugins/"
+  echo "  ls $SKILLS_DEST/"
+  echo "  ls $PLUGINS_DEST/"
 fi

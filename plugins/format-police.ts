@@ -36,10 +36,10 @@ function findDprint(): string | null {
 
 const FORMATTABLE = /\.(ts|tsx|js|jsx|json|jsonc|md|yaml|yml|toml|css|html)$/
 
-export default async function dprintAutoformat(ctx: PluginInput) {
+export default async function formatPolice(ctx: PluginInput) {
   const dprintPath = findDprint()
   if (!dprintPath) {
-    console.warn("[dprint-autoformat] dprint binary not found, plugin disabled")
+    console.warn("[format-police] dprint binary not found, plugin disabled")
     return {}
   }
 

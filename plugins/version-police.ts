@@ -171,7 +171,7 @@ function checkCargoVersions(filePath: string): string[] {
   return warnings;
 }
 
-export default async function versionCheck(ctx: PluginInput) {
+export default async function versionPolice(ctx: PluginInput) {
   return {
     'tool.execute.after': async (
       input: { tool: string; sessionID: string; callID: string; },
