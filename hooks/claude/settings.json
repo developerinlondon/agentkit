@@ -1,0 +1,35 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/git-police.sh",
+            "timeout": 10,
+            "statusMessage": "git-police: checking safety rules..."
+          },
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/kubectl-police.sh",
+            "timeout": 10,
+            "statusMessage": "kubectl-police: checking Kargo safety..."
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/format-police.sh",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}

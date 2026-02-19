@@ -76,6 +76,18 @@ export default async function gitPolice(ctx: PluginInput) {
         );
       }
 
+      if (/\bgit\b.*\bpush\b/i.test(command) && !isGitPushToProtected(command)) {
+        const branch = getCurrentBranch(ctx.directory);
+        if (branch && PROTECTED_BRANCHES.includes(branch)) {
+          throw new Error(
+            `BLOCKED: You are on '${branch}'. Pushing from a protected branch is forbidden.\n` +
+              `Create a feature branch first:\n` +
+              `  git checkout -b feat/your-feature-name\n` +
+              `Then push from there and raise a PR.`,
+          );
+        }
+      }
+
       if (isGitCheckoutProtected(command)) {
         return;
       }
