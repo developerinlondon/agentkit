@@ -3,6 +3,13 @@ import { spawnSync } from 'node:child_process';
 
 const PROTECTED_BRANCHES = ['main', 'master'];
 
+function stripQuotedContent(command: string): string {
+  return command
+    .replace(/<<-?\s*['"]?(\w+)['"]?[\s\S]*?\n\1\b/g, '')
+    .replace(/"(?:[^"\\]|\\.)*"/g, '""')
+    .replace(/'[^']*'/g, "''");
+}
+
 function getCurrentBranch(cwd: string): string | null {
   const result = spawnSync('git', ['branch', '--show-current'], {
     cwd,
@@ -53,7 +60,9 @@ export default async function gitPolice(ctx: PluginInput) {
       const command = output.args.command as string | undefined;
       if (!command) return;
 
-      if (/\bgit\b.*--no-verify\b/i.test(command)) {
+      const stripped = stripQuotedContent(command);
+
+      if (/\bgit\b.*--no-verify\b/i.test(stripped)) {
         throw new Error(
           `BLOCKED: --no-verify is forbidden.\n` +
             `Skipping pre-commit hooks bypasses quality gates (linting, tests, formatting).\n` +
@@ -61,7 +70,7 @@ export default async function gitPolice(ctx: PluginInput) {
         );
       }
 
-      if (isForcePush(command)) {
+      if (isForcePush(stripped)) {
         throw new Error(
           `BLOCKED: Force push is forbidden.\n` +
             `Force pushing rewrites history and can destroy work.\n` +
@@ -69,18 +78,30 @@ export default async function gitPolice(ctx: PluginInput) {
         );
       }
 
-      if (isGitPushToProtected(command)) {
+      if (isGitPushToProtected(stripped)) {
         throw new Error(
           `BLOCKED: Pushing directly to a protected branch (${PROTECTED_BRANCHES.join('/')}) is forbidden.\n` +
             `Create a feature branch and raise a PR instead.`,
         );
       }
 
-      if (isGitCheckoutProtected(command)) {
+      if (/\bgit\b.*\bpush\b/i.test(stripped) && !isGitPushToProtected(stripped)) {
+        const branch = getCurrentBranch(ctx.directory);
+        if (branch && PROTECTED_BRANCHES.includes(branch)) {
+          throw new Error(
+            `BLOCKED: You are on '${branch}'. Pushing from a protected branch is forbidden.\n` +
+              `Create a feature branch first:\n` +
+              `  git checkout -b feat/your-feature-name\n` +
+              `Then push from there and raise a PR.`,
+          );
+        }
+      }
+
+      if (isGitCheckoutProtected(stripped)) {
         return;
       }
 
-      if (isGitCommitCommand(command)) {
+      if (isGitCommitCommand(stripped)) {
         const branch = getCurrentBranch(ctx.directory);
         if (branch && PROTECTED_BRANCHES.includes(branch)) {
           throw new Error(
@@ -91,7 +112,7 @@ export default async function gitPolice(ctx: PluginInput) {
           );
         }
 
-        if (/co-authored-by/i.test(command)) {
+        if (/co-authored-by/i.test(stripped)) {
           throw new Error(
             `BLOCKED: AI attribution trailers (Co-authored-by) are forbidden in commit messages.\n` +
               `Do not add Co-authored-by, Signed-off-by, or other AI agent attribution lines.\n` +

@@ -1,0 +1,109 @@
+# git-police.rules — Codex CLI exec policy
+# Blocks: force push, --no-verify, direct push to protected branches
+# Equivalent to: plugins/git-police.ts (OpenCode), hooks/claude/git-police.sh (Claude Code)
+
+# ── FORCE PUSH ──────────────────────────────────────────────────────────────
+
+prefix_rule(
+    pattern = ["git", "push", "--force"],
+    decision = "forbidden",
+    justification = "Force push is prohibited. Use --force-with-lease to avoid overwriting others' work.",
+    match     = ["git push --force", "git push --force origin main"],
+    not_match = ["git push", "git push origin main"],
+)
+
+prefix_rule(
+    pattern = ["git", "push", "-f"],
+    decision = "forbidden",
+    justification = "Force push (-f) is prohibited. Use --force-with-lease.",
+    match     = ["git push -f", "git push -f origin main"],
+    not_match = ["git push origin main"],
+)
+
+# ── SKIP HOOKS (--no-verify) ─────────────────────────────────────────────────
+
+prefix_rule(
+    pattern = ["git", "commit", "--no-verify"],
+    decision = "forbidden",
+    justification = "--no-verify bypasses pre-commit hooks. Fix the hook failure instead.",
+    match     = ["git commit --no-verify -m 'skip'"],
+    not_match = ["git commit -m 'fix'"],
+)
+
+prefix_rule(
+    pattern = ["git", "push", "--no-verify"],
+    decision = "forbidden",
+    justification = "--no-verify bypasses pre-push hooks. Fix the hook failure instead.",
+)
+
+prefix_rule(
+    pattern = ["git", "merge", "--no-verify"],
+    decision = "forbidden",
+    justification = "--no-verify bypasses merge hooks. Fix the hook failure instead.",
+)
+
+prefix_rule(
+    pattern = ["git", "commit", "-n"],
+    decision = "forbidden",
+    justification = "-n (--no-verify) bypasses hooks. Fix the hook failure instead.",
+)
+
+prefix_rule(
+    pattern = ["git", "push", "-n"],
+    decision = "forbidden",
+    justification = "-n (--no-verify) bypasses hooks. Fix the hook failure instead.",
+)
+
+# ── DIRECT PUSH TO PROTECTED BRANCHES ────────────────────────────────────────
+
+prefix_rule(
+    pattern = ["git", "push", ["origin", "upstream"], ["main", "master"]],
+    decision = "forbidden",
+    justification = "Direct push to protected branches is prohibited. Open a PR instead.",
+    match     = ["git push origin main", "git push origin master", "git push upstream main"],
+    not_match = ["git push origin feature/my-branch"],
+)
+
+prefix_rule(
+    pattern = ["git", "push", "--set-upstream", ["origin", "upstream"], ["main", "master"]],
+    decision = "forbidden",
+    justification = "Cannot set upstream to a protected branch directly.",
+)
+
+# ── BARE PUSH (no explicit branch — may push current protected branch) ────────
+# Codex prefix_rule cannot check the current git branch, so we prompt on bare
+# push to ensure the user confirms they are not on a protected branch.
+
+prefix_rule(
+    pattern = ["git", "push"],
+    decision = "prompt",
+    justification = "Bare 'git push' may push a protected branch. Confirm you are NOT on main/master before proceeding.",
+    match     = ["git push"],
+    not_match = ["git push origin feature/my-branch"],
+)
+
+# ── AMEND PUSHED COMMITS ─────────────────────────────────────────────────────
+
+prefix_rule(
+    pattern = ["git", "commit", "--amend"],
+    decision = "prompt",
+    justification = "Amending commits rewrites history. Confirm this commit hasn't been pushed to remote.",
+    match     = ["git commit --amend", "git commit --amend --no-edit"],
+)
+
+# ── RESET HARD ───────────────────────────────────────────────────────────────
+
+prefix_rule(
+    pattern = ["git", "reset", "--hard"],
+    decision = "prompt",
+    justification = "Hard reset discards uncommitted changes permanently. Confirm this is intentional.",
+    match     = ["git reset --hard", "git reset --hard HEAD~1"],
+)
+
+# ── CLEAN (destructive) ───────────────────────────────────────────────────────
+
+prefix_rule(
+    pattern = ["git", "clean", ["-f", "-fd"]],
+    decision = "prompt",
+    justification = "git clean permanently deletes untracked files/directories.",
+)

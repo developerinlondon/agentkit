@@ -1,0 +1,33 @@
+# kubectl-police.rules — Codex CLI exec policy
+# Blocks: kubectl create/apply on Kargo CRDs
+# Equivalent to: plugins/kubectl-police.ts (OpenCode), hooks/claude/kubectl-police.sh (Claude Code)
+
+# ── KARGO CRD PROTECTION ─────────────────────────────────────────────────────
+# kubectl-created Kargo resources poison the stage state machine.
+# Use Kargo UI, auto-promotion, or GitOps instead.
+
+prefix_rule(
+    pattern = ["kubectl", "create", ["promotion", "promotions", "stage", "stages", "freight", "freights", "warehouse", "warehouses"]],
+    decision = "forbidden",
+    justification = "Creating Kargo CRDs via kubectl is forbidden. kubectl-created resources poison the Kargo state machine. Use Kargo UI or GitOps instead.",
+    match = [
+        "kubectl create promotion my-promo",
+        "kubectl create stage my-stage",
+        "kubectl create freight my-freight",
+        "kubectl create warehouse my-wh",
+    ],
+    not_match = [
+        "kubectl create deployment my-app",
+        "kubectl create namespace test",
+    ],
+)
+
+prefix_rule(
+    pattern = ["kubectl", "apply", ["promotion", "promotions", "stage", "stages", "freight", "freights", "warehouse", "warehouses"]],
+    decision = "forbidden",
+    justification = "Applying Kargo CRDs via kubectl is forbidden. kubectl-created resources poison the Kargo state machine. Use Kargo UI or GitOps instead.",
+)
+
+# Note: kubectl apply -f <file> where the file contains Kargo CRDs cannot be
+# caught by prefix_rule (it only matches token prefixes, not file contents).
+# The Codex skill instructions cover this gap via prompt-level guidance.
