@@ -2,6 +2,25 @@ import type { PluginInput } from '@opencode-ai/plugin';
 import { spawnSync } from 'node:child_process';
 
 const PROTECTED_BRANCHES = ['main', 'master'];
+const ALLOWED_REPOS = ['brain', 'deepbrain/brain'];
+
+function getRepoName(cwd: string): string | null {
+  const result = spawnSync('git', ['remote', 'get-url', 'origin'], {
+    cwd,
+    timeout: 5000,
+    encoding: 'utf-8',
+    stdio: ['pipe', 'pipe', 'pipe'],
+  });
+  if (result.status !== 0 || !result.stdout) return null;
+  const match = result.stdout.trim().match(/[:/]([^/]+\/[^/]+?)(?:\.git)?$/);
+  return match ? match[1] : null;
+}
+
+function isAllowedRepo(cwd: string): boolean {
+  const repo = getRepoName(cwd);
+  if (!repo) return false;
+  return ALLOWED_REPOS.some((allowed) => repo.includes(allowed));
+}
 
 function stripQuotedContent(command: string): string {
   return command
@@ -56,6 +75,7 @@ export default async function gitPolice(ctx: PluginInput) {
     ): Promise<void> => {
       const toolName = input.tool?.toLowerCase();
       if (toolName !== 'bash') return;
+      if (isAllowedRepo(ctx.directory)) return;
 
       const command = output.args.command as string | undefined;
       if (!command) return;
