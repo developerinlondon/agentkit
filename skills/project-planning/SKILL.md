@@ -45,6 +45,7 @@ description: >-
 Include a header block with: created date, status, repo name, and links to the other plan files.
 
 Body covers:
+
 - Problem statement (what pain does this solve?)
 - What makes it unique (vs existing tools)
 - Target users and their context
@@ -75,6 +76,7 @@ Break implementation into numbered sprints. Sprint 0 is always project scaffoldi
 The final sprint is always polish and release prep.
 
 Each sprint includes:
+
 - Numbered task list with per-task AI time estimates
 - Sprint total estimate
 - Quality gate: what must pass before the next sprint starts

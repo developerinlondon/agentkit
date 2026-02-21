@@ -39,36 +39,36 @@ Adapt these checks to your actual stages and applications.
 
 ### Foundation Stage (Example)
 
-| Level | What to Check                       | Command                                                                                               |
-| ----- | ----------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| L1    | ArgoCD, Kargo, Traefik pods         | `kubectl get pods -n argocd && kubectl get pods -n kargo && kubectl get pods -n ${ARGOCD_NS}`         |
-| L1    | Cert-manager CRDs                   | `kubectl get crd certificates.cert-manager.io`                                                        |
-| L2    | ArgoCD API responds                 | `kubectl exec -n argocd deploy/argocd-server -- wget -qO- http://localhost:8080/healthz`              |
-| L2    | Kargo API responds                  | `kubectl exec -n kargo deploy/kargo-api -- wget -qO- http://localhost:8443/healthz`                   |
-| L3    | ArgoCD dashboard accessible via SSO | Check external URL: `argocd.${DOMAIN}`                                                                |
-| L4    | ArgoCD can discover and sync apps   | `kubectl get applications -n ${ARGOCD_NS}`                                                            |
+| Level | What to Check                       | Command                                                                                       |
+| ----- | ----------------------------------- | --------------------------------------------------------------------------------------------- |
+| L1    | ArgoCD, Kargo, Traefik pods         | `kubectl get pods -n argocd && kubectl get pods -n kargo && kubectl get pods -n ${ARGOCD_NS}` |
+| L1    | Cert-manager CRDs                   | `kubectl get crd certificates.cert-manager.io`                                                |
+| L2    | ArgoCD API responds                 | `kubectl exec -n argocd deploy/argocd-server -- wget -qO- http://localhost:8080/healthz`      |
+| L2    | Kargo API responds                  | `kubectl exec -n kargo deploy/kargo-api -- wget -qO- http://localhost:8443/healthz`           |
+| L3    | ArgoCD dashboard accessible via SSO | Check external URL: `argocd.${DOMAIN}`                                                        |
+| L4    | ArgoCD can discover and sync apps   | `kubectl get applications -n ${ARGOCD_NS}`                                                    |
 
 ### Operators Stage (Example)
 
-| Level | What to Check                 | Command                                                                                |
-| ----- | ----------------------------- | -------------------------------------------------------------------------------------- |
-| L1    | ESO controller + webhook pods | `kubectl get pods -n ${ARGOCD_NS} -l app.kubernetes.io/name=external-secrets`          |
-| L1    | ESO CRDs installed            | `kubectl get crd externalsecrets.external-secrets.io`                                  |
-| L1    | Crossplane pods + providers   | `kubectl get pods -n crossplane-system`                                                |
+| Level | What to Check                 | Command                                                                                     |
+| ----- | ----------------------------- | ------------------------------------------------------------------------------------------- |
+| L1    | ESO controller + webhook pods | `kubectl get pods -n ${ARGOCD_NS} -l app.kubernetes.io/name=external-secrets`               |
+| L1    | ESO CRDs installed            | `kubectl get crd externalsecrets.external-secrets.io`                                       |
+| L1    | Crossplane pods + providers   | `kubectl get pods -n crossplane-system`                                                     |
 | L2    | ESO controller ready          | `kubectl get deploy -n ${ARGOCD_NS} external-secrets -o jsonpath='{.status.readyReplicas}'` |
-| L4    | ClusterSecretStore connected  | `kubectl get clustersecretstore -o jsonpath='{.items[*].status.conditions[0].status}'` |
+| L4    | ClusterSecretStore connected  | `kubectl get clustersecretstore -o jsonpath='{.items[*].status.conditions[0].status}'`      |
 
 ### Monitoring Stage (Example)
 
-| Level | What to Check                         | Command                                                                                                    |
-| ----- | ------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| L1    | Prometheus, Grafana, Loki, Alloy pods | `kubectl get pods -n ${MONITORING_NS}`                                                                     |
-| L1    | Prometheus PVC bound                  | `kubectl get pvc -n ${MONITORING_NS}`                                                                      |
-| L2    | Prometheus targets scraping           | `kubectl exec -n ${MONITORING_NS} deploy/kube-prometheus-stack-prometheus -- wget -qO- http://localhost:9090/api/v1/targets` |
-| L2    | Loki readiness                        | `kubectl exec -n ${MONITORING_NS} deploy/loki -- wget -qO- http://localhost:3100/ready`                    |
-| L2    | Grafana health                        | `kubectl exec -n ${MONITORING_NS} deploy/kube-prometheus-stack-grafana -- wget -qO- http://localhost:3000/api/health` |
-| L3    | Grafana SSO login                     | Check external URL: `logs.${DOMAIN}`                                                                       |
-| L4    | Logs flowing to Loki                  | Query Loki via Grafana for recent log entries                                                              |
+| Level | What to Check                         | Command                                                                                                                       |
+| ----- | ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| L1    | Prometheus, Grafana, Loki, Alloy pods | `kubectl get pods -n ${MONITORING_NS}`                                                                                        |
+| L1    | Prometheus PVC bound                  | `kubectl get pvc -n ${MONITORING_NS}`                                                                                         |
+| L2    | Prometheus targets scraping           | `kubectl exec -n ${MONITORING_NS} deploy/kube-prometheus-stack-prometheus -- wget -qO- http://localhost:9090/api/v1/targets`  |
+| L2    | Loki readiness                        | `kubectl exec -n ${MONITORING_NS} deploy/loki -- wget -qO- http://localhost:3100/ready`                                       |
+| L2    | Grafana health                        | `kubectl exec -n ${MONITORING_NS} deploy/kube-prometheus-stack-grafana -- wget -qO- http://localhost:3000/api/health`         |
+| L3    | Grafana SSO login                     | Check external URL: `logs.${DOMAIN}`                                                                                          |
+| L4    | Logs flowing to Loki                  | Query Loki via Grafana for recent log entries                                                                                 |
 | L4    | Alertmanager receiving alerts         | `kubectl exec -n ${MONITORING_NS} deploy/kube-prometheus-stack-alertmanager -- wget -qO- http://localhost:9093/api/v2/status` |
 
 ## Verification RBAC Checklist

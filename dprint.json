@@ -1,0 +1,15 @@
+{
+  "markdown": {
+    "lineWidth": 100,
+    "textWrap": "maintain"
+  },
+  "json": {},
+  "toml": {},
+  "includes": ["**/*.md", "**/*.json", "**/*.toml"],
+  "excludes": [".git"],
+  "plugins": [
+    "https://plugins.dprint.dev/markdown-0.17.8.wasm",
+    "https://plugins.dprint.dev/json-0.19.4.wasm",
+    "https://plugins.dprint.dev/toml-0.6.3.wasm"
+  ]
+}
