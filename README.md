@@ -47,9 +47,10 @@ git clone git@github.com:developerinlondon/agent-skills.git
 ./agent-skills/install.sh --global
 ```
 
-Installs skills to `~/.agents/skills/`, rules to `~/.agents/rules/`, and plugins to
-`~/.agents/plugins/`. Skills are auto-discovered by OpenCode. For global plugins, add `file://`
-entries to your opencode config (the installer prints the exact entries to add).
+Installs skills to `~/.agents/skills/`, rules to `~/.agents/rules/`, plugins to
+`~/.agents/plugins/`, and tools to `~/.claude/tools/`. Skills are auto-discovered by OpenCode. For
+global plugins, add `file://` entries to your opencode config (the installer prints the exact entries
+to add).
 
 ### Option 3: Install into a specific project
 
@@ -68,6 +69,12 @@ cp -r skills/gitops-master/ your-project/.opencode/skills/
 cp rules/credential-bootstrap.md your-project/.opencode/rules/
 cp plugins/version-police.ts your-project/.opencode/plugins/
 ```
+
+### Tools (standalone scripts installed to ~/.claude/tools/)
+
+| Tool | Description |
+|------|-------------|
+| **fix-ascii-boxes.py** | Fixes ASCII box-drawing alignment in markdown files, handles nested boxes inside-out |
 
 ## gitops-master Setup
 
@@ -127,3 +134,4 @@ externalsecret) that auto-generate and manage secrets for any GitOps app.
 2. Each skill lives in `skills/<name>/SKILL.md` with optional `references/` and `scripts/` subdirs
 3. Rules live in `rules/<name>.md` with frontmatter globs for auto-loading
 4. Plugins live in `plugins/<name>.ts` and implement the OpenCode plugin API
+5. Tools live in `tools/<name>` and are standalone executable scripts (Python/Bash)

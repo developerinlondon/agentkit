@@ -18,12 +18,12 @@ Options:
 
 Global install locations:
   OpenCode:    ~/.agents/skills/, ~/.agents/plugins/, ~/.agents/rules/
-  Claude Code: ~/.claude/hooks/, ~/.claude/settings.json (hooks section merged)
+  Claude Code: ~/.claude/hooks/, ~/.claude/tools/, ~/.claude/settings.json (hooks section merged)
   Codex CLI:   ~/.codex/rules/
 
 Project install locations:
   OpenCode:    .opencode/skills/, .opencode/plugins/, .opencode/rules/
-  Claude Code: .claude/hooks/, .claude/settings.json (hooks section merged)
+  Claude Code: .claude/hooks/, .claude/tools/, .claude/settings.json (hooks section merged)
   Codex CLI:   .codex/rules/
 
 Examples:
@@ -249,6 +249,28 @@ merge_claude_settings() {
   fi
 }
 
+# ─── Standalone Tools (Python/Bash scripts) ──────────────────────────────────
+
+install_tools() {
+	local tools_dir="$1"
+	mkdir -p "$tools_dir"
+
+	for tool_file in "$REPO_DIR"/tools/*; do
+		[[ -f "$tool_file" ]] || continue
+		local name
+		name="$(basename "$tool_file")"
+
+		if [[ -f "$tools_dir/$name" ]]; then
+			echo "[tools] Updating: $name"
+		else
+			echo "[tools] Installing: $name"
+		fi
+
+		cp "$tool_file" "$tools_dir/$name"
+		chmod +x "$tools_dir/$name"
+	done
+}
+
 # ─── Codex CLI: Starlark .rules Files ────────────────────────────────────────
 
 install_codex_policies() {
@@ -297,10 +319,14 @@ if [[ "$GLOBAL" == true ]]; then
 
   # ── Claude Code ──
   CLAUDE_HOOKS="$HOME/.claude/hooks"
+	CLAUDE_TOOLS="$HOME/.claude/tools"
   CLAUDE_SETTINGS="$HOME/.claude/settings.json"
   echo "--- Claude Code (bash hooks) ---"
   install_claude_hooks "$CLAUDE_HOOKS" "$CLAUDE_SETTINGS"
   echo ""
+	echo "--- Standalone tools ---"
+	install_tools "$CLAUDE_TOOLS"
+	echo ""
 
   # ── Codex CLI ──
   CODEX_RULES="$HOME/.codex/rules"
@@ -315,6 +341,7 @@ if [[ "$GLOBAL" == true ]]; then
   echo "  Rules:           $RULES_DEST/"
   echo "  OpenCode:        $OPENCODE_PLUGINS/ (add file:// entries to opencode config)"
   echo "  Claude Code:     $CLAUDE_HOOKS/ (hooks in $CLAUDE_SETTINGS)"
+	echo "  Tools:           $CLAUDE_TOOLS/"
   echo "  Codex CLI:       $CODEX_RULES/ (auto-loaded at startup)"
 
 # ─── Main: Project Install ───────────────────────────────────────────────────
@@ -346,10 +373,14 @@ else
 
   # ── Claude Code ──
   CLAUDE_HOOKS="$TARGET_DIR/.claude/hooks"
+	CLAUDE_TOOLS="$TARGET_DIR/.claude/tools"
   CLAUDE_SETTINGS="$TARGET_DIR/.claude/settings.json"
   echo "--- Claude Code (bash hooks) ---"
   install_claude_hooks "$CLAUDE_HOOKS" "$CLAUDE_SETTINGS"
   echo ""
+	echo "--- Standalone tools ---"
+	install_tools "$CLAUDE_TOOLS"
+	echo ""
 
   # ── Codex CLI ──
   CODEX_RULES="$TARGET_DIR/.codex/rules"
@@ -364,11 +395,13 @@ else
   echo "  Rules:       $RULES_DEST/"
   echo "  OpenCode:    $OPENCODE_PLUGINS/"
   echo "  Claude Code: $CLAUDE_HOOKS/ (hooks in $CLAUDE_SETTINGS)"
+	echo "  Tools:       $CLAUDE_TOOLS/"
   echo "  Codex CLI:   $CODEX_RULES/"
   echo ""
   echo "Verify with:"
   echo "  ls $SKILLS_DEST/"
   echo "  ls $OPENCODE_PLUGINS/"
   echo "  ls $CLAUDE_HOOKS/"
+	echo "  ls $CLAUDE_TOOLS/"
   echo "  ls $CODEX_RULES/"
 fi
