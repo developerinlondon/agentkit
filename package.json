@@ -1,4 +1,5 @@
 {
+  "name": "agentkit",
   "private": true,
   "scripts": {
     "test": "bun test"

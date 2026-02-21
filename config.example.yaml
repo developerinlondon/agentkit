@@ -1,0 +1,14 @@
+# Agentkit Configuration
+# Copy to: ~/.config/agentkit/config.yaml
+# XDG_CONFIG_HOME is respected if set.
+
+git-police:
+  branch-protection:
+    # Repos where direct commits/pushes to main/master are allowed.
+    # Use the repo name (e.g. "brain") or owner/name (e.g. "myorg/brain").
+    # Partial matches are supported — "brain" matches "myorg/brain".
+    allowed-repos: []
+    # Example:
+    #   allowed-repos:
+    #     - brain
+    #     - my-notes

@@ -1,7 +1,62 @@
 import type { PluginInput } from '@opencode-ai/plugin';
 import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { homedir } from 'node:os';
 
 const PROTECTED_BRANCHES = ['main', 'master'];
+
+function getAgentkitConfigPath(): string {
+  const xdg = process.env.XDG_CONFIG_HOME || join(homedir(), '.config');
+  return join(xdg, 'agentkit', 'config.yaml');
+}
+
+function loadAllowedRepos(): string[] {
+  try {
+    const content = readFileSync(getAgentkitConfigPath(), 'utf-8');
+    const lines = content.split('\n');
+    let inGitPolice = false;
+    const sectionLines: string[] = [];
+    for (const line of lines) {
+      if (/^git-police:/.test(line)) {
+        inGitPolice = true;
+        continue;
+      }
+      if (inGitPolice) {
+        if (/^\S/.test(line)) break;
+        sectionLines.push(line);
+      }
+    }
+    const section = sectionLines.join('\n');
+    const bpMatch = section.match(
+      /branch-protection:\s*\n\s*allowed-repos:\s*\n((?:\s*-\s*.+\n?)*)/,
+    );
+    if (!bpMatch) return [];
+    return [...bpMatch[1].matchAll(/^\s*-\s+(.+)$/gm)].map((m) => m[1].trim());
+  } catch {
+    return [];
+  }
+}
+
+function getRepoName(cwd: string): string | null {
+  const result = spawnSync('git', ['remote', 'get-url', 'origin'], {
+    cwd,
+    timeout: 5000,
+    encoding: 'utf-8',
+    stdio: ['pipe', 'pipe', 'pipe'],
+  });
+  if (result.status !== 0 || !result.stdout) return null;
+  const match = result.stdout.trim().match(/[:/]([^/]+\/[^/]+?)(?:\.git)?$/);
+  return match ? match[1] : null;
+}
+
+function isAllowedRepo(cwd: string): boolean {
+  const allowedRepos = loadAllowedRepos();
+  if (allowedRepos.length === 0) return false;
+  const repo = getRepoName(cwd);
+  if (!repo) return false;
+  return allowedRepos.some((allowed) => repo.includes(allowed));
+}
 
 function stripQuotedContent(command: string): string {
   return command
@@ -56,6 +111,7 @@ export default async function gitPolice(ctx: PluginInput) {
     ): Promise<void> => {
       const toolName = input.tool?.toLowerCase();
       if (toolName !== 'bash') return;
+      if (isAllowedRepo(ctx.directory)) return;
 
       const command = output.args.command as string | undefined;
       if (!command) return;
