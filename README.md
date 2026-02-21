@@ -76,6 +76,25 @@ cp plugins/version-police.ts your-project/.opencode/plugins/
 |------|-------------|
 | **fix-ascii-boxes.py** | Fixes ASCII box-drawing alignment in markdown files, handles nested boxes inside-out |
 
+## Configuration
+
+Agentkit uses a YAML config file at `~/.config/agentkit/config.yaml` (respects `XDG_CONFIG_HOME`).
+The installer creates a default config from `config.example.yaml` on first run.
+
+```yaml
+git-police:
+  branch-protection:
+    allowed-repos:
+      - brain
+      - my-notes
+```
+
+### git-police.branch-protection.allowed-repos
+
+Repos listed here are exempt from branch protection rules (direct commits/pushes to main/master
+are allowed). Use the repo name (e.g. `brain`) or `owner/name` (e.g. `myorg/brain`). Partial
+matches are supported.
+
 ## gitops-master Setup
 
 The gitops-master skill needs to know your cluster environment. Create a `.gitops-config.yaml` in
@@ -118,6 +137,9 @@ These poison the Kargo stage state machine when created via kubectl. Read-only c
 - `--no-verify` flag -- bypasses pre-commit hooks and quality gates
 - AI attribution trailers (`Co-authored-by`) in commit messages
 - Push directly to protected branches -- must use PRs
+
+Repos listed in `git-police.branch-protection.allowed-repos` in your config are exempt from branch
+protection rules. See [Configuration](#configuration).
 
 ## Rules
 
