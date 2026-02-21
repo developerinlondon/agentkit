@@ -222,13 +222,13 @@ spec:
 
 ## Existing Examples
 
-| App                  | OpenBao Path           | Check Key      |
-| -------------------- | ---------------------- | -------------- |
-| postgres             | platform/postgres      | password       |
-| redis                | platform/redis         | password       |
-| mariadb              | platform/mariadb       | rootPassword   |
-| zitadel              | platform/zitadel       | masterkey      |
-| seafile              | platform/seafile       | adminPassword  |
-| immich               | platform/immich        | adminPassword  |
-| paperless            | platform/paperless     | adminPassword  |
-| kube-prometheus-stack | platform/grafana       | admin_password |
+| App                   | OpenBao Path       | Check Key      |
+| --------------------- | ------------------ | -------------- |
+| postgres              | platform/postgres  | password       |
+| redis                 | platform/redis     | password       |
+| mariadb               | platform/mariadb   | rootPassword   |
+| zitadel               | platform/zitadel   | masterkey      |
+| seafile               | platform/seafile   | adminPassword  |
+| immich                | platform/immich    | adminPassword  |
+| paperless             | platform/paperless | adminPassword  |
+| kube-prometheus-stack | platform/grafana   | admin_password |

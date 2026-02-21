@@ -6,30 +6,30 @@ Reusable AI agent skills, rules, plugins, hooks, and tools for OpenCode, Claude 
 
 ### Skills (SKILL.md -- works everywhere via skills.sh)
 
-| Skill | Description |
-|-------|-------------|
-| **gitops-master** | GitOps operations for ArgoCD + Kargo: diagnose, verify, promote, setup |
-| **autonomous-workflow** | Proposal-first development, commit hygiene, decision authority |
-| **code-quality** | Warnings-as-errors, no underscore prefixes, test coverage |
-| **documentation** | ASCII diagrams, structured plan format, formatting rules |
-| **issue-raiser** | GitLab issue creation with root cause analysis and git-history-based assignees |
-| **project-planning** | Structured project planning: break down ideas into architecture, file structure, roadmap |
+| Skill                   | Description                                                                              |
+| ----------------------- | ---------------------------------------------------------------------------------------- |
+| **gitops-master**       | GitOps operations for ArgoCD + Kargo: diagnose, verify, promote, setup                   |
+| **autonomous-workflow** | Proposal-first development, commit hygiene, decision authority                           |
+| **code-quality**        | Warnings-as-errors, no underscore prefixes, test coverage                                |
+| **documentation**       | ASCII diagrams, structured plan format, formatting rules                                 |
+| **issue-raiser**        | GitLab issue creation with root cause analysis and git-history-based assignees           |
+| **project-planning**    | Structured project planning: break down ideas into architecture, file structure, roadmap |
 
 ### Rules (auto-loaded by file glob match)
 
-| Rule | Glob | Description |
-|------|------|-------------|
-| **consent-protocol** | `**/*` | Stop after asking a question -- never act and ask in the same turn |
-| **credential-bootstrap** | `gitops/**/*.yaml` | OpenBao + ESO credential bootstrap pattern for GitOps apps |
+| Rule                     | Glob               | Description                                                        |
+| ------------------------ | ------------------ | ------------------------------------------------------------------ |
+| **consent-protocol**     | `**/*`             | Stop after asking a question -- never act and ask in the same turn |
+| **credential-bootstrap** | `gitops/**/*.yaml` | OpenBao + ESO credential bootstrap pattern for GitOps apps         |
 
 ### Plugins (OpenCode only -- runtime hooks)
 
-| Plugin | Description |
-|--------|-------------|
-| **version-police.ts** | Auto-checks Helm/npm/Cargo dependency versions on file write |
-| **format-police.ts** | Auto-formats files on write using dprint |
-| **kubectl-police.ts** | Blocks kubectl create/apply for Kargo CRDs (unconditionally) |
-| **git-police.ts** | Blocks commits to main/master, force push, --no-verify, AI attribution, push to protected branches |
+| Plugin                | Description                                                                                        |
+| --------------------- | -------------------------------------------------------------------------------------------------- |
+| **version-police.ts** | Auto-checks Helm/npm/Cargo dependency versions on file write                                       |
+| **format-police.ts**  | Auto-formats files on write using dprint                                                           |
+| **kubectl-police.ts** | Blocks kubectl create/apply for Kargo CRDs (unconditionally)                                       |
+| **git-police.ts**     | Blocks commits to main/master, force push, --no-verify, AI attribution, push to protected branches |
 
 ## Installation
 
@@ -73,8 +73,8 @@ cp plugins/version-police.ts your-project/.opencode/plugins/
 
 ### Tools (standalone scripts installed to ~/.claude/tools/)
 
-| Tool | Description |
-|------|-------------|
+| Tool                   | Description                                                                          |
+| ---------------------- | ------------------------------------------------------------------------------------ |
 | **fix-ascii-boxes.py** | Fixes ASCII box-drawing alignment in markdown files, handles nested boxes inside-out |
 
 ## Configuration
