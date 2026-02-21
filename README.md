@@ -19,6 +19,7 @@ Reusable AI agent skills, rules, plugins, hooks, and tools for OpenCode, Claude 
 
 | Rule | Glob | Description |
 |------|------|-------------|
+| **consent-protocol** | `**/*` | Stop after asking a question -- never act and ask in the same turn |
 | **credential-bootstrap** | `gitops/**/*.yaml` | OpenBao + ESO credential bootstrap pattern for GitOps apps |
 
 ### Plugins (OpenCode only -- runtime hooks)
