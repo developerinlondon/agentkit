@@ -1,6 +1,6 @@
-# agent-skills
+# agentkit
 
-Reusable AI agent skills, rules, and plugins for OpenCode, Claude Code, and other AI coding agents.
+Reusable AI agent skills, rules, plugins, hooks, and tools for OpenCode, Claude Code, and other AI coding agents.
 
 ## What's Included
 
@@ -35,7 +35,7 @@ Reusable AI agent skills, rules, and plugins for OpenCode, Claude Code, and othe
 ### Option 1: skills.sh CLI (skills only, all agents)
 
 ```bash
-npx skills add developerinlondon/agent-skills
+npx skills add developerinlondon/agentkit
 ```
 
 This installs SKILL.md files for your AI agent (Claude Code, OpenCode, Cursor, etc.).
@@ -43,8 +43,8 @@ This installs SKILL.md files for your AI agent (Claude Code, OpenCode, Cursor, e
 ### Option 2: Install globally (all projects)
 
 ```bash
-git clone git@github.com:developerinlondon/agent-skills.git
-./agent-skills/install.sh --global
+git clone git@github.com:developerinlondon/agentkit.git
+./agentkit/install.sh --global
 ```
 
 Installs skills to `~/.agents/skills/`, rules to `~/.agents/rules/`, plugins to
@@ -55,7 +55,7 @@ to add).
 ### Option 3: Install into a specific project
 
 ```bash
-./agent-skills/install.sh /path/to/your/project
+./agentkit/install.sh /path/to/your/project
 ```
 
 Copies skills, rules, and plugins into the project's `.opencode/` directory.
