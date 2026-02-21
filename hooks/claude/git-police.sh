@@ -5,16 +5,24 @@
 set -euo pipefail
 
 PROTECTED_BRANCHES=("main" "master")
+ALLOWED_REPOS=("brain" "deepbrain/brain")
 
 INPUT=$(cat)
 COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty')
 
 [[ -z "$COMMAND" ]] && exit 0
 
-STRIPPED=$(echo "$COMMAND" \
-  | sed -E "s/<<-?[[:space:]]*['\"]?([A-Za-z_]+)['\"]?/\n\1_HEREDOC_START\n/g" \
-  | sed -E "s/\"([^\"\\\\]|\\\\.)*\"/\"\"/g" \
-  | sed -E "s/'[^']*'/''/g")
+REPO_NAME=$(git remote get-url origin 2>/dev/null | sed -E 's|.*[:/]([^/]+/[^/]+?)(\.git)?$|\1|' || echo "")
+for allowed in "${ALLOWED_REPOS[@]}"; do
+	if [[ "$REPO_NAME" == *"$allowed"* ]]; then
+		exit 0
+	fi
+done
+
+STRIPPED=$(echo "$COMMAND" |
+	sed -E "s/<<-?[[:space:]]*['\"]?([A-Za-z_]+)['\"]?/\n\1_HEREDOC_START\n/g" |
+	sed -E "s/\"([^\"\\\\]|\\\\.)*\"/\"\"/g" |
+	sed -E "s/'[^']*'/''/g")
 
 deny() {
   local reason="$1"
