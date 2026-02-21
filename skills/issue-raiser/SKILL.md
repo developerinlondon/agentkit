@@ -70,6 +70,7 @@ Every project has its own style. Discover it:
 ```
 
 Look for:
+
 - Do issues use templates (Description / Acceptance Criteria / Technical Notes)?
 - What level of detail is expected?
 - Are code snippets included?
@@ -167,14 +168,14 @@ list them with tradeoffs and state which one is recommended.>
 
 ## Files to Change
 
-| File | Change |
-|------|--------|
+| File           | Change                 |
+| -------------- | ---------------------- |
 | `path/to/file` | What to change and why |
 
 ## Acceptance Criteria
 
 - [ ] <Specific, testable statement>
-- [ ] <Include edge cases and non-regression>
+- <Include edge cases and non-regression>
 ```
 
 ### Title conventions
