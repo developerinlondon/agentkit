@@ -78,6 +78,7 @@ kubectl get nodes 2>/dev/null && echo "Direct kubectl works" || echo "May need S
 ### Step 3: If auto-discovery fails, ASK the user
 
 Present this template and ask them to fill in the values:
+
 ```
 I need your cluster details to proceed:
 - How do I reach kubectl? (direct / SSH command / proxy)
@@ -311,17 +312,17 @@ manages itself) rather than Kargo-controlled promotion. Kargo can't promote itse
 
 ## PHASE D6: Fix Patterns (Quick Reference)
 
-| Problem                  | Fix Command / Action                                                                                  | When to Use                                      |
-| ------------------------ | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
-| Poisoned stage state     | Delete Stage CR: `kubectl delete stage <name> -n ${KARGO_NS}`                                        | lastPromotion stuck on manual/errored promotion  |
-| Stale errored promotions | Delete Promotions: `kubectl delete promotions -n ${KARGO_NS} -l kargo.akuity.io/stage=<stage>`       | Auto-promotion says "already exists for freight" |
-| Verification RBAC        | Add resources to ClusterRole bound to verification SA                                                 | AnalysisRun Job fails with "forbidden"           |
-| Transient sync failure   | Add `retry: {timeout: 10m, errorThreshold: 3}` to argocd-update step                                 | ArgoCD repo-server restarts, connection refused  |
-| Force stage refresh      | `kubectl annotate stage <name> -n ${KARGO_NS} --overwrite kargo.akuity.io/refresh=$(date +%s)`       | Stage not reconciling, stale status              |
-| Force warehouse refresh  | `kubectl annotate warehouse <name> -n ${KARGO_NS} --overwrite kargo.akuity.io/refresh=$(date +%s)`   | New commits not detected as freight              |
-| ArgoCD app stuck syncing | `kubectl patch app <name> -n ${ARGOCD_NS} --type merge -p '{"operation": null}'`                     | operationState stuck, blocking new syncs         |
-| CRD ordering issue       | Move CRD-dependent app to later stage (operators -> platform)                                         | "no matches for kind" errors during sync         |
-| All else fails           | Delete Stage + all Promotions, let ArgoCD recreate                                                    | Multiple overlapping issues, unclear root cause  |
+| Problem                  | Fix Command / Action                                                                               | When to Use                                      |
+| ------------------------ | -------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| Poisoned stage state     | Delete Stage CR: `kubectl delete stage <name> -n ${KARGO_NS}`                                      | lastPromotion stuck on manual/errored promotion  |
+| Stale errored promotions | Delete Promotions: `kubectl delete promotions -n ${KARGO_NS} -l kargo.akuity.io/stage=<stage>`     | Auto-promotion says "already exists for freight" |
+| Verification RBAC        | Add resources to ClusterRole bound to verification SA                                              | AnalysisRun Job fails with "forbidden"           |
+| Transient sync failure   | Add `retry: {timeout: 10m, errorThreshold: 3}` to argocd-update step                               | ArgoCD repo-server restarts, connection refused  |
+| Force stage refresh      | `kubectl annotate stage <name> -n ${KARGO_NS} --overwrite kargo.akuity.io/refresh=$(date +%s)`     | Stage not reconciling, stale status              |
+| Force warehouse refresh  | `kubectl annotate warehouse <name> -n ${KARGO_NS} --overwrite kargo.akuity.io/refresh=$(date +%s)` | New commits not detected as freight              |
+| ArgoCD app stuck syncing | `kubectl patch app <name> -n ${ARGOCD_NS} --type merge -p '{"operation": null}'`                   | operationState stuck, blocking new syncs         |
+| CRD ordering issue       | Move CRD-dependent app to later stage (operators -> platform)                                      | "no matches for kind" errors during sync         |
+| All else fails           | Delete Stage + all Promotions, let ArgoCD recreate                                                 | Multiple overlapping issues, unclear root cause  |
 
 ---
 
@@ -486,7 +487,7 @@ kargo promote --project ${KARGO_PROJECT} --stage <target-stage> --freight <freig
 - Custom names break lexicographic sorting
 - Can permanently poison the stage state machine
 - May require deleting the entire Stage CR to fix
-</critical_warning>
+  </critical_warning>
 
 ---
 
@@ -792,14 +793,14 @@ ${SSH_CMD} kubectl get pods -A --field-selector=status.phase!=Running,status.pha
 
 These come from ENVIRONMENT DISCOVERY. Common defaults:
 
-| Variable           | Common Default   | Contains                                   |
-| ------------------ | ---------------- | ------------------------------------------ |
-| `${ARGOCD_CONTROLLER_NS}` | `argocd`  | ArgoCD server, ApplicationSets             |
-| `${KARGO_CONTROLLER_NS}`  | `kargo`  | Kargo controller, API                      |
-| `${KARGO_NS}`      | varies           | Kargo Project, Stages, Promotions, Freight |
-| `${ARGOCD_NS}`     | `infra`          | ArgoCD Applications                        |
-| `${MONITORING_NS}` | `monitoring`     | Prometheus, Grafana, Loki, Alloy           |
-| `${APP_NS}`        | varies           | Application workloads                      |
+| Variable                  | Common Default | Contains                                   |
+| ------------------------- | -------------- | ------------------------------------------ |
+| `${ARGOCD_CONTROLLER_NS}` | `argocd`       | ArgoCD server, ApplicationSets             |
+| `${KARGO_CONTROLLER_NS}`  | `kargo`        | Kargo controller, API                      |
+| `${KARGO_NS}`             | varies         | Kargo Project, Stages, Promotions, Freight |
+| `${ARGOCD_NS}`            | `infra`        | ArgoCD Applications                        |
+| `${MONITORING_NS}`        | `monitoring`   | Prometheus, Grafana, Loki, Alloy           |
+| `${APP_NS}`               | varies         | Application workloads                      |
 
 ## Pipeline Dependency Chain (Example)
 
