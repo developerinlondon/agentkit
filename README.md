@@ -13,6 +13,7 @@ Reusable AI agent skills, rules, and plugins for OpenCode, Claude Code, and othe
 | **code-quality** | Warnings-as-errors, no underscore prefixes, test coverage |
 | **documentation** | ASCII diagrams, structured plan format, formatting rules |
 | **issue-raiser** | GitLab issue creation with root cause analysis and git-history-based assignees |
+| **project-planning** | Structured project planning: break down ideas into architecture, file structure, roadmap |
 
 ### Rules (auto-loaded by file glob match)
 
