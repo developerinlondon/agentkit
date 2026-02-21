@@ -9,7 +9,7 @@ usage() {
   cat <<'USAGE'
 Usage: ./install.sh [options] [target-project-dir]
 
-Installs agent-skills (skills + rules + plugins + hooks + policies) for all
+Installs agentkit (skills + rules + plugins + hooks + tools + policies) for all
 supported AI coding tools: OpenCode, Claude Code, and Codex CLI.
 
 Options:
@@ -295,7 +295,7 @@ install_codex_policies() {
 # ─── Main: Global Install ────────────────────────────────────────────────────
 
 if [[ "$GLOBAL" == true ]]; then
-  echo "Installing agent-skills globally (all tools)"
+	echo "Installing agentkit globally (all tools)"
   echo ""
 
   # ── Skills (shared) ──
@@ -350,7 +350,7 @@ else
   TARGET_DIR="${TARGET_DIR:-.}"
   TARGET_DIR="$(cd "$TARGET_DIR" && pwd)"
 
-  echo "Installing agent-skills into: $TARGET_DIR"
+	echo "Installing agentkit into: $TARGET_DIR"
   echo ""
 
   # ── Skills (shared) ──
