@@ -12,3 +12,29 @@ git-police:
     #   allowed-repos:
     #     - brain
     #     - my-notes
+
+coding-police:
+  # Maximum lines per file before warning to split.
+  max-file-lines: 1000
+
+  # Maximum lines per function/method before warning to decompose.
+  max-function-lines: 100
+
+  # Minimum identical consecutive lines to flag as duplicate code.
+  min-duplicate-lines: 6
+
+  # Maximum exports per file before warning about single responsibility.
+  max-exports-per-file: 15
+
+  # File path patterns to exclude from checks.
+  exclude-patterns: []
+  # Example:
+  #   exclude-patterns:
+  #     - generated/
+  #     - __snapshots__/
+
+pkg-police:
+  # Set to false to disable bun enforcement (allows npm/npx/yarn/pnpm).
+  enabled: true
+  # Example:
+  #   enabled: false

@@ -1,0 +1,62 @@
+# coding-police.rules — Codex CLI exec policy
+# Enforces: DRY code, modular files (<1000 lines), short functions, single responsibility
+# Equivalent to: plugins/coding-police.ts (OpenCode), hooks/claude/coding-police.sh (Claude Code)
+#
+# NOTE: Codex prefix_rule() can only match command-line tokens (pre-exec).
+# File-content checks (line count, function length, duplicates, export count) are
+# enforced at runtime by the OpenCode plugin and Claude Code hook.
+#
+# The rules below catch bash-level patterns that commonly produce files violating
+# coding standards (e.g., writing large code blocks via heredocs or redirects).
+#
+# ─── CODING STANDARDS (for agent reference) ──────────────────────────────────
+#
+# 1. FILE LENGTH: No single file should exceed 1000 lines.
+#    Split into smaller modules grouped by functionality (types, helpers,
+#    handlers, constants).
+#
+# 2. FUNCTION LENGTH: No single function should exceed 100 lines.
+#    Break large functions into smaller, focused helper functions.
+#
+# 3. DRY (Don't Repeat Yourself): Never duplicate code blocks of 6+ lines.
+#    Extract repeated logic into shared functions or modules.
+#
+# 4. SINGLE RESPONSIBILITY: Each file should have one clear purpose.
+#    If a file has more than 15 exports, it likely has too many responsibilities.
+#
+# 5. MODULARIZATION: Group related code into cohesive modules.
+#    Prefer many small files over few large files.
+
+# ── LARGE HEREDOC WRITES ───────────────────────────────────────────────────
+# Prompt when writing code via heredoc to a code file — these often produce
+# oversized files that violate the 1000-line limit.
+
+prefix_rule(
+    pattern = ["cat", "<<"],
+    decision = "prompt",
+    justification = "Writing code via heredoc can easily produce oversized files. Coding standards require: max 1000 lines per file, max 100 lines per function, no duplicated code blocks. Ensure the output file stays within limits and code is modular.",
+    match = ["cat << 'EOF' > app.ts", "cat <<EOF > handler.py"],
+    not_match = ["cat README.md", "cat /etc/hosts"],
+)
+
+# ── TEE TO CODE FILES ──────────────────────────────────────────────────────
+# Prompt when using tee to write code — same risk as heredocs.
+
+prefix_rule(
+    pattern = ["tee"],
+    decision = "prompt",
+    justification = "Writing code via tee can produce oversized files. Coding standards require: max 1000 lines per file, max 100 lines per function, no duplicated code blocks. Ensure the output stays modular.",
+    match = ["tee src/handler.ts", "tee -a lib/utils.py"],
+    not_match = ["tee /tmp/log.txt"],
+)
+
+# ── APPEND REDIRECTION TO CODE FILES ──────────────────────────────────────
+# Prompt when appending to code files — risk of growing files beyond limits.
+
+prefix_rule(
+    pattern = ["bash", "-c"],
+    decision = "prompt",
+    justification = "Running bash -c with code generation may produce large files. Coding standards require: max 1000 lines per file, max 100 lines per function, no duplicated code blocks, no more than 15 exports per file. Verify the result stays modular.",
+    match = ["bash -c 'cat << EOF >> app.ts'"],
+    not_match = ["bash -c 'echo hello'"],
+)

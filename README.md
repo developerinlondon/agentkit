@@ -17,10 +17,11 @@ Reusable AI agent skills, rules, plugins, hooks, and tools for OpenCode, Claude 
 
 ### Rules (auto-loaded by file glob match)
 
-| Rule                     | Glob               | Description                                                        |
-| ------------------------ | ------------------ | ------------------------------------------------------------------ |
-| **consent-protocol**     | `**/*`             | Stop after asking a question -- never act and ask in the same turn |
-| **credential-bootstrap** | `gitops/**/*.yaml` | OpenBao + ESO credential bootstrap pattern for GitOps apps         |
+| Rule                     | Glob                    | Description                                                        |
+| ------------------------ | ----------------------- | ------------------------------------------------------------------ |
+| **consent-protocol**     | `**/*`                  | Stop after asking a question -- never act and ask in the same turn |
+| **credential-bootstrap** | `gitops/**/*.yaml`      | OpenBao + ESO credential bootstrap pattern for GitOps apps         |
+| **coding-standards**     | `**/*.{ts,py,go,rs...}` | Enforces DRY, modularity, and focused functions proactively        |
 
 ### Plugins (OpenCode only -- runtime hooks)
 
@@ -30,6 +31,27 @@ Reusable AI agent skills, rules, plugins, hooks, and tools for OpenCode, Claude 
 | **format-police.ts**  | Auto-formats files on write using dprint                                                           |
 | **kubectl-police.ts** | Blocks kubectl create/apply for Kargo CRDs (unconditionally)                                       |
 | **git-police.ts**     | Blocks commits to main/master, force push, --no-verify, AI attribution, push to protected branches |
+| **coding-police.ts**  | Enforces DRY code, modular files (<1000 lines), short functions, and single responsibility         |
+| **pkg-police.ts**     | Enforces bun as package manager — blocks npm, npx, yarn, pnpm commands                             |
+
+### Hooks (Claude Code -- PreToolUse / PostToolUse)
+
+| Hook                  | Type        | Description                                                                            |
+| --------------------- | ----------- | -------------------------------------------------------------------------------------- |
+| **git-police.sh**     | PreToolUse  | Blocks force push, --no-verify, Co-authored-by trailers, commits to protected branches |
+| **kubectl-police.sh** | PreToolUse  | Blocks kubectl create/apply on Kargo CRDs                                              |
+| **format-police.sh**  | PostToolUse | Auto-formats files after edit/write using dprint                                       |
+| **coding-police.sh**  | PostToolUse | Enforces DRY code, modular files (<1000 lines), short functions, single responsibility |
+| **pkg-police.sh**     | PreToolUse  | Enforces bun as package manager — blocks npm, npx, yarn, pnpm commands                 |
+
+### Policies (Codex CLI -- exec policy)
+
+| Policy                   | Description                                                                                |
+| ------------------------ | ------------------------------------------------------------------------------------------ |
+| **git-police.rules**     | Blocks force push, --no-verify, direct push to protected branches                          |
+| **kubectl-police.rules** | Blocks kubectl create/apply on Kargo CRDs                                                  |
+| **coding-police.rules**  | Coding standards guidance + prompts on heredoc/tee writes that may produce oversized files |
+| **pkg-police.rules**     | Enforces bun as package manager — blocks npm, npx, yarn, pnpm commands                     |
 
 ## Installation
 
@@ -96,6 +118,18 @@ Repos listed here are exempt from branch protection rules (direct commits/pushes
 are allowed). Use the repo name (e.g. `brain`) or `owner/name` (e.g. `myorg/brain`). Partial
 matches are supported.
 
+### coding-police
+
+All thresholds are configurable:
+
+| Setting                | Default | Description                                              |
+| ---------------------- | ------- | -------------------------------------------------------- |
+| `max-file-lines`       | 1000    | Files exceeding this trigger a split warning             |
+| `max-function-lines`   | 100     | Functions exceeding this trigger a decompose warning     |
+| `min-duplicate-lines`  | 6       | Minimum identical consecutive lines to flag as duplicate |
+| `max-exports-per-file` | 15      | Exports exceeding this trigger a responsibility warning  |
+| `exclude-patterns`     | `[]`    | File path substrings to skip (e.g. `generated/`)         |
+
 ## gitops-master Setup
 
 The gitops-master skill needs to know your cluster environment. Create a `.gitops-config.yaml` in
@@ -142,6 +176,46 @@ These poison the Kargo stage state machine when created via kubectl. Read-only c
 Repos listed in `git-police.branch-protection.allowed-repos` in your config are exempt from branch
 protection rules. See [Configuration](#configuration).
 
+**coding-police**: Enforces coding standards on every file write/edit. Available on all three
+platforms (OpenCode plugin, Claude Code hook, Codex policy). Checks:
+
+- File length -- files over 1000 lines must be split into smaller modules by functionality
+- Function length -- functions over 100 lines must be decomposed into focused helpers
+- Duplicate code -- repeated blocks of 6+ lines must be extracted into shared functions (DRY)
+- Export count -- files with too many exports need single-responsibility refactoring (TS/JS only)
+
+| Platform    | File                                 | Hook type          |
+| ----------- | ------------------------------------ | ------------------ |
+| OpenCode    | `plugins/coding-police.ts`           | tool.execute.after |
+| Claude Code | `hooks/claude/coding-police.sh`      | PostToolUse        |
+| Codex CLI   | `policies/codex/coding-police.rules` | exec policy        |
+
+All thresholds are configurable via `coding-police` in your config. See [Configuration](#configuration).
+
+**pkg-police**: Enforces bun as the default JavaScript/TypeScript package manager and runtime.
+Intercepts bash commands before execution and blocks npm, npx, yarn, and pnpm. Available on all
+three platforms (OpenCode plugin, Claude Code hook, Codex policy).
+
+Blocked commands and their bun equivalents:
+
+| Blocked             | Use instead             |
+| ------------------- | ----------------------- |
+| `npm install`       | `bun install`           |
+| `npm install <pkg>` | `bun add <pkg>`         |
+| `npm run <script>`  | `bun run <script>`      |
+| `npx <cmd>`         | `bunx <cmd>`            |
+| `npm test`          | `bun test`              |
+| `yarn` / `pnpm`     | `bun` (same subcommand) |
+
+| Platform    | File                              | Hook type           |
+| ----------- | --------------------------------- | ------------------- |
+| OpenCode    | `plugins/pkg-police.ts`           | tool.execute.before |
+| Claude Code | `hooks/claude/pkg-police.sh`      | PreToolUse          |
+| Codex CLI   | `policies/codex/pkg-police.rules` | exec policy         |
+
+Disable per-project by setting `pkg-police.enabled: false` in your agentkit config.
+Override per-command when the user explicitly requests a different package manager.
+
 ## Rules
 
 Rules are auto-loaded by OpenCode when you edit files matching their glob pattern. Unlike skills
@@ -150,6 +224,8 @@ Rules are auto-loaded by OpenCode when you edit files matching their glob patter
 **credential-bootstrap.md**: Activated when editing `gitops/**/*.yaml`. Provides the full OpenBao +
 ESO credential bootstrap pattern -- 3 template files (presync-rbac, presync-bootstrap,
 externalsecret) that auto-generate and manage secrets for any GitOps app.
+
+**coding-standards.md**: Proactive context for code files. Sets the mental model for the agent _before_ it starts writing. Defines the 1000-line file limit, 100-line function limit, and DRY requirements.
 
 ## Contributing
 
