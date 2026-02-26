@@ -1,0 +1,66 @@
+# pkg-police.rules — Codex CLI exec policy
+# Blocks: npm, npx, yarn, pnpm commands — enforces bun as package manager
+# Equivalent to: plugins/pkg-police.ts (OpenCode), hooks/claude/pkg-police.sh (Claude Code)
+
+# ── PACKAGE MANAGER ENFORCEMENT ─────────────────────────────────────────────
+# All JavaScript/TypeScript package management must use bun.
+# npm, npx, yarn, and pnpm are blocked unless the user explicitly overrides.
+
+prefix_rule(
+    pattern = ["npm", ["install", "i", "ci", "run", "test", "init", "publish", "exec", "create"]],
+    decision = "forbidden",
+    justification = "npm is not allowed. Use bun instead: npm install → bun install, npm run → bun run, npm test → bun test.",
+    match = [
+        "npm install",
+        "npm i express",
+        "npm run build",
+        "npm test",
+        "npm ci",
+    ],
+    not_match = [
+        "bun install",
+        "bun run build",
+    ],
+)
+
+prefix_rule(
+    pattern = ["npx"],
+    decision = "forbidden",
+    justification = "npx is not allowed. Use bunx instead: npx tsc → bunx tsc.",
+    match = [
+        "npx tsc --noEmit",
+        "npx expo export",
+    ],
+    not_match = [
+        "bunx tsc --noEmit",
+        "bunx expo export",
+    ],
+)
+
+prefix_rule(
+    pattern = ["yarn"],
+    decision = "forbidden",
+    justification = "yarn is not allowed. Use bun instead: yarn → bun install, yarn add → bun add.",
+    match = [
+        "yarn install",
+        "yarn add react",
+    ],
+    not_match = [
+        "bun install",
+        "bun add react",
+    ],
+)
+
+prefix_rule(
+    pattern = ["pnpm"],
+    decision = "forbidden",
+    justification = "pnpm is not allowed. Use bun instead: pnpm install → bun install, pnpm add → bun add.",
+    match = [
+        "pnpm install",
+        "pnpm add react",
+    ],
+    not_match = [
+        "bun install",
+        "bun add react",
+    ],
+)
