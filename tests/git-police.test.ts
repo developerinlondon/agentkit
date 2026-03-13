@@ -73,7 +73,24 @@ describe('git-police', () => {
     }
   });
 
-  describe('allows safe git operations', () => {
+  describe('stale branch protection (new branch commands)', () => {
+    // These should be allowed because mockCtx.directory=/tmp has no git repo,
+    // so getCurrentBranch returns null and the stale check is skipped
+    const commands = [
+      'git checkout -b feat/new-feature',
+      'git switch -c feat/another-feature',
+    ];
+
+    for (const cmd of commands) {
+      test(`allows when not on protected branch: ${cmd}`, async () => {
+        const hooks = await gitPolice(mockCtx);
+        const { input, output } = makeInput(cmd);
+        expect(hooks['tool.execute.before']!(input, output)).resolves.toBeUndefined();
+      });
+    }
+  });
+
+    describe('allows safe git operations', () => {
     const commands = [
       'git status',
       'git diff',

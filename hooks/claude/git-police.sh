@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # git-police.sh — Claude Code PreToolUse hook (matcher: Bash)
-# Blocks: force push, --no-verify, Co-authored-by trailers, commits to protected branches
+# Blocks: force push, --no-verify, Co-authored-by trailers, commits to protected branches, stale branch creation
 # Equivalent to: plugins/git-police.ts (OpenCode)
 set -euo pipefail
 
@@ -98,6 +98,24 @@ if echo "$STRIPPED" | grep -qiE '\bgit\b.*\bcommit\b'; then
 	for branch in "${PROTECTED_BRANCHES[@]}"; do
 		if [[ "$CURRENT_BRANCH" == "$branch" ]]; then
 			deny "BLOCKED: Committing directly to '${branch}' is forbidden. You are on the ${branch} branch. Create a feature branch first: git checkout -b feat/your-feature-name"
+		fi
+	done
+fi
+
+# 7. Stale branch protection — warn when creating a branch from a stale base
+if echo "$STRIPPED" | grep -qiE '\bgit\b.*(checkout\s+-b|switch\s+-c)\b'; then
+	CURRENT_BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null || echo "")
+	for branch in "${PROTECTED_BRANCHES[@]}"; do
+		if [[ "$CURRENT_BRANCH" == "$branch" ]]; then
+			git fetch origin "$branch" --quiet 2>/dev/null || true
+			LOCAL_SHA=$(git rev-parse "$branch" 2>/dev/null || echo "")
+			REMOTE_SHA=$(git rev-parse "origin/$branch" 2>/dev/null || echo "")
+			if [[ -n "$LOCAL_SHA" && -n "$REMOTE_SHA" && "$LOCAL_SHA" != "$REMOTE_SHA" ]]; then
+				BEHIND=$(git rev-list --count "$branch..origin/$branch" 2>/dev/null || echo "0")
+				if [[ "$BEHIND" -gt 0 ]]; then
+					deny "BLOCKED: Your local '${branch}' is ${BEHIND} commit(s) behind origin/${branch}. Run 'git pull origin ${branch}' first to avoid creating a branch from stale code. This prevents merge conflicts and wasted rebases."
+				fi
+			fi
 		fi
 	done
 fi
