@@ -198,7 +198,7 @@ export default async function gitPolice(ctx: PluginInput) {
           );
         }
 
-        if (/co-authored-by/i.test(stripped)) {
+        if (/co-authored-by/i.test(command)) {
           throw new Error(
             `BLOCKED: AI attribution trailers (Co-authored-by) are forbidden in commit messages.\n` +
               `Do not add Co-authored-by, Signed-off-by, or other AI agent attribution lines.\n` +

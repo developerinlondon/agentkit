@@ -88,7 +88,7 @@ if echo "$STRIPPED" | grep -qiE '\bgit\b.*\bpush\b'; then
 fi
 
 # 5. Block Co-authored-by trailers in commit commands
-if echo "$STRIPPED" | grep -qiE '\bgit\b.*\bcommit\b' && echo "$STRIPPED" | grep -qi 'co-authored-by'; then
+if echo "$STRIPPED" | grep -qiE '\bgit\b.*\bcommit\b' && echo "$TOOL_INPUT" | grep -qi 'co-authored-by'; then
 	deny "BLOCKED: AI attribution trailers (Co-authored-by) are forbidden in commit messages. Do not add Co-authored-by, Signed-off-by, or other AI agent attribution lines. The commit author is whoever owns the git config. Remove the trailer and retry."
 fi
 
