@@ -103,6 +103,36 @@ function isGitCheckoutProtected(command: string): boolean {
   return false;
 }
 
+
+function isStaleProtectedBranch(cwd: string, branch: string): { stale: boolean; behind: number } {
+  // Fetch latest refs
+  spawnSync('git', ['fetch', 'origin', branch, '--quiet'], {
+    cwd,
+    timeout: 10000,
+    encoding: 'utf-8',
+    stdio: ['pipe', 'pipe', 'pipe'],
+  });
+  const localResult = spawnSync('git', ['rev-parse', branch], {
+    cwd, timeout: 5000, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'],
+  });
+  const remoteResult = spawnSync('git', ['rev-parse', `origin/${branch}`], {
+    cwd, timeout: 5000, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'],
+  });
+  if (localResult.status !== 0 || remoteResult.status !== 0) return { stale: false, behind: 0 };
+  const localSha = localResult.stdout.trim();
+  const remoteSha = remoteResult.stdout.trim();
+  if (localSha === remoteSha) return { stale: false, behind: 0 };
+  const countResult = spawnSync('git', ['rev-list', '--count', `${branch}..origin/${branch}`], {
+    cwd, timeout: 5000, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'],
+  });
+  const behind = parseInt(countResult.stdout?.trim() || '0', 10);
+  return { stale: behind > 0, behind };
+}
+
+function isNewBranchCommand(command: string): boolean {
+  return /\bgit\b.*(checkout\s+-b|switch\s+-c)\b/i.test(command);
+}
+
 export default async function gitPolice(ctx: PluginInput) {
   return {
     'tool.execute.before': async (
@@ -168,12 +198,27 @@ export default async function gitPolice(ctx: PluginInput) {
           );
         }
 
-        if (/co-authored-by/i.test(stripped)) {
+        if (/co-authored-by/i.test(command)) {
           throw new Error(
             `BLOCKED: AI attribution trailers (Co-authored-by) are forbidden in commit messages.\n` +
               `Do not add Co-authored-by, Signed-off-by, or other AI agent attribution lines.\n` +
               `The commit author is whoever owns the git config. Remove the trailer and retry.`,
           );
+        }
+      }
+
+      // 7. Stale branch protection
+      if (isNewBranchCommand(stripped)) {
+        const branch = getCurrentBranch(ctx.directory);
+        if (branch && PROTECTED_BRANCHES.includes(branch)) {
+          const { stale, behind } = isStaleProtectedBranch(ctx.directory, branch);
+          if (stale) {
+            throw new Error(
+              `BLOCKED: Your local '${branch}' is ${behind} commit(s) behind origin/${branch}.\n` +
+                `Run 'git pull origin ${branch}' first to avoid creating a branch from stale code.\n` +
+                `This prevents merge conflicts and wasted rebases.`,
+            );
+          }
         }
       }
     },

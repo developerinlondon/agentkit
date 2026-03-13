@@ -15,6 +15,12 @@
             "command": "$HOME/.claude/hooks/kubectl-police.sh",
             "timeout": 10,
             "statusMessage": "kubectl-police: checking Kargo safety..."
+          },
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/pkg-police.sh",
+            "timeout": 10,
+            "statusMessage": "pkg-police: enforcing bun as package manager..."
           }
         ]
       }
@@ -27,6 +33,12 @@
             "type": "command",
             "command": "$HOME/.claude/hooks/format-police.sh",
             "timeout": 15
+          },
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/coding-police.sh",
+            "timeout": 15,
+            "statusMessage": "coding-police: checking coding standards..."
           }
         ]
       }
