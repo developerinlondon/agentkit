@@ -1,0 +1,18 @@
+
+# ── STALE BRANCH PROTECTION ──────────────────────────────────────────────────
+# Codex prefix_rule cannot run git fetch to check staleness, so we prompt
+# the user to confirm they have pulled latest before creating a new branch.
+
+prefix_rule(
+    pattern = ["git", "checkout", "-b"],
+    decision = "prompt",
+    justification = "Creating a new branch. Ensure your current branch is up to date with origin first: run 'git pull' before branching to avoid working on stale code.",
+    match     = ["git checkout -b feat/new-feature", "git checkout -b fix/bug"],
+)
+
+prefix_rule(
+    pattern = ["git", "switch", "-c"],
+    decision = "prompt",
+    justification = "Creating a new branch. Ensure your current branch is up to date with origin first: run 'git pull' before branching to avoid working on stale code.",
+    match     = ["git switch -c feat/new-feature", "git switch -c fix/bug"],
+)
