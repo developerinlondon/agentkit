@@ -35,7 +35,7 @@ prefix_rule(
     pattern = ["cat", "<<"],
     decision = "prompt",
     justification = "Writing code via heredoc can easily produce oversized files. Coding standards require: max 1000 lines per file, max 100 lines per function, no duplicated code blocks. Ensure the output file stays within limits and code is modular.",
-    match = ["cat << 'EOF' > app.ts", "cat <<EOF > handler.py"],
+    match = ["cat << 'EOF' > app.ts", "cat << EOF > handler.py"],
     not_match = ["cat README.md", "cat /etc/hosts"],
 )
 
@@ -47,7 +47,6 @@ prefix_rule(
     decision = "prompt",
     justification = "Writing code via tee can produce oversized files. Coding standards require: max 1000 lines per file, max 100 lines per function, no duplicated code blocks. Ensure the output stays modular.",
     match = ["tee src/handler.ts", "tee -a lib/utils.py"],
-    not_match = ["tee /tmp/log.txt"],
 )
 
 # ── APPEND REDIRECTION TO CODE FILES ──────────────────────────────────────
@@ -58,5 +57,4 @@ prefix_rule(
     decision = "prompt",
     justification = "Running bash -c with code generation may produce large files. Coding standards require: max 1000 lines per file, max 100 lines per function, no duplicated code blocks, no more than 15 exports per file. Verify the result stays modular.",
     match = ["bash -c 'cat << EOF >> app.ts'"],
-    not_match = ["bash -c 'echo hello'"],
 )

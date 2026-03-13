@@ -7,7 +7,7 @@
 prefix_rule(
     pattern = ["git", "push", "--force"],
     decision = "forbidden",
-    justification = "Force push is prohibited. Use --force-with-lease to avoid overwriting others' work.",
+    justification = "Force push is prohibited. It rewrites remote history and can destroy others' work.",
     match     = ["git push --force", "git push --force origin main"],
     not_match = ["git push", "git push origin main"],
 )
@@ -15,9 +15,15 @@ prefix_rule(
 prefix_rule(
     pattern = ["git", "push", "-f"],
     decision = "forbidden",
-    justification = "Force push (-f) is prohibited. Use --force-with-lease.",
+    justification = "Force push (-f) is prohibited. It rewrites remote history and can destroy others' work.",
     match     = ["git push -f", "git push -f origin main"],
     not_match = ["git push origin main"],
+)
+
+prefix_rule(
+    pattern = ["git", "push", "--force-with-lease"],
+    decision = "forbidden",
+    justification = "Force push with lease is forbidden. It still rewrites remote history.",
 )
 
 # ── SKIP HOOKS (--no-verify) ─────────────────────────────────────────────────
@@ -48,12 +54,6 @@ prefix_rule(
     justification = "-n (--no-verify) bypasses hooks. Fix the hook failure instead.",
 )
 
-prefix_rule(
-    pattern = ["git", "push", "-n"],
-    decision = "forbidden",
-    justification = "-n (--no-verify) bypasses hooks. Fix the hook failure instead.",
-)
-
 # ── DIRECT PUSH TO PROTECTED BRANCHES ────────────────────────────────────────
 
 prefix_rule(
@@ -61,7 +61,6 @@ prefix_rule(
     decision = "forbidden",
     justification = "Direct push to protected branches is prohibited. Open a PR instead.",
     match     = ["git push origin main", "git push origin master", "git push upstream main"],
-    not_match = ["git push origin feature/my-branch"],
 )
 
 prefix_rule(
@@ -79,7 +78,6 @@ prefix_rule(
     decision = "prompt",
     justification = "Bare 'git push' may push a protected branch. Confirm you are NOT on main/master before proceeding.",
     match     = ["git push"],
-    not_match = ["git push origin feature/my-branch"],
 )
 
 # ── AMEND PUSHED COMMITS ─────────────────────────────────────────────────────
@@ -107,9 +105,6 @@ prefix_rule(
     decision = "prompt",
     justification = "git clean permanently deletes untracked files/directories.",
 )
-
-
-
 
 # ── STALE BRANCH PROTECTION ──────────────────────────────────────────────────
 # Codex prefix_rule cannot run git fetch to check staleness, so we prompt
