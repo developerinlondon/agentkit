@@ -17,22 +17,24 @@ Reusable AI agent skills, rules, plugins, hooks, and tools for OpenCode, Claude 
 
 ### Rules (auto-loaded by file glob match)
 
-| Rule                     | Glob                    | Description                                                        |
-| ------------------------ | ----------------------- | ------------------------------------------------------------------ |
-| **consent-protocol**     | `**/*`                  | Stop after asking a question -- never act and ask in the same turn |
-| **credential-bootstrap** | `gitops/**/*.yaml`      | OpenBao + ESO credential bootstrap pattern for GitOps apps         |
-| **coding-standards**     | `**/*.{ts,py,go,rs...}` | Enforces DRY, modularity, and focused functions proactively        |
+| Rule                     | Glob                                            | Description                                                        |
+| ------------------------ | ----------------------------------------------- | ------------------------------------------------------------------ |
+| **consent-protocol**     | `**/*`                                          | Stop after asking a question -- never act and ask in the same turn |
+| **credential-bootstrap** | `gitops/**/*.yaml`                              | OpenBao + ESO credential bootstrap pattern for GitOps apps         |
+| **coding-standards**     | `**/*.{ts,py,go,rs...}`                         | Enforces DRY, modularity, and focused functions proactively        |
+| **comment-discipline**   | `**/*.{ts,py,go,rs,sh,yaml,toml,Dockerfile...}` | Default to no comments; only WHY when non-obvious                  |
 
 ### Plugins (OpenCode only -- runtime hooks)
 
-| Plugin                | Description                                                                                        |
-| --------------------- | -------------------------------------------------------------------------------------------------- |
-| **version-police.ts** | Auto-checks Helm/npm/Cargo dependency versions on file write                                       |
-| **format-police.ts**  | Auto-formats files on write using dprint                                                           |
-| **kubectl-police.ts** | Blocks kubectl create/apply for Kargo CRDs (unconditionally)                                       |
-| **git-police.ts**     | Blocks commits to main/master, force push, --no-verify, AI attribution, push to protected branches |
-| **coding-police.ts**  | Enforces DRY code, modular files (<1000 lines), short functions, and single responsibility         |
-| **pkg-police.ts**     | Enforces bun as package manager — blocks npm, npx, yarn, pnpm commands                             |
+| Plugin                | Description                                                                                                              |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| **version-police.ts** | Auto-checks Helm/npm/Cargo dependency versions on file write                                                             |
+| **format-police.ts**  | Auto-formats files on write using dprint                                                                                 |
+| **kubectl-police.ts** | Blocks kubectl create/apply for Kargo CRDs (unconditionally)                                                             |
+| **git-police.ts**     | Blocks commits to main/master, force push, --no-verify, AI attribution, push to protected branches                       |
+| **coding-police.ts**  | Enforces DRY code, modular files (<1000 lines), short functions, and single responsibility                               |
+| **comment-police.ts** | Warns on long comment blocks, tutorial-style file headers, PR/plan/closes-#N references, and high comment-to-code ratios |
+| **pkg-police.ts**     | Enforces bun as package manager — blocks npm, npx, yarn, pnpm commands                                                   |
 
 ### Hooks (Claude Code -- PreToolUse / PostToolUse)
 

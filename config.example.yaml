@@ -38,3 +38,31 @@ pkg-police:
   enabled: true
   # Example:
   #   enabled: false
+
+comment-police:
+  # Maximum lines in a single body comment block before warning.
+  max-block-lines: 6
+
+  # Maximum lines in a top-of-file comment header before warning.
+  # ("Tutorial-style" headers belong in the README, not in the file.)
+  max-header-lines: 10
+
+  # Maximum comment-to-(comment+code) line ratio per file before warning.
+  max-comment-ratio: 0.3
+
+  # Regex patterns flagged as rotting references (PR / plan / commit
+  # references belong in the PR description / commit message, not in code).
+  forbidden-patterns:
+    - 'Plan-?\d+'
+    - 'PR\s*#?\d+'
+    - 'closes\s*#\d+'
+    - 'fixes\s*#\d+'
+    - 'TODO[: ]+(for|after|once)\b'
+    - 'as part of (this|the) (PR|MR|fix)'
+
+  # File path patterns to exclude from checks.
+  exclude-patterns: []
+  # Example:
+  #   exclude-patterns:
+  #     - vendor/
+  #     - generated/
