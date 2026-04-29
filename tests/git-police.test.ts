@@ -62,6 +62,9 @@ describe('git-police', () => {
     const commands = [
       'git commit -m "fix stuff\n\nCo-authored-by: Claude <claude@anthropic.com>"',
       'git commit -m "fix\n\nCo-Authored-By: GPT"',
+      'git commit -m "fix\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)"',
+      'git commit -m "fix\n\nGenerated with [Claude Code](https://claude.ai/code)"',
+      'git commit -m "fix\n\nCo-Authored-By: Claude <noreply@anthropic.com>"',
     ];
 
     for (const cmd of commands) {
