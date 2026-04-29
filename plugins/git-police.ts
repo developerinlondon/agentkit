@@ -198,11 +198,17 @@ export default async function gitPolice(ctx: PluginInput) {
           );
         }
 
-        if (/co-authored-by/i.test(command)) {
+        if (
+          /co-authored-by|generated with \[claude code\]|🤖 generated|claude\.ai\/code|noreply@anthropic\.com/i.test(
+            command,
+          )
+        ) {
           throw new Error(
-            `BLOCKED: AI attribution trailers (Co-authored-by) are forbidden in commit messages.\n` +
-              `Do not add Co-authored-by, Signed-off-by, or other AI agent attribution lines.\n` +
-              `The commit author is whoever owns the git config. Remove the trailer and retry.`,
+            `BLOCKED: AI attribution in commit messages is forbidden.\n` +
+              `Do not add Co-authored-by, Signed-off-by, '🤖 Generated with [Claude Code]',\n` +
+              `claude.ai/code links, noreply@anthropic.com co-authors, or any other AI\n` +
+              `agent attribution. The commit author is whoever owns the git config.\n` +
+              `Remove the attribution and retry.`,
           );
         }
       }

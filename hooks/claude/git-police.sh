@@ -87,9 +87,12 @@ if echo "$STRIPPED" | grep -qiE '\bgit\b.*\bpush\b'; then
 	done
 fi
 
-# 5. Block Co-authored-by trailers in commit commands
-if echo "$STRIPPED" | grep -qiE '\bgit\b.*\bcommit\b' && echo "$TOOL_INPUT" | grep -qi 'co-authored-by'; then
-	deny "BLOCKED: AI attribution trailers (Co-authored-by) are forbidden in commit messages. Do not add Co-authored-by, Signed-off-by, or other AI agent attribution lines. The commit author is whoever owns the git config. Remove the trailer and retry."
+# 5. Block AI attribution trailers / signatures in commit commands.
+#    $INPUT is the full PreToolUse JSON payload from stdin; the previous
+#    version referenced an undefined $TOOL_INPUT and silently never matched.
+if echo "$STRIPPED" | grep -qiE '\bgit\b.*\bcommit\b' \
+	&& echo "$INPUT" | grep -qiE 'co-authored-by|generated with \[claude code\]|🤖 generated|claude\.ai/code|noreply@anthropic\.com'; then
+	deny "BLOCKED: AI attribution in commit messages is forbidden. Do not add Co-authored-by, Signed-off-by, '🤖 Generated with [Claude Code]', claude.ai/code links, noreply@anthropic.com co-authors, or any other AI agent attribution. The commit author is whoever owns the git config. Remove the attribution and retry."
 fi
 
 # 6. Block direct commits to protected branches
