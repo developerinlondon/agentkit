@@ -73,7 +73,10 @@ git clone git@github.com:developerinlondon/agentkit.git
 ```
 
 Installs skills to `~/.agents/skills/`, rules to `~/.agents/rules/`, plugins to
-`~/.agents/plugins/`, and tools to `~/.claude/tools/`. Skills are auto-discovered by OpenCode. For
+`~/.agents/plugins/`, tools to `~/.claude/tools/`, and the shared anti-glaze prompt to
+`~/.agents/instructions/anti-glaze.md`. The global installer also wires that prompt into Codex
+(`~/.codex/config.toml`), Claude Code (`~/.claude/CLAUDE.md`), and OpenCode
+(`~/.config/opencode/opencode.json`) idempotently. Skills are auto-discovered by OpenCode. For
 global plugins, add `file://` entries to your opencode config (the installer prints the exact entries
 to add).
 
