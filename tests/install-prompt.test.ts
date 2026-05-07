@@ -80,8 +80,11 @@ describe('global prompt installation', () => {
 
       const codexConfig = readFileSync(join(codexDir, 'config.toml'), 'utf-8');
       expect(codexConfig).toContain('model = "gpt-5.5"');
-      expect(codexConfig).toContain(
-        `model_instructions_file = "${installedPrompt}"`,
+      expect(codexConfig).toContain('developer_instructions = """');
+      expect(codexConfig).toContain('agentkit:anti-glaze:start');
+      expect(codexConfig).not.toContain('model_instructions_file');
+      expect(countOccurrences(codexConfig, 'agentkit:anti-glaze:start')).toBe(
+        1,
       );
 
       const claudeInstructions = readFileSync(
@@ -111,7 +114,7 @@ describe('global prompt installation', () => {
     }
   });
 
-  test('does not duplicate Codex prompt when it is already embedded', () => {
+  test('replaces an existing embedded Codex prompt with the managed block', () => {
     const home = mkdtempSync(join(tmpdir(), 'agentkit-home-'));
 
     try {
@@ -135,9 +138,13 @@ describe('global prompt installation', () => {
       const codexConfig = readFileSync(join(codexDir, 'config.toml'), 'utf-8');
       expect(codexConfig).toContain('developer_instructions = """');
       expect(codexConfig).not.toContain('model_instructions_file');
+      expect(codexConfig).toContain('agentkit:anti-glaze:start');
       expect(
         countOccurrences(codexConfig, 'Anti-Glaze Global Agent Instructions'),
       ).toBe(1);
+      expect(countOccurrences(codexConfig, 'agentkit:anti-glaze:start')).toBe(
+        1,
+      );
     } finally {
       rmSync(home, { force: true, recursive: true });
     }
