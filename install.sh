@@ -92,46 +92,57 @@ PROMPT_MARKER_START="<!-- agentkit:anti-glaze:start -->"
 PROMPT_MARKER_END="<!-- agentkit:anti-glaze:end -->"
 PROMPT_TITLE="Anti-Glaze Global Agent Instructions"
 
-escape_toml_string() {
-	local value="$1"
-	value="${value//\\/\\\\}"
-	value="${value//\"/\\\"}"
-	printf '%s' "$value"
-}
-
-set_top_level_toml_string() {
+set_codex_developer_instructions() {
 	local file="$1"
-	local key="$2"
-	local value="$3"
-	local escaped_value
-	escaped_value="$(escape_toml_string "$value")"
-	local replacement="$key = \"$escaped_value\""
+	local prompt_file="$2"
 	local tmp="${file}.tmp"
 
 	mkdir -p "$(dirname "$file")"
 	touch "$file"
 
-	awk -v key="$key" -v replacement="$replacement" '
+	awk -v source="$prompt_file" '
+		function print_prompt() {
+			print "developer_instructions = \"\"\""
+			while ((getline line < source) > 0) {
+				print line
+			}
+			close(source)
+			print "\"\"\""
+		}
 		BEGIN {
 			done = 0
 			in_section = 0
+			skip_multiline = 0
+		}
+		skip_multiline && /^[[:space:]]*"""[[:space:]]*$/ {
+			skip_multiline = 0
+			next
+		}
+		skip_multiline {
+			next
 		}
 		/^[[:space:]]*\[/ {
 			if (!done) {
 				if (NR > 1) {
 					print ""
 				}
-				print replacement
+				print_prompt()
 				done = 1
 			}
 			in_section = 1
 			print
 			next
 		}
-		!in_section && $0 ~ "^[[:space:]]*" key "[[:space:]]*=" {
+		!in_section && /^[[:space:]]*model_instructions_file[[:space:]]*=/ {
+			next
+		}
+		!in_section && /^[[:space:]]*developer_instructions[[:space:]]*=/ {
 			if (!done) {
-				print replacement
+				print_prompt()
 				done = 1
+			}
+			if ($0 ~ /"""[[:space:]]*$/ && $0 !~ /^[[:space:]]*developer_instructions[[:space:]]*=[[:space:]]*""".*"""[[:space:]]*$/) {
+				skip_multiline = 1
 			}
 			next
 		}
@@ -143,7 +154,7 @@ set_top_level_toml_string() {
 				if (NR > 0) {
 					print ""
 				}
-				print replacement
+				print_prompt()
 			}
 		}
 	' "$file" >"$tmp"
@@ -167,13 +178,16 @@ install_codex_prompt() {
 	local prompt_file="$1"
 	local config_file="$HOME/.codex/config.toml"
 
-	if [[ -f "$config_file" ]] && grep -Fq "$PROMPT_TITLE" "$config_file"; then
-		echo "[codex] Global prompt already present in developer_instructions: $config_file"
+	if [[ -f "$config_file" ]] \
+		&& grep -Eq '^[[:space:]]*developer_instructions[[:space:]]*=' "$config_file" \
+		&& ! grep -Fq "$PROMPT_TITLE" "$config_file" \
+		&& ! grep -Fq "$PROMPT_MARKER_START" "$config_file"; then
+		echo "[codex] WARNING: developer_instructions already exists without agentkit prompt; leaving unchanged: $config_file"
 		return
 	fi
 
-	set_top_level_toml_string "$config_file" "model_instructions_file" "$prompt_file"
-	echo "[codex] Wired model_instructions_file: $config_file"
+	set_codex_developer_instructions "$config_file" "$prompt_file"
+	echo "[codex] Wired developer_instructions: $config_file"
 }
 
 install_claude_prompt() {
