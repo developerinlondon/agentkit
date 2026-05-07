@@ -54,6 +54,7 @@ description: >-
 ```
 
 Body is Markdown — instructions for the AI agent. Can include:
+
 - Decision trees, mode detection tables
 - Command references, configuration
 - Optional `references/` and `scripts/` subdirs
@@ -73,14 +74,14 @@ npx skills add developerinlondon/agentkit
 
 ## Key Skills
 
-| Skill | Description |
-|-------|-------------|
-| autonomous-workflow | Proposal-first development, commit hygiene |
-| code-quality | Warnings-as-errors, test coverage, type safety |
-| documentation | ASCII diagrams, structured plans |
-| gitops-master | ArgoCD + Kargo operations |
-| issue-raiser | GitLab issue creation with root cause analysis |
-| project-planning | Structured project breakdown |
+| Skill               | Description                                    |
+| ------------------- | ---------------------------------------------- |
+| autonomous-workflow | Proposal-first development, commit hygiene     |
+| code-quality        | Warnings-as-errors, test coverage, type safety |
+| documentation       | ASCII diagrams, structured plans               |
+| gitops-master       | ArgoCD + Kargo operations                      |
+| issue-raiser        | GitLab issue creation with root cause analysis |
+| project-planning    | Structured project breakdown                   |
 
 ## Commands
 
