@@ -77,7 +77,11 @@ function getCurrentBranch(cwd: string): string | null {
 }
 
 function isGitCommitCommand(command: string): boolean {
-  return /\bgit\b.*\bcommit\b/i.test(command);
+  // Match `git commit` as a subcommand, not the literal substring "commit"
+  // inside config keys like `git config commit.gpgsign`.
+  return /\bgit(\s+(-[A-Za-z]\S*|--[A-Za-z][A-Za-z0-9-]*(=\S+)?)(\s+[^-\s]\S*)?)*\s+commit\b/i.test(
+    command,
+  );
 }
 
 function isGitPushToProtected(command: string): boolean {
