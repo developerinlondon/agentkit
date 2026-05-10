@@ -58,7 +58,7 @@ comment-police:
     - 'closes\s*#\d+'
     - 'fixes\s*#\d+'
     - 'TODO[: ]+(for|after|once)\b'
-    - 'as part of (this|the) (PR|MR|fix)'
+    - "as part of (this|the) (PR|MR|fix)"
 
   # File path patterns to exclude from checks.
   exclude-patterns: []
