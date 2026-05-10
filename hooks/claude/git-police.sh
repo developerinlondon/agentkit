@@ -87,16 +87,20 @@ if echo "$STRIPPED" | grep -qiE '\bgit\b.*\bpush\b'; then
 	done
 fi
 
+# Detect `git commit` as a subcommand (not the literal substring "commit"
+# inside a config key like `git config commit.gpgsign`).
+GIT_COMMIT_RE='\bgit([[:space:]]+(-[A-Za-z][^[:space:]]*|--[A-Za-z][A-Za-z0-9-]*(=[^[:space:]]+)?)([[:space:]]+[^-[:space:]][^[:space:]]*)?)*[[:space:]]+commit\b'
+
 # 5. Block AI attribution trailers / signatures in commit commands.
 #    $INPUT is the full PreToolUse JSON payload from stdin; the previous
 #    version referenced an undefined $TOOL_INPUT and silently never matched.
-if echo "$STRIPPED" | grep -qiE '\bgit\b.*\bcommit\b' \
+if echo "$STRIPPED" | grep -qiE "$GIT_COMMIT_RE" \
 	&& echo "$INPUT" | grep -qiE 'co-authored-by|generated with \[claude code\]|🤖 generated|claude\.ai/code|noreply@anthropic\.com'; then
 	deny "BLOCKED: AI attribution in commit messages is forbidden. Do not add Co-authored-by, Signed-off-by, '🤖 Generated with [Claude Code]', claude.ai/code links, noreply@anthropic.com co-authors, or any other AI agent attribution. The commit author is whoever owns the git config. Remove the attribution and retry."
 fi
 
 # 6. Block direct commits to protected branches
-if echo "$STRIPPED" | grep -qiE '\bgit\b.*\bcommit\b'; then
+if echo "$STRIPPED" | grep -qiE "$GIT_COMMIT_RE"; then
 	CURRENT_BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null || echo "")
 	for branch in "${PROTECTED_BRANCHES[@]}"; do
 		if [[ "$CURRENT_BRANCH" == "$branch" ]]; then
