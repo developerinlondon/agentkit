@@ -39,10 +39,33 @@ else
 fi
 
 if [[ -z "$DPRINT" ]]; then
-  exit 0  # dprint not found, silently skip
+  echo "⚠ dprint not found — skipping format" >&2
+  exit 0
 fi
 
-# Format the file (ignore failures — don't block the tool)
-"$DPRINT" fmt "$FILE_PATH" 2>/dev/null || true
+# Find the nearest dprint.json by walking up from the file's directory
+find_config() {
+  local dir="$1"
+  while [[ "$dir" != "/" && "$dir" != "$HOME" ]]; do
+    [[ -f "$dir/dprint.json" ]] && echo "$dir/dprint.json" && return
+    dir=$(dirname "$dir")
+  done
+}
+
+CONFIG_FLAG=""
+LOCAL_CONFIG=$(find_config "$(dirname "$FILE_PATH")")
+if [[ -n "$LOCAL_CONFIG" ]]; then
+  CONFIG_FLAG="--config $LOCAL_CONFIG"
+elif [[ -n "${DPRINT_DEFAULT_CONFIG:-}" && -f "$DPRINT_DEFAULT_CONFIG" ]]; then
+  CONFIG_FLAG="--config $DPRINT_DEFAULT_CONFIG"
+else
+  echo "⚠ no dprint.json found — set DPRINT_DEFAULT_CONFIG for a global fallback" >&2
+  exit 0
+fi
+
+# Format the file — warn on failure instead of silently swallowing
+if ! "$DPRINT" fmt $CONFIG_FLAG "$FILE_PATH" 2>/tmp/dprint-err.log; then
+  echo "⚠ dprint fmt failed for $FILE_PATH: $(cat /tmp/dprint-err.log)" >&2
+fi
 
 exit 0
