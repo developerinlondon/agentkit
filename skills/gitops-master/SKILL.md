@@ -44,16 +44,16 @@ Before running ANY kubectl command, you MUST discover the environment. Follow th
 
 ```yaml
 # Expected format:
-ssh_command: "MISE_ENV=test mise run server:ssh"   # How to reach the cluster (omit if local kubectl works)
-kargo_namespace: "kargo-my-project-test"            # Kargo project namespace
-kargo_controller_namespace: "kargo"                  # Where Kargo controller runs (may differ from default)
-argocd_namespace: "infra"                           # ArgoCD apps namespace
-argocd_controller_namespace: "argocd"                # Where ArgoCD controller runs (may differ from default)
-monitoring_namespace: "monitoring"                   # Monitoring namespace
-app_namespace: "my-app-test"                         # Application namespace
-domain: "example.com"                                # Cluster domain
-kargo_project: "my-project"                          # Kargo project name
-warehouse_name: "platform-apps"                      # Kargo warehouse name
+ssh_command: "MISE_ENV=test mise run server:ssh" # How to reach the cluster (omit if local kubectl works)
+kargo_namespace: "kargo-my-project-test" # Kargo project namespace
+kargo_controller_namespace: "kargo" # Where Kargo controller runs (may differ from default)
+argocd_namespace: "infra" # ArgoCD apps namespace
+argocd_controller_namespace: "argocd" # Where ArgoCD controller runs (may differ from default)
+monitoring_namespace: "monitoring" # Monitoring namespace
+app_namespace: "my-app-test" # Application namespace
+domain: "example.com" # Cluster domain
+kargo_project: "my-project" # Kargo project name
+warehouse_name: "platform-apps" # Kargo warehouse name
 ```
 
 ### Step 2: If no config file, auto-discover from cluster
@@ -638,14 +638,14 @@ spec:
                     command: ["/bin/bash", "-c"]
                     args:
                       - |
-                          # Level 1: Check pods
-                          kubectl get pods -n <namespace> --no-headers | grep -v Running && exit 1
+                        # Level 1: Check pods
+                        kubectl get pods -n <namespace> --no-headers | grep -v Running && exit 1
 
-                          # Level 2: Check health
-                          kubectl exec -n <namespace> deploy/<name> -- wget -qO- http://localhost:<port>/health || exit 1
+                        # Level 2: Check health
+                        kubectl exec -n <namespace> deploy/<name> -- wget -qO- http://localhost:<port>/health || exit 1
 
-                          echo "All checks passed"
-                          exit 0
+                        echo "All checks passed"
+                        exit 0
 ```
 
 ### RBAC for Verification Jobs
