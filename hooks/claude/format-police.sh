@@ -56,10 +56,10 @@ CONFIG_FLAG=""
 LOCAL_CONFIG=$(find_config "$(dirname "$FILE_PATH")")
 if [[ -n "$LOCAL_CONFIG" ]]; then
   CONFIG_FLAG="--config $LOCAL_CONFIG"
-elif [[ -f "$HOME/code/assay/dprint.json" ]]; then
-  CONFIG_FLAG="--config $HOME/code/assay/dprint.json"
+elif [[ -n "${DPRINT_DEFAULT_CONFIG:-}" && -f "$DPRINT_DEFAULT_CONFIG" ]]; then
+  CONFIG_FLAG="--config $DPRINT_DEFAULT_CONFIG"
 else
-  echo "⚠ no dprint.json found — skipping format" >&2
+  echo "⚠ no dprint.json found — set DPRINT_DEFAULT_CONFIG for a global fallback" >&2
   exit 0
 fi
 
