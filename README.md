@@ -57,10 +57,11 @@ Reusable AI agent skills, rules, plugins, hooks, and tools for OpenCode, Claude 
 
 ### Instructions (global agent prompts wired into Claude / Codex / OpenCode)
 
-| Instruction              | Description                                                                                         |
-| ------------------------ | --------------------------------------------------------------------------------------------------- |
-| **anti-glaze.md**        | Tone and reasoning layer: precise, direct, no sycophancy, explicit confidence levels                |
-| **coding-discipline.md** | 11-rule behavioral contract for code work (think first, simplicity, surgical changes, fail loud, …) |
+| Instruction                     | Description                                                                                         |
+| ------------------------------- | --------------------------------------------------------------------------------------------------- |
+| **anti-glaze.md**               | Tone and reasoning layer: precise, direct, no sycophancy, explicit confidence levels                |
+| **coding-discipline.md**        | 11-rule behavioral contract for code work (think first, simplicity, surgical changes, fail loud, …) |
+| **collaboration-visibility.md** | Progress updates, checkpoint summaries, and compact ASCII diagrams for multi-step work              |
 
 ## Installation
 
