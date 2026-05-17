@@ -74,13 +74,23 @@ describe('global prompt installation', () => {
         'instructions',
         'coding-discipline.md',
       );
+      const collaborationVisibility = join(
+        home,
+        '.agents',
+        'instructions',
+        'collaboration-visibility.md',
+      );
       expect(existsSync(antiGlaze)).toBe(true);
       expect(existsSync(codingDiscipline)).toBe(true);
+      expect(existsSync(collaborationVisibility)).toBe(true);
       expect(readFileSync(antiGlaze, 'utf-8')).toContain(
         'agentkit:anti-glaze:start',
       );
       expect(readFileSync(codingDiscipline, 'utf-8')).toContain(
         'agentkit:coding-discipline:start',
+      );
+      expect(readFileSync(collaborationVisibility, 'utf-8')).toContain(
+        'agentkit:collaboration-visibility:start',
       );
 
       const codexConfig = readFileSync(join(codexDir, 'config.toml'), 'utf-8');
@@ -93,6 +103,12 @@ describe('global prompt installation', () => {
       expect(
         countOccurrences(codexConfig, 'agentkit:coding-discipline:start'),
       ).toBe(1);
+      expect(
+        countOccurrences(
+          codexConfig,
+          'agentkit:collaboration-visibility:start',
+        ),
+      ).toBe(1);
 
       const claudeInstructions = readFileSync(
         join(claudeDir, 'CLAUDE.md'),
@@ -103,11 +119,18 @@ describe('global prompt installation', () => {
         'Anti-Glaze Global Agent Instructions',
       );
       expect(claudeInstructions).toContain('Coding Discipline');
+      expect(claudeInstructions).toContain('Collaboration Visibility');
       expect(
         countOccurrences(claudeInstructions, 'agentkit:anti-glaze:start'),
       ).toBe(1);
       expect(
         countOccurrences(claudeInstructions, 'agentkit:coding-discipline:start'),
+      ).toBe(1);
+      expect(
+        countOccurrences(
+          claudeInstructions,
+          'agentkit:collaboration-visibility:start',
+        ),
       ).toBe(1);
 
       const opencodeConfig = JSON.parse(
@@ -116,6 +139,7 @@ describe('global prompt installation', () => {
       expect(opencodeConfig.plugin).toEqual(['oh-my-openagent@latest']);
       expect(opencodeConfig.instructions).toContain(antiGlaze);
       expect(opencodeConfig.instructions).toContain(codingDiscipline);
+      expect(opencodeConfig.instructions).toContain(collaborationVisibility);
       expect(
         opencodeConfig.instructions.filter(
           (entry: string) => entry === antiGlaze,
@@ -124,6 +148,11 @@ describe('global prompt installation', () => {
       expect(
         opencodeConfig.instructions.filter(
           (entry: string) => entry === codingDiscipline,
+        ).length,
+      ).toBe(1);
+      expect(
+        opencodeConfig.instructions.filter(
+          (entry: string) => entry === collaborationVisibility,
         ).length,
       ).toBe(1);
     } finally {
