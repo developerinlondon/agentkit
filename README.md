@@ -55,6 +55,13 @@ Reusable AI agent skills, rules, plugins, hooks, and tools for OpenCode, Claude 
 | **coding-police.rules**  | Coding standards guidance + prompts on heredoc/tee writes that may produce oversized files |
 | **pkg-police.rules**     | Enforces bun as package manager — blocks npm, npx, yarn, pnpm commands                     |
 
+### Instructions (global agent prompts wired into Claude / Codex / OpenCode)
+
+| Instruction              | Description                                                                                         |
+| ------------------------ | --------------------------------------------------------------------------------------------------- |
+| **anti-glaze.md**        | Tone and reasoning layer: precise, direct, no sycophancy, explicit confidence levels                |
+| **coding-discipline.md** | 11-rule behavioral contract for code work (think first, simplicity, surgical changes, fail loud, …) |
+
 ## Installation
 
 ### Option 1: skills.sh CLI (skills only, all agents)
@@ -73,12 +80,13 @@ git clone git@github.com:developerinlondon/agentkit.git
 ```
 
 Installs skills to `~/.agents/skills/`, rules to `~/.agents/rules/`, plugins to
-`~/.agents/plugins/`, tools to `~/.claude/tools/`, and the shared anti-glaze prompt to
-`~/.agents/instructions/anti-glaze.md`. The global installer also wires that prompt into Codex
-(`~/.codex/config.toml`), Claude Code (`~/.claude/CLAUDE.md`), and OpenCode
-(`~/.config/opencode/opencode.json`) idempotently. Skills are auto-discovered by OpenCode. For
-global plugins, add `file://` entries to your opencode config (the installer prints the exact entries
-to add).
+`~/.agents/plugins/`, tools to `~/.claude/tools/`, and every `instructions/*.md` prompt to
+`~/.agents/instructions/`. The global installer wires every instruction file into Codex
+(`~/.codex/config.toml` — concatenated into `developer_instructions`), Claude Code
+(`~/.claude/CLAUDE.md` — one markered block per file), and OpenCode
+(`~/.config/opencode/opencode.json` — one entry per file in `instructions[]`) idempotently. Skills
+are auto-discovered by OpenCode. For global plugins, add `file://` entries to your opencode config
+(the installer prints the exact entries to add).
 
 ### Option 3: Install into a specific project
 

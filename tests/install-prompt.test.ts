@@ -31,7 +31,7 @@ function runGlobalInstall(home: string) {
 }
 
 describe('global prompt installation', () => {
-  test('wires the shared prompt into Codex, Claude, and OpenCode idempotently', () => {
+  test('wires every instructions file into Codex, Claude, and OpenCode idempotently', () => {
     const home = mkdtempSync(join(tmpdir(), 'agentkit-home-'));
 
     try {
@@ -67,25 +67,32 @@ describe('global prompt installation', () => {
         expect(result.status, result.stderr.toString()).toBe(0);
       }
 
-      const installedPrompt = join(
+      const antiGlaze = join(home, '.agents', 'instructions', 'anti-glaze.md');
+      const codingDiscipline = join(
         home,
         '.agents',
         'instructions',
-        'anti-glaze.md',
+        'coding-discipline.md',
       );
-      expect(existsSync(installedPrompt)).toBe(true);
-      expect(readFileSync(installedPrompt, 'utf-8')).toContain(
+      expect(existsSync(antiGlaze)).toBe(true);
+      expect(existsSync(codingDiscipline)).toBe(true);
+      expect(readFileSync(antiGlaze, 'utf-8')).toContain(
         'agentkit:anti-glaze:start',
+      );
+      expect(readFileSync(codingDiscipline, 'utf-8')).toContain(
+        'agentkit:coding-discipline:start',
       );
 
       const codexConfig = readFileSync(join(codexDir, 'config.toml'), 'utf-8');
       expect(codexConfig).toContain('model = "gpt-5.5"');
       expect(codexConfig).toContain('developer_instructions = """');
-      expect(codexConfig).toContain('agentkit:anti-glaze:start');
       expect(codexConfig).not.toContain('model_instructions_file');
       expect(countOccurrences(codexConfig, 'agentkit:anti-glaze:start')).toBe(
         1,
       );
+      expect(
+        countOccurrences(codexConfig, 'agentkit:coding-discipline:start'),
+      ).toBe(1);
 
       const claudeInstructions = readFileSync(
         join(claudeDir, 'CLAUDE.md'),
@@ -95,18 +102,28 @@ describe('global prompt installation', () => {
       expect(claudeInstructions).toContain(
         'Anti-Glaze Global Agent Instructions',
       );
+      expect(claudeInstructions).toContain('Coding Discipline');
       expect(
         countOccurrences(claudeInstructions, 'agentkit:anti-glaze:start'),
+      ).toBe(1);
+      expect(
+        countOccurrences(claudeInstructions, 'agentkit:coding-discipline:start'),
       ).toBe(1);
 
       const opencodeConfig = JSON.parse(
         readFileSync(join(opencodeDir, 'opencode.json'), 'utf-8'),
       );
       expect(opencodeConfig.plugin).toEqual(['oh-my-openagent@latest']);
-      expect(opencodeConfig.instructions).toContain(installedPrompt);
+      expect(opencodeConfig.instructions).toContain(antiGlaze);
+      expect(opencodeConfig.instructions).toContain(codingDiscipline);
       expect(
         opencodeConfig.instructions.filter(
-          (entry: string) => entry === installedPrompt,
+          (entry: string) => entry === antiGlaze,
+        ).length,
+      ).toBe(1);
+      expect(
+        opencodeConfig.instructions.filter(
+          (entry: string) => entry === codingDiscipline,
         ).length,
       ).toBe(1);
     } finally {

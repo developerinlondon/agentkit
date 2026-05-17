@@ -20,7 +20,7 @@ Global install locations:
   OpenCode:    ~/.agents/skills/, ~/.agents/plugins/, ~/.agents/rules/
   Claude Code: ~/.claude/hooks/, ~/.claude/tools/, ~/.claude/settings.json (hooks section merged)
   Codex CLI:   ~/.codex/rules/
-  Prompt:      ~/.agents/instructions/anti-glaze.md (wired into Codex/Claude/OpenCode)
+  Prompts:     ~/.agents/instructions/*.md (wired into Codex/Claude/OpenCode)
 
 Project install locations:
   OpenCode:    .opencode/skills/, .opencode/plugins/, .opencode/rules/
@@ -84,13 +84,23 @@ install_rules() {
 	done
 }
 
-# ─── Shared: Global Agent Prompt ─────────────────────────────────────────────
+# ─── Shared: Global Agent Prompts ────────────────────────────────────────────
 
-PROMPT_NAME="anti-glaze.md"
-PROMPT_SOURCE="$REPO_DIR/instructions/$PROMPT_NAME"
-PROMPT_MARKER_START="<!-- agentkit:anti-glaze:start -->"
-PROMPT_MARKER_END="<!-- agentkit:anti-glaze:end -->"
-PROMPT_TITLE="Anti-Glaze Global Agent Instructions"
+prompt_basename() {
+	basename "$1" .md
+}
+
+prompt_marker_start() {
+	echo "<!-- agentkit:$(prompt_basename "$1"):start -->"
+}
+
+prompt_marker_end() {
+	echo "<!-- agentkit:$(prompt_basename "$1"):end -->"
+}
+
+prompt_title() {
+	grep -m1 '^# ' "$1" | sed 's/^# //'
+}
 
 set_codex_developer_instructions() {
 	local file="$1"
@@ -163,30 +173,64 @@ set_codex_developer_instructions() {
 
 install_agent_prompt_file() {
 	local instructions_dir="$1"
+	local source_file="$2"
+	local name
+	name="$(basename "$source_file")"
 	mkdir -p "$instructions_dir"
 
-	if [[ -f "$instructions_dir/$PROMPT_NAME" ]]; then
-		echo "[prompt] Updating: $instructions_dir/$PROMPT_NAME"
+	if [[ -f "$instructions_dir/$name" ]]; then
+		echo "[prompt] Updating: $instructions_dir/$name"
 	else
-		echo "[prompt] Installing: $instructions_dir/$PROMPT_NAME"
+		echo "[prompt] Installing: $instructions_dir/$name"
 	fi
 
-	cp "$PROMPT_SOURCE" "$instructions_dir/$PROMPT_NAME"
+	cp "$source_file" "$instructions_dir/$name"
 }
 
-install_codex_prompt() {
-	local prompt_file="$1"
+codex_has_managed_prompt() {
+	local config_file="$1"
+	local instructions_dir="$2"
+	local prompt_file title
+	if grep -Fq "agentkit:" "$config_file"; then
+		return 0
+	fi
+	for prompt_file in "$instructions_dir"/*.md; do
+		[[ -f "$prompt_file" ]] || continue
+		title="$(prompt_title "$prompt_file")"
+		if [[ -n "$title" ]] && grep -Fq "$title" "$config_file"; then
+			return 0
+		fi
+	done
+	return 1
+}
+
+install_codex_prompts() {
+	local instructions_dir="$1"
 	local config_file="$HOME/.codex/config.toml"
 
 	if [[ -f "$config_file" ]] \
 		&& grep -Eq '^[[:space:]]*developer_instructions[[:space:]]*=' "$config_file" \
-		&& ! grep -Fq "$PROMPT_TITLE" "$config_file" \
-		&& ! grep -Fq "$PROMPT_MARKER_START" "$config_file"; then
+		&& ! codex_has_managed_prompt "$config_file" "$instructions_dir"; then
 		echo "[codex] WARNING: developer_instructions already exists without agentkit prompt; leaving unchanged: $config_file"
 		return
 	fi
 
-	set_codex_developer_instructions "$config_file" "$prompt_file"
+	local combined_file
+	combined_file="$(mktemp)"
+	local first=true
+	local prompt_file
+	for prompt_file in "$instructions_dir"/*.md; do
+		[[ -f "$prompt_file" ]] || continue
+		if $first; then
+			first=false
+		else
+			echo "" >>"$combined_file"
+		fi
+		cat "$prompt_file" >>"$combined_file"
+	done
+
+	set_codex_developer_instructions "$config_file" "$combined_file"
+	rm -f "$combined_file"
 	echo "[codex] Wired developer_instructions: $config_file"
 }
 
@@ -194,17 +238,25 @@ install_claude_prompt() {
 	local prompt_file="$1"
 	local claude_file="$HOME/.claude/CLAUDE.md"
 	local tmp="${claude_file}.tmp"
+	local name
+	local marker_start
+	local marker_end
+	local title
+	name="$(basename "$prompt_file")"
+	marker_start="$(prompt_marker_start "$prompt_file")"
+	marker_end="$(prompt_marker_end "$prompt_file")"
+	title="$(prompt_title "$prompt_file")"
 
 	mkdir -p "$(dirname "$claude_file")"
 
 	if [[ ! -f "$claude_file" ]]; then
 		cp "$prompt_file" "$claude_file"
-		echo "[claude] Created global instructions: $claude_file"
+		echo "[claude] Created global instructions with $name: $claude_file"
 		return
 	fi
 
-	if grep -Fq "$PROMPT_MARKER_START" "$claude_file"; then
-		awk -v source="$prompt_file" -v start="$PROMPT_MARKER_START" -v end="$PROMPT_MARKER_END" '
+	if grep -Fq "$marker_start" "$claude_file"; then
+		awk -v source="$prompt_file" -v start="$marker_start" -v end="$marker_end" '
 			function print_source() {
 				while ((getline line < source) > 0) {
 					print line
@@ -225,15 +277,15 @@ install_claude_prompt() {
 			}
 		' "$claude_file" >"$tmp"
 		mv "$tmp" "$claude_file"
-		echo "[claude] Updated global prompt block: $claude_file"
-	elif grep -Fq "$PROMPT_TITLE" "$claude_file"; then
-		echo "[claude] Global prompt already present without agentkit markers: $claude_file"
+		echo "[claude] Updated prompt block ($name): $claude_file"
+	elif [[ -n "$title" ]] && grep -Fq "$title" "$claude_file"; then
+		echo "[claude] Prompt already present without agentkit markers ($name): $claude_file"
 	else
 		{
 			printf '\n'
 			cat "$prompt_file"
 		} >>"$claude_file"
-		echo "[claude] Added global prompt block: $claude_file"
+		echo "[claude] Added prompt block ($name): $claude_file"
 	fi
 }
 
@@ -273,12 +325,28 @@ install_opencode_prompt() {
 
 install_global_agent_prompt() {
 	local instructions_dir="$HOME/.agents/instructions"
-	local prompt_file="$instructions_dir/$PROMPT_NAME"
+	mkdir -p "$instructions_dir"
 
-	install_agent_prompt_file "$instructions_dir"
-	install_codex_prompt "$prompt_file"
-	install_claude_prompt "$prompt_file"
-	install_opencode_prompt "$prompt_file"
+	local source_file
+	local found=false
+	for source_file in "$REPO_DIR"/instructions/*.md; do
+		[[ -f "$source_file" ]] || continue
+		install_agent_prompt_file "$instructions_dir" "$source_file"
+		found=true
+	done
+
+	if ! $found; then
+		return
+	fi
+
+	install_codex_prompts "$instructions_dir"
+
+	local prompt_file
+	for prompt_file in "$instructions_dir"/*.md; do
+		[[ -f "$prompt_file" ]] || continue
+		install_claude_prompt "$prompt_file"
+		install_opencode_prompt "$prompt_file"
+	done
 }
 
 # ─── OpenCode: TypeScript Plugins ────────────────────────────────────────────
@@ -562,7 +630,7 @@ if [[ "$GLOBAL" == true ]]; then
 	echo "Done. Installed globally for all tools:"
 	echo ""
 	echo "  Config:          ${XDG_CONFIG_HOME:-$HOME/.config}/agentkit/config.yaml"
-	echo "  Prompt:          $HOME/.agents/instructions/$PROMPT_NAME"
+	echo "  Prompts:         $HOME/.agents/instructions/*.md"
 	echo "  Skills:          $SKILLS_DEST/"
 	echo "  Rules:           $RULES_DEST/"
 	echo "  OpenCode:        $OPENCODE_PLUGINS/ (add file:// entries to opencode config)"
