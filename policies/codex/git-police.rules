@@ -69,23 +69,12 @@ prefix_rule(
     justification = "Cannot set upstream to a protected branch directly.",
 )
 
-# ── BARE PUSH (no explicit branch — may push current protected branch) ────────
-# Codex prefix_rule cannot check the current git branch, so we prompt on bare
-# push to ensure the user confirms they are not on a protected branch.
-
-prefix_rule(
-    pattern = ["git", "push"],
-    decision = "prompt",
-    justification = "Bare 'git push' may push a protected branch. Confirm you are NOT on main/master before proceeding.",
-    match     = ["git push"],
-)
-
 # ── AMEND PUSHED COMMITS ─────────────────────────────────────────────────────
 
 prefix_rule(
     pattern = ["git", "commit", "--amend"],
-    decision = "prompt",
-    justification = "Amending commits rewrites history. Confirm this commit hasn't been pushed to remote.",
+    decision = "forbidden",
+    justification = "Amending commits rewrites history. Create a new commit instead.",
     match     = ["git commit --amend", "git commit --amend --no-edit"],
 )
 
@@ -93,8 +82,8 @@ prefix_rule(
 
 prefix_rule(
     pattern = ["git", "reset", "--hard"],
-    decision = "prompt",
-    justification = "Hard reset discards uncommitted changes permanently. Confirm this is intentional.",
+    decision = "forbidden",
+    justification = "Hard reset discards uncommitted changes permanently.",
     match     = ["git reset --hard", "git reset --hard HEAD~1"],
 )
 
@@ -102,24 +91,24 @@ prefix_rule(
 
 prefix_rule(
     pattern = ["git", "clean", ["-f", "-fd"]],
-    decision = "prompt",
+    decision = "forbidden",
     justification = "git clean permanently deletes untracked files/directories.",
 )
 
-# ── STALE BRANCH PROTECTION ──────────────────────────────────────────────────
-# Codex prefix_rule cannot run git fetch to check staleness, so we prompt
-# the user to confirm they have pulled latest before creating a new branch.
+# ── BRANCH CREATION ──────────────────────────────────────────────────────────
+# Branch creation is non-destructive and must not require interactive approval.
+# Runtime hooks with repo access handle stale protected-branch checks.
 
 prefix_rule(
     pattern = ["git", "checkout", "-b"],
-    decision = "prompt",
-    justification = "Creating a new branch. Ensure your current branch is up to date with origin first: run 'git pull' before branching to avoid working on stale code.",
+    decision = "allow",
+    justification = "Creating a new branch is allowed.",
     match     = ["git checkout -b feat/new-feature", "git checkout -b fix/bug"],
 )
 
 prefix_rule(
     pattern = ["git", "switch", "-c"],
-    decision = "prompt",
-    justification = "Creating a new branch. Ensure your current branch is up to date with origin first: run 'git pull' before branching to avoid working on stale code.",
+    decision = "allow",
+    justification = "Creating a new branch is allowed.",
     match     = ["git switch -c feat/new-feature", "git switch -c fix/bug"],
 )
