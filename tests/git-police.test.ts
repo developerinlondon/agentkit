@@ -1,4 +1,6 @@
 import { describe, test, expect, mock } from 'bun:test';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import gitPolice from '../plugins/git-police';
 
 const mockCtx = { client: {}, project: {}, directory: '/tmp', worktree: '/tmp', serverUrl: new URL('http://localhost'), $: {} } as any;
@@ -10,7 +12,27 @@ function makeInput(command: string) {
   };
 }
 
+function readCodexGitPolicy() {
+  return readFileSync(join(import.meta.dir, '..', 'policies/codex/git-police.rules'), 'utf-8');
+}
+
 describe('git-police', () => {
+  describe('codex policy', () => {
+    test('does not require interactive prompts', () => {
+      expect(readCodexGitPolicy()).not.toContain('decision = "prompt"');
+    });
+
+    test('allows branch creation commands', () => {
+      const policy = readCodexGitPolicy();
+      expect(policy).toMatch(
+        /pattern\s*=\s*\["git",\s*"checkout",\s*"-b"\],\s*decision\s*=\s*"allow"/,
+      );
+      expect(policy).toMatch(
+        /pattern\s*=\s*\["git",\s*"switch",\s*"-c"\],\s*decision\s*=\s*"allow"/,
+      );
+    });
+  });
+
   describe('blocks --no-verify', () => {
     const commands = [
       'git commit --no-verify -m "skip hooks"',
