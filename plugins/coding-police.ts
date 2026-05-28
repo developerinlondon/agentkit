@@ -27,6 +27,9 @@ const DEFAULTS: CodingPoliceConfig = {
 const CODE_FILE =
   /\.(ts|tsx|js|jsx|py|rb|go|rs|java|kt|cs|cpp|c|h|hpp|swift|scala|vue|svelte)$/;
 
+const PATH_REFERENCE_FILE =
+  /\.(ya?ml|toml|json|jsonc|ini|env|service|conf|cfg)$/;
+
 // Files that are legitimately long (auto-generated, lockfiles, etc.)
 const SKIP_FILES =
   /\.(lock|min\.\w+|generated\.\w+|snap|d\.ts)$|package-lock\.json|yarn\.lock|pnpm-lock\.yaml/;
@@ -282,6 +285,42 @@ export function checkExportCount(
   return null;
 }
 
+/**
+ * Check 5: Cross-repo sibling relative paths in durable config.
+ *
+ * Infrastructure and deploy config must not reach into sibling repositories
+ * with paths such as `{{ inventory_dir }}/../../../dashboard` or
+ * `../../../../core/dashboard`. Use published artifacts, submodules/vendor
+ * paths inside the same repo, or explicit runtime config instead.
+ */
+export function checkCrossRepoRelativePaths(
+  lines: string[],
+  filePath: string,
+): string[] {
+  if (!PATH_REFERENCE_FILE.test(filePath) && !CODE_FILE.test(filePath)) {
+    return [];
+  }
+
+  const warnings: string[] = [];
+  const repoClimbWithJinja =
+    /\{\{\s*(?:inventory_dir|playbook_dir|role_path|ansible_parent_role_paths\[[^\]]+\])\s*\}\}\s*\/(?:\.\.\/){2,}/;
+  const siblingRepoPath =
+    /(?:^|["'=:\s])(?:\.\.\/){2,}(?:core|eda|fullcircle|dashboard|gitops|infra|ansible-roles)(?:\/|["'\s]|$)/;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (repoClimbWithJinja.test(line) || siblingRepoPath.test(line)) {
+      warnings.push(
+        `CROSS-REPO RELATIVE PATH: line ${i + 1} uses a sibling-repo path. ` +
+          `Do not depend on checkout layout across repos; use a published artifact, ` +
+          `a vendored/submodule path inside this repo, or runtime configuration.`,
+      );
+    }
+  }
+
+  return warnings;
+}
+
 // ---------------------------------------------------------------------------
 // Plugin entry point
 // ---------------------------------------------------------------------------
@@ -300,8 +339,6 @@ export default async function codingPolice(ctx: PluginInput) {
       const relativePath = output.title;
       if (!relativePath) return;
 
-      // Only check code files
-      if (!CODE_FILE.test(relativePath)) return;
       // Skip generated/lock files
       if (SKIP_FILES.test(relativePath)) return;
       // Check exclusion patterns from config
@@ -324,6 +361,29 @@ export default async function codingPolice(ctx: PluginInput) {
 
       const lines = content.split('\n');
       const violations: string[] = [];
+
+      // Check 0: Cross-repo sibling relative paths. This applies to config
+      // and docs as well as code, because the common failure mode is Ansible
+      // inventory/YAML.
+      violations.push(...checkCrossRepoRelativePaths(lines, relativePath));
+
+      // Remaining checks only apply to code files.
+      if (!CODE_FILE.test(relativePath)) {
+        if (violations.length === 0) return;
+
+        output.output +=
+          `\n\n` +
+          `CODING STANDARDS VIOLATION (coding-police)\n` +
+          `${'='.repeat(50)}\n` +
+          violations.map((v, i) => `${i + 1}. ${v}`).join('\n\n') +
+          `\n\n` +
+          `REQUIRED ACTIONS:\n` +
+          `- Remove cross-repo sibling relative paths from durable config.\n` +
+          `- Use published artifacts, vendored/submodule paths inside the same repo, or runtime configuration.\n` +
+          `\n` +
+          `Fix these violations before proceeding.`;
+        return;
+      }
 
       // Check 1: File length
       const lengthWarning = checkFileLength(lines, config.maxFileLines);
@@ -356,6 +416,7 @@ export default async function codingPolice(ctx: PluginInput) {
         `- Keep files modular: split files exceeding ${config.maxFileLines} lines by functionality.\n` +
         `- Keep functions focused: break functions over ${config.maxFunctionLines} lines into composable helpers.\n` +
         `- Apply Single Responsibility: each file should have one clear purpose.\n` +
+        `- Remove cross-repo sibling relative paths from durable config.\n` +
         `\n` +
         `Fix these violations before proceeding.`;
     },

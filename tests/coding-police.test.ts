@@ -4,6 +4,7 @@ import codingPolice, {
   checkFunctionLengths,
   checkDuplicateBlocks,
   checkExportCount,
+  checkCrossRepoRelativePaths,
 } from '../plugins/coding-police';
 
 // ---------------------------------------------------------------------------
@@ -288,6 +289,35 @@ describe('checkExportCount', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Check 5: Cross-repo relative paths
+// ---------------------------------------------------------------------------
+
+describe('checkCrossRepoRelativePaths', () => {
+  test('flags Ansible inventory paths that climb into sibling repos', () => {
+    const code = [
+      'sysops_install_source_dir: "{{ inventory_dir }}/../../../dashboard"',
+      'auth_ui_source_dir: "{{ inventory_dir }}/../../../../core/auth-ui"',
+    ];
+    const warnings = checkCrossRepoRelativePaths(
+      code,
+      'inventories/production/hosts.yml',
+    );
+    expect(warnings).toHaveLength(2);
+    expect(warnings[0]).toContain('CROSS-REPO RELATIVE PATH');
+  });
+
+  test('allows local paths that do not cross repo boundaries', () => {
+    const code = [
+      'dashboard_root: "/opt/eda-dashboard"',
+      'template: "../templates/service.j2"',
+    ];
+    expect(
+      checkCrossRepoRelativePaths(code, 'inventories/production/hosts.yml'),
+    ).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Plugin integration (hook wiring)
 // ---------------------------------------------------------------------------
 
@@ -322,5 +352,21 @@ describe('coding-police plugin', () => {
     const output = { title: 'package-lock.json', output: 'done', metadata: {} };
     await hooks['tool.execute.after']!(input, output);
     expect(output.output).toBe('done');
+  });
+
+  test('reports cross-repo relative paths in config files', async () => {
+    const dir = await Bun.$`mktemp -d`.text();
+    const file = `${dir.trim()}/hosts.yml`;
+    await Bun.write(
+      file,
+      'sysops_install_source_dir: "{{ inventory_dir }}/../../../dashboard"\n',
+    );
+
+    const hooks = await codingPolice({ ...mockCtx, worktree: dir.trim() });
+    const input = { tool: 'write', sessionID: 'test', callID: 'test' };
+    const output = { title: 'hosts.yml', output: 'done', metadata: {} };
+    await hooks['tool.execute.after']!(input, output);
+
+    expect(output.output).toContain('CROSS-REPO RELATIVE PATH');
   });
 });

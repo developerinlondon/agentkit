@@ -26,6 +26,11 @@
 #
 # 5. MODULARIZATION: Group related code into cohesive modules.
 #    Prefer many small files over few large files.
+#
+# 6. CROSS-REPO PATHS: Do not write durable config that reaches into sibling
+#    repositories using paths like `{{ inventory_dir }}/../../../dashboard` or
+#    `../../../../core/dashboard`. Use published artifacts, vendored/submodule
+#    paths inside the same repo, or runtime configuration.
 
 # ── LARGE HEREDOC WRITES ───────────────────────────────────────────────────
 # Prompt when writing code via heredoc to a code file — these often produce
@@ -55,6 +60,6 @@ prefix_rule(
 prefix_rule(
     pattern = ["bash", "-c"],
     decision = "prompt",
-    justification = "Running bash -c with code generation may produce large files. Coding standards require: max 1000 lines per file, max 100 lines per function, no duplicated code blocks, no more than 15 exports per file. Verify the result stays modular.",
+    justification = "Running bash -c with code generation may produce large files or durable cross-repo sibling paths. Coding standards require: max 1000 lines per file, max 100 lines per function, no duplicated code blocks, no more than 15 exports per file, and no paths like '{{ inventory_dir }}/../../../dashboard' or '../../../../core/...'. Verify the result stays modular and repo-boundary clean.",
     match = ["bash -c 'cat << EOF >> app.ts'"],
 )
