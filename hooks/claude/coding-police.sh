@@ -47,9 +47,17 @@ esac
 FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // .tool_input.filePath // empty')
 [[ -z "$FILE_PATH" ]] && exit 0
 
-# Only check code files
+IS_CODE_FILE=false
+SHOULD_CHECK_PATHS=false
+
 case "$FILE_PATH" in
-  *.ts|*.tsx|*.js|*.jsx|*.py|*.rb|*.go|*.rs|*.java|*.kt|*.cs|*.cpp|*.c|*.h|*.hpp|*.swift|*.scala|*.vue|*.svelte) ;;
+  *.ts|*.tsx|*.js|*.jsx|*.py|*.rb|*.go|*.rs|*.java|*.kt|*.cs|*.cpp|*.c|*.h|*.hpp|*.swift|*.scala|*.vue|*.svelte)
+    IS_CODE_FILE=true
+    SHOULD_CHECK_PATHS=true
+    ;;
+  *.yml|*.yaml|*.toml|*.json|*.jsonc|*.ini|*.env|*.service|*.conf|*.cfg)
+    SHOULD_CHECK_PATHS=true
+    ;;
   *) exit 0 ;;
 esac
 
@@ -62,6 +70,20 @@ esac
 [[ -f "$FILE_PATH" ]] || exit 0
 
 VIOLATIONS=()
+
+# ── Check 0: Cross-repo sibling relative paths ─────────────────────────────
+check_cross_repo_relative_paths() {
+  [[ "$SHOULD_CHECK_PATHS" == true ]] || return 0
+
+  local matches
+  matches=$(grep -nE '\{\{[[:space:]]*(inventory_dir|playbook_dir|role_path|ansible_parent_role_paths\[[^]]+\])[[:space:]]*\}\}[[:space:]]*/(\.\./){2,}|(^|["'"'"'=[:space:]])(\.\./){2,}(core|eda|fullcircle|dashboard|gitops|infra|ansible-roles)(/|["'"'"'[:space:]]|$)' "$FILE_PATH" 2>/dev/null || true)
+
+  while IFS= read -r line; do
+    if [[ -n "$line" ]]; then
+      VIOLATIONS+=("CROSS-REPO RELATIVE PATH: ${line}. Do not depend on checkout layout across repos; use a published artifact, a vendored/submodule path inside this repo, or runtime configuration.")
+    fi
+  done <<< "$matches"
+}
 
 # ── Check 1: File length ───────────────────────────────────────────────────
 check_file_length() {
@@ -214,6 +236,28 @@ check_export_count() {
 }
 
 # ── Run all checks ──────────────────────────────────────────────────────────
+check_cross_repo_relative_paths
+
+if [[ "$IS_CODE_FILE" != true ]]; then
+  if (( ${#VIOLATIONS[@]} > 0 )); then
+    {
+      echo ""
+      echo "CODING STANDARDS VIOLATION (coding-police)"
+      echo "=================================================="
+      for i in "${!VIOLATIONS[@]}"; do
+        echo "$(( i + 1 )). ${VIOLATIONS[$i]}"
+        echo ""
+      done
+      echo "REQUIRED ACTIONS:"
+      echo "- Remove cross-repo sibling relative paths from durable config."
+      echo "- Use published artifacts, vendored/submodule paths inside the same repo, or runtime configuration."
+      echo ""
+      echo "Fix these violations before proceeding."
+    } >&2
+  fi
+  exit 0
+fi
+
 check_file_length
 check_function_lengths
 check_duplicate_blocks
@@ -234,6 +278,7 @@ if (( ${#VIOLATIONS[@]} > 0 )); then
     echo "- Keep files modular: split files exceeding ${MAX_FILE_LINES} lines by functionality."
     echo "- Keep functions focused: break functions over ${MAX_FUNCTION_LINES} lines into composable helpers."
     echo "- Apply Single Responsibility: each file should have one clear purpose."
+    echo "- Remove cross-repo sibling relative paths from durable config."
     echo ""
     echo "Fix these violations before proceeding."
   } >&2
