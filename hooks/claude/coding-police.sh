@@ -15,7 +15,7 @@ MAX_EXPORTS_PER_FILE=15
 load_config() {
   [[ -f "$AGENTKIT_CONFIG" ]] || return 0
   local section
-  section=$(sed -n '/^coding-police:/,/^[^ ]/p' "$AGENTKIT_CONFIG" | head -n -1)
+  section=$(sed -n '/^coding-police:/,/^[^ ]/p' "$AGENTKIT_CONFIG" | sed '$d')
   [[ -z "$section" ]] && return 0
 
   local val
