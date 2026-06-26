@@ -38,13 +38,14 @@ Reusable AI agent skills, rules, plugins, hooks, and tools for OpenCode, Claude 
 
 ### Hooks (Claude Code -- PreToolUse / PostToolUse)
 
-| Hook                  | Type        | Description                                                                            |
-| --------------------- | ----------- | -------------------------------------------------------------------------------------- |
-| **git-police.sh**     | PreToolUse  | Blocks force push, --no-verify, Co-authored-by trailers, commits to protected branches |
-| **kubectl-police.sh** | PreToolUse  | Blocks kubectl create/apply on Kargo CRDs                                              |
-| **format-police.sh**  | PostToolUse | Auto-formats files after edit/write using dprint                                       |
-| **coding-police.sh**  | PostToolUse | Enforces DRY code, modular files (<1000 lines), short functions, single responsibility |
-| **pkg-police.sh**     | PreToolUse  | Enforces bun as package manager — blocks npm, npx, yarn, pnpm commands                 |
+| Hook                  | Type        | Description                                                                                                              |
+| --------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------ |
+| **git-police.sh**     | PreToolUse  | Blocks force push, --no-verify, Co-authored-by trailers, commits to protected branches                                   |
+| **kubectl-police.sh** | PreToolUse  | Blocks kubectl create/apply on Kargo CRDs                                                                                |
+| **format-police.sh**  | PostToolUse | Auto-formats files after edit/write using dprint                                                                         |
+| **coding-police.sh**  | PostToolUse | Enforces DRY code, modular files (<1000 lines), short functions, single responsibility                                   |
+| **pkg-police.sh**     | PreToolUse  | Enforces bun as package manager — blocks npm, npx, yarn, pnpm commands                                                   |
+| **mr-police.sh**      | PreToolUse  | Blocks opening a new MR while you already have an open MR you authored on the repo — stops unmerged MRs from stacking up |
 
 ### Policies (Codex CLI -- exec policy)
 
