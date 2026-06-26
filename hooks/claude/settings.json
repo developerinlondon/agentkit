@@ -21,6 +21,12 @@
             "command": "$HOME/.claude/hooks/pkg-police.sh",
             "timeout": 10,
             "statusMessage": "pkg-police: enforcing bun as package manager..."
+          },
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/mr-police.sh",
+            "timeout": 15,
+            "statusMessage": "mr-police: checking for unmerged MRs..."
           }
         ]
       }

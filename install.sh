@@ -456,6 +456,7 @@ merge_claude_settings() {
 		--arg git_police "$hooks_dir/git-police.sh" \
 		--arg kubectl_police "$hooks_dir/kubectl-police.sh" \
 		--arg pkg_police "$hooks_dir/pkg-police.sh" \
+		--arg mr_police "$hooks_dir/mr-police.sh" \
 		--arg format_police "$hooks_dir/format-police.sh" \
 		--arg coding_police "$hooks_dir/coding-police.sh" \
 		'{
@@ -481,6 +482,12 @@ merge_claude_settings() {
                 command: $pkg_police,
                 timeout: 10,
                 statusMessage: "pkg-police: enforcing bun..."
+              },
+              {
+                type: "command",
+                command: $mr_police,
+                timeout: 15,
+                statusMessage: "mr-police: checking for unmerged MRs..."
               }
             ]
           }
