@@ -17,6 +17,24 @@ if ! echo "$COMMAND" | grep -qiE 'glab[[:space:]]+mr[[:space:]]+create|merge_req
 	exit 0
 fi
 
+deny_early() {
+	jq -n --arg r "$1" '{
+    hookSpecificOutput: {
+      hookEventName: "PreToolUse",
+      permissionDecision: "deny",
+      permissionDecisionReason: $r
+    }
+  }'
+	exit 0
+}
+
+# Every MR carries an assignee from the moment it exists — ownership is never
+# ambiguous. Applies to any agent using these hooks (Claude Code, Proxima, …).
+if echo "$COMMAND" | grep -qiE 'glab[[:space:]]+mr[[:space:]]+create' \
+	&& ! echo "$COMMAND" | grep -qE -- '--assignee|[[:space:]]-a[[:space:]]'; then
+	deny_early "BLOCKED: glab mr create must include an assignee. Add --assignee <username> (or --assignee @me) and retry — unassigned MRs are not allowed."
+fi
+
 # Need glab to check; if it's unavailable, don't block (fail open).
 command -v glab >/dev/null 2>&1 || exit 0
 
