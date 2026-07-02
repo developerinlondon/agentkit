@@ -70,15 +70,35 @@ if echo "$STRIPPED" | grep -qiE '\bgit\b.*\bpush\b.*(-f\b|--force\b|--force-with
 	deny "BLOCKED: Force push is forbidden. Force pushing rewrites history and can destroy work. If you truly need this, ask the user for explicit approval first."
 fi
 
-# 3. Block pushing directly to protected branches
-for branch in "${PROTECTED_BRANCHES[@]}"; do
-	if echo "$STRIPPED" | grep -qiE "\bgit\b.*\bpush\b.*\b${branch}\b"; then
-		deny "BLOCKED: Pushing directly to '${branch}' is forbidden. Create a feature branch and raise a PR instead."
-	fi
-done
+# The remote a push targets: the first non-flag token after `push` (empty for
+# the implicit upstream). Branch protection guards the canonical repo (origin);
+# pushes that explicitly name a different remote are mirror syncs of refs that
+# already went through review there, so rules 3 and 4 let them pass.
+push_remote() {
+	echo "$1" | awk '{
+		for (i = 1; i <= NF; i++)
+			if ($i == "push") {
+				for (j = i + 1; j <= NF; j++)
+					if ($j !~ /^-/) { print $j; exit }
+				exit
+			}
+	}'
+}
+PUSH_REMOTE=$(push_remote "$STRIPPED")
 
-# 4. Block push when currently on a protected branch (even without branch name in command)
-if echo "$STRIPPED" | grep -qiE '\bgit\b.*\bpush\b'; then
+# 3. Block pushing directly to protected branches (on origin / implicit upstream)
+if [[ -z "$PUSH_REMOTE" || "$PUSH_REMOTE" == "origin" ]]; then
+	for branch in "${PROTECTED_BRANCHES[@]}"; do
+		if echo "$STRIPPED" | grep -qiE "\bgit\b.*\bpush\b.*\b${branch}\b"; then
+			deny "BLOCKED: Pushing directly to '${branch}' is forbidden. Create a feature branch and raise a PR instead."
+		fi
+	done
+fi
+
+# 4. Block push when currently on a protected branch (even without branch name
+#    in command) — same origin scoping as rule 3.
+if [[ -z "$PUSH_REMOTE" || "$PUSH_REMOTE" == "origin" ]] \
+	&& echo "$STRIPPED" | grep -qiE '\bgit\b.*\bpush\b'; then
 	CURRENT_BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null || echo "")
 	for branch in "${PROTECTED_BRANCHES[@]}"; do
 		if [[ "$CURRENT_BRANCH" == "$branch" ]]; then
