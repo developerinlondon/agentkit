@@ -49,7 +49,13 @@ MAX_OPEN="${AGENTKIT_MR_POLICE_MAX:-1}"
 ME=$(glab api /user 2>/dev/null | jq -r '.username // empty')
 [[ -z "$ME" ]] && exit 0
 
-MINE=$(glab mr list --author "$ME" 2>/dev/null | grep -oE '!\b[0-9]+' | sort -u)
+# Respect an explicit --repo/-R on the command: the MR is being opened on
+# THAT repo, so count open MRs there — not on whatever repo the hook's cwd
+# happens to be in (cross-repo work otherwise false-positives against the
+# session repo's open MRs).
+TARGET_REPO=$(echo "$COMMAND" | grep -oE '(--repo|-R)[= ][^[:space:]]+' | head -1 | sed -E 's/^(--repo|-R)[= ]//' || true)
+
+MINE=$(glab mr list --author "$ME" ${TARGET_REPO:+--repo "$TARGET_REPO"} 2>/dev/null | grep -oE '!\b[0-9]+' | sort -u)
 COUNT=$(printf '%s\n' "$MINE" | grep -c . || true)
 
 deny() {
