@@ -84,8 +84,19 @@ function isGitCommitCommand(command: string): boolean {
   );
 }
 
+// The remote a push targets: the first non-flag token after `push` ('' for
+// the implicit upstream). Branch protection guards the canonical repo
+// (origin); pushes naming a different remote are mirror syncs of refs that
+// already went through review there.
+function pushRemote(command: string): string {
+  const m = command.match(/\bpush\b(?:\s+-\S+)*\s+([^-\s]\S*)/i);
+  return m?.[1] ?? '';
+}
+
 function isGitPushToProtected(command: string): boolean {
   if (!/\bgit\b.*\bpush\b/i.test(command)) return false;
+  const remote = pushRemote(command);
+  if (remote && remote !== 'origin') return false;
 
   for (const branch of PROTECTED_BRANCHES) {
     if (new RegExp(`\\bpush\\b.*\\b${branch}\\b`, 'i').test(command)) return true;

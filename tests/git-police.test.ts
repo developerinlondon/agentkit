@@ -80,6 +80,25 @@ describe('git-police', () => {
     }
   });
 
+  describe('allows mirror-remote pushes of protected branches', () => {
+    // Branch protection guards origin; a push that names a different remote
+    // is a mirror sync of refs that already went through review there.
+    const commands = [
+      'git push up main',
+      'git push up master',
+      'git push -u mirror main',
+      'git push up origin/main:refs/heads/main',
+    ];
+
+    for (const cmd of commands) {
+      test(`allows: ${cmd}`, async () => {
+        const hooks = await gitPolice(mockCtx);
+        const { input, output } = makeInput(cmd);
+        expect(hooks['tool.execute.before']!(input, output)).resolves.toBeUndefined();
+      });
+    }
+  });
+
   describe('blocks AI attribution trailers in commits', () => {
     const commands = [
       'git commit -m "fix stuff\n\nCo-authored-by: Claude <claude@anthropic.com>"',
