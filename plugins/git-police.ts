@@ -84,6 +84,15 @@ function isGitCommitCommand(command: string): boolean {
   );
 }
 
+function isForgeWriteCommand(command: string): boolean {
+  // Commands that publish authored content to the forge — MR/PR/issue
+  // bodies, comments, release notes. Same no-AI-attribution rule as commit
+  // messages: everything published under the user's name is theirs.
+  return /\bglab\s+(mr|issue)\s+(create|update|edit|note|comment)\b|\bgh\s+(pr|issue|release)\s+(create|edit|comment)\b/i.test(
+    command,
+  );
+}
+
 // The remote a push targets: the first non-flag token after `push` ('' for
 // the implicit upstream). Branch protection guards the canonical repo
 // (origin); pushes naming a different remote are mirror syncs of refs that
@@ -212,20 +221,25 @@ export default async function gitPolice(ctx: PluginInput) {
               `Then commit your changes there and raise a PR.`,
           );
         }
+      }
 
-        if (
-          /co-authored-by|generated with \[claude code\]|🤖 generated|claude\.ai\/code|noreply@anthropic\.com/i.test(
-            command,
-          )
-        ) {
-          throw new Error(
-            `BLOCKED: AI attribution in commit messages is forbidden.\n` +
-              `Do not add Co-authored-by, Signed-off-by, '🤖 Generated with [Claude Code]',\n` +
-              `claude.ai/code links, noreply@anthropic.com co-authors, or any other AI\n` +
-              `agent attribution. The commit author is whoever owns the git config.\n` +
-              `Remove the attribution and retry.`,
-          );
-        }
+      // AI attribution is forbidden in commit messages AND in forge content
+      // (MR/PR/issue descriptions and comments slipped through when this was
+      // gated on `git commit` only).
+      if (
+        (isGitCommitCommand(stripped) || isForgeWriteCommand(stripped)) &&
+        /co-authored-by|generated with \[claude code\]|🤖 generated|claude\.ai\/code|claude\.com\/claude-code|noreply@anthropic\.com/i.test(
+          command,
+        )
+      ) {
+        throw new Error(
+          `BLOCKED: AI attribution is forbidden — in commit messages and in\n` +
+            `MR/PR/issue descriptions or comments alike. Do not add Co-authored-by,\n` +
+            `Signed-off-by, '🤖 Generated with [Claude Code]', claude.ai/code or\n` +
+            `claude.com/claude-code links, noreply@anthropic.com co-authors, or any\n` +
+            `other AI agent attribution. The author is whoever owns the git config.\n` +
+            `Remove the attribution and retry.`,
+        );
       }
 
       // 7. Stale branch protection

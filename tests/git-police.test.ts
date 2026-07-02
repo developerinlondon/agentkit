@@ -117,6 +117,39 @@ describe('git-police', () => {
     }
   });
 
+  describe('blocks AI attribution in forge content (MR/PR/issue)', () => {
+    const commands = [
+      'glab mr create --title "feat: x" --description "body\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)"',
+      'glab mr update 42 --description "body\n\nGenerated with [Claude Code](https://claude.ai/code)"',
+      'glab issue create --title "x" --description "🤖 Generated with [Claude Code](https://claude.com/claude-code)"',
+      'glab mr note 42 --message "done\n\nCo-Authored-By: Claude <noreply@anthropic.com>"',
+      'gh pr create --title "x" --body "body\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)"',
+      'gh pr comment 7 --body "Generated with [Claude Code](https://claude.ai/code)"',
+    ];
+
+    for (const cmd of commands) {
+      test(`blocks: ${cmd.substring(0, 60)}`, async () => {
+        const hooks = await gitPolice(mockCtx);
+        const { input, output } = makeInput(cmd);
+        expect(hooks['tool.execute.before']!(input, output)).rejects.toThrow('attribution');
+      });
+    }
+
+    const allowed = [
+      'glab mr create --title "feat: x" --description "a normal description with no attribution"',
+      'gh pr create --title "x" --body "regular body"',
+      'glab mr list --author @me',
+    ];
+
+    for (const cmd of allowed) {
+      test(`allows: ${cmd.substring(0, 60)}`, async () => {
+        const hooks = await gitPolice(mockCtx);
+        const { input, output } = makeInput(cmd);
+        expect(hooks['tool.execute.before']!(input, output)).resolves.toBeUndefined();
+      });
+    }
+  });
+
   describe('stale branch protection (new branch commands)', () => {
     // These should be allowed because mockCtx.directory=/tmp has no git repo,
     // so getCurrentBranch returns null and the stale check is skipped
