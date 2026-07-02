@@ -1,20 +1,23 @@
 ---
 name: documentation
 description: >-
-  Documentation standards: ASCII box-drawing diagrams (not Mermaid), structured plan format,
-  compact tables for comparisons. Use when writing docs, plans, READMEs, or architecture
-  documents in any project.
+  Documentation standards: surface-aware diagrams (Mermaid where markdown renders, ASCII for
+  terminals and diffs), structured plan format, compact tables for comparisons. Use when writing
+  docs, plans, READMEs, or architecture documents in any project.
 ---
 
 # Documentation Standards
 
 ## Diagrams
 
-- Use ASCII box-drawing diagrams (NOT Mermaid) -- they render everywhere: terminals, git diffs, code
-  review, plain text, any monospace font
-- Use box-drawing characters: + - | / \ > < = and standard ASCII art
-- Wrap diagrams in triple-backtick code blocks (no language tag)
-- Keep diagrams compact -- max ~40 lines, ~80 chars wide
+Pick the diagram format by where the document is primarily read:
+
+- Rendered markdown (READMEs, docs sites, GitLab/GitHub issues and MRs, chat UIs with Mermaid
+  support): use `mermaid` code fences (`flowchart LR`/`TD`, `sequenceDiagram`) -- they render as
+  real diagrams. Keep them compact (<= ~10 nodes) and label the edges.
+- Plain text (plans and notes read in editors, terminals, git diffs, any monospace surface): use
+  ASCII box-drawing diagrams with + - | / \ > < =, wrapped in triple-backtick code blocks (no
+  language tag). Max ~40 lines, ~80 chars wide.
 - For data flow: use arrows ---> and ---- with labels
 - For hierarchy: use tree notation +-- |
 
