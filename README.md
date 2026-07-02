@@ -11,7 +11,7 @@ Reusable AI agent skills, rules, plugins, hooks, and tools for OpenCode, Claude 
 | **gitops-master**       | GitOps operations for ArgoCD + Kargo: diagnose, verify, promote, setup                   |
 | **autonomous-workflow** | Proposal-first development, commit hygiene, decision authority                           |
 | **code-quality**        | Warnings-as-errors, no underscore prefixes, test coverage                                |
-| **documentation**       | ASCII diagrams, structured plan format, formatting rules                                 |
+| **documentation**       | Surface-aware diagrams (Mermaid / ASCII), structured plan format, formatting rules       |
 | **issue-raiser**        | GitLab issue creation with root cause analysis and git-history-based assignees           |
 | **project-planning**    | Structured project planning: break down ideas into architecture, file structure, roadmap |
 
