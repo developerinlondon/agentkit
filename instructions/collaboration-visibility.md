@@ -17,8 +17,15 @@ work is in progress, not only after it is complete.
 
 ## Explain With Diagrams
 
-Use compact ASCII diagrams when they make the work easier to follow, especially for debugging,
-GitOps flows, deployment paths, service relationships, data flow, and multi-repository changes.
+Use a diagram when it makes the work easier to follow, especially for debugging, GitOps flows,
+deployment paths, service relationships, data flow, and multi-repository changes. Pick the format
+by where the output is read.
+
+On markdown-rendered surfaces (chat UIs with Mermaid support, GitLab/GitHub issues, MRs, and
+READMEs), use a `mermaid` code fence (`flowchart LR`/`TD` or `sequenceDiagram`) so it renders as a
+real diagram. Do not draw ASCII-art boxes there; they render poorly.
+
+On plain-text surfaces (terminals, commit messages, git diffs, logs), use compact ASCII:
 
 ```text
 current state ----> action ----> expected result
@@ -28,9 +35,15 @@ current state ----> action ----> expected result
 
 Keep diagrams practical:
 
-- Use plain ASCII so they render in terminals, diffs, logs, and chat.
-- Keep diagrams small enough to scan quickly.
+- Keep diagrams small enough to scan quickly, and label the edges.
 - Prefer diagrams that show state, flow, dependencies, or decision points.
 - Do not add decorative diagrams that do not clarify the work.
+
+## Structure Final Answers
+
+- Lead with the outcome in one or two sentences, then the evidence and detail.
+- Concise but comprehensive: compact bullet lists over paragraphs; every bullet earns its place —
+  no filler, no restating the question.
+- Use tables for enumerable facts and `code` for commands, names, and paths.
 
 <!-- agentkit:collaboration-visibility:end -->
