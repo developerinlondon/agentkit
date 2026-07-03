@@ -2,6 +2,8 @@
 
 Reusable AI agent skills, rules, plugins, hooks, and tools for OpenCode, Claude Code, and other AI coding agents.
 
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+
 ## What's Included
 
 ### Skills (SKILL.md -- works everywhere via skills.sh)
