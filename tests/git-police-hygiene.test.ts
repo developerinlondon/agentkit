@@ -107,3 +107,22 @@ describe('git-police push branch resolution (rule 4)', () => {
     expect(out).toContain("You are on 'main'");
   });
 });
+
+describe('git-police push rules require a push subcommand', () => {
+  test('allows stash push combined with branch -f in a compound command', () => {
+    git(clone, 'checkout -q main');
+    const out = runHook(clone, 'git stash push -q -m wip && git branch -f main origin/main');
+    expect(out).not.toContain('Force push');
+  });
+
+  test("allows a branch name containing the word 'push'", () => {
+    git(clone, 'checkout -q main');
+    const out = runHook(clone, 'git checkout -b fix/git-police-push-subcommand');
+    expect(out).not.toContain('You are on');
+  });
+
+  test('still blocks force push behind global flags', () => {
+    const out = runHook(clone, `git -C ${clone} push --force origin feat/x`);
+    expect(out).toContain('Force push');
+  });
+});

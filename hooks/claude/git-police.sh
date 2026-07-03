@@ -65,9 +65,14 @@ if echo "$STRIPPED" | grep -qiE '\bgit\b.*--no-verify\b'; then
 	deny "BLOCKED: --no-verify is forbidden. Skipping pre-commit hooks bypasses quality gates (linting, tests, formatting). Fix the issue that's causing the hook to fail instead."
 fi
 
+# Detect `git push` as a subcommand (allowing global flags like -C <path>), so
+# `git stash push`, or "push" appearing in a branch name or message, never
+# matches the push rules. Same shape as GIT_COMMIT_RE below.
+GIT_PUSH_RE='\bgit([[:space:]]+(-[A-Za-z][^[:space:]]*|--[A-Za-z][A-Za-z0-9-]*(=[^[:space:]]+)?)([[:space:]]+[^-[:space:]][^[:space:]]*)?)*[[:space:]]+push\b'
+
 # 2. Block force push (--force, -f, --force-with-lease). Every variant rewrites
 #    remote history; sanctioned rewrites are pushed by the user directly.
-if echo "$STRIPPED" | grep -qiE '\bgit\b.*\bpush\b.*(-f\b|--force\b|--force-with-lease\b)'; then
+if echo "$STRIPPED" | grep -qiE "${GIT_PUSH_RE}"'.*(-f\b|--force\b|--force-with-lease\b)'; then
 	deny "BLOCKED: Force push is forbidden. Force pushing rewrites history and can destroy work. If a history rewrite is truly required, prepare the branch and ask the user to run the force push themselves."
 fi
 
@@ -90,7 +95,7 @@ PUSH_REMOTE=$(push_remote "$STRIPPED")
 # 3. Block pushing directly to protected branches (on origin / implicit upstream)
 if [[ -z "$PUSH_REMOTE" || "$PUSH_REMOTE" == "origin" ]]; then
 	for branch in "${PROTECTED_BRANCHES[@]}"; do
-		if echo "$STRIPPED" | grep -qiE "\bgit\b.*\bpush\b.*\b${branch}\b"; then
+		if echo "$STRIPPED" | grep -qiE "${GIT_PUSH_RE}.*\b${branch}\b"; then
 			deny "BLOCKED: Pushing directly to '${branch}' is forbidden. Create a feature branch and raise a PR instead."
 		fi
 	done
@@ -113,7 +118,7 @@ git_target_dir() {
 #    resolved from the repo the command targets, not the hook's cwd, which may
 #    be a different repo entirely (or none at all).
 if [[ -z "$PUSH_REMOTE" || "$PUSH_REMOTE" == "origin" ]] \
-	&& echo "$STRIPPED" | grep -qiE '\bgit\b.*\bpush\b'; then
+	&& echo "$STRIPPED" | grep -qiE "$GIT_PUSH_RE"; then
 	TARGET_DIR=$(git_target_dir "$STRIPPED")
 	CURRENT_BRANCH=$(git ${TARGET_DIR:+-C "$TARGET_DIR"} symbolic-ref --short HEAD 2>/dev/null || echo "")
 	for branch in "${PROTECTED_BRANCHES[@]}"; do
