@@ -78,6 +78,21 @@ These rules are behavioral; the agentkit hook portfolio enforces the adjacent co
 
 Everything else is on the agent to honor.
 
+## Branch Hygiene
+
+After a merge request / PR merges, immediately return to the repo's default branch, pull, and
+delete the local feature branch — don't let branches accumulate. Squash merges defeat
+`git branch --merged` (the squashed commit is not an ancestor), so clean by upstream instead:
+
+```bash
+git checkout <default> && git pull && git fetch -p
+git branch -vv | awk '/: gone]/ {print $1}' | xargs -r git branch -D
+```
+
+- Always cut new branches from the freshly pulled default branch — never from another feature
+  branch in a squash-merge repo (the follow-up MR will conflict once the first one squashes).
+- At most one feature branch alive per repo at a time, mirroring the mr-police limit.
+
 ## Source
 
 Adapted from Mnimiy's "12-rule CLAUDE.md template"
