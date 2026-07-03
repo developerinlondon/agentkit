@@ -84,3 +84,26 @@ describe('git-police branch hygiene (rule 7)', () => {
     expect(runHook(clone, 'git checkout -b feat/next')).not.toContain('feat/merged-away');
   });
 });
+
+describe('git-police push branch resolution (rule 4)', () => {
+  test("denies plain push when the cwd repo is on 'main'", () => {
+    git(clone, 'checkout -q main');
+    const out = runHook(clone, 'git push origin HEAD');
+    expect(out).toContain('"deny"');
+    expect(out).toContain("You are on 'main'");
+  });
+
+  test('allows git -C push targeting a feature-branch repo while cwd is on main', () => {
+    const target = join(root, 'clone-feature');
+    execSync(`git clone ${origin} ${target}`, { stdio: 'pipe' });
+    git(target, 'checkout -q -b feat/rule4');
+    git(clone, 'checkout -q main');
+    expect(runHook(clone, `git -C ${target} push -u origin feat/rule4`)).not.toContain('"deny"');
+  });
+
+  test('denies git -C push targeting a repo on main even from a non-repo cwd', () => {
+    const out = runHook(root, `git -C ${clone} push origin HEAD`);
+    expect(out).toContain('"deny"');
+    expect(out).toContain("You are on 'main'");
+  });
+});

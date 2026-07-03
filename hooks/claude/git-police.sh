@@ -65,9 +65,10 @@ if echo "$STRIPPED" | grep -qiE '\bgit\b.*--no-verify\b'; then
 	deny "BLOCKED: --no-verify is forbidden. Skipping pre-commit hooks bypasses quality gates (linting, tests, formatting). Fix the issue that's causing the hook to fail instead."
 fi
 
-# 2. Block force push (--force, -f, but allow --force-with-lease)
+# 2. Block force push (--force, -f, --force-with-lease). Every variant rewrites
+#    remote history; sanctioned rewrites are pushed by the user directly.
 if echo "$STRIPPED" | grep -qiE '\bgit\b.*\bpush\b.*(-f\b|--force\b|--force-with-lease\b)'; then
-	deny "BLOCKED: Force push is forbidden. Force pushing rewrites history and can destroy work. If you truly need this, ask the user for explicit approval first."
+	deny "BLOCKED: Force push is forbidden. Force pushing rewrites history and can destroy work. If a history rewrite is truly required, prepare the branch and ask the user to run the force push themselves."
 fi
 
 # The remote a push targets: the first non-flag token after `push` (empty for
@@ -95,11 +96,26 @@ if [[ -z "$PUSH_REMOTE" || "$PUSH_REMOTE" == "origin" ]]; then
 	done
 fi
 
-# 4. Block push when currently on a protected branch (even without branch name
-#    in command) — same origin scoping as rule 3.
+# The repo a git command operates on: honor `git -C <path>` and a leading
+# `cd <path> &&`, falling back to the hook's cwd. Quoted paths were emptied
+# out of STRIPPED, so those fall back to the cwd as before.
+git_target_dir() {
+	local dir
+	dir=$(echo "$1" | sed -nE 's/.*git[[:space:]]+-C[[:space:]]+([^[:space:]]+).*/\1/p' | head -1)
+	if [[ -z "$dir" ]]; then
+		dir=$(echo "$1" | sed -nE 's/^[[:space:]]*cd[[:space:]]+([^[:space:];&|]+).*/\1/p' | head -1)
+	fi
+	echo "${dir/#\~/$HOME}"
+}
+
+# 4. Block push when the targeted repo is on a protected branch (even without
+#    branch name in command) — same origin scoping as rule 3. The branch is
+#    resolved from the repo the command targets, not the hook's cwd, which may
+#    be a different repo entirely (or none at all).
 if [[ -z "$PUSH_REMOTE" || "$PUSH_REMOTE" == "origin" ]] \
 	&& echo "$STRIPPED" | grep -qiE '\bgit\b.*\bpush\b'; then
-	CURRENT_BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null || echo "")
+	TARGET_DIR=$(git_target_dir "$STRIPPED")
+	CURRENT_BRANCH=$(git ${TARGET_DIR:+-C "$TARGET_DIR"} symbolic-ref --short HEAD 2>/dev/null || echo "")
 	for branch in "${PROTECTED_BRANCHES[@]}"; do
 		if [[ "$CURRENT_BRANCH" == "$branch" ]]; then
 			deny "BLOCKED: You are on '${branch}'. Pushing from a protected branch is forbidden. Create a feature branch first: git checkout -b feat/your-feature-name"
