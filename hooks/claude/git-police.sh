@@ -129,7 +129,33 @@ if echo "$STRIPPED" | grep -qiE "$GIT_COMMIT_RE"; then
 	done
 fi
 
-# 7. Stale branch protection — warn when creating a branch from a stale base
+# 7. Branch hygiene at branch creation — the only reliable local chokepoint
+#    (merges happen server-side, so there is no "after merge" hook event).
+#    a) new branches are cut from the default branch, not stacked on another
+#       feature branch (squash merges make stacks conflict); override with
+#       AGENTKIT_ALLOW_BRANCH_STACKING=1 for intentional stacking.
+#    b) local branches whose upstream is gone (squash-merged + remote-deleted)
+#       must be cleaned up before starting new work.
+if echo "$STRIPPED" | grep -qiE '\bgit\b.*(checkout\s+-b|switch\s+-c)\b'; then
+	DEFAULT_BRANCH=$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's|^origin/||' || true)
+	CURRENT_BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null || echo "")
+	if [[ -n "$CURRENT_BRANCH" && "${AGENTKIT_ALLOW_BRANCH_STACKING:-0}" != "1" ]]; then
+		ON_BASE=false
+		for base in "$DEFAULT_BRANCH" "${PROTECTED_BRANCHES[@]}" dev; do
+			[[ -n "$base" && "$CURRENT_BRANCH" == "$base" ]] && ON_BASE=true
+		done
+		if [[ "$ON_BASE" == false ]]; then
+			deny "BLOCKED: You are on feature branch '${CURRENT_BRANCH}'. Cut new branches from the freshly pulled default branch (squash merges make stacked branches conflict once the first MR merges). Run: git checkout ${DEFAULT_BRANCH:-main} && git pull, then create the branch. Intentional stacking: AGENTKIT_ALLOW_BRANCH_STACKING=1."
+		fi
+	fi
+	git fetch -p --quiet 2>/dev/null || true
+	GONE=$(git branch -vv 2>/dev/null | grep ': gone]' | awk '{print $1}' | tr '\n' ' ' || true)
+	if [[ -n "${GONE// /}" ]]; then
+		deny "BLOCKED: Stale local branches with deleted upstreams: ${GONE}. Clean up before starting new work: git branch -vv | awk '/: gone]/ {print \$1}' | xargs -r git branch -D"
+	fi
+fi
+
+# 8. Stale branch protection — warn when creating a branch from a stale base
 if echo "$STRIPPED" | grep -qiE '\bgit\b.*(checkout\s+-b|switch\s+-c)\b'; then
 	CURRENT_BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null || echo "")
 	for branch in "${PROTECTED_BRANCHES[@]}"; do
