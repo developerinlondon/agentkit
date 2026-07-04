@@ -30,7 +30,7 @@ Reusable AI agent skills, rules, plugins, hooks, and tools for OpenCode, Claude 
 
 | Plugin                | Description                                                                                                              |
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| **version-police.ts** | Auto-checks Helm/npm/Cargo dependency versions on file write                                                             |
+| **version-police.ts** | Blocks writing dependency pins that are a major version behind the live registry (stale training-data pins)              |
 | **format-police.ts**  | Auto-formats files on write using dprint                                                                                 |
 | **kubectl-police.ts** | Blocks kubectl create/apply for Kargo CRDs (unconditionally)                                                             |
 | **git-police.ts**     | Blocks commits to main/master, force push, --no-verify, AI attribution, push to protected branches                       |
@@ -171,8 +171,48 @@ values.
 Plugins are OpenCode-specific (they use the `@opencode-ai/plugin` TypeScript API). They hook into
 OpenCode's tool execution lifecycle to enforce safety and quality gates.
 
-**version-police.ts**: Checks if Helm chart dependencies, npm packages, or Cargo crates are outdated
-whenever you modify a `Chart.yaml`, `package.json`, or `Cargo.toml`.
+**version-police**: Stops agents from pinning stale dependency versions recalled from training data.
+On every write/edit to a dependency manifest it detects the pins that are newly added or changed,
+looks each one up against the live upstream registry, and **blocks** the write when a pin is one or
+more **major** versions behind the latest release. Minor/patch lag is warned about (logged,
+non-blocking).
+
+Supported manifests and registries:
+
+| Manifest                                    | Registry        |
+| ------------------------------------------- | --------------- |
+| `package.json`                              | npm registry    |
+| `Cargo.toml`                                | crates.io       |
+| `pyproject.toml`, `requirements*.txt`       | PyPI            |
+| `Dockerfile` (`FROM`), `docker-compose.yml` | Docker Hub      |
+| `go.mod`                                    | Go module proxy |
+
+Built for hook speed: only diff-changed pins are checked, each lookup has a ~2.5s timeout and
+**fails open** on any network error (registry downtime never blocks a write), and results are cached
+on disk (`$XDG_CACHE_HOME/agentkit/version-police.json`) for 24h.
+
+**Overrides** (when a pin is deliberate):
+
+- Inline annotation on the pin line (or the line directly above), for any comment-bearing manifest:
+  ```toml
+  serde = "0.9" # version-police: allow serde -- locked for MSRV
+  ```
+  `package.json` is JSON and has no comments, so use the config exceptions list instead.
+- Config exceptions list in your agentkit config (applies to every manifest, including
+  `package.json`) — package names, `*` globs supported:
+  ```yaml
+  version-police:
+    exceptions:
+      - serde
+      - "@types/*"
+  ```
+
+Disable entirely with `version-police.enabled: false` in your config, or by adding `version-police`
+to the `AGENTKIT_SKIP_HOOKS` comma-separated env list.
+
+| Platform | File                        | Hook type           |
+| -------- | --------------------------- | ------------------- |
+| OpenCode | `plugins/version-police.ts` | tool.execute.before |
 
 **format-police.ts**: Auto-formats files after every write/edit using dprint. Auto-discovers the
 dprint binary from PATH or mise.
