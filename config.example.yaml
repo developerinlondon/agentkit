@@ -39,6 +39,20 @@ pkg-police:
   # Example:
   #   enabled: false
 
+version-police:
+  # Set to false to disable stale-major dependency-pin blocking.
+  # Can also be disabled via AGENTKIT_SKIP_HOOKS=version-police.
+  enabled: true
+
+  # Packages exempted from the major-behind check (deliberate pins).
+  # Applies to every manifest, including package.json (which has no comments).
+  # Exact names or "*" globs are supported.
+  exceptions: []
+  # Example:
+  #   exceptions:
+  #     - serde
+  #     - "@types/*"
+
 comment-police:
   # Maximum lines in a single body comment block before warning.
   max-block-lines: 6
