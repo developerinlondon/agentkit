@@ -34,19 +34,39 @@ load_allowed_repos() {
 ALLOWED_REPOS=()
 load_allowed_repos
 
+STRIPPED=$(echo "$COMMAND" |
+	sed -E "s/<<-?[[:space:]]*['\"]?([A-Za-z_]+)['\"]?/\n\1_HEREDOC_START\n/g" |
+	sed -E "s/\"([^\"\\\\]|\\\\.)*\"/\"\"/g" |
+	sed -E "s/'[^']*'/''/g")
+
+# The repo a git command operates on: honor `git -C <path>` and a `cd <path>`
+# at the start or after a separator (; && |), falling back to the hook's cwd.
+# The session cwd may be a different repo entirely (or none at all) — every
+# repo-state check below must resolve against the targeted repo, not the cwd.
+# Quoted paths were emptied out of STRIPPED, so those fall back to the cwd.
+git_target_dir() {
+	local dir
+	dir=$(echo "$1" | sed -nE 's/.*git[[:space:]]+-C[[:space:]]+([^[:space:]]+).*/\1/p' | head -1)
+	if [[ -z "$dir" ]]; then
+		dir=$(echo "$1" | sed -nE 's/(^|.*[;&|])[[:space:]]*cd[[:space:]]+([^[:space:];&|]+).*/\2/p' | head -1)
+	fi
+	echo "${dir/#\~/$HOME}"
+}
+TARGET_DIR=$(git_target_dir "$STRIPPED")
+
+# git scoped to the targeted repo (cwd when the command names none).
+tgit() {
+	git ${TARGET_DIR:+-C "$TARGET_DIR"} "$@"
+}
+
 if [[ ${#ALLOWED_REPOS[@]} -gt 0 ]]; then
-	REPO_NAME=$(git remote get-url origin 2>/dev/null | sed -E 's|.*[:/]([^/]+/[^/]+?)(\.git)?$|\1|' || echo "")
+	REPO_NAME=$(tgit remote get-url origin 2>/dev/null | sed -E 's|.*[:/]([^/]+/[^/]+?)(\.git)?$|\1|' || echo "")
 	for allowed in "${ALLOWED_REPOS[@]}"; do
 		if [[ "$REPO_NAME" == *"$allowed"* ]]; then
 			exit 0
 		fi
 	done
 fi
-
-STRIPPED=$(echo "$COMMAND" |
-	sed -E "s/<<-?[[:space:]]*['\"]?([A-Za-z_]+)['\"]?/\n\1_HEREDOC_START\n/g" |
-	sed -E "s/\"([^\"\\\\]|\\\\.)*\"/\"\"/g" |
-	sed -E "s/'[^']*'/''/g")
 
 deny() {
 	local reason="$1"
@@ -101,26 +121,11 @@ if [[ -z "$PUSH_REMOTE" || "$PUSH_REMOTE" == "origin" ]]; then
 	done
 fi
 
-# The repo a git command operates on: honor `git -C <path>` and a leading
-# `cd <path> &&`, falling back to the hook's cwd. Quoted paths were emptied
-# out of STRIPPED, so those fall back to the cwd as before.
-git_target_dir() {
-	local dir
-	dir=$(echo "$1" | sed -nE 's/.*git[[:space:]]+-C[[:space:]]+([^[:space:]]+).*/\1/p' | head -1)
-	if [[ -z "$dir" ]]; then
-		dir=$(echo "$1" | sed -nE 's/^[[:space:]]*cd[[:space:]]+([^[:space:];&|]+).*/\1/p' | head -1)
-	fi
-	echo "${dir/#\~/$HOME}"
-}
-
 # 4. Block push when the targeted repo is on a protected branch (even without
-#    branch name in command) — same origin scoping as rule 3. The branch is
-#    resolved from the repo the command targets, not the hook's cwd, which may
-#    be a different repo entirely (or none at all).
+#    branch name in command) — same origin scoping as rule 3.
 if [[ -z "$PUSH_REMOTE" || "$PUSH_REMOTE" == "origin" ]] \
 	&& echo "$STRIPPED" | grep -qiE "$GIT_PUSH_RE"; then
-	TARGET_DIR=$(git_target_dir "$STRIPPED")
-	CURRENT_BRANCH=$(git ${TARGET_DIR:+-C "$TARGET_DIR"} symbolic-ref --short HEAD 2>/dev/null || echo "")
+	CURRENT_BRANCH=$(tgit symbolic-ref --short HEAD 2>/dev/null || echo "")
 	for branch in "${PROTECTED_BRANCHES[@]}"; do
 		if [[ "$CURRENT_BRANCH" == "$branch" ]]; then
 			deny "BLOCKED: You are on '${branch}'. Pushing from a protected branch is forbidden. Create a feature branch first: git checkout -b feat/your-feature-name"
@@ -142,7 +147,7 @@ fi
 
 # 6. Block direct commits to protected branches
 if echo "$STRIPPED" | grep -qiE "$GIT_COMMIT_RE"; then
-	CURRENT_BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null || echo "")
+	CURRENT_BRANCH=$(tgit symbolic-ref --short HEAD 2>/dev/null || echo "")
 	for branch in "${PROTECTED_BRANCHES[@]}"; do
 		if [[ "$CURRENT_BRANCH" == "$branch" ]]; then
 			deny "BLOCKED: Committing directly to '${branch}' is forbidden. You are on the ${branch} branch. Create a feature branch first: git checkout -b feat/your-feature-name"
@@ -157,20 +162,28 @@ fi
 #       AGENTKIT_ALLOW_BRANCH_STACKING=1 for intentional stacking.
 #    b) local branches whose upstream is gone (squash-merged + remote-deleted)
 #       must be cleaned up before starting new work.
+# The override works from the hook's environment or inline in the command
+# itself (`AGENTKIT_ALLOW_BRANCH_STACKING=1 git checkout -b …`) — inline
+# assignments never reach the hook process, so honor them from the text.
+STACKING_OK="${AGENTKIT_ALLOW_BRANCH_STACKING:-0}"
+if echo "$COMMAND" | grep -qE '(^|[[:space:];&|])AGENTKIT_ALLOW_BRANCH_STACKING=1([[:space:];&|]|$)'; then
+	STACKING_OK=1
+fi
+
 if echo "$STRIPPED" | grep -qiE '\bgit\b.*(checkout\s+-b|switch\s+-c)\b'; then
-	DEFAULT_BRANCH=$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's|^origin/||' || true)
-	CURRENT_BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null || echo "")
-	if [[ -n "$CURRENT_BRANCH" && "${AGENTKIT_ALLOW_BRANCH_STACKING:-0}" != "1" ]]; then
+	DEFAULT_BRANCH=$(tgit symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's|^origin/||' || true)
+	CURRENT_BRANCH=$(tgit symbolic-ref --short HEAD 2>/dev/null || echo "")
+	if [[ -n "$CURRENT_BRANCH" && "$STACKING_OK" != "1" ]]; then
 		ON_BASE=false
 		for base in "$DEFAULT_BRANCH" "${PROTECTED_BRANCHES[@]}" dev; do
 			[[ -n "$base" && "$CURRENT_BRANCH" == "$base" ]] && ON_BASE=true
 		done
 		if [[ "$ON_BASE" == false ]]; then
-			deny "BLOCKED: You are on feature branch '${CURRENT_BRANCH}'. Cut new branches from the freshly pulled default branch (squash merges make stacked branches conflict once the first MR merges). Run: git checkout ${DEFAULT_BRANCH:-main} && git pull, then create the branch. Intentional stacking: AGENTKIT_ALLOW_BRANCH_STACKING=1."
+			deny "BLOCKED: The targeted repo is on feature branch '${CURRENT_BRANCH}'. Cut new branches from the freshly pulled default branch (squash merges make stacked branches conflict once the first MR merges). Run: git checkout ${DEFAULT_BRANCH:-main} && git pull, then create the branch. Intentional stacking: prefix the command with AGENTKIT_ALLOW_BRANCH_STACKING=1."
 		fi
 	fi
-	git fetch -p --quiet 2>/dev/null || true
-	GONE=$(git branch -vv 2>/dev/null | grep ': gone]' | awk '{print $1}' | tr '\n' ' ' || true)
+	tgit fetch -p --quiet 2>/dev/null || true
+	GONE=$(tgit branch -vv 2>/dev/null | grep ': gone]' | awk '{print $1}' | tr '\n' ' ' || true)
 	if [[ -n "${GONE// /}" ]]; then
 		deny "BLOCKED: Stale local branches with deleted upstreams: ${GONE}. Clean up before starting new work: git branch -vv | awk '/: gone]/ {print \$1}' | xargs -r git branch -D"
 	fi
@@ -178,14 +191,14 @@ fi
 
 # 8. Stale branch protection — warn when creating a branch from a stale base
 if echo "$STRIPPED" | grep -qiE '\bgit\b.*(checkout\s+-b|switch\s+-c)\b'; then
-	CURRENT_BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null || echo "")
+	CURRENT_BRANCH=$(tgit symbolic-ref --short HEAD 2>/dev/null || echo "")
 	for branch in "${PROTECTED_BRANCHES[@]}"; do
 		if [[ "$CURRENT_BRANCH" == "$branch" ]]; then
-			git fetch origin "$branch" --quiet 2>/dev/null || true
-			LOCAL_SHA=$(git rev-parse "$branch" 2>/dev/null || echo "")
-			REMOTE_SHA=$(git rev-parse "origin/$branch" 2>/dev/null || echo "")
+			tgit fetch origin "$branch" --quiet 2>/dev/null || true
+			LOCAL_SHA=$(tgit rev-parse "$branch" 2>/dev/null || echo "")
+			REMOTE_SHA=$(tgit rev-parse "origin/$branch" 2>/dev/null || echo "")
 			if [[ -n "$LOCAL_SHA" && -n "$REMOTE_SHA" && "$LOCAL_SHA" != "$REMOTE_SHA" ]]; then
-				BEHIND=$(git rev-list --count "$branch..origin/$branch" 2>/dev/null || echo "0")
+				BEHIND=$(tgit rev-list --count "$branch..origin/$branch" 2>/dev/null || echo "0")
 				if [[ "$BEHIND" -gt 0 ]]; then
 					deny "BLOCKED: Your local '${branch}' is ${BEHIND} commit(s) behind origin/${branch}. Run 'git pull origin ${branch}' first to avoid creating a branch from stale code. This prevents merge conflicts and wasted rebases."
 				fi
