@@ -85,6 +85,55 @@ describe('git-police branch hygiene (rule 7)', () => {
   });
 });
 
+describe('git-police branch creation resolves the targeted repo (rules 6-7)', () => {
+  test('allows git -C targeting a main-branch repo while the cwd repo is on a feature branch', () => {
+    const target = join(root, 'clone-main-target');
+    execSync(`git clone ${origin} ${target}`, { stdio: 'pipe' });
+    git(target, 'remote set-head origin main');
+    git(clone, 'checkout -q -b feat/cwd-decoy');
+    expect(runHook(clone, `git -C ${target} checkout -b feat/from-target`)).not.toContain(
+      '"deny"',
+    );
+    git(clone, 'checkout -q main');
+    git(clone, 'branch -D feat/cwd-decoy');
+  });
+
+  test('denies cd-prefixed branch creation when the targeted repo is on a feature branch', () => {
+    const target = join(root, 'clone-feature-target');
+    execSync(`git clone ${origin} ${target}`, { stdio: 'pipe' });
+    git(target, 'remote set-head origin main');
+    git(target, 'checkout -q -b feat/base');
+    const out = runHook(root, `cd ${target} && git checkout -b feat/stacked`);
+    expect(out).toContain('"deny"');
+    expect(out).toContain('feature branch');
+  });
+
+  test('inline AGENTKIT_ALLOW_BRANCH_STACKING=1 in the command overrides stacking', () => {
+    git(clone, 'checkout -q -b feat/base-inline');
+    const out = runHook(clone, 'AGENTKIT_ALLOW_BRANCH_STACKING=1 git checkout -b feat/stacked-inline');
+    expect(out).not.toContain('feature branch');
+    git(clone, 'checkout -q main');
+    git(clone, 'branch -D feat/base-inline');
+  });
+
+  test('allows commit in a cd-targeted feature-branch repo while the cwd repo is on main', () => {
+    const target = join(root, 'clone-commit-target');
+    execSync(`git clone ${origin} ${target}`, { stdio: 'pipe' });
+    git(target, 'remote set-head origin main');
+    git(target, 'checkout -q -b feat/commit-here');
+    git(clone, 'checkout -q main');
+    expect(runHook(clone, `cd ${target} && git commit --allow-empty -m work`)).not.toContain(
+      '"deny"',
+    );
+  });
+
+  test('denies commit when the git -C target is on main, even from a non-repo cwd', () => {
+    const out = runHook(root, `git -C ${clone} commit --allow-empty -m nope`);
+    expect(out).toContain('"deny"');
+    expect(out).toContain('Committing directly');
+  });
+});
+
 describe('git-police push branch resolution (rule 4)', () => {
   test("denies plain push when the cwd repo is on 'main'", () => {
     git(clone, 'checkout -q main');
