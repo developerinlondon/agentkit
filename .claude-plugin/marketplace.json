@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-marketplace.json",
+  "name": "agentkit",
+  "owner": {
+    "name": "developerinlondon",
+    "url": "https://github.com/developerinlondon"
+  },
+  "description": "Reusable agent tooling distributed as Claude Code plugins. The generic units (MCP tools, skills) are the source of truth; the plugins wrap them for one-step install. See ADR #45.",
+  "plugins": [
+    {
+      "name": "assay",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/developerinlondon/assay",
+        "path": "plugin"
+      },
+      "description": "Gated Lua infra toolkit — Kubernetes, ArgoCD, Vault, Prometheus, GitLab, AWS and more through one read-only/approval-gated tool. Requires the `assay` binary on PATH.",
+      "version": "0.17.0"
+    }
+  ]
+}

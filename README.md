@@ -67,6 +67,21 @@ Reusable AI agent skills, rules, plugins, hooks, and tools for OpenCode, Claude 
 | **coding-discipline.md**        | 11-rule behavioral contract for code work (think first, simplicity, surgical changes, fail loud, …) |
 | **collaboration-visibility.md** | Progress updates, checkpoint summaries, and compact ASCII diagrams for multi-step work              |
 
+### Claude Code plugins (marketplace)
+
+Tools ship as MCP servers wrapped in Claude Code plugins (ADR #45 — generic
+units are the source of truth; plugins are convenience wrappers). Add the
+marketplace once, then install:
+
+```bash
+claude plugin marketplace add developerinlondon/agentkit
+claude plugin install assay
+```
+
+| Plugin    | Provides                                                                                                                                                                                        | Source                                                                                        |
+| --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| **assay** | Gated Lua infra toolkit (`assay_run` + `assay_context`) — Kubernetes, ArgoCD, Vault, Prometheus, GitLab, AWS, … through one read-only/approval-gated tool. Requires the `assay` binary on PATH. | vendored from [developerinlondon/assay](https://github.com/developerinlondon/assay) `plugin/` |
+
 ## Installation
 
 ### Option 1: skills.sh CLI (skills only, all agents)
