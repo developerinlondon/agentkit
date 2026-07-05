@@ -19,12 +19,13 @@ Reusable AI agent skills, rules, plugins, hooks, and tools for OpenCode, Claude 
 
 ### Rules (auto-loaded by file glob match)
 
-| Rule                     | Glob                                            | Description                                                        |
-| ------------------------ | ----------------------------------------------- | ------------------------------------------------------------------ |
-| **consent-protocol**     | `**/*`                                          | Stop after asking a question -- never act and ask in the same turn |
-| **credential-bootstrap** | `gitops/**/*.yaml`                              | OpenBao + ESO credential bootstrap pattern for GitOps apps         |
-| **coding-standards**     | `**/*.{ts,py,go,rs...}`                         | Enforces DRY, modularity, and focused functions proactively        |
-| **comment-discipline**   | `**/*.{ts,py,go,rs,sh,yaml,toml,Dockerfile...}` | Default to no comments; only WHY when non-obvious                  |
+| Rule                     | Glob                                            | Description                                                                |
+| ------------------------ | ----------------------------------------------- | -------------------------------------------------------------------------- |
+| **consent-protocol**     | `**/*`                                          | Stop after asking a question -- never act and ask in the same turn         |
+| **credential-bootstrap** | `gitops/**/*.yaml`                              | OpenBao + ESO credential bootstrap pattern for GitOps apps                 |
+| **coding-standards**     | `**/*.{ts,py,go,rs...}`                         | Enforces DRY, modularity, and focused functions proactively                |
+| **comment-discipline**   | `**/*.{ts,py,go,rs,sh,yaml,toml,Dockerfile...}` | Default to no comments; only WHY when non-obvious                          |
+| **issue-tracking**       | `**/*`                                          | File a tracker issue before non-trivial work; close the loop when it ships |
 
 ### Plugins (OpenCode only -- runtime hooks)
 
