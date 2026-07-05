@@ -76,11 +76,13 @@ marketplace once, then install:
 ```bash
 claude plugin marketplace add developerinlondon/agentkit
 claude plugin install assay
+claude plugin install infra-tools
 ```
 
-| Plugin    | Provides                                                                                                                                                                                        | Source                                                                                        |
-| --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| **assay** | Gated Lua infra toolkit (`assay_run` + `assay_context`) — Kubernetes, ArgoCD, Vault, Prometheus, GitLab, AWS, … through one read-only/approval-gated tool. Requires the `assay` binary on PATH. | vendored from [developerinlondon/assay](https://github.com/developerinlondon/assay) `plugin/` |
+| Plugin          | Provides                                                                                                                                                                                                                                                                                                 | Source                                                                                        |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| **assay**       | Gated Lua infra toolkit (`assay_run` + `assay_context`) — Kubernetes, ArgoCD, Vault, Prometheus, GitLab, AWS, … through one read-only/approval-gated tool. Requires the `assay` binary on PATH.                                                                                                          | vendored from [developerinlondon/assay](https://github.com/developerinlondon/assay) `plugin/` |
+| **infra-tools** | Read-only helm / tofu / git tools (`helm_template`/`helm_list`/`helm_get_values`, `tofu_plan`/`tofu_show`/`tofu_state_list`, `git_log`/`git_diff`/`git_status`/`git_clone_ro`) as a typed MCP server — render charts, preview plans, read git history. Never applies or mutates. Requires `bun` on PATH. | local `plugins-cc/infra-tools/`                                                               |
 
 ## Installation
 

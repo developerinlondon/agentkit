@@ -16,6 +16,12 @@
       },
       "description": "Gated Lua infra toolkit — Kubernetes, ArgoCD, Vault, Prometheus, GitLab, AWS and more through one read-only/approval-gated tool. Requires the `assay` binary on PATH.",
       "version": "0.17.0"
+    },
+    {
+      "name": "infra-tools",
+      "source": "./plugins-cc/infra-tools",
+      "description": "Read-only helm / tofu / git tools for infrastructure investigation, exposed as a typed MCP server. Renders charts, previews plans, and reads git history — never applies or mutates. Requires `bun` on PATH.",
+      "version": "0.1.0"
     }
   ]
 }
