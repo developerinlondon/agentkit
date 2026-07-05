@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin.json",
+  "name": "infra-tools",
+  "version": "0.1.0",
+  "description": "Read-only helm / tofu / git tools for infrastructure investigation, exposed as a typed MCP server. Renders charts, previews plans, and reads git history — never applies or mutates.",
+  "author": {
+    "name": "developerinlondon",
+    "url": "https://github.com/developerinlondon"
+  },
+  "mcpServers": "./.mcp.json",
+  "skills": "./skills/"
+}
