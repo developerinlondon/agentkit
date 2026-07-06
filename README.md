@@ -69,20 +69,38 @@ Reusable AI agent skills, rules, plugins, hooks, and tools for OpenCode, Claude 
 
 ### Claude Code plugins (marketplace)
 
-Tools ship as MCP servers wrapped in Claude Code plugins (ADR #45 — generic
-units are the source of truth; plugins are convenience wrappers). Add the
-marketplace once, then install:
+Hooks, skills, and tools ship as Claude Code plugins (ADR #45 — the generic units — MCP tools,
+skills, hook scripts — are the source of truth; plugins are convenience wrappers). Add the
+marketplace once, then install. The **agentkit** plugin is the recommended one-shot: a single
+`claude plugin install agentkit` gives you the enforcement hooks, the skills, and **both** MCP
+toolchains (assay + infra-tools) in one step — no separate `install.sh` needed for those. The
+granular **assay** and **infra-tools** plugins remain for à-la-carte installs.
 
 ```bash
 claude plugin marketplace add developerinlondon/agentkit
+
+# Recommended: everything in one step — hooks + skills + assay + infra-tools MCP
+claude plugin install agentkit
+
+# Or à-la-carte — just one toolchain
 claude plugin install assay
 claude plugin install infra-tools
 ```
 
 | Plugin          | Provides                                                                                                                                                                                                                                                                                                 | Source                                                                                        |
 | --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| **agentkit**    | One-shot install of everything agentkit ships for Claude Code: the enforcement police hooks (git / mr / format / coding / kubectl / pkg), the skills, and both MCP toolchains (bundles the assay declaration + a copy of the infra-tools server). Needs the `assay` binary and `bun` on PATH.            | local `plugins-cc/agentkit/`                                                                  |
 | **assay**       | Gated Lua infra toolkit (`assay_run` + `assay_context`) — Kubernetes, ArgoCD, Vault, Prometheus, GitLab, AWS, … through one read-only/approval-gated tool. Requires the `assay` binary on PATH.                                                                                                          | vendored from [developerinlondon/assay](https://github.com/developerinlondon/assay) `plugin/` |
 | **infra-tools** | Read-only helm / tofu / git tools (`helm_template`/`helm_list`/`helm_get_values`, `tofu_plan`/`tofu_show`/`tofu_state_list`, `git_log`/`git_diff`/`git_status`/`git_clone_ro`) as a typed MCP server — render charts, preview plans, read git history. Never applies or mutates. Requires `bun` on PATH. | local `plugins-cc/infra-tools/`                                                               |
+
+**Not in the plugin: the always-on rules and instructions.** Claude Code plugins cannot inject
+always-on global context, so the glob-loaded `rules/` and the `instructions/*.md` global prompts
+(anti-glaze, coding-discipline, collaboration-visibility) are **out of scope for the plugin** and
+are still wired into `~/.claude/CLAUDE.md`, Codex, and OpenCode by `install.sh`. Their
+**enforcement**, however, _is_ bundled: the police hooks (`git-police`, `mr-police`,
+`format-police`, `coding-police`, `kubectl-police`, `pkg-police`) run as PreToolUse / PostToolUse
+hooks inside the `agentkit` plugin, so the mechanical guarantees hold even without the global
+instruction text.
 
 ## Installation
 
