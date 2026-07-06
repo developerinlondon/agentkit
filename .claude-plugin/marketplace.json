@@ -8,6 +8,12 @@
   "description": "Reusable agent tooling distributed as Claude Code plugins. The generic units (MCP tools, skills) are the source of truth; the plugins wrap them for one-step install. See ADR #45.",
   "plugins": [
     {
+      "name": "agentkit",
+      "source": "./plugins-cc/agentkit",
+      "description": "One-shot install of everything agentkit ships for Claude Code: the enforcement police hooks (git / mr / format / coding / kubectl / pkg), the skills, and both MCP toolchains (assay + infra-tools). The assay toolchain requires the `assay` binary on PATH; the infra-tools MCP server needs `bun`. Prefer this over the granular plugins unless you want à-la-carte install.",
+      "version": "0.1.0"
+    },
+    {
       "name": "assay",
       "source": {
         "source": "git-subdir",
