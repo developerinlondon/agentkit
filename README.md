@@ -48,6 +48,7 @@ Reusable AI agent skills, rules, plugins, hooks, and tools for OpenCode, Claude 
 | **format-police.sh**  | PostToolUse | Auto-formats files after edit/write using dprint                                                                         |
 | **coding-police.sh**  | PostToolUse | Enforces DRY code, modular files (<1000 lines), short functions, single responsibility                                   |
 | **pkg-police.sh**     | PreToolUse  | Enforces bun as package manager — blocks npm, npx, yarn, pnpm commands                                                   |
+| **chime.sh**          | Notification/Stop | Audible nudge when Claude needs you: springy boing on permission prompts/questions, soft ping when a turn finishes. Mute: `touch ~/.claude/.chime-off` or `CLAUDE_CHIME=0` |
 | **mr-police.sh**      | PreToolUse  | Blocks opening a new MR while you already have an open MR you authored on the repo — stops unmerged MRs from stacking up |
 
 ### Policies (Codex CLI -- exec policy)
