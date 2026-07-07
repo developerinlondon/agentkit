@@ -133,6 +133,32 @@ if [[ -z "$PUSH_REMOTE" || "$PUSH_REMOTE" == "origin" ]] \
 	done
 fi
 
+# 4b. Freshness: a feature-branch push must carry the latest default branch —
+#     a stale branch merges into a codebase it never saw (squash-merge repos
+#     surface this as surprise conflicts or silently regressed files). The
+#     fetch is a single ref and quick; override for intentional stale pushes
+#     with AGENTKIT_ALLOW_STALE_PUSH=1.
+if [[ -z "$PUSH_REMOTE" || "$PUSH_REMOTE" == "origin" ]] \
+	&& [[ "${AGENTKIT_ALLOW_STALE_PUSH:-0}" != "1" ]] \
+	&& echo "$STRIPPED" | grep -qiE "$GIT_PUSH_RE"; then
+	DEFAULT_BRANCH=$(tgit symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's|^origin/||')
+	if [[ -z "$DEFAULT_BRANCH" ]]; then
+		for cand in main master; do
+			if tgit show-ref --verify --quiet "refs/remotes/origin/${cand}"; then
+				DEFAULT_BRANCH="$cand"
+				break
+			fi
+		done
+	fi
+	if [[ -n "$DEFAULT_BRANCH" ]]; then
+		tgit fetch --quiet origin "$DEFAULT_BRANCH" 2>/dev/null || true
+		BEHIND=$(tgit rev-list --count "HEAD..origin/${DEFAULT_BRANCH}" 2>/dev/null || echo 0)
+		if [[ "${BEHIND:-0}" -gt 0 ]]; then
+			deny "BLOCKED: Your branch is ${BEHIND} commit(s) behind origin/${DEFAULT_BRANCH}. Merge the latest default branch before pushing: git fetch origin && git merge origin/${DEFAULT_BRANCH} — resolve any conflicts, re-run the repo's gates, then push. Override: AGENTKIT_ALLOW_STALE_PUSH=1."
+		fi
+	fi
+fi
+
 # Detect `git commit` as a subcommand (not the literal substring "commit"
 # inside a config key like `git config commit.gpgsign`).
 GIT_COMMIT_RE='\bgit([[:space:]]+(-[A-Za-z][^[:space:]]*|--[A-Za-z][A-Za-z0-9-]*(=[^[:space:]]+)?)([[:space:]]+[^-[:space:]][^[:space:]]*)?)*[[:space:]]+commit\b'

@@ -43,7 +43,7 @@ Reusable AI agent skills, rules, plugins, hooks, and tools for OpenCode, Claude 
 
 | Hook                  | Type        | Description                                                                                                              |
 | --------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------ |
-| **git-police.sh**     | PreToolUse  | Blocks force push, --no-verify, Co-authored-by trailers, commits to protected branches                                   |
+| **git-police.sh**     | PreToolUse  | Blocks force push, --no-verify, Co-authored-by trailers, commits to protected branches, stale pushes (feature branch behind the default branch) |
 | **kubectl-police.sh** | PreToolUse  | Blocks kubectl create/apply on Kargo CRDs                                                                                |
 | **format-police.sh**  | PostToolUse | Auto-formats files after edit/write using dprint                                                                         |
 | **coding-police.sh**  | PostToolUse | Enforces DRY code, modular files (<1000 lines), short functions, single responsibility                                   |
