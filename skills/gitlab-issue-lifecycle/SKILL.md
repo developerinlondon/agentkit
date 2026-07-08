@@ -32,9 +32,17 @@ project path from `git remote -v` (see issue-raiser Phase 0) — never hardcode 
 1. **Issue-first.** Every piece of work runs against an issue. Find an existing one or
    create it BEFORE branching. Trivial fixes inside an existing issue's scope ride that
    issue; retroactive filing is a fallback, not the default.
-2. **MRs reference, never auto-close.** Write `Refs #N` in the MR description — never
-   `Closes #N` / `Fixes #N`. The issue stays open through merge and deployment; whoever
-   verifies the fix in the target environment closes it.
+2. **MRs reference, never auto-close.** Write `Refs #N` in the MR description — never a
+   closing keyword. GitLab's default `issue_closing_pattern` auto-closes on merge for the
+   **close / fix / resolve / implement** families and all their inflections:
+   `close(s/d/ing)`, `fix(es/ed/ing)`, `resolve(s/d/ing)`, `implement(s/ed/ing)`. `Implements #N`
+   and `Fixes #N` close the issue exactly like `Closes #N` does — and one closing keyword
+   anywhere in the description wins even if `Refs #N` also appears. The auto-close is baked
+   into the **merge/squash commit message** (via the `%{issues}` template variable), so it
+   fires even when the poller merges via API, not just on UI merge. The issue must stay open
+   through merge and deployment; whoever verifies the fix in the target environment closes it.
+   Audit the whole MR body (and any commit subject that lands on the default branch) for these
+   keywords before opening — "Implements" as an opening verb is the easy one to miss.
 3. **Status current on every touch.** Whenever you act on an issue (start work, open an
    MR, merge, park it), update its work-item status in the same breath — a board that
    lies is worse than no board. See the status map below.
