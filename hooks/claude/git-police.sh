@@ -133,15 +133,28 @@ if [[ -z "$PUSH_REMOTE" || "$PUSH_REMOTE" == "origin" ]] \
 	done
 fi
 
-# 4b. Freshness: a feature-branch push must carry the latest default branch —
-#     a stale branch merges into a codebase it never saw (squash-merge repos
-#     surface this as surprise conflicts or silently regressed files). The
-#     fetch is a single ref and quick; override for intentional stale pushes
-#     with AGENTKIT_ALLOW_STALE_PUSH=1.
+# 4b. Freshness: a feature-branch push must carry the latest integration
+#     branch — a stale branch merges into a codebase it never saw (squash-merge
+#     repos surface this as surprise conflicts or silently regressed files).
+#     The fetch is a single ref and quick. The integration branch defaults to
+#     origin/HEAD; repos whose MRs target another branch (env-branch layouts)
+#     set it once with: git config agentkit.integration-branch <branch>.
+#     The override works from the hook's environment or inline in the command
+#     itself (`AGENTKIT_ALLOW_STALE_PUSH=1 git push …`) — inline assignments
+#     never reach the hook process, so honor them from the text (same
+#     treatment as AGENTKIT_ALLOW_BRANCH_STACKING in rule 7).
+STALE_PUSH_OK="${AGENTKIT_ALLOW_STALE_PUSH:-0}"
+if echo "$COMMAND" | grep -qE '(^|[[:space:];&|])AGENTKIT_ALLOW_STALE_PUSH=1([[:space:];&|]|$)'; then
+	STALE_PUSH_OK=1
+fi
 if [[ -z "$PUSH_REMOTE" || "$PUSH_REMOTE" == "origin" ]] \
-	&& [[ "${AGENTKIT_ALLOW_STALE_PUSH:-0}" != "1" ]] \
+	&& [[ "$STALE_PUSH_OK" != "1" ]] \
 	&& echo "$STRIPPED" | grep -qiE "$GIT_PUSH_RE"; then
-	DEFAULT_BRANCH=$(tgit symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's|^origin/||')
+	INTEGRATION_BRANCH=$(tgit config --get agentkit.integration-branch 2>/dev/null || true)
+	DEFAULT_BRANCH="$INTEGRATION_BRANCH"
+	if [[ -z "$DEFAULT_BRANCH" ]]; then
+		DEFAULT_BRANCH=$(tgit symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's|^origin/||')
+	fi
 	if [[ -z "$DEFAULT_BRANCH" ]]; then
 		for cand in main master; do
 			if tgit show-ref --verify --quiet "refs/remotes/origin/${cand}"; then
@@ -154,7 +167,7 @@ if [[ -z "$PUSH_REMOTE" || "$PUSH_REMOTE" == "origin" ]] \
 		tgit fetch --quiet origin "$DEFAULT_BRANCH" 2>/dev/null || true
 		BEHIND=$(tgit rev-list --count "HEAD..origin/${DEFAULT_BRANCH}" 2>/dev/null || echo 0)
 		if [[ "${BEHIND:-0}" -gt 0 ]]; then
-			deny "BLOCKED: Your branch is ${BEHIND} commit(s) behind origin/${DEFAULT_BRANCH}. Merge the latest default branch before pushing: git fetch origin && git merge origin/${DEFAULT_BRANCH} — resolve any conflicts, re-run the repo's gates, then push. Override: AGENTKIT_ALLOW_STALE_PUSH=1."
+			deny "BLOCKED: Your branch is ${BEHIND} commit(s) behind origin/${DEFAULT_BRANCH}. Merge the latest ${DEFAULT_BRANCH} before pushing: git fetch origin && git merge origin/${DEFAULT_BRANCH} — resolve any conflicts, re-run the repo's gates, then push. Intentional stale push: prefix the command with AGENTKIT_ALLOW_STALE_PUSH=1. MRs targeting a different branch: git config agentkit.integration-branch <branch>."
 		fi
 	fi
 fi
