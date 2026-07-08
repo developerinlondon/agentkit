@@ -14,34 +14,50 @@ supported AI coding tools: OpenCode, Claude Code, and Codex CLI.
 
 Options:
   --global             Install globally (all tools, all projects)
+  --claude-plugin      Global only: install Claude Code bits as the agentkit
+                       plugin (marketplace add + plugin install) INSTEAD of
+                       copying hooks/skills and merging settings.json. The two
+                       modes are mutually exclusive — plugin hooks.json on top
+                       of settings.json hooks would fire every hook twice.
   target-project-dir   Project directory to install into (default: current dir)
 
 Global install locations:
   OpenCode:    ~/.agents/skills/, ~/.agents/plugins/, ~/.agents/rules/
-  Claude Code: ~/.claude/hooks/, ~/.claude/tools/, ~/.claude/settings.json (hooks section merged)
-  Codex CLI:   ~/.codex/rules/
+  Claude Code: ~/.claude/skills/, ~/.claude/hooks/, ~/.claude/tools/,
+               ~/.claude/settings.json (hooks section merged)
+               (--claude-plugin: agentkit plugin via marketplace instead)
+  Codex CLI:   ~/.codex/rules/, ~/.codex/prompts/ (skills as /prompts)
   Prompts:     ~/.agents/instructions/*.md (wired into Codex/Claude/OpenCode)
 
 Project install locations:
   OpenCode:    .opencode/skills/, .opencode/plugins/, .opencode/rules/
-  Claude Code: .claude/hooks/, .claude/tools/, .claude/settings.json (hooks section merged)
+  Claude Code: .claude/skills/, .claude/hooks/, .claude/tools/,
+               .claude/settings.json (hooks section merged)
   Codex CLI:   .codex/rules/
 
 Examples:
   ./install.sh --global               # Install for all tools globally
+  ./install.sh --global --claude-plugin  # Claude Code via plugin, rest as usual
   ./install.sh                        # Install into current project
   ./install.sh ~/code/my-project      # Install into specific project
 USAGE
 	exit 1
 }
 
+CLAUDE_PLUGIN=false
 for arg in "$@"; do
 	case "$arg" in
 	-h | --help) usage ;;
 	--global) GLOBAL=true ;;
+	--claude-plugin) CLAUDE_PLUGIN=true ;;
 	*) TARGET_DIR="$arg" ;;
 	esac
 done
+
+if [[ "$CLAUDE_PLUGIN" == true && "$GLOBAL" != true ]]; then
+	echo "ERROR: --claude-plugin requires --global (plugins are user-level)." >&2
+	exit 1
+fi
 
 # ─── Shared: Skills ──────────────────────────────────────────────────────────
 
@@ -578,6 +594,64 @@ install_codex_policies() {
 	done
 }
 
+# ─── Codex CLI: Skills as Custom Prompts ─────────────────────────────────────
+
+install_codex_skills() {
+	local prompts_dir="$1"
+	mkdir -p "$prompts_dir"
+
+	for skill_dir in "$REPO_DIR"/skills/*/; do
+		local name target
+		name="$(basename "$skill_dir")"
+		[[ -f "$skill_dir/SKILL.md" ]] || continue
+		target="$prompts_dir/$name.md"
+
+		if [[ -f "$target" ]]; then
+			echo "[codex] Updating prompt: $name.md"
+		else
+			echo "[codex] Installing prompt: $name.md"
+		fi
+
+		# Codex prompts are plain markdown invoked as /<name> — strip the
+		# SKILL.md YAML frontmatter, keep the body verbatim.
+		awk 'NR==1 && /^---[[:space:]]*$/ {infm=1; next} infm && /^---[[:space:]]*$/ {infm=0; next} !infm {print}' \
+			"$skill_dir/SKILL.md" >"$target"
+	done
+}
+
+# ─── Claude Code: Plugin-Mode Install ────────────────────────────────────────
+
+install_claude_plugin() {
+	if ! command -v claude &>/dev/null; then
+		echo "[claude] WARNING: claude CLI not found — cannot install the plugin."
+		return 1
+	fi
+
+	echo "[claude] Registering marketplace: $REPO_DIR"
+	claude plugin marketplace add "$REPO_DIR" 2>/dev/null \
+		|| claude plugin marketplace update agentkit
+
+	echo "[claude] Installing plugin: agentkit@agentkit"
+	claude plugin install agentkit@agentkit
+
+	# A leftover manual install would run every hook twice (settings.json +
+	# the plugin's hooks.json) — warn loudly, never edit user settings.
+	local settings_file="$HOME/.claude/settings.json"
+	if [[ -f "$settings_file" ]] && grep -Fq "git-police.sh" "$settings_file"; then
+		echo "[claude] WARNING: manually-installed agentkit hooks found in $settings_file."
+		echo "[claude] Remove that hooks section to avoid double execution alongside the plugin."
+	fi
+	local d
+	for d in "$REPO_DIR"/skills/*/; do
+		if [[ -d "$HOME/.claude/skills/$(basename "$d")" ]]; then
+			echo "[claude] NOTE: manually-installed agentkit skills present in ~/.claude/skills/ — remove them in plugin mode to avoid duplicate listings."
+			break
+		fi
+	done
+
+	echo "[claude] Plugin installed — restart Claude Code to load it."
+}
+
 # ─── User Config (~/.config/agentkit/) ───────────────────────────────────────
 
 install_config() {
@@ -632,18 +706,33 @@ if [[ "$GLOBAL" == true ]]; then
 	# ── Claude Code ──
 	CLAUDE_HOOKS="$HOME/.claude/hooks"
 	CLAUDE_TOOLS="$HOME/.claude/tools"
+	CLAUDE_SKILLS="$HOME/.claude/skills"
 	CLAUDE_SETTINGS="$HOME/.claude/settings.json"
-	echo "--- Claude Code (bash hooks) ---"
-	install_claude_hooks "$CLAUDE_HOOKS" "$CLAUDE_SETTINGS"
-	echo ""
+	if [[ "$CLAUDE_PLUGIN" == true ]] && install_claude_plugin; then
+		CLAUDE_MODE="plugin (agentkit@agentkit)"
+		echo ""
+	else
+		[[ "$CLAUDE_PLUGIN" == true ]] && echo "[claude] Falling back to manual install."
+		CLAUDE_MODE="manual ($CLAUDE_HOOKS, hooks in $CLAUDE_SETTINGS)"
+		echo "--- Claude Code (bash hooks) ---"
+		install_claude_hooks "$CLAUDE_HOOKS" "$CLAUDE_SETTINGS"
+		echo ""
+		echo "--- Claude Code (skills) ---"
+		install_skills "$CLAUDE_SKILLS"
+		echo ""
+	fi
 	echo "--- Standalone tools ---"
 	install_tools "$CLAUDE_TOOLS"
 	echo ""
 
 	# ── Codex CLI ──
 	CODEX_RULES="$HOME/.codex/rules"
+	CODEX_PROMPTS="$HOME/.codex/prompts"
 	echo "--- Codex CLI (Starlark policies) ---"
 	install_codex_policies "$CODEX_RULES"
+	echo ""
+	echo "--- Codex CLI (skills as prompts) ---"
+	install_codex_skills "$CODEX_PROMPTS"
 	echo ""
 
 	# ── Summary ──
@@ -651,12 +740,12 @@ if [[ "$GLOBAL" == true ]]; then
 	echo ""
 	echo "  Config:          ${XDG_CONFIG_HOME:-$HOME/.config}/agentkit/config.yaml"
 	echo "  Prompts:         $HOME/.agents/instructions/*.md"
-	echo "  Skills:          $SKILLS_DEST/"
+	echo "  Skills:          $SKILLS_DEST/ (OpenCode), $CLAUDE_SKILLS/ (Claude Code)"
 	echo "  Rules:           $RULES_DEST/"
 	echo "  OpenCode:        $OPENCODE_PLUGINS/ (add file:// entries to opencode config)"
-	echo "  Claude Code:     $CLAUDE_HOOKS/ (hooks in $CLAUDE_SETTINGS)"
+	echo "  Claude Code:     $CLAUDE_MODE"
 	echo "  Tools:           $CLAUDE_TOOLS/"
-	echo "  Codex CLI:       $CODEX_RULES/ (auto-loaded at startup)"
+	echo "  Codex CLI:       $CODEX_RULES/ (auto-loaded), $CODEX_PROMPTS/ (/name prompts)"
 
 # ─── Main: Project Install ───────────────────────────────────────────────────
 
@@ -688,9 +777,13 @@ else
 	# ── Claude Code ──
 	CLAUDE_HOOKS="$TARGET_DIR/.claude/hooks"
 	CLAUDE_TOOLS="$TARGET_DIR/.claude/tools"
+	CLAUDE_SKILLS="$TARGET_DIR/.claude/skills"
 	CLAUDE_SETTINGS="$TARGET_DIR/.claude/settings.json"
 	echo "--- Claude Code (bash hooks) ---"
 	install_claude_hooks "$CLAUDE_HOOKS" "$CLAUDE_SETTINGS"
+	echo ""
+	echo "--- Claude Code (skills) ---"
+	install_skills "$CLAUDE_SKILLS"
 	echo ""
 	echo "--- Standalone tools ---"
 	install_tools "$CLAUDE_TOOLS"
@@ -705,7 +798,7 @@ else
 	# ── Summary ──
 	echo "Done. Installed into $TARGET_DIR for all tools:"
 	echo ""
-	echo "  Skills:      $SKILLS_DEST/"
+	echo "  Skills:      $SKILLS_DEST/ (OpenCode), $CLAUDE_SKILLS/ (Claude Code)"
 	echo "  Rules:       $RULES_DEST/"
 	echo "  OpenCode:    $OPENCODE_PLUGINS/"
 	echo "  Claude Code: $CLAUDE_HOOKS/ (hooks in $CLAUDE_SETTINGS)"
@@ -714,6 +807,7 @@ else
 	echo ""
 	echo "Verify with:"
 	echo "  ls $SKILLS_DEST/"
+	echo "  ls $CLAUDE_SKILLS/"
 	echo "  ls $OPENCODE_PLUGINS/"
 	echo "  ls $CLAUDE_HOOKS/"
 	echo "  ls $CLAUDE_TOOLS/"
