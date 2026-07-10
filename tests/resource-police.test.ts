@@ -112,7 +112,28 @@ describe('Codex resource policy', () => {
       expect(contents).toContain(`pattern = ["${command}"`);
     }
     expect(contents.match(/decision = "forbidden"/g)?.length ?? 0).toBeGreaterThanOrEqual(8);
-    expect(contents).not.toContain('pattern = ["tsc"],');
-    expect(contents).toContain('pattern = ["tsc", ["--noEmit", "-b", "--build"]]');
+    expect(contents).toContain('pattern = ["tsc"]');
+  });
+
+  test('evaluates the direct-command policy matrix when Codex is installed', () => {
+    if (spawnSync('codex', ['execpolicy', '--help']).status !== 0) return;
+
+    const decisions = new Map<string[], string>([
+      [['tsc', '-p', 'tsconfig.json'], 'forbidden'],
+      [['bunx', 'tsc', '-p', 'tsconfig.json'], 'forbidden'],
+      [['bun', 'run', 'typecheck:ci'], 'forbidden'],
+      [['docker', 'run', '--rm', 'builder'], 'forbidden'],
+      [['ssh', 'build-host', 'bun', 'test'], 'forbidden'],
+      [['systemd-run', '--user', 'cargo', 'test'], 'forbidden'],
+      [['agentkit-run', '--profile', 'compile', '--', 'bun', 'run', 'build'], 'allow'],
+    ]);
+
+    for (const [command, expected] of decisions) {
+      const result = spawnSync('codex', ['execpolicy', 'check', '--rules', policy, ...command], {
+        encoding: 'utf-8',
+      });
+      expect(result.status, result.stderr).toBe(0);
+      expect(JSON.parse(result.stdout).decision, command.join(' ')).toBe(expected);
+    }
   });
 });

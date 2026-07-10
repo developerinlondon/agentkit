@@ -14,31 +14,31 @@ prefix_rule(
 )
 
 prefix_rule(
-    pattern = ["bun", "run", ["build", "check", "typecheck", "type-check", "lint", "test", "test:e2e"]],
+    pattern = ["bun", "run"],
     decision = "forbidden",
     justification = "Run build, check, lint, and test scripts with agentkit-run.",
 )
 
 prefix_rule(
-    pattern = ["bunx", "tsc", ["--noEmit", "-b", "--build"]],
+    pattern = ["bunx", "tsc"],
     decision = "forbidden",
     justification = "Run the TypeScript compiler with agentkit-run --profile compile.",
 )
 
 prefix_rule(
-    pattern = ["bunx", "playwright", "test"],
+    pattern = ["bunx", "playwright"],
     decision = "forbidden",
     justification = "Run Playwright with agentkit-run --profile browser.",
 )
 
 prefix_rule(
-    pattern = ["tsc", ["--noEmit", "-b", "--build"]],
+    pattern = ["tsc"],
     decision = "forbidden",
     justification = "Run the TypeScript compiler with agentkit-run --profile compile.",
 )
 
 prefix_rule(
-    pattern = ["playwright", "test"],
+    pattern = ["playwright"],
     decision = "forbidden",
     justification = "Run Playwright with agentkit-run --profile browser.",
 )
@@ -56,13 +56,13 @@ prefix_rule(
 )
 
 prefix_rule(
-    pattern = ["docker", "build"],
+    pattern = ["docker"],
     decision = "forbidden",
     justification = "Container builds delegate to an engine outside agentkit-run. Use a separately approved dedicated runner or verified engine-native limits.",
 )
 
 prefix_rule(
-    pattern = ["podman", "build"],
+    pattern = ["podman"],
     decision = "forbidden",
     justification = "Container builds may delegate outside agentkit-run. Use a separately approved dedicated runner or verified engine-native limits.",
 )
@@ -71,6 +71,24 @@ prefix_rule(
     pattern = ["systemd-run"],
     decision = "forbidden",
     justification = "Direct systemd-run can create a sibling cgroup outside the mandatory agentkit-run boundary.",
+)
+
+prefix_rule(
+    pattern = ["run0"],
+    decision = "forbidden",
+    justification = "run0 delegates to systemd-run outside the mandatory agentkit-run boundary.",
+)
+
+prefix_rule(
+    pattern = ["ssh"],
+    decision = "forbidden",
+    justification = "Remote workloads are outside the local agentkit-run resource boundary.",
+)
+
+prefix_rule(
+    pattern = ["sudo"],
+    decision = "forbidden",
+    justification = "Privilege wrappers are not allowed inside the agentkit-run containment workflow.",
 )
 
 prefix_rule(

@@ -22,7 +22,7 @@ Options:
   target-project-dir   Project directory to install into (default: current dir)
 
 Global install locations:
-  OpenCode:    ~/.agents/skills/, ~/.agents/plugins/, ~/.agents/rules/
+  OpenCode:    ~/.agents/skills/, ~/.config/opencode/plugins/, ~/.agents/rules/
   Claude Code: ~/.claude/skills/, ~/.claude/hooks/, ~/.claude/tools/,
                ~/.claude/settings.json (hooks section merged)
                (--claude-plugin: agentkit plugin via marketplace instead)
@@ -407,27 +407,6 @@ install_opencode_plugins() {
 	done
 }
 
-print_opencode_plugin_instructions() {
-	local plugins_dir="$1"
-	local config_dir="$HOME/.config/opencode"
-
-	echo ""
-	echo "[opencode] To use global plugins, add file:// entries to your opencode config plugin array:"
-	echo ""
-	for plugin_file in "$plugins_dir"/*.ts; do
-		[[ -f "$plugin_file" ]] || continue
-		echo "  \"file://$plugin_file\""
-	done
-
-	if [[ -f "$config_dir/opencode.jsonc" ]]; then
-		echo ""
-		echo "[opencode] Config: $config_dir/opencode.jsonc"
-	elif [[ -f "$config_dir/opencode.json" ]]; then
-		echo ""
-		echo "[opencode] Config: $config_dir/opencode.json"
-	fi
-}
-
 # ─── Claude Code: Bash Hook Scripts ──────────────────────────────────────────
 
 install_claude_hooks() {
@@ -705,10 +684,9 @@ if [[ "$GLOBAL" == true ]]; then
 	echo ""
 
 	# ── OpenCode ──
-	OPENCODE_PLUGINS="$HOME/.agents/plugins"
+	OPENCODE_PLUGINS="$HOME/.config/opencode/plugins"
 	echo "--- OpenCode (TypeScript plugins) ---"
 	install_opencode_plugins "$OPENCODE_PLUGINS"
-	print_opencode_plugin_instructions "$OPENCODE_PLUGINS"
 	echo ""
 
 	# ── Claude Code ──
@@ -752,7 +730,7 @@ if [[ "$GLOBAL" == true ]]; then
 	echo "  Prompts:         $HOME/.agents/instructions/*.md"
 	echo "  Skills:          $SKILLS_DEST/ (OpenCode), $CLAUDE_SKILLS/ (Claude Code)"
 	echo "  Rules:           $RULES_DEST/"
-	echo "  OpenCode:        $OPENCODE_PLUGINS/ (add file:// entries to opencode config)"
+	echo "  OpenCode:        $OPENCODE_PLUGINS/ (auto-loaded)"
 	echo "  Claude Code:     $CLAUDE_MODE"
 	echo "  PATH tools:      $PATH_TOOLS/"
 	echo "  Claude tools:    $CLAUDE_TOOLS/"

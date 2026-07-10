@@ -1,8 +1,8 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-plugin.json",
   "name": "agentkit",
-  "version": "0.1.0",
-  "description": "Everything agentkit ships for Claude Code in one install: enforcement hooks, skills, and the assay + infra-tools MCP toolchains. The assay toolchain requires the `assay` binary on PATH; the infra-tools MCP server needs `bun` on PATH.",
+  "version": "0.2.0",
+  "description": "Claude Code bundle with enforcement hooks, skills, a bounded runner, and the assay + infra-tools MCP toolchains. Requires jq, bun, assay, cgroup v2, a systemd user manager, and a provisioned agent-work.slice.",
   "author": {
     "name": "developerinlondon",
     "url": "https://github.com/developerinlondon"

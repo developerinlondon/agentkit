@@ -36,6 +36,10 @@ agentkit-run --profile browser -- bunx playwright test
 agentkit-run --profile default -- cargo test
 ```
 
+For a project-only AgentKit install, invoke `./.claude/tools/agentkit-run`. The one-shot Claude
+plugin bundles the runner and its denial message prints the resolved plugin-cache path. A global
+install places `agentkit-run` in `~/.local/bin`.
+
 The runner preserves argv and the current directory, but exposes only a curated environment.
 Retrieve credentials at runtime through the project's approved secrets mechanism; never put secrets
 in argv.
@@ -56,6 +60,12 @@ approval.
 Do not wrap `docker`, `podman`, or `systemd-run`. They can delegate work into a daemon, container,
 or sibling service outside the transient cgroup. Use a separately approved dedicated runner or
 verified engine-native limits for delegated workloads.
+
+PreToolUse hooks and Codex prefix rules catch common accidental bypasses, but they are
+defense-in-depth rather than a sandbox for hostile scripts. A script can deliberately contact a
+daemon or user-systemd socket after launch. Preserve the host-level service limits and reserved
+capacity that protect the agent host, ingress, and tunnels even if a child evades the workload
+slice.
 
 ## Preserve connectivity
 

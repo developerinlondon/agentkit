@@ -16,6 +16,10 @@ browser automation, code generation, Cargo, Go, and pytest.
 - Never use `agentkit-run` for delegated workloads such as `docker`, `podman`, `systemd-run`, remote
   execution, or container execution. The child work can escape its cgroup. Use a separately approved
   dedicated runner or verified native limits.
+- Treat shell hooks and Codex prefix policies as defense-in-depth detection, not a hostile-code
+  sandbox. Arbitrary scripts can deliberately delegate through APIs or sockets. The deterministic
+  connectivity boundary combines `agentkit-run` and its aggregate slice with
+  host service resource limits that reserve capacity for the agent host and ingress path.
 - Do not restart or reconfigure live services, Cloudflare tunnels, ingress, Kubernetes, networking,
   or remote access as part of a dependency or build workflow. Handle production infrastructure as a
   separately approved change with explicit rollback.
