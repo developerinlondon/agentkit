@@ -27,6 +27,7 @@ Global install locations:
                ~/.claude/settings.json (hooks section merged)
                (--claude-plugin: agentkit plugin via marketplace instead)
   Codex CLI:   ~/.codex/rules/, ~/.codex/prompts/ (skills as /prompts)
+  Executables: ~/.local/bin/ (also mirrored to ~/.claude/tools/)
   Prompts:     ~/.agents/instructions/*.md (wired into Codex/Claude/OpenCode)
 
 Project install locations:
@@ -472,6 +473,7 @@ merge_claude_settings() {
 		--arg git_police "$hooks_dir/git-police.sh" \
 		--arg kubectl_police "$hooks_dir/kubectl-police.sh" \
 		--arg pkg_police "$hooks_dir/pkg-police.sh" \
+		--arg resource_police "$hooks_dir/resource-police.sh" \
 		--arg mr_police "$hooks_dir/mr-police.sh" \
 		--arg format_police "$hooks_dir/format-police.sh" \
 		--arg coding_police "$hooks_dir/coding-police.sh" \
@@ -498,6 +500,12 @@ merge_claude_settings() {
                 command: $pkg_police,
                 timeout: 10,
                 statusMessage: "pkg-police: enforcing bun..."
+              },
+              {
+                type: "command",
+                command: $resource_police,
+                timeout: 10,
+                statusMessage: "resource-police: requiring bounded execution..."
               },
               {
                 type: "command",
@@ -706,6 +714,7 @@ if [[ "$GLOBAL" == true ]]; then
 	# ── Claude Code ──
 	CLAUDE_HOOKS="$HOME/.claude/hooks"
 	CLAUDE_TOOLS="$HOME/.claude/tools"
+	PATH_TOOLS="$HOME/.local/bin"
 	CLAUDE_SKILLS="$HOME/.claude/skills"
 	CLAUDE_SETTINGS="$HOME/.claude/settings.json"
 	if [[ "$CLAUDE_PLUGIN" == true ]] && install_claude_plugin; then
@@ -722,6 +731,7 @@ if [[ "$GLOBAL" == true ]]; then
 		echo ""
 	fi
 	echo "--- Standalone tools ---"
+	install_tools "$PATH_TOOLS"
 	install_tools "$CLAUDE_TOOLS"
 	echo ""
 
@@ -744,7 +754,8 @@ if [[ "$GLOBAL" == true ]]; then
 	echo "  Rules:           $RULES_DEST/"
 	echo "  OpenCode:        $OPENCODE_PLUGINS/ (add file:// entries to opencode config)"
 	echo "  Claude Code:     $CLAUDE_MODE"
-	echo "  Tools:           $CLAUDE_TOOLS/"
+	echo "  PATH tools:      $PATH_TOOLS/"
+	echo "  Claude tools:    $CLAUDE_TOOLS/"
 	echo "  Codex CLI:       $CODEX_RULES/ (auto-loaded), $CODEX_PROMPTS/ (/name prompts)"
 
 # ─── Main: Project Install ───────────────────────────────────────────────────

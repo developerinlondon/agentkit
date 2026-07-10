@@ -42,7 +42,13 @@ describe('Claude Code hook wiring', () => {
       expect(preToolUse).toHaveLength(1);
       expect(preToolUse[0].matcher).toBe('Bash');
       expect(commandNames(preToolUse[0].hooks).sort()).toEqual(
-        ['git-police.sh', 'kubectl-police.sh', 'mr-police.sh', 'pkg-police.sh'].sort(),
+        [
+          'git-police.sh',
+          'kubectl-police.sh',
+          'mr-police.sh',
+          'pkg-police.sh',
+          'resource-police.sh',
+        ].sort(),
       );
 
       const postToolUse = settings.hooks.PostToolUse;

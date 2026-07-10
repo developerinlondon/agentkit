@@ -8,14 +8,15 @@ Reusable AI agent skills, rules, plugins, hooks, and tools for OpenCode, Claude 
 
 ### Skills (SKILL.md -- works everywhere via skills.sh)
 
-| Skill                   | Description                                                                              |
-| ----------------------- | ---------------------------------------------------------------------------------------- |
-| **gitops-master**       | GitOps operations for ArgoCD + Kargo: diagnose, verify, promote, setup                   |
-| **autonomous-workflow** | Proposal-first development, commit hygiene, decision authority                           |
-| **code-quality**        | Warnings-as-errors, no underscore prefixes, test coverage                                |
-| **documentation**       | Surface-aware diagrams (Mermaid / ASCII), structured plan format, formatting rules       |
-| **issue-raiser**        | GitLab issue creation with root cause analysis and git-history-based assignees           |
-| **project-planning**    | Structured project planning: break down ideas into architecture, file structure, roadmap |
+| Skill                       | Description                                                                              |
+| --------------------------- | ---------------------------------------------------------------------------------------- |
+| **gitops-master**           | GitOps operations for ArgoCD + Kargo: diagnose, verify, promote, setup                   |
+| **autonomous-workflow**     | Proposal-first development, commit hygiene, decision authority                           |
+| **code-quality**            | Warnings-as-errors, no underscore prefixes, test coverage                                |
+| **documentation**           | Surface-aware diagrams (Mermaid / ASCII), structured plan format, formatting rules       |
+| **issue-raiser**            | GitLab issue creation with root cause analysis and git-history-based assignees           |
+| **project-planning**        | Structured project planning: break down ideas into architecture, file structure, roadmap |
+| **resource-safe-execution** | Runs heavy developer commands inside deterministic systemd resource limits               |
 
 ### Rules (auto-loaded by file glob match)
 
@@ -29,36 +30,39 @@ Reusable AI agent skills, rules, plugins, hooks, and tools for OpenCode, Claude 
 
 ### Plugins (OpenCode only -- runtime hooks)
 
-| Plugin                | Description                                                                                                              |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| **version-police.ts** | Blocks writing dependency pins that are a major version behind the live registry (stale training-data pins)              |
-| **format-police.ts**  | Auto-formats files on write using dprint                                                                                 |
-| **kubectl-police.ts** | Blocks kubectl create/apply for Kargo CRDs (unconditionally)                                                             |
-| **git-police.ts**     | Blocks commits to main/master, force push, --no-verify, AI attribution, push to protected branches                       |
-| **coding-police.ts**  | Enforces DRY code, modular files (<1000 lines), short functions, and single responsibility                               |
-| **comment-police.ts** | Warns on long comment blocks, tutorial-style file headers, PR/plan/closes-#N references, and high comment-to-code ratios |
-| **pkg-police.ts**     | Enforces bun as package manager — blocks npm, npx, yarn, pnpm commands                                                   |
+| Plugin                 | Description                                                                                                              |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| **version-police.ts**  | Blocks writing dependency pins that are a major version behind the live registry (stale training-data pins)              |
+| **format-police.ts**   | Auto-formats files on write using dprint                                                                                 |
+| **kubectl-police.ts**  | Blocks kubectl create/apply for Kargo CRDs (unconditionally)                                                             |
+| **git-police.ts**      | Blocks commits to main/master, force push, --no-verify, AI attribution, push to protected branches                       |
+| **coding-police.ts**   | Enforces DRY code, modular files (<1000 lines), short functions, and single responsibility                               |
+| **comment-police.ts**  | Warns on long comment blocks, tutorial-style file headers, PR/plan/closes-#N references, and high comment-to-code ratios |
+| **pkg-police.ts**      | Enforces bun as package manager — blocks npm, npx, yarn, pnpm commands                                                   |
+| **resource-police.ts** | Requires bounded execution for heavy commands and blocks cgroup delegation escapes                                       |
 
 ### Hooks (Claude Code -- PreToolUse / PostToolUse)
 
-| Hook                  | Type        | Description                                                                                                              |
-| --------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------ |
-| **git-police.sh**     | PreToolUse  | Blocks force push, --no-verify, Co-authored-by trailers, commits to protected branches, stale pushes (feature branch behind the default branch) |
-| **kubectl-police.sh** | PreToolUse  | Blocks kubectl create/apply on Kargo CRDs                                                                                |
-| **format-police.sh**  | PostToolUse | Auto-formats files after edit/write using dprint                                                                         |
-| **coding-police.sh**  | PostToolUse | Enforces DRY code, modular files (<1000 lines), short functions, single responsibility                                   |
-| **pkg-police.sh**     | PreToolUse  | Enforces bun as package manager — blocks npm, npx, yarn, pnpm commands                                                   |
-| **chime.sh**          | Notification/Stop | Audible nudge when Claude needs you: springy boing on permission prompts/questions, soft ping when a turn finishes. Mute: `touch ~/.claude/.chime-off` or `CLAUDE_CHIME=0` |
-| **mr-police.sh**      | PreToolUse  | Blocks opening a new MR while you already have an open MR you authored on the repo — stops unmerged MRs from stacking up |
+| Hook                   | Type              | Description                                                                                                                                                                |
+| ---------------------- | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **git-police.sh**      | PreToolUse        | Blocks force push, --no-verify, Co-authored-by trailers, commits to protected branches, stale pushes (feature branch behind the default branch)                            |
+| **kubectl-police.sh**  | PreToolUse        | Blocks kubectl create/apply on Kargo CRDs                                                                                                                                  |
+| **format-police.sh**   | PostToolUse       | Auto-formats files after edit/write using dprint                                                                                                                           |
+| **coding-police.sh**   | PostToolUse       | Enforces DRY code, modular files (<1000 lines), short functions, single responsibility                                                                                     |
+| **pkg-police.sh**      | PreToolUse        | Enforces bun as package manager — blocks npm, npx, yarn, pnpm commands                                                                                                     |
+| **resource-police.sh** | PreToolUse        | Requires `agentkit-run` for heavy commands and blocks cgroup delegation escapes                                                                                            |
+| **chime.sh**           | Notification/Stop | Audible nudge when Claude needs you: springy boing on permission prompts/questions, soft ping when a turn finishes. Mute: `touch ~/.claude/.chime-off` or `CLAUDE_CHIME=0` |
+| **mr-police.sh**       | PreToolUse        | Blocks opening a new MR while you already have an open MR you authored on the repo — stops unmerged MRs from stacking up                                                   |
 
 ### Policies (Codex CLI -- exec policy)
 
-| Policy                   | Description                                                                                |
-| ------------------------ | ------------------------------------------------------------------------------------------ |
-| **git-police.rules**     | Blocks force push, --no-verify, direct push to protected branches                          |
-| **kubectl-police.rules** | Blocks kubectl create/apply on Kargo CRDs                                                  |
-| **coding-police.rules**  | Coding standards guidance + prompts on heredoc/tee writes that may produce oversized files |
-| **pkg-police.rules**     | Enforces bun as package manager — blocks npm, npx, yarn, pnpm commands                     |
+| Policy                    | Description                                                                                |
+| ------------------------- | ------------------------------------------------------------------------------------------ |
+| **git-police.rules**      | Blocks force push, --no-verify, direct push to protected branches                          |
+| **kubectl-police.rules**  | Blocks kubectl create/apply on Kargo CRDs                                                  |
+| **coding-police.rules**   | Coding standards guidance + prompts on heredoc/tee writes that may produce oversized files |
+| **pkg-police.rules**      | Enforces bun as package manager — blocks npm, npx, yarn, pnpm commands                     |
+| **resource-police.rules** | Blocks direct heavy commands and service or container delegation escape paths              |
 
 ### Instructions (global agent prompts wired into Claude / Codex / OpenCode)
 
@@ -67,6 +71,7 @@ Reusable AI agent skills, rules, plugins, hooks, and tools for OpenCode, Claude 
 | **anti-glaze.md**               | Tone and reasoning layer: precise, direct, no sycophancy, explicit confidence levels                |
 | **coding-discipline.md**        | 11-rule behavioral contract for code work (think first, simplicity, surgical changes, fail loud, …) |
 | **collaboration-visibility.md** | Progress updates, checkpoint summaries, and compact ASCII diagrams for multi-step work              |
+| **resource-safety.md**          | Mandatory bounded execution and live-connectivity preservation rules                                |
 
 ### Claude Code plugins (marketplace)
 
@@ -90,16 +95,17 @@ claude plugin install infra-tools
 
 | Plugin          | Provides                                                                                                                                                                                                                                                                                                 | Source                                                                                        |
 | --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| **agentkit**    | One-shot install of everything agentkit ships for Claude Code: the enforcement police hooks (git / mr / format / coding / kubectl / pkg), the skills, and both MCP toolchains (bundles the assay declaration + a copy of the infra-tools server). Needs the `assay` binary and `bun` on PATH.            | local `plugins-cc/agentkit/`                                                                  |
+| **agentkit**    | One-shot install of everything agentkit ships for Claude Code: the enforcement police hooks (git / mr / format / coding / kubectl / pkg / resource), the skills, and both MCP toolchains (bundles the assay declaration + a copy of the infra-tools server). Needs the `assay` binary and `bun` on PATH. | local `plugins-cc/agentkit/`                                                                  |
 | **assay**       | Gated Lua infra toolkit (`assay_run` + `assay_context`) — Kubernetes, ArgoCD, Vault, Prometheus, GitLab, AWS, … through one read-only/approval-gated tool. Requires the `assay` binary on PATH.                                                                                                          | vendored from [developerinlondon/assay](https://github.com/developerinlondon/assay) `plugin/` |
 | **infra-tools** | Read-only helm / tofu / git tools (`helm_template`/`helm_list`/`helm_get_values`, `tofu_plan`/`tofu_show`/`tofu_state_list`, `git_log`/`git_diff`/`git_status`/`git_clone_ro`) as a typed MCP server — render charts, preview plans, read git history. Never applies or mutates. Requires `bun` on PATH. | local `plugins-cc/infra-tools/`                                                               |
 
 **Not in the plugin: the always-on rules and instructions.** Claude Code plugins cannot inject
 always-on global context, so the glob-loaded `rules/` and the `instructions/*.md` global prompts
-(anti-glaze, coding-discipline, collaboration-visibility) are **out of scope for the plugin** and
+(anti-glaze, coding-discipline, collaboration-visibility, resource-safety) are **out of scope for the plugin** and
 are still wired into `~/.claude/CLAUDE.md`, Codex, and OpenCode by `install.sh`. Their
 **enforcement**, however, _is_ bundled: the police hooks (`git-police`, `mr-police`,
-`format-police`, `coding-police`, `kubectl-police`, `pkg-police`) run as PreToolUse / PostToolUse
+`format-police`, `coding-police`, `kubectl-police`, `pkg-police`, `resource-police`) run as
+PreToolUse / PostToolUse
 hooks inside the `agentkit` plugin, so the mechanical guarantees hold even without the global
 instruction text.
 
@@ -121,7 +127,8 @@ git clone git@github.com:developerinlondon/agentkit.git
 ```
 
 Installs skills to `~/.agents/skills/`, rules to `~/.agents/rules/`, plugins to
-`~/.agents/plugins/`, tools to `~/.claude/tools/`, and every `instructions/*.md` prompt to
+`~/.agents/plugins/`, executable tools to `~/.local/bin/` with a Claude mirror in
+`~/.claude/tools/`, and every `instructions/*.md` prompt to
 `~/.agents/instructions/`. The global installer wires every instruction file into Codex
 (`~/.codex/config.toml` — concatenated into `developer_instructions`), Claude Code
 (`~/.claude/CLAUDE.md` — one markered block per file), and OpenCode
@@ -147,11 +154,28 @@ cp rules/credential-bootstrap.md your-project/.opencode/rules/
 cp plugins/version-police.ts your-project/.opencode/plugins/
 ```
 
-### Tools (standalone scripts installed to ~/.claude/tools/)
+### Tools
+
+Global installs place tools on `~/.local/bin/` and preserve a mirror in `~/.claude/tools/`.
 
 | Tool                   | Description                                                                          |
 | ---------------------- | ------------------------------------------------------------------------------------ |
+| **agentkit-run**       | Runs one direct-argv workload in the bounded `agent-work.slice` systemd user service |
 | **fix-ascii-boxes.py** | Fixes ASCII box-drawing alignment in markdown files, handles nested boxes inside-out |
+
+`agentkit-run` fails closed unless the aggregate slice has 20G/24G memory high/max, 800% CPU,
+1536 tasks, cgroup v2 is available, and host headroom checks pass. Its profiles are fixed and
+tested together with the host configuration:
+
+| Profile   | Memory high/max | CPU | Tasks | Command timeout |
+| --------- | --------------- | --- | ----- | --------------- |
+| `canary`  | 1G / 2G         | 2   | 64    | 60s             |
+| `default` | 6G / 8G         | 2   | 256   | 10m             |
+| `compile` | 8G / 12G        | 4   | 512   | 15m             |
+| `browser` | 12G / 16G       | 4   | 1024  | 20m             |
+
+Container engines, direct `systemd-run`, and remote execution are not supported containment
+targets because they can delegate work outside the transient cgroup.
 
 ## Configuration
 

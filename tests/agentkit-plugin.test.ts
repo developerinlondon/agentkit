@@ -17,7 +17,13 @@ const pluginDir = join(repoRoot, 'plugins-cc', 'agentkit');
 // must re-wire under ${CLAUDE_PLUGIN_ROOT}. There is no comment-police.sh: the
 // comment-police police ships only as an OpenCode plugin (plugins/comment-police.ts),
 // so it is intentionally absent from both settings.json and this plugin.
-const PRE_TOOL_USE_HOOKS = ['git-police.sh', 'kubectl-police.sh', 'pkg-police.sh', 'mr-police.sh'];
+const PRE_TOOL_USE_HOOKS = [
+  'git-police.sh',
+  'kubectl-police.sh',
+  'pkg-police.sh',
+  'mr-police.sh',
+  'resource-police.sh',
+];
 const POST_TOOL_USE_HOOKS = ['format-police.sh', 'coding-police.sh'];
 const ALL_POLICE_HOOKS = [...PRE_TOOL_USE_HOOKS, ...POST_TOOL_USE_HOOKS];
 
@@ -102,6 +108,7 @@ describe('agentkit plugin skills', () => {
       'gitops-master',
       'issue-raiser',
       'project-planning',
+      'resource-safe-execution',
       'test-driven-development',
     ];
     for (const skill of expectedSkills) {

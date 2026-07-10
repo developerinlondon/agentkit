@@ -24,6 +24,12 @@
           },
           {
             "type": "command",
+            "command": "$HOME/.claude/hooks/resource-police.sh",
+            "timeout": 10,
+            "statusMessage": "resource-police: requiring bounded execution..."
+          },
+          {
+            "type": "command",
             "command": "$HOME/.claude/hooks/mr-police.sh",
             "timeout": 15,
             "statusMessage": "mr-police: checking for unmerged MRs..."
