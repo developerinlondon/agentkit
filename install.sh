@@ -22,11 +22,12 @@ Options:
   target-project-dir   Project directory to install into (default: current dir)
 
 Global install locations:
-  OpenCode:    ~/.agents/skills/, ~/.agents/plugins/, ~/.agents/rules/
+  OpenCode:    ~/.agents/skills/, ~/.config/opencode/plugins/, ~/.agents/rules/
   Claude Code: ~/.claude/skills/, ~/.claude/hooks/, ~/.claude/tools/,
                ~/.claude/settings.json (hooks section merged)
                (--claude-plugin: agentkit plugin via marketplace instead)
   Codex CLI:   ~/.codex/rules/, ~/.codex/prompts/ (skills as /prompts)
+  Executables: ~/.local/bin/ (also mirrored to ~/.claude/tools/)
   Prompts:     ~/.agents/instructions/*.md (wired into Codex/Claude/OpenCode)
 
 Project install locations:
@@ -406,27 +407,6 @@ install_opencode_plugins() {
 	done
 }
 
-print_opencode_plugin_instructions() {
-	local plugins_dir="$1"
-	local config_dir="$HOME/.config/opencode"
-
-	echo ""
-	echo "[opencode] To use global plugins, add file:// entries to your opencode config plugin array:"
-	echo ""
-	for plugin_file in "$plugins_dir"/*.ts; do
-		[[ -f "$plugin_file" ]] || continue
-		echo "  \"file://$plugin_file\""
-	done
-
-	if [[ -f "$config_dir/opencode.jsonc" ]]; then
-		echo ""
-		echo "[opencode] Config: $config_dir/opencode.jsonc"
-	elif [[ -f "$config_dir/opencode.json" ]]; then
-		echo ""
-		echo "[opencode] Config: $config_dir/opencode.json"
-	fi
-}
-
 # ─── Claude Code: Bash Hook Scripts ──────────────────────────────────────────
 
 install_claude_hooks() {
@@ -472,6 +452,7 @@ merge_claude_settings() {
 		--arg git_police "$hooks_dir/git-police.sh" \
 		--arg kubectl_police "$hooks_dir/kubectl-police.sh" \
 		--arg pkg_police "$hooks_dir/pkg-police.sh" \
+		--arg resource_police "$hooks_dir/resource-police.sh" \
 		--arg mr_police "$hooks_dir/mr-police.sh" \
 		--arg format_police "$hooks_dir/format-police.sh" \
 		--arg coding_police "$hooks_dir/coding-police.sh" \
@@ -498,6 +479,12 @@ merge_claude_settings() {
                 command: $pkg_police,
                 timeout: 10,
                 statusMessage: "pkg-police: enforcing bun..."
+              },
+              {
+                type: "command",
+                command: $resource_police,
+                timeout: 10,
+                statusMessage: "resource-police: requiring bounded execution..."
               },
               {
                 type: "command",
@@ -697,15 +684,15 @@ if [[ "$GLOBAL" == true ]]; then
 	echo ""
 
 	# ── OpenCode ──
-	OPENCODE_PLUGINS="$HOME/.agents/plugins"
+	OPENCODE_PLUGINS="$HOME/.config/opencode/plugins"
 	echo "--- OpenCode (TypeScript plugins) ---"
 	install_opencode_plugins "$OPENCODE_PLUGINS"
-	print_opencode_plugin_instructions "$OPENCODE_PLUGINS"
 	echo ""
 
 	# ── Claude Code ──
 	CLAUDE_HOOKS="$HOME/.claude/hooks"
 	CLAUDE_TOOLS="$HOME/.claude/tools"
+	PATH_TOOLS="$HOME/.local/bin"
 	CLAUDE_SKILLS="$HOME/.claude/skills"
 	CLAUDE_SETTINGS="$HOME/.claude/settings.json"
 	if [[ "$CLAUDE_PLUGIN" == true ]] && install_claude_plugin; then
@@ -722,6 +709,7 @@ if [[ "$GLOBAL" == true ]]; then
 		echo ""
 	fi
 	echo "--- Standalone tools ---"
+	install_tools "$PATH_TOOLS"
 	install_tools "$CLAUDE_TOOLS"
 	echo ""
 
@@ -742,9 +730,10 @@ if [[ "$GLOBAL" == true ]]; then
 	echo "  Prompts:         $HOME/.agents/instructions/*.md"
 	echo "  Skills:          $SKILLS_DEST/ (OpenCode), $CLAUDE_SKILLS/ (Claude Code)"
 	echo "  Rules:           $RULES_DEST/"
-	echo "  OpenCode:        $OPENCODE_PLUGINS/ (add file:// entries to opencode config)"
+	echo "  OpenCode:        $OPENCODE_PLUGINS/ (auto-loaded)"
 	echo "  Claude Code:     $CLAUDE_MODE"
-	echo "  Tools:           $CLAUDE_TOOLS/"
+	echo "  PATH tools:      $PATH_TOOLS/"
+	echo "  Claude tools:    $CLAUDE_TOOLS/"
 	echo "  Codex CLI:       $CODEX_RULES/ (auto-loaded), $CODEX_PROMPTS/ (/name prompts)"
 
 # ─── Main: Project Install ───────────────────────────────────────────────────

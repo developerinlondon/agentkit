@@ -1,0 +1,4 @@
+interface:
+  display_name: "Resource-safe Execution"
+  short_description: "Run heavy commands inside hard resource limits"
+  default_prompt: "Use $resource-safe-execution to run this build with bounded CPU, memory, tasks, and time."

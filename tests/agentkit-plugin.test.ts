@@ -17,7 +17,13 @@ const pluginDir = join(repoRoot, 'plugins-cc', 'agentkit');
 // must re-wire under ${CLAUDE_PLUGIN_ROOT}. There is no comment-police.sh: the
 // comment-police police ships only as an OpenCode plugin (plugins/comment-police.ts),
 // so it is intentionally absent from both settings.json and this plugin.
-const PRE_TOOL_USE_HOOKS = ['git-police.sh', 'kubectl-police.sh', 'pkg-police.sh', 'mr-police.sh'];
+const PRE_TOOL_USE_HOOKS = [
+  'git-police.sh',
+  'kubectl-police.sh',
+  'pkg-police.sh',
+  'mr-police.sh',
+  'resource-police.sh',
+];
 const POST_TOOL_USE_HOOKS = ['format-police.sh', 'coding-police.sh'];
 const ALL_POLICE_HOOKS = [...PRE_TOOL_USE_HOOKS, ...POST_TOOL_USE_HOOKS];
 
@@ -33,7 +39,7 @@ describe('agentkit plugin manifest', () => {
   test('plugin.json declares name agentkit and wires hooks, skills, and mcpServers', () => {
     const plugin = readJson('.claude-plugin', 'plugin.json');
     expect(plugin.name).toBe('agentkit');
-    expect(plugin.version).toBe('0.1.0');
+    expect(plugin.version).toBe('0.2.0');
     expect(plugin.hooks).toBe('./hooks/hooks.json');
     expect(plugin.skills).toBe('./skills/');
     expect(plugin.mcpServers).toBe('./.mcp.json');
@@ -102,12 +108,23 @@ describe('agentkit plugin skills', () => {
       'gitops-master',
       'issue-raiser',
       'project-planning',
+      'resource-safe-execution',
       'test-driven-development',
     ];
     for (const skill of expectedSkills) {
       const skillMd = join(pluginDir, 'skills', skill, 'SKILL.md');
       expect(statSync(skillMd).isFile(), `${skill}/SKILL.md exists`).toBe(true);
     }
+  });
+});
+
+describe('agentkit plugin tools', () => {
+  test('bundles the bounded runner and keeps it executable', () => {
+    const bundledRunner = join(pluginDir, 'tools', 'agentkit-run');
+    expect(readFileSync(bundledRunner, 'utf-8')).toBe(
+      readFileSync(join(repoRoot, 'tools', 'agentkit-run'), 'utf-8'),
+    );
+    expect(statSync(bundledRunner).mode & 0o111).not.toBe(0);
   });
 });
 
@@ -122,7 +139,9 @@ describe('marketplace lists the agentkit plugin', () => {
 
     const agentkit = marketplace.plugins.find((p: { name: string }) => p.name === 'agentkit');
     expect(agentkit.source).toBe('./plugins-cc/agentkit');
-    expect(agentkit.version).toBe('0.1.0');
+    expect(agentkit.version).toBe('0.2.0');
+    expect(agentkit.description).toContain('agentkit-run');
+    expect(agentkit.description).toContain('agent-work.slice');
   });
 });
 

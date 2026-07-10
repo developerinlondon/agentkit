@@ -1,0 +1,329 @@
+#!/bin/bash -p
+set -euo pipefail
+
+readonly EX_USAGE=64
+readonly EX_UNAVAILABLE=69
+readonly SLICE=agent-work.slice
+readonly LOCK_NAME=agentkit-run.lock
+readonly PROC_ROOT=/proc
+readonly USER_RUNTIME_ROOT=/run/user
+readonly CGROUP_CONTROLLERS=/sys/fs/cgroup/cgroup.controllers
+readonly VERIFY_CONTROL_OWNERSHIP=1
+readonly AWK_BIN=/usr/bin/awk
+readonly ENV_BIN=/usr/bin/env
+readonly FLOCK_BIN=/usr/bin/flock
+readonly GETCONF_BIN=/usr/bin/getconf
+readonly ID_BIN=/usr/bin/id
+readonly REALPATH_BIN=/usr/bin/realpath
+readonly STAT_BIN=/usr/bin/stat
+readonly SYSTEMCTL_BIN=/usr/bin/systemctl
+readonly SYSTEMD_RUN_BIN=/usr/bin/systemd-run
+readonly TIMEOUT_BIN=/usr/bin/timeout
+
+usage() {
+	cat <<'USAGE'
+Usage: agentkit-run [--profile canary|default|compile|browser] -- COMMAND [ARG...]
+
+Run one resource-intensive command in a bounded systemd user service. The command
+is passed as argv without shell evaluation. Only one agentkit-run may run at once.
+USAGE
+}
+
+die() {
+	local message="$1"
+	local status="${2:-$EX_UNAVAILABLE}"
+	printf 'agentkit-run: %s\n' "$message" >&2
+	exit "$status"
+}
+
+select_profile() {
+	local profile="$1"
+	case "$profile" in
+	canary)
+		MEMORY_HIGH=1G
+		MEMORY_MAX=2G
+		MEMORY_MAX_KIB=$((2 * 1024 * 1024))
+		CPU_QUOTA=200%
+		TASKS_MAX=64
+		COMMAND_TIMEOUT=60s
+		RUNTIME_MAX=75s
+		;;
+	default)
+		MEMORY_HIGH=6G
+		MEMORY_MAX=8G
+		MEMORY_MAX_KIB=$((8 * 1024 * 1024))
+		CPU_QUOTA=200%
+		TASKS_MAX=256
+		COMMAND_TIMEOUT=10m
+		RUNTIME_MAX=10m15s
+		;;
+	compile)
+		MEMORY_HIGH=8G
+		MEMORY_MAX=12G
+		MEMORY_MAX_KIB=$((12 * 1024 * 1024))
+		CPU_QUOTA=400%
+		TASKS_MAX=512
+		COMMAND_TIMEOUT=15m
+		RUNTIME_MAX=15m15s
+		;;
+	browser)
+		MEMORY_HIGH=12G
+		MEMORY_MAX=16G
+		MEMORY_MAX_KIB=$((16 * 1024 * 1024))
+		CPU_QUOTA=400%
+		TASKS_MAX=1024
+		COMMAND_TIMEOUT=20m
+		RUNTIME_MAX=20m15s
+		;;
+	*) die "unknown profile '$profile'" "$EX_USAGE" ;;
+	esac
+}
+
+parse_args() {
+	PROFILE=default
+	while [[ $# -gt 0 ]]; do
+		case "$1" in
+		--profile)
+			[[ $# -ge 2 ]] || die '--profile requires a value' "$EX_USAGE"
+			PROFILE="$2"
+			shift 2
+			;;
+		--help | -h)
+			usage
+			exit 0
+			;;
+		--)
+			shift
+			COMMAND=("$@")
+			break
+			;;
+		*) die "unknown option '$1'; command must follow --" "$EX_USAGE" ;;
+		esac
+	done
+	[[ ${#COMMAND[@]} -gt 0 ]] || die 'expected a command after --' "$EX_USAGE"
+	select_profile "$PROFILE"
+}
+
+verify_control_binary() {
+	local path="$1"
+	[[ -x "$path" ]] || die "required control binary '$path' is unavailable"
+	if [[ "$VERIFY_CONTROL_OWNERSHIP" == 1 ]]; then
+		local owner mode
+		read -r owner mode < <("$STAT_BIN" -Lc '%u %a' -- "$path") \
+			|| die "could not inspect control binary '$path'"
+		[[ "$owner" == 0 ]] || die "control binary '$path' is not root-owned"
+		(( (8#$mode & 8#22) == 0 )) \
+			|| die "control binary '$path' is group- or world-writable"
+	fi
+}
+
+verify_control_plane() {
+	local path
+	for path in \
+		"$AWK_BIN" "$ENV_BIN" "$FLOCK_BIN" "$GETCONF_BIN" "$ID_BIN" \
+		"$REALPATH_BIN" "$STAT_BIN" "$SYSTEMCTL_BIN" "$SYSTEMD_RUN_BIN" "$TIMEOUT_BIN"; do
+		verify_control_binary "$path"
+	done
+	[[ -r "$CGROUP_CONTROLLERS" ]] || die 'cgroup v2 is unavailable'
+}
+
+prepare_user_bus() {
+	local uid
+	uid="$("$ID_BIN" -u)"
+	CONTROL_RUNTIME_DIR="$USER_RUNTIME_ROOT/$uid"
+	CONTROL_BUS_ADDRESS="unix:path=$CONTROL_RUNTIME_DIR/bus"
+	[[ -e "$CONTROL_RUNTIME_DIR/bus" ]] \
+		|| die "user systemd manager bus is unavailable at $CONTROL_RUNTIME_DIR/bus"
+	export XDG_RUNTIME_DIR="$CONTROL_RUNTIME_DIR"
+	export DBUS_SESSION_BUS_ADDRESS="$CONTROL_BUS_ADDRESS"
+	"$SYSTEMCTL_BIN" --user show-environment >/dev/null 2>&1 \
+		|| die 'user systemd manager is unavailable'
+}
+
+property_value() {
+	local properties="$1"
+	local name="$2"
+	local key value
+	while IFS='=' read -r key value; do
+		if [[ "$key" == "$name" ]]; then
+			printf '%s\n' "$value"
+			return 0
+		fi
+	done <<<"$properties"
+}
+
+verify_aggregate_slice() {
+	local properties load_state memory_high memory_max memory_swap_max cpu_quota tasks_max
+	properties="$("$SYSTEMCTL_BIN" --user show "$SLICE" \
+		--property=LoadState,MemoryHigh,MemoryMax,MemorySwapMax,CPUQuotaPerSecUSec,TasksMax \
+		2>/dev/null)" || die "$SLICE is not installed"
+	load_state="$(property_value "$properties" LoadState)"
+	memory_high="$(property_value "$properties" MemoryHigh)"
+	memory_max="$(property_value "$properties" MemoryMax)"
+	memory_swap_max="$(property_value "$properties" MemorySwapMax)"
+	cpu_quota="$(property_value "$properties" CPUQuotaPerSecUSec)"
+	tasks_max="$(property_value "$properties" TasksMax)"
+
+	[[ "$load_state" == loaded ]] || die "$SLICE is not loaded"
+	[[ "$memory_high" == 21474836480 ]] \
+		|| die "$SLICE MemoryHigh must be 20G (found ${memory_high:-unset})"
+	[[ "$memory_max" == 25769803776 ]] \
+		|| die "$SLICE MemoryMax must be 24G (found ${memory_max:-unset})"
+	[[ "$memory_swap_max" == 0 ]] \
+		|| die "$SLICE MemorySwapMax must be 0 (found ${memory_swap_max:-unset})"
+	[[ "$cpu_quota" == 8s ]] \
+		|| die "$SLICE CPUQuota must be 800% (found ${cpu_quota:-unset})"
+	[[ "$tasks_max" == 1536 ]] \
+		|| die "$SLICE TasksMax must be 1536 (found ${tasks_max:-unset})"
+}
+
+verify_host_headroom() {
+	local available_kib total_kib required_kib load_one cpu_count max_load pressure_some pressure_full
+	[[ -r "$PROC_ROOT/meminfo" && -r "$PROC_ROOT/loadavg" \
+		&& -r "$PROC_ROOT/pressure/memory" ]] \
+		|| die 'host memory, load, or pressure metrics are unavailable'
+	available_kib="$("$AWK_BIN" '/^MemAvailable:/ {print $2; exit}' "$PROC_ROOT/meminfo")"
+	total_kib="$("$AWK_BIN" '/^MemTotal:/ {print $2; exit}' "$PROC_ROOT/meminfo")"
+	[[ "$available_kib" =~ ^[0-9]+$ && "$total_kib" =~ ^[0-9]+$ ]] \
+		|| die 'host total or available memory could not be read'
+	required_kib=$((MEMORY_MAX_KIB + total_kib / 4))
+	if ((available_kib < required_kib)); then
+		die "insufficient memory for $PROFILE profile plus 25% host reserve"
+	fi
+
+	read -r load_one _ <"$PROC_ROOT/loadavg"
+	cpu_count="$("$GETCONF_BIN" _NPROCESSORS_ONLN)"
+	max_load=$((cpu_count * 2))
+	"$AWK_BIN" -v current="$load_one" -v limit="$max_load" \
+		'BEGIN { exit !(current <= limit) }' \
+		|| die "one-minute load $load_one exceeds preflight limit $max_load"
+
+	pressure_some="$("$AWK_BIN" '/^some / {sub(/^.*avg10=/, ""); sub(/ .*/, ""); print}' \
+		"$PROC_ROOT/pressure/memory")"
+	pressure_full="$("$AWK_BIN" '/^full / {sub(/^.*avg10=/, ""); sub(/ .*/, ""); print}' \
+		"$PROC_ROOT/pressure/memory")"
+	[[ -n "$pressure_some" && -n "$pressure_full" ]] || die 'host memory pressure could not be read'
+	"$AWK_BIN" -v some="$pressure_some" -v full="$pressure_full" \
+		'BEGIN { exit !(some <= 10 && full <= 2) }' \
+		|| die "memory pressure is elevated (some=$pressure_some, full=$pressure_full)"
+}
+
+build_clean_environment() {
+	CLEAN_ENV=("$ENV_BIN" -i)
+	local name
+	local -a allowed=(
+		HOME USER LOGNAME PATH SHELL TERM COLORTERM LANG LANGUAGE LC_ALL TZ
+		XDG_CACHE_HOME XDG_CONFIG_HOME XDG_DATA_HOME
+		BUN_INSTALL CARGO_HOME RUSTUP_HOME GOCACHE GOMODCACHE GOPATH
+		GOMEMLIMIT GOMAXPROCS NODE_OPTIONS PLAYWRIGHT_BROWSERS_PATH
+		CI NO_COLOR FORCE_COLOR SSH_AUTH_SOCK
+	)
+	for name in "${allowed[@]}"; do
+		if [[ -v "$name" ]]; then
+			CLEAN_ENV+=("$name=${!name}")
+		fi
+	done
+	CLEAN_ENV+=(AGENTKIT_RUN_ACTIVE=1)
+}
+
+reject_command_basename() {
+	local executable="$1"
+	case "$executable" in
+	agentkit-run) die 'nested agentkit-run commands are not allowed' "$EX_USAGE" ;;
+	doas | env | pkexec | run0 | su | sudo)
+		die "$executable is not allowed inside agentkit-run" "$EX_USAGE"
+		;;
+	ansible | ansible-playbook | buildah | docker | kubectl | machinectl | mosh | nerdctl | podman | service | ssh | systemctl | systemd-run)
+		die "$executable delegates work outside the service cgroup" "$EX_USAGE"
+		;;
+	esac
+}
+
+resolve_command() {
+	local executable
+	reject_command_basename "${COMMAND[0]##*/}"
+	if [[ "${COMMAND[0]}" == */* ]]; then
+		executable="$("$REALPATH_BIN" -e -- "${COMMAND[0]}" 2>/dev/null || true)"
+	else
+		executable="$(type -P -- "${COMMAND[0]}" || true)"
+		if [[ -n "$executable" ]]; then
+			executable="$("$REALPATH_BIN" -e -- "$executable" 2>/dev/null || true)"
+		fi
+	fi
+	[[ -n "$executable" && -x "$executable" ]] \
+		|| die "command '${COMMAND[0]}' is not an executable file" "$EX_USAGE"
+	COMMAND[0]="$executable"
+	reject_command_basename "${COMMAND[0]##*/}"
+}
+
+inspect_command_arguments() {
+	local executable="${COMMAND[0]##*/}"
+	local argument
+	case "$executable" in
+	bash | dash | fish | sh | zsh)
+		for argument in "${COMMAND[@]:1}"; do
+			case "$argument" in
+			--command | --command=* | -*c*)
+				die 'shell command strings are not allowed; pass direct argv' "$EX_USAGE"
+				;;
+			esac
+		done
+		;;
+	esac
+}
+
+run_bounded() {
+	local unit="agentkit-run-${PROFILE}-$$"
+	local lock_file="$CONTROL_RUNTIME_DIR/$LOCK_NAME"
+	local status
+	set +e
+	"$SYSTEMD_RUN_BIN" \
+		--user \
+		--expand-environment=no \
+		--service-type=exec \
+		--unit="$unit" \
+		--description="Agentkit bounded $PROFILE command" \
+		--slice="$SLICE" \
+		--working-directory="$PWD" \
+		--property="MemoryHigh=$MEMORY_HIGH" \
+		--property="MemoryMax=$MEMORY_MAX" \
+		--property="CPUQuota=$CPU_QUOTA" \
+		--property="TasksMax=$TASKS_MAX" \
+		--property=MemorySwapMax=0 \
+		--property="RuntimeMaxSec=$RUNTIME_MAX" \
+		--property=TimeoutStopSec=10s \
+		--property=KillMode=control-group \
+		--property=OOMPolicy=kill \
+		--property=NoNewPrivileges=yes \
+		--property=RestrictSUIDSGID=yes \
+		--property=SendSIGKILL=yes \
+		--property=Nice=10 \
+		--property=KeyringMode=private \
+		--property=UMask=0077 \
+		--wait --collect --pipe --quiet \
+		-- "${CLEAN_ENV[@]}" \
+		"$FLOCK_BIN" --verbose --nonblock --conflict-exit-code=75 "$lock_file" \
+		"$TIMEOUT_BIN" --signal=TERM --kill-after=10s "$COMMAND_TIMEOUT" \
+		"${COMMAND[@]}"
+	status=$?
+	set -e
+	return "$status"
+}
+
+declare -a COMMAND=()
+declare -a CLEAN_ENV=()
+declare PROFILE MEMORY_HIGH MEMORY_MAX MEMORY_MAX_KIB CPU_QUOTA TASKS_MAX COMMAND_TIMEOUT RUNTIME_MAX
+declare CONTROL_RUNTIME_DIR CONTROL_BUS_ADDRESS
+
+parse_args "$@"
+if [[ "${AGENTKIT_RUN_ACTIVE:-0}" == 1 ]]; then
+	die 'nested agentkit-run commands are not allowed' "$EX_USAGE"
+fi
+verify_control_plane
+resolve_command
+inspect_command_arguments
+prepare_user_bus
+verify_aggregate_slice
+verify_host_headroom
+build_clean_environment
+run_bounded

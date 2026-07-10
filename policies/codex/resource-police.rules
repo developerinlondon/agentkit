@@ -1,0 +1,104 @@
+# resource-police.rules — Codex CLI exec policy
+# Heavy commands must start with agentkit-run so systemd owns and limits the process tree.
+
+prefix_rule(
+    pattern = ["agentkit-run"],
+    decision = "allow",
+    justification = "agentkit-run applies the mandatory cgroup, timeout, and process-tree boundary.",
+)
+
+prefix_rule(
+    pattern = ["bun", ["add", "install", "update", "test"]],
+    decision = "forbidden",
+    justification = "Run package changes and test suites with agentkit-run.",
+)
+
+prefix_rule(
+    pattern = ["bun", "run"],
+    decision = "forbidden",
+    justification = "Run build, check, lint, and test scripts with agentkit-run.",
+)
+
+prefix_rule(
+    pattern = ["bunx", "tsc"],
+    decision = "forbidden",
+    justification = "Run the TypeScript compiler with agentkit-run --profile compile.",
+)
+
+prefix_rule(
+    pattern = ["bunx", "playwright"],
+    decision = "forbidden",
+    justification = "Run Playwright with agentkit-run --profile browser.",
+)
+
+prefix_rule(
+    pattern = ["tsc"],
+    decision = "forbidden",
+    justification = "Run the TypeScript compiler with agentkit-run --profile compile.",
+)
+
+prefix_rule(
+    pattern = ["playwright"],
+    decision = "forbidden",
+    justification = "Run Playwright with agentkit-run --profile browser.",
+)
+
+prefix_rule(
+    pattern = ["cargo", ["build", "check", "test", "clippy"]],
+    decision = "forbidden",
+    justification = "Run Rust compiler and test workloads with agentkit-run.",
+)
+
+prefix_rule(
+    pattern = ["go", ["build", "test"]],
+    decision = "forbidden",
+    justification = "Run Go compiler and test workloads with agentkit-run.",
+)
+
+prefix_rule(
+    pattern = ["docker"],
+    decision = "forbidden",
+    justification = "Container builds delegate to an engine outside agentkit-run. Use a separately approved dedicated runner or verified engine-native limits.",
+)
+
+prefix_rule(
+    pattern = ["podman"],
+    decision = "forbidden",
+    justification = "Container builds may delegate outside agentkit-run. Use a separately approved dedicated runner or verified engine-native limits.",
+)
+
+prefix_rule(
+    pattern = ["systemd-run"],
+    decision = "forbidden",
+    justification = "Direct systemd-run can create a sibling cgroup outside the mandatory agentkit-run boundary.",
+)
+
+prefix_rule(
+    pattern = ["run0"],
+    decision = "forbidden",
+    justification = "run0 delegates to systemd-run outside the mandatory agentkit-run boundary.",
+)
+
+prefix_rule(
+    pattern = ["ssh"],
+    decision = "forbidden",
+    justification = "Remote workloads are outside the local agentkit-run resource boundary.",
+)
+
+prefix_rule(
+    pattern = ["sudo"],
+    decision = "forbidden",
+    justification = "Privilege wrappers are not allowed inside the agentkit-run containment workflow.",
+)
+
+prefix_rule(
+    pattern = ["pytest"],
+    decision = "forbidden",
+    justification = "Run Python test suites with agentkit-run.",
+)
+
+prefix_rule(
+    pattern = [["python", "python3"], "-m", "pytest"],
+    decision = "forbidden",
+    justification = "Run Python test suites with agentkit-run.",
+)
