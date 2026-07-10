@@ -42,6 +42,7 @@ function runnerEnv(overrides: Record<string, string> = {}): NodeJS.ProcessEnv {
     SHIM_SLICE_MEMORY_MAX: '25769803776',
     SHIM_SLICE_CPU_QUOTA: '8s',
     SHIM_SLICE_TASKS_MAX: '1536',
+    AGENTKIT_RUN_ACTIVE: '',
     ...overrides,
   };
 }

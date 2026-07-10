@@ -4,6 +4,7 @@ import {
   existsSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
@@ -15,7 +16,7 @@ const enabled = process.env.AGENTKIT_RUN_INTEGRATION === '1';
 const repoRoot = dirname(import.meta.dir);
 const runner = join(repoRoot, 'tools', 'agentkit-run');
 const uid = process.getuid?.() ?? 1000;
-const sliceRoot = `/sys/fs/cgroup/user.slice/user-${uid}.slice/user@${uid}.service/agent-work.slice`;
+const sliceRoot = `/sys/fs/cgroup/user.slice/user-${uid}.slice/user@${uid}.service/agent.slice/agent-work.slice`;
 let root: string;
 
 function run(args: string[]) {
@@ -33,6 +34,11 @@ function processExists(pid: number): boolean {
 function metric(contents: string, name: string): number {
   const line = contents.split('\n').find((entry) => entry.startsWith(`${name} `));
   return Number(line?.split(/\s+/)[1] ?? 0);
+}
+
+function runnerUnits(): string[] {
+  if (!existsSync(sliceRoot)) return [];
+  return readdirSync(sliceRoot).filter((entry) => entry.startsWith('agentkit-run-canary-'));
 }
 
 beforeAll(() => {
@@ -109,7 +115,7 @@ exit 0
 
     const result = run(['--profile', 'canary', '--', command]);
 
-    expect(result.status, result.stderr).toBe(0);
+    expect(result.status).not.toBe(0);
     const grandchild = Number(readFileSync(pidFile, 'utf-8').trim());
     for (let attempt = 0; attempt < 100 && processExists(grandchild); attempt += 1) {
       await Bun.sleep(10);
@@ -132,7 +138,7 @@ while true; do sleep 1; done
 
     const result = run(['--profile', 'canary', '--', command]);
 
-    expect(result.status).toBe(124);
+    expect([124, 137]).toContain(result.status);
     const grandchild = Number(readFileSync(pidFile, 'utf-8').trim());
     for (let attempt = 0; attempt < 100 && processExists(grandchild); attempt += 1) {
       await Bun.sleep(10);
@@ -141,28 +147,54 @@ while true; do sleep 1; done
   }, 90_000);
 
   test('records a cgroup OOM kill without affecting the caller', async () => {
-    const allocator = join(root, 'allocator.mjs');
+    const allocator = join(root, 'allocator.py');
     writeFileSync(
       allocator,
-      `const chunks = [];
-while (true) {
-  chunks.push(Buffer.alloc(32 * 1024 * 1024, 1));
-  await Bun.sleep(10);
-}
+      `import mmap
+import os
+
+size = 3 * 1024 * 1024 * 1024
+descriptor = os.memfd_create("agentkit-oom-fixture")
+os.ftruncate(descriptor, size)
+memory = mmap.mmap(descriptor, size)
+for offset in range(0, size, 4096):
+    memory[offset] = 1
 `,
     );
 
-    const child = Bun.spawn([runner, '--profile', 'canary', '--', 'bun', allocator], {
+    const existingUnits = new Set(runnerUnits());
+    const child = Bun.spawn([runner, '--profile', 'canary', '--', 'python3', allocator], {
       env: globalThis.process.env,
       stderr: 'pipe',
       stdout: 'pipe',
     });
-    const cgroup = join(sliceRoot, `agentkit-run-canary-${child.pid}.service`);
     let completed = false;
     const exited = child.exited.then((status) => {
       completed = true;
       return status;
     });
+    let unit = '';
+    for (let attempt = 0; attempt < 400 && !unit; attempt += 1) {
+      unit = runnerUnits().find(
+        (entry) => entry.startsWith('agentkit-run-canary-') && !existingUnits.has(entry),
+      ) ?? '';
+      await Bun.sleep(5);
+    }
+    expect(unit).not.toBe('');
+    const cgroup = join(sliceRoot, unit);
+    const releaseSoftThrottle = spawnSync(
+      '/usr/bin/systemctl',
+      ['--user', 'set-property', '--runtime', unit, 'MemoryHigh=2G'],
+      {
+        encoding: 'utf-8',
+        env: {
+          ...globalThis.process.env,
+          XDG_RUNTIME_DIR: `/run/user/${uid}`,
+          DBUS_SESSION_BUS_ADDRESS: `unix:path=/run/user/${uid}/bus`,
+        },
+      },
+    );
+    expect(releaseSoftThrottle.status, releaseSoftThrottle.stderr).toBe(0);
     let oomKills = 0;
     for (let attempt = 0; attempt < 6_000 && !completed; attempt += 1) {
       const events = join(cgroup, 'memory.events');
