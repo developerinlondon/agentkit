@@ -31,6 +31,7 @@ export const blockedResourceCommands = [
   'python -m pytest -q',
   "bash -c 'bun install'",
   "sh -lc 'cargo test'",
+  'AGENTKIT_ALLOW_DELEGATED=1 bun install',
   '/usr/bin/env CI=1 bun test',
   'sudo -n cargo test',
   'time bun run typecheck',
@@ -58,6 +59,7 @@ export const unsupportedResourceCommands = [
   "agentkit-run --profile compile -- env CI=1 sh -c 'bun test'",
   "bash -c 'ssh build-host bun test'",
   "bash -xc 'systemd-run --user cargo test'",
+  'ansible-playbook playbooks/server.yml --check --diff',
 ];
 
 export const allowedResourceCommands = [
@@ -79,6 +81,7 @@ export const allowedResourceCommands = [
   'systemctl show code-server.service',
   'systemctl --user cat agent-work.slice',
   'systemctl --user is-active agent-work.slice',
+  'AGENTKIT_ALLOW_DELEGATED=1 ansible-playbook playbooks/server.yml --check --diff',
   'kubectl get pods -A',
   'kubectl logs deploy/cloudflared -n infra',
   'docker ps',

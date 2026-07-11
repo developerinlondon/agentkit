@@ -213,7 +213,11 @@ function wrappedLaunch(launch: Launch): Launch | null {
   };
 }
 
-function detectUnboundedCommand(command: string, depth = 0): Finding | null {
+function detectUnboundedCommand(
+  command: string,
+  depth = 0,
+  delegatedOk = false,
+): Finding | null {
   if (depth > 3) return { segment: command, delegated: false };
   for (const segment of splitShellSegments(command)) {
     const launch = parseLaunch(segment);
@@ -221,21 +225,26 @@ function detectUnboundedCommand(command: string, depth = 0): Finding | null {
     if (launch.executable === 'agentkit-run') {
       if (!isTrustedRunner(launch.token)) return { segment, delegated: true };
       const nested = wrappedLaunch(launch);
-      if (nested && isDelegating(nested)) return { segment, delegated: true };
+      if (nested && !delegatedOk && isDelegating(nested)) return { segment, delegated: true };
       continue;
     }
     if (isShell(launch.executable)) {
       const payload = shellCommandPayload(launch);
       if (payload !== null) {
-        const finding = detectUnboundedCommand(payload, depth + 1);
+        const finding = detectUnboundedCommand(payload, depth + 1, delegatedOk);
         if (finding) return finding;
         continue;
       }
     }
-    if (isDelegating(launch)) return { segment, delegated: true };
+    if (!delegatedOk && isDelegating(launch)) return { segment, delegated: true };
     if (isHeavy(launch)) return { segment, delegated: false };
   }
   return null;
+}
+
+function isDelegatedOverride(command: string): boolean {
+  return process.env.AGENTKIT_ALLOW_DELEGATED === '1'
+    || /(^|[\s;&|])AGENTKIT_ALLOW_DELEGATED=1([\s;&|]|$)/.test(command);
 }
 
 function isTrustedRunner(token: string): boolean {
@@ -257,12 +266,13 @@ export default async function resourcePolice(_ctx: PluginInput) {
       if (input.tool?.toLowerCase() !== 'bash') return;
       const command = output.args.command as string | undefined;
       if (!command) return;
-      const finding = detectUnboundedCommand(command);
+      const finding = detectUnboundedCommand(command, 0, isDelegatedOverride(command));
       if (!finding) return;
       if (finding.delegated) {
         throw new Error(
           `BLOCKED: delegated workload cannot be contained by agentkit-run: ${finding.segment}\n` +
-            'Use a separately approved dedicated runner or verified engine-native limits.',
+            'Use a separately approved dedicated runner or verified engine-native limits.\n' +
+            'User-approved delegated workloads: prefix with AGENTKIT_ALLOW_DELEGATED=1.',
         );
       }
       throw new Error(

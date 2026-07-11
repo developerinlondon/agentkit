@@ -9,6 +9,17 @@ INPUT=$("$CAT_BIN")
 COMMAND=$(printf '%s' "$INPUT" | "$JQ_BIN" -r '.tool_input.command // empty')
 [[ -z "$COMMAND" ]] && exit 0
 
+# User-approved escape hatch for sanctioned delegated workloads (e.g. an
+# approved ansible apply). Heavy commands stay bounded regardless. Works from
+# the environment or inline (`AGENTKIT_ALLOW_DELEGATED=1 ansible-playbook …`);
+# inline assignments never reach the hook process, so honor them from the text
+# (same treatment as AGENTKIT_ALLOW_STALE_PUSH in git-police).
+DELEGATED_OK="${AGENTKIT_ALLOW_DELEGATED:-0}"
+if printf '%s' "$COMMAND" \
+	| grep -qE '(^|[[:space:];&|])AGENTKIT_ALLOW_DELEGATED=1([[:space:];&|]|$)'; then
+	DELEGATED_OK=1
+fi
+
 deny() {
 	local segment="$1"
 	local kind="${2:-heavy}"
@@ -20,7 +31,7 @@ deny() {
 		runner_hint="$PWD/.claude/tools/agentkit-run"
 	fi
 	if [[ "$kind" == delegated ]]; then
-		reason="BLOCKED: delegated workload cannot be contained by agentkit-run: $segment. Use a separately approved dedicated runner or verified engine-native limits."
+		reason="BLOCKED: delegated workload cannot be contained by agentkit-run: $segment. Use a separately approved dedicated runner or verified engine-native limits. User-approved delegated workloads: prefix with AGENTKIT_ALLOW_DELEGATED=1."
 	else
 		reason="BLOCKED: resource-intensive command is not contained: $segment. Run it through $runner_hint, for example: $runner_hint --profile compile -- bun run typecheck. Use profile browser for Playwright and browser builds."
 	fi
@@ -265,7 +276,9 @@ analyze_command() {
 			if ! is_trusted_runner; then deny "$segment" delegated; fi
 			if parse_wrapped_launch; then
 				unwrap_environment
-				if is_delegating; then deny "$segment" delegated; fi
+				if is_delegating && [[ "$DELEGATED_OK" != 1 ]]; then
+					deny "$segment" delegated
+				fi
 			fi
 			continue
 		fi
@@ -273,7 +286,9 @@ analyze_command() {
 			analyze_command "$PAYLOAD" $((depth + 1))
 			continue
 		fi
-		if is_delegating; then deny "$segment" delegated; fi
+		if is_delegating && [[ "$DELEGATED_OK" != 1 ]]; then
+			deny "$segment" delegated
+		fi
 		if is_heavy; then deny "$segment"; fi
 	done <<<"$segments"
 }
