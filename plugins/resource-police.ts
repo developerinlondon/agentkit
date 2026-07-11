@@ -84,15 +84,27 @@ function parseLaunch(segment: string): Launch | null {
   return { token: tokens[index], executable: basename(tokens[index]), args: tokens.slice(index + 1) };
 }
 
+const RUN_SCRIPT_PATTERN = /^(build|check|type-?check|lint|test)(?::[\w-]+)?$/i;
+
 function isHeavy(launch: Launch): boolean {
   const [first = '', second = ''] = launch.args;
   switch (launch.executable.toLowerCase()) {
     case 'bun':
       if (/^(add|install|update|test)$/i.test(first)) return true;
-      return first === 'run' && /^(build|check|type-?check|lint|test)(?::[\w-]+)?$/i.test(second);
+      return first === 'run' && RUN_SCRIPT_PATTERN.test(second);
     case 'bunx':
+    case 'npx':
       if (first === 'tsc') return second !== '--version';
       return first === 'playwright' && second === 'test';
+    case 'npm':
+    case 'pnpm':
+      if (/^(add|install|i|ci|update|upgrade|test)$/i.test(first)) return true;
+      return first === 'run' && RUN_SCRIPT_PATTERN.test(second);
+    case 'yarn':
+      if (!first) return true;
+      if (/^(add|install|up|upgrade|test)$/i.test(first)) return true;
+      if (first === 'run' && RUN_SCRIPT_PATTERN.test(second)) return true;
+      return /^(build|check|type-?check|lint)(?::[\w-]+)?$/i.test(first);
     case 'tsc':
       return first !== '--version';
     case 'playwright':
@@ -101,6 +113,13 @@ function isHeavy(launch: Launch): boolean {
       return /^(build|check|test|clippy)$/i.test(first);
     case 'go':
       return /^(build|test)$/i.test(first);
+    case 'pip':
+    case 'pip3':
+      return first === 'install';
+    case 'uv':
+      if (/^(add|sync)$/i.test(first)) return true;
+      if (first === 'pip' && second === 'install') return true;
+      return first === 'run' && second === 'pytest';
     case 'docker':
     case 'podman':
       return false;
@@ -114,6 +133,27 @@ function isHeavy(launch: Launch): boolean {
   }
 }
 
+function shellCommandPayload(launch: Launch): string | null {
+  for (let index = 0; index < launch.args.length; index += 1) {
+    const argument = launch.args[index];
+    let rest: string[] | null = null;
+    if (argument.startsWith('--command=')) {
+      rest = [argument.slice('--command='.length), ...launch.args.slice(index + 1)];
+    } else if (
+      argument === '--command'
+      || (!argument.startsWith('--') && /^-\S*c/.test(argument))
+    ) {
+      rest = launch.args.slice(index + 1);
+    }
+    if (rest) return rest.join(' ').replace(/['"]/g, '');
+  }
+  return null;
+}
+
+function isShell(executable: string): boolean {
+  return /^(bash|dash|fish|sh|zsh)$/i.test(executable);
+}
+
 function isDelegating(launch: Launch): boolean {
   const effective = unwrapEnvironment(launch);
   if (/^(ansible|ansible-playbook|doas|mosh|pkexec|run0|ssh|sudo|systemd-run)$/i.test(effective.executable)) {
@@ -122,12 +162,12 @@ function isDelegating(launch: Launch): boolean {
   if (/^(buildah|docker|machinectl|nerdctl|podman|service|systemctl|kubectl)$/i.test(effective.executable)) {
     return !isReadOnlyDiagnostic(effective);
   }
-  return /^(bash|sh|zsh)$/i.test(effective.executable)
-    && effective.args.some((argument) => argument === '-c' || argument === '-lc');
+  return isShell(effective.executable) && shellCommandPayload(effective) !== null;
 }
 
 function isReadOnlyDiagnostic(launch: Launch): boolean {
-  const [first = '', second = ''] = launch.args;
+  const positional = launch.args.filter((argument) => !argument.startsWith('-'));
+  const [first = '', second = ''] = positional;
   switch (launch.executable.toLowerCase()) {
     case 'systemctl':
       return /^(cat|get-default|is-active|is-enabled|is-failed|list-|show|status)/.test(first);
@@ -173,7 +213,8 @@ function wrappedLaunch(launch: Launch): Launch | null {
   };
 }
 
-function detectUnboundedCommand(command: string): Finding | null {
+function detectUnboundedCommand(command: string, depth = 0): Finding | null {
+  if (depth > 3) return { segment: command, delegated: false };
   for (const segment of splitShellSegments(command)) {
     const launch = parseLaunch(segment);
     if (!launch) continue;
@@ -182,6 +223,14 @@ function detectUnboundedCommand(command: string): Finding | null {
       const nested = wrappedLaunch(launch);
       if (nested && isDelegating(nested)) return { segment, delegated: true };
       continue;
+    }
+    if (isShell(launch.executable)) {
+      const payload = shellCommandPayload(launch);
+      if (payload !== null) {
+        const finding = detectUnboundedCommand(payload, depth + 1);
+        if (finding) return finding;
+        continue;
+      }
     }
     if (isDelegating(launch)) return { segment, delegated: true };
     if (isHeavy(launch)) return { segment, delegated: false };

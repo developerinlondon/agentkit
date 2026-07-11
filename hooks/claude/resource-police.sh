@@ -132,18 +132,54 @@ is_heavy() {
 		[[ "$first" =~ ^(add|install|update|test)$ ]] && return 0
 		[[ "$first" == run && "$second" =~ ^(build|check|type-?check|lint|test)(:[[:alnum:]_-]+)?$ ]]
 		;;
-	bunx)
+	bunx | npx)
 		[[ "$first" == tsc && "$second" != --version ]] \
 			|| [[ "$first" == playwright && "$second" == test ]]
+		;;
+	npm | pnpm)
+		[[ "$first" =~ ^(add|install|i|ci|update|upgrade|test)$ ]] && return 0
+		[[ "$first" == run && "$second" =~ ^(build|check|type-?check|lint|test)(:[[:alnum:]_-]+)?$ ]]
+		;;
+	yarn)
+		[[ -z "$first" ]] && return 0
+		[[ "$first" =~ ^(add|install|up|upgrade|test)$ ]] && return 0
+		[[ "$first" == run && "$second" =~ ^(build|check|type-?check|lint|test)(:[[:alnum:]_-]+)?$ ]] && return 0
+		[[ "$first" =~ ^(build|check|type-?check|lint)(:[[:alnum:]_-]+)?$ ]]
 		;;
 	tsc) [[ "$first" != --version ]] ;;
 	playwright) [[ "$first" == test ]] ;;
 	cargo) [[ "$first" =~ ^(build|check|test|clippy)$ ]] ;;
 	go) [[ "$first" =~ ^(build|test)$ ]] ;;
+	pip | pip3) [[ "$first" == install ]] ;;
+	uv)
+		[[ "$first" =~ ^(add|sync)$ ]] && return 0
+		[[ "$first" == pip && "$second" == install ]] && return 0
+		[[ "$first" == run && "$second" == pytest ]]
+		;;
 	pytest) return 0 ;;
 	python | python3) [[ "$first" == -m && "$second" == pytest ]] ;;
 	*) return 1 ;;
 	esac
+}
+
+shell_command_payload() {
+	PAYLOAD=''
+	local index argument
+	for index in "${!ARGS[@]}"; do
+		argument="${ARGS[$index]}"
+		if [[ "$argument" == --command=* ]]; then
+			PAYLOAD="${argument#--command=} ${ARGS[*]:$((index + 1))}"
+		elif [[ "$argument" == --command ]] \
+			|| [[ "$argument" != --* && "$argument" == -*c* ]]; then
+			PAYLOAD="${ARGS[*]:$((index + 1))}"
+		else
+			continue
+		fi
+		PAYLOAD="${PAYLOAD//\'/}"
+		PAYLOAD="${PAYLOAD//\"/}"
+		return 0
+	done
+	return 1
 }
 
 is_delegating() {
@@ -152,18 +188,23 @@ is_delegating() {
 		is_read_only_diagnostic && return 1
 		return 0
 	fi
-	if [[ "$EXECUTABLE" =~ ^(bash|sh|zsh)$ ]]; then
-		local argument
-		for argument in "${ARGS[@]}"; do
-			[[ "$argument" == -c || "$argument" == -lc ]] && return 0
-		done
+	if [[ "$EXECUTABLE" =~ ^(bash|dash|fish|sh|zsh)$ ]]; then
+		shell_command_payload && return 0
 	fi
 	return 1
 }
 
 is_read_only_diagnostic() {
-	local first="${ARGS[0]:-}"
-	local second="${ARGS[1]:-}"
+	local first='' second='' argument
+	for argument in "${ARGS[@]}"; do
+		[[ "$argument" == -* ]] && continue
+		if [[ -z "$first" ]]; then
+			first="$argument"
+			continue
+		fi
+		second="$argument"
+		break
+	done
 	case "$EXECUTABLE" in
 	systemctl) [[ "$first" =~ ^(cat|get-default|is-active|is-enabled|is-failed|list-|show|status) ]] ;;
 	kubectl) [[ "$first" =~ ^(api-resources|api-versions|auth|cluster-info|describe|explain|get|logs|top|version)$ ]] ;;
@@ -210,22 +251,35 @@ parse_wrapped_launch() {
 	return 1
 }
 
-declare EXECUTABLE EXECUTABLE_TOKEN
-declare -a TOKENS ARGS
-SEGMENTS=$(printf '%s\n' "$COMMAND" | split_segments) \
-	|| deny 'command could not be parsed safely'
-while IFS= read -r segment; do
-	parse_launch "$segment"
-	if [[ "$EXECUTABLE" == agentkit-run ]]; then
-		if ! is_trusted_runner; then deny "$segment" delegated; fi
-		if parse_wrapped_launch; then
-			unwrap_environment
-			if is_delegating; then deny "$segment" delegated; fi
+analyze_command() {
+	local command="$1"
+	local depth="$2"
+	local segments segment
+	((depth <= 3)) || deny "shell nesting exceeds analysis depth: $command"
+	segments=$(printf '%s\n' "$command" | split_segments) \
+		|| deny 'command could not be parsed safely'
+	while IFS= read -r segment; do
+		[[ -n "$segment" ]] || continue
+		parse_launch "$segment"
+		if [[ "$EXECUTABLE" == agentkit-run ]]; then
+			if ! is_trusted_runner; then deny "$segment" delegated; fi
+			if parse_wrapped_launch; then
+				unwrap_environment
+				if is_delegating; then deny "$segment" delegated; fi
+			fi
+			continue
 		fi
-		continue
-	fi
-	if is_delegating; then deny "$segment" delegated; fi
-	if is_heavy; then deny "$segment"; fi
-done <<<"$SEGMENTS"
+		if [[ "$EXECUTABLE" =~ ^(bash|dash|fish|sh|zsh)$ ]] && shell_command_payload; then
+			analyze_command "$PAYLOAD" $((depth + 1))
+			continue
+		fi
+		if is_delegating; then deny "$segment" delegated; fi
+		if is_heavy; then deny "$segment"; fi
+	done <<<"$segments"
+}
+
+declare EXECUTABLE EXECUTABLE_TOKEN PAYLOAD
+declare -a TOKENS ARGS
+analyze_command "$COMMAND" 0
 
 exit 0

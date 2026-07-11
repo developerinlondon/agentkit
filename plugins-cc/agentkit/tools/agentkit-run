@@ -8,6 +8,7 @@ readonly LOCK_NAME=agentkit-run.lock
 readonly PROC_ROOT=/proc
 readonly USER_RUNTIME_ROOT=/run/user
 readonly CGROUP_CONTROLLERS=/sys/fs/cgroup/cgroup.controllers
+readonly GUARD_CONF=/etc/agentkit/resource-guard.conf
 readonly VERIFY_CONTROL_OWNERSHIP=1
 readonly AWK_BIN=/usr/bin/awk
 readonly ENV_BIN=/usr/bin/env
@@ -104,17 +105,21 @@ parse_args() {
 	select_profile "$PROFILE"
 }
 
+verify_root_owned_file() {
+	local path="$1"
+	[[ "$VERIFY_CONTROL_OWNERSHIP" == 1 ]] || return 0
+	local owner mode
+	read -r owner mode < <("$STAT_BIN" -Lc '%u %a' -- "$path") \
+		|| die "could not inspect '$path'"
+	[[ "$owner" == 0 ]] || die "'$path' is not root-owned"
+	(( (8#$mode & 8#22) == 0 )) \
+		|| die "'$path' is group- or world-writable"
+}
+
 verify_control_binary() {
 	local path="$1"
 	[[ -x "$path" ]] || die "required control binary '$path' is unavailable"
-	if [[ "$VERIFY_CONTROL_OWNERSHIP" == 1 ]]; then
-		local owner mode
-		read -r owner mode < <("$STAT_BIN" -Lc '%u %a' -- "$path") \
-			|| die "could not inspect control binary '$path'"
-		[[ "$owner" == 0 ]] || die "control binary '$path' is not root-owned"
-		(( (8#$mode & 8#22) == 0 )) \
-			|| die "control binary '$path' is group- or world-writable"
-	fi
+	verify_root_owned_file "$path"
 }
 
 verify_control_plane() {
@@ -152,6 +157,62 @@ property_value() {
 	done <<<"$properties"
 }
 
+to_bytes() {
+	local value="$1" number unit
+	[[ "$value" =~ ^([0-9]+)([KMGT]?)$ ]] || return 1
+	number="${BASH_REMATCH[1]}"
+	unit="${BASH_REMATCH[2]}"
+	case "$unit" in
+	'') printf '%s\n' "$number" ;;
+	K) printf '%s\n' $((number * 1024)) ;;
+	M) printf '%s\n' $((number * 1024 * 1024)) ;;
+	G) printf '%s\n' $((number * 1024 * 1024 * 1024)) ;;
+	T) printf '%s\n' $((number * 1024 * 1024 * 1024 * 1024)) ;;
+	esac
+}
+
+load_guard_expectations() {
+	EXPECTED_MEMORY_HIGH=21474836480
+	EXPECTED_MEMORY_MAX=25769803776
+	EXPECTED_MEMORY_SWAP_MAX=0
+	EXPECTED_CPU_QUOTA=8s
+	EXPECTED_TASKS_MAX=1536
+	[[ -f "$GUARD_CONF" ]] || return 0
+	verify_root_owned_file "$GUARD_CONF"
+	local line key value
+	while IFS= read -r line || [[ -n "$line" ]]; do
+		[[ -z "$line" || "$line" == \#* ]] && continue
+		[[ "$line" == *=* ]] || die "malformed line in $GUARD_CONF: $line"
+		key="${line%%=*}"
+		value="${line#*=}"
+		case "$key" in
+		MEMORY_HIGH)
+			EXPECTED_MEMORY_HIGH="$(to_bytes "$value")" \
+				|| die "invalid MEMORY_HIGH '$value' in $GUARD_CONF"
+			;;
+		MEMORY_MAX)
+			EXPECTED_MEMORY_MAX="$(to_bytes "$value")" \
+				|| die "invalid MEMORY_MAX '$value' in $GUARD_CONF"
+			;;
+		MEMORY_SWAP_MAX)
+			EXPECTED_MEMORY_SWAP_MAX="$(to_bytes "$value")" \
+				|| die "invalid MEMORY_SWAP_MAX '$value' in $GUARD_CONF"
+			;;
+		CPU_QUOTA)
+			[[ "$value" =~ ^[0-9]+00%$ ]] \
+				|| die "CPU_QUOTA in $GUARD_CONF must be a multiple of 100% (found '$value')"
+			EXPECTED_CPU_QUOTA="$((${value%\%} / 100))s"
+			;;
+		TASKS_MAX)
+			[[ "$value" =~ ^[0-9]+$ ]] \
+				|| die "invalid TASKS_MAX '$value' in $GUARD_CONF"
+			EXPECTED_TASKS_MAX="$value"
+			;;
+		*) die "unknown key '$key' in $GUARD_CONF" ;;
+		esac
+	done <"$GUARD_CONF"
+}
+
 verify_aggregate_slice() {
 	local properties load_state memory_high memory_max memory_swap_max cpu_quota tasks_max
 	properties="$("$SYSTEMCTL_BIN" --user show "$SLICE" \
@@ -165,16 +226,16 @@ verify_aggregate_slice() {
 	tasks_max="$(property_value "$properties" TasksMax)"
 
 	[[ "$load_state" == loaded ]] || die "$SLICE is not loaded"
-	[[ "$memory_high" == 21474836480 ]] \
-		|| die "$SLICE MemoryHigh must be 20G (found ${memory_high:-unset})"
-	[[ "$memory_max" == 25769803776 ]] \
-		|| die "$SLICE MemoryMax must be 24G (found ${memory_max:-unset})"
-	[[ "$memory_swap_max" == 0 ]] \
-		|| die "$SLICE MemorySwapMax must be 0 (found ${memory_swap_max:-unset})"
-	[[ "$cpu_quota" == 8s ]] \
-		|| die "$SLICE CPUQuota must be 800% (found ${cpu_quota:-unset})"
-	[[ "$tasks_max" == 1536 ]] \
-		|| die "$SLICE TasksMax must be 1536 (found ${tasks_max:-unset})"
+	[[ "$memory_high" == "$EXPECTED_MEMORY_HIGH" ]] \
+		|| die "$SLICE MemoryHigh must be $EXPECTED_MEMORY_HIGH bytes (found ${memory_high:-unset})"
+	[[ "$memory_max" == "$EXPECTED_MEMORY_MAX" ]] \
+		|| die "$SLICE MemoryMax must be $EXPECTED_MEMORY_MAX bytes (found ${memory_max:-unset})"
+	[[ "$memory_swap_max" == "$EXPECTED_MEMORY_SWAP_MAX" ]] \
+		|| die "$SLICE MemorySwapMax must be $EXPECTED_MEMORY_SWAP_MAX bytes (found ${memory_swap_max:-unset})"
+	[[ "$cpu_quota" == "$EXPECTED_CPU_QUOTA" ]] \
+		|| die "$SLICE CPUQuota must be $EXPECTED_CPU_QUOTA of CPU per second (found ${cpu_quota:-unset})"
+	[[ "$tasks_max" == "$EXPECTED_TASKS_MAX" ]] \
+		|| die "$SLICE TasksMax must be $EXPECTED_TASKS_MAX (found ${tasks_max:-unset})"
 }
 
 verify_host_headroom() {
@@ -263,7 +324,11 @@ inspect_command_arguments() {
 	bash | dash | fish | sh | zsh)
 		for argument in "${COMMAND[@]:1}"; do
 			case "$argument" in
-			--command | --command=* | -*c*)
+			--command | --command=*)
+				die 'shell command strings are not allowed; pass direct argv' "$EX_USAGE"
+				;;
+			--*) ;;
+			-*c*)
 				die 'shell command strings are not allowed; pass direct argv' "$EX_USAGE"
 				;;
 			esac
@@ -314,6 +379,7 @@ declare -a COMMAND=()
 declare -a CLEAN_ENV=()
 declare PROFILE MEMORY_HIGH MEMORY_MAX MEMORY_MAX_KIB CPU_QUOTA TASKS_MAX COMMAND_TIMEOUT RUNTIME_MAX
 declare CONTROL_RUNTIME_DIR CONTROL_BUS_ADDRESS
+declare EXPECTED_MEMORY_HIGH EXPECTED_MEMORY_MAX EXPECTED_MEMORY_SWAP_MAX EXPECTED_CPU_QUOTA EXPECTED_TASKS_MAX
 
 parse_args "$@"
 if [[ "${AGENTKIT_RUN_ACTIVE:-0}" == 1 ]]; then
@@ -323,6 +389,7 @@ verify_control_plane
 resolve_command
 inspect_command_arguments
 prepare_user_bus
+load_guard_expectations
 verify_aggregate_slice
 verify_host_headroom
 build_clean_environment

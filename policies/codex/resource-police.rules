@@ -13,10 +13,30 @@ prefix_rule(
     justification = "Run package changes and test suites with agentkit-run.",
 )
 
+# Deliberately broader than the Claude hook: prefix rules cannot pattern-match
+# script names (typecheck:ci, test:e2e), so all `bun run` scripts stay bounded.
 prefix_rule(
     pattern = ["bun", "run"],
     decision = "forbidden",
     justification = "Run build, check, lint, and test scripts with agentkit-run.",
+)
+
+prefix_rule(
+    pattern = [["npm", "pnpm"], ["add", "install", "i", "ci", "update", "upgrade", "test", "run"]],
+    decision = "forbidden",
+    justification = "Run package changes, test suites, and scripts with agentkit-run.",
+)
+
+prefix_rule(
+    pattern = ["yarn", ["add", "install", "up", "upgrade", "test", "run", "build", "check", "typecheck", "lint"]],
+    decision = "forbidden",
+    justification = "Run package changes, test suites, and scripts with agentkit-run.",
+)
+
+prefix_rule(
+    pattern = ["npx", ["tsc", "playwright"]],
+    decision = "forbidden",
+    justification = "Run the TypeScript compiler and Playwright with agentkit-run.",
 )
 
 prefix_rule(
@@ -99,6 +119,30 @@ prefix_rule(
 
 prefix_rule(
     pattern = [["python", "python3"], "-m", "pytest"],
+    decision = "forbidden",
+    justification = "Run Python test suites with agentkit-run.",
+)
+
+prefix_rule(
+    pattern = [["pip", "pip3"], "install"],
+    decision = "forbidden",
+    justification = "Run Python dependency installs with agentkit-run.",
+)
+
+prefix_rule(
+    pattern = ["uv", ["add", "sync"]],
+    decision = "forbidden",
+    justification = "Run Python dependency installs with agentkit-run.",
+)
+
+prefix_rule(
+    pattern = ["uv", "pip", "install"],
+    decision = "forbidden",
+    justification = "Run Python dependency installs with agentkit-run.",
+)
+
+prefix_rule(
+    pattern = ["uv", "run", "pytest"],
     decision = "forbidden",
     justification = "Run Python test suites with agentkit-run.",
 )
