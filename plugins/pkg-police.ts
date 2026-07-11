@@ -57,12 +57,17 @@ function detectBlockedPkgManager(command: string): string | null {
         `  npx <cmd>                          →  bunx <cmd>\n` +
         `  npm test                           →  bun test\n` +
         `\n` +
-        `Override: set pkg-police.enabled: false in agentkit config,\n` +
-        `or user explicitly requests a different package manager.`
+        `Override: prefix with AGENTKIT_ALLOW_PKG=1 (only when the user\n` +
+        `approves it), or set pkg-police.enabled: false in agentkit config.`
       );
     }
   }
   return null;
+}
+
+function isPkgOverride(command: string): boolean {
+  return process.env.AGENTKIT_ALLOW_PKG === '1'
+    || /(^|[\s;&|])AGENTKIT_ALLOW_PKG=1([\s;&|]|$)/.test(command);
 }
 
 export default async function pkgPolice(_ctx: PluginInput) {
@@ -77,6 +82,7 @@ export default async function pkgPolice(_ctx: PluginInput) {
 
       const command = output.args.command as string | undefined;
       if (!command) return;
+      if (isPkgOverride(command)) return;
 
       const error = detectBlockedPkgManager(command);
       if (error) {
