@@ -38,7 +38,7 @@ describe('OpenCode resource-police', () => {
     test(`blocks unbounded command: ${command}`, async () => {
       const hooks = await resourcePolice(mockCtx);
       const { input, output } = makeInput(command);
-      expect(hooks['tool.execute.before']!(input, output)).rejects.toThrow('agentkit-run');
+      expect(hooks['tool.execute.before']!(input, output)).rejects.toThrow('bounded-run');
     });
   }
 
@@ -47,7 +47,7 @@ describe('OpenCode resource-police', () => {
       const hooks = await resourcePolice(mockCtx);
       const { input, output } = makeInput(command);
       expect(hooks['tool.execute.before']!(input, output)).rejects.toThrow(
-        'cannot be contained by agentkit-run',
+        'cannot be contained by bounded-run',
       );
     });
   }
@@ -73,7 +73,7 @@ describe('Claude resource-police', () => {
     test(`blocks unbounded command: ${command}`, () => {
       const output = runHook(command);
       expect(output).toContain('"permissionDecision": "deny"');
-      expect(output).toContain('agentkit-run');
+      expect(output).toContain('bounded-run');
     });
   }
 
@@ -81,7 +81,7 @@ describe('Claude resource-police', () => {
     test(`blocks delegated command: ${command}`, () => {
       const output = runHook(command);
       expect(output).toContain('"permissionDecision": "deny"');
-      expect(output).toContain('cannot be contained by agentkit-run');
+      expect(output).toContain('cannot be contained by bounded-run');
     });
   }
 
@@ -96,6 +96,7 @@ describe('Codex resource policy', () => {
   test('forbids direct heavy command prefixes without interactive prompts', () => {
     const contents = readFileSync(policy, 'utf-8');
     expect(contents).not.toContain('decision = "prompt"');
+    expect(contents).toContain('pattern = ["bounded-run"]');
     expect(contents).toContain('pattern = ["agentkit-run"]');
     expect(contents).toContain('decision = "allow"');
     for (const command of [
@@ -136,6 +137,7 @@ describe('Codex resource policy', () => {
       [['docker', 'run', '--rm', 'builder'], 'forbidden'],
       [['ssh', 'build-host', 'bun', 'test'], 'forbidden'],
       [['systemd-run', '--user', 'cargo', 'test'], 'forbidden'],
+      [['bounded-run', '--profile', 'compile', '--', 'bun', 'run', 'build'], 'allow'],
       [['agentkit-run', '--profile', 'compile', '--', 'bun', 'run', 'build'], 'allow'],
     ]);
 

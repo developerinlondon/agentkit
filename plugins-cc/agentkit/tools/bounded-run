@@ -23,17 +23,17 @@ readonly TIMEOUT_BIN=/usr/bin/timeout
 
 usage() {
 	cat <<'USAGE'
-Usage: agentkit-run [--profile canary|default|compile|browser] -- COMMAND [ARG...]
+Usage: bounded-run [--profile canary|default|compile|browser] -- COMMAND [ARG...]
 
 Run one resource-intensive command in a bounded systemd user service. The command
-is passed as argv without shell evaluation. Only one agentkit-run may run at once.
+is passed as argv without shell evaluation. Only one bounded-run may run at once.
 USAGE
 }
 
 die() {
 	local message="$1"
 	local status="${2:-$EX_UNAVAILABLE}"
-	printf 'agentkit-run: %s\n' "$message" >&2
+	printf 'bounded-run: %s\n' "$message" >&2
 	exit "$status"
 }
 
@@ -290,9 +290,9 @@ build_clean_environment() {
 reject_command_basename() {
 	local executable="$1"
 	case "$executable" in
-	agentkit-run) die 'nested agentkit-run commands are not allowed' "$EX_USAGE" ;;
+	agentkit-run | bounded-run) die 'nested bounded-run commands are not allowed' "$EX_USAGE" ;;
 	doas | env | pkexec | run0 | su | sudo)
-		die "$executable is not allowed inside agentkit-run" "$EX_USAGE"
+		die "$executable is not allowed inside bounded-run" "$EX_USAGE"
 		;;
 	ansible | ansible-playbook | buildah | docker | kubectl | machinectl | mosh | nerdctl | podman | service | ssh | systemctl | systemd-run)
 		die "$executable delegates work outside the service cgroup" "$EX_USAGE"
@@ -338,7 +338,7 @@ inspect_command_arguments() {
 }
 
 run_bounded() {
-	local unit="agentkit-run-${PROFILE}-$$"
+	local unit="bounded-run-${PROFILE}-$$"
 	local lock_file="$CONTROL_RUNTIME_DIR/$LOCK_NAME"
 	local status
 	set +e
@@ -383,7 +383,7 @@ declare EXPECTED_MEMORY_HIGH EXPECTED_MEMORY_MAX EXPECTED_MEMORY_SWAP_MAX EXPECT
 
 parse_args "$@"
 if [[ "${AGENTKIT_RUN_ACTIVE:-0}" == 1 ]]; then
-	die 'nested agentkit-run commands are not allowed' "$EX_USAGE"
+	die 'nested bounded-run commands are not allowed' "$EX_USAGE"
 fi
 verify_control_plane
 resolve_command

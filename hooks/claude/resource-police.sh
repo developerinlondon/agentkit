@@ -24,14 +24,14 @@ deny() {
 	local segment="$1"
 	local kind="${2:-heavy}"
 	local reason
-	local runner_hint=agentkit-run
-	if [[ -n "${CLAUDE_PLUGIN_ROOT:-}" && -x "$CLAUDE_PLUGIN_ROOT/tools/agentkit-run" ]]; then
-		runner_hint="$CLAUDE_PLUGIN_ROOT/tools/agentkit-run"
-	elif [[ -x "$PWD/.claude/tools/agentkit-run" ]]; then
-		runner_hint="$PWD/.claude/tools/agentkit-run"
+	local runner_hint=bounded-run
+	if [[ -n "${CLAUDE_PLUGIN_ROOT:-}" && -x "$CLAUDE_PLUGIN_ROOT/tools/bounded-run" ]]; then
+		runner_hint="$CLAUDE_PLUGIN_ROOT/tools/bounded-run"
+	elif [[ -x "$PWD/.claude/tools/bounded-run" ]]; then
+		runner_hint="$PWD/.claude/tools/bounded-run"
 	fi
 	if [[ "$kind" == delegated ]]; then
-		reason="BLOCKED: delegated workload cannot be contained by agentkit-run: $segment. Use a separately approved dedicated runner or verified engine-native limits. User-approved delegated workloads: prefix with AGENTKIT_ALLOW_DELEGATED=1."
+		reason="BLOCKED: delegated workload cannot be contained by bounded-run: $segment. Use a separately approved dedicated runner or verified engine-native limits. User-approved delegated workloads: prefix with AGENTKIT_ALLOW_DELEGATED=1."
 	else
 		reason="BLOCKED: resource-intensive command is not contained: $segment. Run it through $runner_hint, for example: $runner_hint --profile compile -- bun run typecheck. Use profile browser for Playwright and browser builds."
 	fi
@@ -228,10 +228,15 @@ is_read_only_diagnostic() {
 }
 
 is_trusted_runner() {
+	# agentkit-run is the pre-rename compat alias installed as a symlink.
 	case "$EXECUTABLE_TOKEN" in
+	bounded-run | '$HOME/.local/bin/bounded-run' | '~/.local/bin/bounded-run' | ./.claude/tools/bounded-run)
+		return 0
+		;;
 	agentkit-run | '$HOME/.local/bin/agentkit-run' | '~/.local/bin/agentkit-run' | ./.claude/tools/agentkit-run)
 		return 0
 		;;
+	/home/*/.local/bin/bounded-run | */plugins/*/tools/bounded-run) return 0 ;;
 	/home/*/.local/bin/agentkit-run | */plugins/*/tools/agentkit-run) return 0 ;;
 	*) return 1 ;;
 	esac
@@ -272,7 +277,7 @@ analyze_command() {
 	while IFS= read -r segment; do
 		[[ -n "$segment" ]] || continue
 		parse_launch "$segment"
-		if [[ "$EXECUTABLE" == agentkit-run ]]; then
+		if [[ "$EXECUTABLE" == bounded-run || "$EXECUTABLE" == agentkit-run ]]; then
 			if ! is_trusted_runner; then deny "$segment" delegated; fi
 			if parse_wrapped_launch; then
 				unwrap_environment

@@ -120,9 +120,9 @@ describe('agentkit plugin skills', () => {
 
 describe('agentkit plugin tools', () => {
   test('bundles the bounded runner and keeps it executable', () => {
-    const bundledRunner = join(pluginDir, 'tools', 'agentkit-run');
+    const bundledRunner = join(pluginDir, 'tools', 'bounded-run');
     expect(readFileSync(bundledRunner, 'utf-8')).toBe(
-      readFileSync(join(repoRoot, 'tools', 'agentkit-run'), 'utf-8'),
+      readFileSync(join(repoRoot, 'tools', 'bounded-run'), 'utf-8'),
     );
     expect(statSync(bundledRunner).mode & 0o111).not.toBe(0);
   });
@@ -140,7 +140,7 @@ describe('marketplace lists the agentkit plugin', () => {
     const agentkit = marketplace.plugins.find((p: { name: string }) => p.name === 'agentkit');
     expect(agentkit.source).toBe('./plugins-cc/agentkit');
     expect(agentkit.version).toBe('0.2.0');
-    expect(agentkit.description).toContain('agentkit-run');
+    expect(agentkit.description).toContain('bounded-run');
     expect(agentkit.description).toContain('agent-work.slice');
   });
 });
