@@ -14,7 +14,7 @@ import { spawnSync } from 'node:child_process';
 
 const enabled = process.env.AGENTKIT_RUN_INTEGRATION === '1';
 const repoRoot = dirname(import.meta.dir);
-const runner = join(repoRoot, 'tools', 'agentkit-run');
+const runner = join(repoRoot, 'tools', 'bounded-run');
 const uid = process.getuid?.() ?? 1000;
 const sliceRoot = `/sys/fs/cgroup/user.slice/user-${uid}.slice/user@${uid}.service/agent.slice/agent-work.slice`;
 let root: string;
@@ -38,18 +38,18 @@ function metric(contents: string, name: string): number {
 
 function runnerUnits(): string[] {
   if (!existsSync(sliceRoot)) return [];
-  return readdirSync(sliceRoot).filter((entry) => entry.startsWith('agentkit-run-canary-'));
+  return readdirSync(sliceRoot).filter((entry) => entry.startsWith('bounded-run-canary-'));
 }
 
 beforeAll(() => {
-  root = mkdtempSync(join(tmpdir(), 'agentkit-run-integration-'));
+  root = mkdtempSync(join(tmpdir(), 'bounded-run-integration-'));
 });
 
 afterAll(() => {
   rmSync(root, { force: true, recursive: true });
 });
 
-describe.skipIf(!enabled)('agentkit-run real systemd containment', () => {
+describe.skipIf(!enabled)('bounded-run real systemd containment', () => {
   test('applies the canary cgroup, privilege, and environment boundaries', () => {
     const output = join(root, 'cgroup-properties');
     const command = join(root, 'capture-cgroup');
@@ -176,7 +176,7 @@ for offset in range(0, size, 4096):
     let unit = '';
     for (let attempt = 0; attempt < 400 && !unit; attempt += 1) {
       unit = runnerUnits().find(
-        (entry) => entry.startsWith('agentkit-run-canary-') && !existingUnits.has(entry),
+        (entry) => entry.startsWith('bounded-run-canary-') && !existingUnits.has(entry),
       ) ?? '';
       await Bun.sleep(5);
     }

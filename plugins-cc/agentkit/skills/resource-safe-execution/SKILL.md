@@ -2,7 +2,7 @@
 name: resource-safe-execution
 description: >-
   Run resource-intensive developer commands inside deterministic systemd cgroup limits with
-  agentkit-run. Use for dependency installation or upgrades, compilers, typechecks, builds, test
+  bounded-run. Use for dependency installation or upgrades, compilers, typechecks, builds, test
   suites, linters, Playwright or browser work, code generation, Cargo, Go, and pytest, especially
   on shared or production-adjacent hosts where an unbounded process could
   disrupt Kubernetes, ingress, tunnels, or other services.
@@ -10,7 +10,7 @@ description: >-
 
 # Resource-safe Execution
 
-Use `agentkit-run` for every resource-intensive command. Never fall back to an unbounded command
+Use `bounded-run` for every resource-intensive command. Never fall back to an unbounded command
 when preflight or containment fails.
 
 ## Choose a profile
@@ -30,15 +30,16 @@ reproductions with `canary`. Increase only after the canary finishes cleanly.
 Pass the executable and arguments after `--`. Do not pass a shell string.
 
 ```bash
-agentkit-run --profile canary -- bunx tsc --noEmit --singleThreaded
-agentkit-run --profile compile -- bun run typecheck
-agentkit-run --profile browser -- bunx playwright test
-agentkit-run --profile default -- cargo test
+bounded-run --profile canary -- bunx tsc --noEmit --singleThreaded
+bounded-run --profile compile -- bun run typecheck
+bounded-run --profile browser -- bunx playwright test
+bounded-run --profile default -- cargo test
 ```
 
-For a project-only AgentKit install, invoke `./.claude/tools/agentkit-run`. The one-shot Claude
+For a project-only AgentKit install, invoke `./.claude/tools/bounded-run`. The one-shot Claude
 plugin bundles the runner and its denial message prints the resolved plugin-cache path. A global
-install places `agentkit-run` in `~/.local/bin`.
+install places `bounded-run` in `~/.local/bin`, with `agentkit-run` kept as a compat
+symlink from the tool's previous name.
 
 The runner preserves argv and the current directory, but exposes only a curated environment.
 Retrieve credentials at runtime through the project's approved secrets mechanism; never put secrets
@@ -53,7 +54,7 @@ in argv.
 5. Run the established profile repeatedly, then the remaining build and test gates.
 6. Confirm no child processes remain and live services stayed healthy.
 
-If `agentkit-run` reports a missing or misconfigured `agent-work.slice`, insufficient headroom,
+If `bounded-run` reports a missing or misconfigured `agent-work.slice`, insufficient headroom,
 high load, or memory pressure, stop. Propose the required infrastructure correction and wait for
 approval.
 

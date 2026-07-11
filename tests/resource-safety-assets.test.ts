@@ -9,8 +9,8 @@ describe('resource-safe-execution assets', () => {
   test('ships a discoverable skill with OpenAI interface metadata', () => {
     const skill = readFileSync(join(skillDir, 'SKILL.md'), 'utf-8');
     expect(skill).toContain('name: resource-safe-execution');
-    expect(skill).toContain('agentkit-run');
-    expect(skill).not.toContain('`$CLAUDE_PLUGIN_ROOT/tools/agentkit-run`');
+    expect(skill).toContain('bounded-run');
+    expect(skill).not.toContain('`$CLAUDE_PLUGIN_ROOT/tools/bounded-run`');
     expect(existsSync(join(skillDir, 'agents', 'openai.yaml'))).toBe(true);
     const metadata = readFileSync(join(skillDir, 'agents', 'openai.yaml'), 'utf-8');
     expect(metadata).toContain('display_name: "Resource-safe Execution"');
@@ -23,7 +23,7 @@ describe('resource-safe-execution assets', () => {
       'utf-8',
     );
     expect(instruction).toContain('agentkit:resource-safety:start');
-    expect(instruction).toContain('agentkit-run');
+    expect(instruction).toContain('bounded-run');
     expect(instruction).toContain('Never run resource-intensive');
     expect(instruction).toContain('Do not restart');
     expect(instruction).toContain('delegated workloads');
@@ -36,7 +36,7 @@ describe('resource-safe-execution assets', () => {
     for (const [source, mirror] of [
       ['hooks/claude/resource-police.sh', 'hooks/resource-police.sh'],
       ['skills/resource-safe-execution/SKILL.md', 'skills/resource-safe-execution/SKILL.md'],
-      ['tools/agentkit-run', 'tools/agentkit-run'],
+      ['tools/bounded-run', 'tools/bounded-run'],
     ]) {
       expect(readFileSync(join(pluginRoot, mirror), 'utf-8')).toBe(
         readFileSync(join(repoRoot, source), 'utf-8'),

@@ -13,7 +13,7 @@ import { dirname, join } from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 
 const repoRoot = dirname(import.meta.dir);
-const productionRunner = join(repoRoot, 'tools', 'agentkit-run');
+const productionRunner = join(repoRoot, 'tools', 'bounded-run');
 
 let root: string;
 let binDir: string;
@@ -91,12 +91,12 @@ function runRunner(
 }
 
 beforeEach(() => {
-  root = mkdtempSync(join(tmpdir(), 'agentkit-run-'));
+  root = mkdtempSync(join(tmpdir(), 'bounded-run-'));
   binDir = join(root, 'bin');
   homeDir = join(root, 'home');
   runtimeRoot = join(root, 'run-user');
   runtimeDir = join(runtimeRoot, String(process.getuid?.() ?? 1000));
-  runner = join(root, 'agentkit-run');
+  runner = join(root, 'bounded-run');
   systemdLog = join(root, 'systemd-run.args');
   mkdirSync(binDir);
   mkdirSync(homeDir);
@@ -150,7 +150,7 @@ afterEach(() => {
   rmSync(root, { force: true, recursive: true });
 });
 
-describe('agentkit-run argument contract', () => {
+describe('bounded-run argument contract', () => {
   test('pins its interpreter and control plane to trusted absolute paths', () => {
     const source = readFileSync(productionRunner, 'utf-8');
     expect(source).toStartWith('#!/bin/bash -p\n');
@@ -247,7 +247,7 @@ printf 'secret=<%s>\n' "\${UNSAFE_SECRET:-}" >> "${output}"
     expect(result.status).toBe(37);
   });
 
-  test('rejects nested agentkit-run instead of deadlocking on its own lock', () => {
+  test('rejects nested bounded-run instead of deadlocking on its own lock', () => {
     const result = runRunner([
       '--profile',
       'canary',
@@ -260,14 +260,14 @@ printf 'secret=<%s>\n' "\${UNSAFE_SECRET:-}" >> "${output}"
     ]);
 
     expect(result.status).toBe(64);
-    expect(result.stderr).toContain('nested agentkit-run');
+    expect(result.stderr).toContain('nested bounded-run');
     expect(() => readFileSync(systemdLog, 'utf-8')).toThrow();
 
     const active = runRunner(['--profile', 'canary', '--', '/bin/true'], {
       AGENTKIT_RUN_ACTIVE: '1',
     });
     expect(active.status).toBe(64);
-    expect(active.stderr).toContain('nested agentkit-run');
+    expect(active.stderr).toContain('nested bounded-run');
   });
 
   test('rejects commands that delegate work outside the service cgroup', () => {
@@ -337,11 +337,11 @@ printf 'secret=<%s>\n' "\${UNSAFE_SECRET:-}" >> "${output}"
     const result = runRunner(['--profile', 'canary', '--', command]);
 
     expect(result.status).toBe(75);
-    expect(result.stderr).not.toContain('another agentkit-run command is active');
+    expect(result.stderr).not.toContain('another bounded-run command is active');
   });
 });
 
-describe('agentkit-run resource boundary', () => {
+describe('bounded-run resource boundary', () => {
   test('maps every profile to explicit systemd cgroup and timeout properties', () => {
     const expected = {
       canary: ['MemoryHigh=1G', 'MemoryMax=2G', 'CPUQuota=200%', 'TasksMax=64', 'RuntimeMaxSec=75s'],

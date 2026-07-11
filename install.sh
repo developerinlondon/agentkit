@@ -558,6 +558,11 @@ install_tools() {
 		cp "$tool_file" "$tools_dir/$name"
 		chmod +x "$tools_dir/$name"
 	done
+
+	# Compat alias: bounded-run was previously named agentkit-run.
+	if [[ -f "$tools_dir/bounded-run" ]]; then
+		ln -sf bounded-run "$tools_dir/agentkit-run"
+	fi
 }
 
 # ─── Codex CLI: Starlark .rules Files ────────────────────────────────────────

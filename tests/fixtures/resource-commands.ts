@@ -39,8 +39,8 @@ export const blockedResourceCommands = [
   'b""un test',
   'true & bun run typecheck',
   'env sudo -n cargo test',
-  'echo agentkit-run && bun run build',
-  'agentkit-run --profile canary -- /bin/true && bun test',
+  'echo bounded-run && bun run build',
+  'bounded-run --profile canary -- /bin/true && bun test',
 ];
 
 export const unsupportedResourceCommands = [
@@ -50,22 +50,25 @@ export const unsupportedResourceCommands = [
   'systemd-run --user --scope cargo test',
   'sudo -u root systemd-run --scope cargo test',
   'ssh build-host bun test',
-  './agentkit-run --profile compile -- bun run build',
+  './bounded-run --profile compile -- bun run build',
   'systemctl restart cloudflared',
   'kubectl exec deploy/builder -- bun run build',
+  'bounded-run --profile compile -- docker build .',
   'agentkit-run --profile compile -- docker build .',
-  'agentkit-run --profile compile -- systemd-run --user cargo test',
-  "agentkit-run --profile compile -- bash -lc 'systemd-run --user cargo test'",
-  "agentkit-run --profile compile -- env CI=1 sh -c 'bun test'",
+  'bounded-run --profile compile -- systemd-run --user cargo test',
+  "bounded-run --profile compile -- bash -lc 'systemd-run --user cargo test'",
+  "bounded-run --profile compile -- env CI=1 sh -c 'bun test'",
   "bash -c 'ssh build-host bun test'",
   "bash -xc 'systemd-run --user cargo test'",
   'ansible-playbook playbooks/server.yml --check --diff',
 ];
 
 export const allowedResourceCommands = [
+  'bounded-run --profile compile -- bun run typecheck',
   'agentkit-run --profile compile -- bun run typecheck',
   '$HOME/.local/bin/agentkit-run --profile browser -- bunx playwright test',
-  'cd /tmp/project && agentkit-run --profile compile -- cargo test',
+  '$HOME/.local/bin/bounded-run --profile browser -- bunx playwright test',
+  'cd /tmp/project && bounded-run --profile compile -- cargo test',
   'bun --version',
   'bun run dev',
   'npm run dev',

@@ -222,7 +222,7 @@ function detectUnboundedCommand(
   for (const segment of splitShellSegments(command)) {
     const launch = parseLaunch(segment);
     if (!launch) continue;
-    if (launch.executable === 'agentkit-run') {
+    if (launch.executable === 'bounded-run' || launch.executable === 'agentkit-run') {
       if (!isTrustedRunner(launch.token)) return { segment, delegated: true };
       const nested = wrappedLaunch(launch);
       if (nested && !delegatedOk && isDelegating(nested)) return { segment, delegated: true };
@@ -248,13 +248,14 @@ function isDelegatedOverride(command: string): boolean {
 }
 
 function isTrustedRunner(token: string): boolean {
-  const normalized = token.replace(/['"]/g, '');
-  return normalized === 'agentkit-run'
-    || normalized === '$HOME/.local/bin/agentkit-run'
-    || normalized === '~/.local/bin/agentkit-run'
-    || normalized === './.claude/tools/agentkit-run'
-    || /^\/home\/[^/]+\/\.local\/bin\/agentkit-run$/.test(normalized)
-    || /\/plugins\/.*\/tools\/agentkit-run$/.test(normalized);
+  // agentkit-run is the pre-rename compat alias installed as a symlink.
+  const normalized = token.replace(/['"]/g, '').replace(/agentkit-run$/, 'bounded-run');
+  return normalized === 'bounded-run'
+    || normalized === '$HOME/.local/bin/bounded-run'
+    || normalized === '~/.local/bin/bounded-run'
+    || normalized === './.claude/tools/bounded-run'
+    || /^\/home\/[^/]+\/\.local\/bin\/bounded-run$/.test(normalized)
+    || /\/plugins\/.*\/tools\/bounded-run$/.test(normalized);
 }
 
 export default async function resourcePolice(_ctx: PluginInput) {
@@ -270,7 +271,7 @@ export default async function resourcePolice(_ctx: PluginInput) {
       if (!finding) return;
       if (finding.delegated) {
         throw new Error(
-          `BLOCKED: delegated workload cannot be contained by agentkit-run: ${finding.segment}\n` +
+          `BLOCKED: delegated workload cannot be contained by bounded-run: ${finding.segment}\n` +
             'Use a separately approved dedicated runner or verified engine-native limits.\n' +
             'User-approved delegated workloads: prefix with AGENTKIT_ALLOW_DELEGATED=1.',
         );
@@ -278,8 +279,8 @@ export default async function resourcePolice(_ctx: PluginInput) {
       throw new Error(
         `BLOCKED: resource-intensive command is not contained: ${finding.segment}\n` +
           'Run it through the installed runner, for example:\n' +
-          '  agentkit-run --profile compile -- bun run typecheck\n' +
-          '  ./.claude/tools/agentkit-run --profile compile -- bun run typecheck\n' +
+          '  bounded-run --profile compile -- bun run typecheck\n' +
+          '  ./.claude/tools/bounded-run --profile compile -- bun run typecheck\n' +
           'Use profile browser for Playwright and browser builds.',
       );
     },
