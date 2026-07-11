@@ -113,6 +113,11 @@ describe('Codex resource policy', () => {
     }
     expect(contents.match(/decision = "forbidden"/g)?.length ?? 0).toBeGreaterThanOrEqual(8);
     expect(contents).toContain('pattern = ["tsc"]');
+    expect(contents).toContain('pattern = [["npm", "pnpm"]');
+    expect(contents).toContain('pattern = ["yarn"');
+    expect(contents).toContain('pattern = ["npx"');
+    expect(contents).toContain('pattern = [["pip", "pip3"], "install"]');
+    expect(contents).toContain('pattern = ["uv"');
   });
 
   test('evaluates the direct-command policy matrix when Codex is installed', () => {
@@ -122,6 +127,12 @@ describe('Codex resource policy', () => {
       [['tsc', '-p', 'tsconfig.json'], 'forbidden'],
       [['bunx', 'tsc', '-p', 'tsconfig.json'], 'forbidden'],
       [['bun', 'run', 'typecheck:ci'], 'forbidden'],
+      [['npm', 'ci'], 'forbidden'],
+      [['pnpm', 'install'], 'forbidden'],
+      [['yarn', 'build'], 'forbidden'],
+      [['npx', 'tsc', '--noEmit'], 'forbidden'],
+      [['pip', 'install', 'requests'], 'forbidden'],
+      [['uv', 'sync'], 'forbidden'],
       [['docker', 'run', '--rm', 'builder'], 'forbidden'],
       [['ssh', 'build-host', 'bun', 'test'], 'forbidden'],
       [['systemd-run', '--user', 'cargo', 'test'], 'forbidden'],

@@ -163,9 +163,10 @@ Global installs place tools on `~/.local/bin/` and preserve a mirror in `~/.clau
 | **agentkit-run**       | Runs one direct-argv workload in the bounded `agent-work.slice` systemd user service |
 | **fix-ascii-boxes.py** | Fixes ASCII box-drawing alignment in markdown files, handles nested boxes inside-out |
 
-`agentkit-run` fails closed unless the aggregate slice has 20G/24G memory high/max, 800% CPU,
-1536 tasks, cgroup v2 is available, and host headroom checks pass. Its profiles are fixed and
-tested together with the host configuration:
+`agentkit-run` fails closed unless the aggregate slice matches its expected limits (default
+20G/24G memory high/max, 800% CPU, 1536 tasks; hosts sized differently pin their values in
+root-owned `/etc/agentkit/resource-guard.conf`), cgroup v2 is available, and host headroom
+checks pass. Its profiles are fixed and tested together with the host configuration:
 
 | Profile   | Memory high/max | CPU | Tasks | Command timeout |
 | --------- | --------------- | --- | ----- | --------------- |

@@ -68,6 +68,10 @@ function writeTestRunner(fixture = procRoot): void {
     .replace('readonly PROC_ROOT=/proc', `readonly PROC_ROOT=${fixture}`)
     .replace('readonly USER_RUNTIME_ROOT=/run/user', `readonly USER_RUNTIME_ROOT=${runtimeRoot}`)
     .replace('readonly VERIFY_CONTROL_OWNERSHIP=1', 'readonly VERIFY_CONTROL_OWNERSHIP=0')
+    .replace(
+      'readonly GUARD_CONF=/etc/agentkit/resource-guard.conf',
+      `readonly GUARD_CONF=${join(root, 'resource-guard.conf')}`,
+    )
     .replace('readonly SYSTEMCTL_BIN=/usr/bin/systemctl', `readonly SYSTEMCTL_BIN=${join(binDir, 'systemctl')}`)
     .replace('readonly SYSTEMD_RUN_BIN=/usr/bin/systemd-run', `readonly SYSTEMD_RUN_BIN=${join(binDir, 'systemd-run')}`);
   writeExecutable(runner, source);
@@ -306,6 +310,15 @@ printf 'secret=<%s>\n' "\${UNSAFE_SECRET:-}" >> "${output}"
     expect(() => readFileSync(systemdLog, 'utf-8')).toThrow();
   });
 
+  test('allows shell long options that merely contain the letter c', () => {
+    const script = join(binDir, 'noop.sh');
+    writeExecutable(script, '#!/usr/bin/env bash\nexit 0\n');
+
+    const result = runRunner(['--profile', 'canary', '--', 'bash', '--norc', script]);
+
+    expect(result.status, result.stderr).toBe(0);
+  });
+
   test('returns 124 when the command timeout expires', () => {
     const result = runRunner(['--profile', 'canary', '--', '/bin/true'], {
       SHIM_SYSTEMD_STATUS: '124',
@@ -363,6 +376,38 @@ describe('agentkit-run resource boundary', () => {
       expect(args).not.toContain('DBUS_SESSION_BUS_ADDRESS=');
       for (const property of properties) expect(args).toContain(property);
     }
+  });
+
+  test('honors a root-owned resource-guard config for slice expectations', () => {
+    writeFileSync(
+      join(root, 'resource-guard.conf'),
+      '# host sizing\nMEMORY_HIGH=10G\nMEMORY_MAX=12G\nMEMORY_SWAP_MAX=0\nCPU_QUOTA=400%\nTASKS_MAX=512\n',
+    );
+
+    const matching = runRunner(['--profile', 'canary', '--', '/bin/true'], {
+      SHIM_SLICE_MEMORY_HIGH: String(10 * 1024 ** 3),
+      SHIM_SLICE_MEMORY_MAX: String(12 * 1024 ** 3),
+      SHIM_SLICE_CPU_QUOTA: '4s',
+      SHIM_SLICE_TASKS_MAX: '512',
+    });
+    expect(matching.status, matching.stderr).toBe(0);
+
+    const mismatch = runRunner(['--profile', 'canary', '--', '/bin/true']);
+    expect(mismatch.status).not.toBe(0);
+    expect(mismatch.stderr).toContain('agent-work.slice');
+  });
+
+  test('fails closed on a malformed resource-guard config', () => {
+    writeFileSync(join(root, 'resource-guard.conf'), 'MEMORY_HIGH=lots\n');
+    const invalid = runRunner(['--profile', 'canary', '--', '/bin/true']);
+    expect(invalid.status).not.toBe(0);
+    expect(invalid.stderr).toContain('MEMORY_HIGH');
+    expect(() => readFileSync(systemdLog, 'utf-8')).toThrow();
+
+    writeFileSync(join(root, 'resource-guard.conf'), 'UNKNOWN_KEY=1\n');
+    const unknown = runRunner(['--profile', 'canary', '--', '/bin/true']);
+    expect(unknown.status).not.toBe(0);
+    expect(unknown.stderr).toContain('unknown key');
   });
 
   test('fails closed when the user bus or aggregate slice is unavailable or unbounded', () => {

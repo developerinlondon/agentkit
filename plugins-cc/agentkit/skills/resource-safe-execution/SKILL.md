@@ -57,6 +57,11 @@ If `agentkit-run` reports a missing or misconfigured `agent-work.slice`, insuffi
 high load, or memory pressure, stop. Propose the required infrastructure correction and wait for
 approval.
 
+Hosts sized differently from the defaults pin their slice values in root-owned
+`/etc/agentkit/resource-guard.conf` (`MEMORY_HIGH`, `MEMORY_MAX`, `MEMORY_SWAP_MAX`, `CPU_QUOTA`,
+`TASKS_MAX`); the runner verifies the live slice against that file and falls back to its built-in
+expectations when the file is absent.
+
 Do not wrap `docker`, `podman`, or `systemd-run`. They can delegate work into a daemon, container,
 or sibling service outside the transient cgroup. Use a separately approved dedicated runner or
 verified engine-native limits for delegated workloads.
