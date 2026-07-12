@@ -21,11 +21,14 @@ Use a diagram when it makes the work easier to follow, especially for debugging,
 deployment paths, service relationships, data flow, and multi-repository changes. Pick the format
 by where the output is read.
 
-On markdown-rendered surfaces (chat UIs with Mermaid support, GitLab/GitHub issues, MRs, and
-READMEs), use a `mermaid` code fence (`flowchart LR`/`TD` or `sequenceDiagram`) so it renders as a
+Use Mermaid only on a destination explicitly known to render it. Examples include GitLab/GitHub
+issues and MRs, the Neutron Core web UI, and rendered documentation with Mermaid enabled. Use a
+`mermaid` code fence (`flowchart LR`/`TD` or `sequenceDiagram`) on those surfaces so it renders as a
 real diagram. Do not draw ASCII-art boxes there; they render poorly.
 
-On plain-text surfaces (terminals, commit messages, git diffs, logs), use compact ASCII:
+Codex and OpenCode terminal or TUI chats are plain-text diagram surfaces even when they render
+basic Markdown code fences. Terminals, SSH sessions, commit messages, git diffs, and logs also use
+compact ASCII. When Mermaid support is unknown, use ASCII:
 
 ```text
 current state ----> action ----> expected result
