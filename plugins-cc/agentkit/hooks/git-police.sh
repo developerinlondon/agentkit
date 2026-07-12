@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # git-police.sh — Claude Code PreToolUse hook (matcher: Bash)
-# Blocks: force push, --no-verify, Co-authored-by trailers, commits to protected branches, stale branch creation
+# Blocks: force push, --no-verify, AI attribution (commit trailers AND MR/PR/issue
+# content), commits to protected branches, stale branch creation
 # Equivalent to: plugins/git-police.ts (OpenCode)
 set -euo pipefail
 
@@ -176,12 +177,19 @@ fi
 # inside a config key like `git config commit.gpgsign`).
 GIT_COMMIT_RE='\bgit([[:space:]]+(-[A-Za-z][^[:space:]]*|--[A-Za-z][A-Za-z0-9-]*(=[^[:space:]]+)?)([[:space:]]+[^-[:space:]][^[:space:]]*)?)*[[:space:]]+commit\b'
 
-# 5. Block AI attribution trailers / signatures in commit commands.
+# Commands that publish authored content to the forge — MR/PR/issue bodies,
+# comments, release notes. Same no-AI-attribution rule as commit messages:
+# everything published under the user's name is theirs, not the agent's.
+FORGE_WRITE_RE='\bglab[[:space:]]+(mr|issue)[[:space:]]+(create|update|edit|note|comment)\b|\bgh[[:space:]]+(pr|issue|release)[[:space:]]+(create|edit|comment)\b'
+
+# 5. Block AI attribution trailers / signatures in commit commands AND in
+#    forge-content commands (MR/PR descriptions slipped through when this
+#    was gated on `git commit` only).
 #    $INPUT is the full PreToolUse JSON payload from stdin; the previous
 #    version referenced an undefined $TOOL_INPUT and silently never matched.
-if echo "$STRIPPED" | grep -qiE "$GIT_COMMIT_RE" \
-	&& echo "$INPUT" | grep -qiE 'co-authored-by|generated with \[claude code\]|🤖 generated|claude\.ai/code|noreply@anthropic\.com'; then
-	deny "BLOCKED: AI attribution in commit messages is forbidden. Do not add Co-authored-by, Signed-off-by, '🤖 Generated with [Claude Code]', claude.ai/code links, noreply@anthropic.com co-authors, or any other AI agent attribution. The commit author is whoever owns the git config. Remove the attribution and retry."
+if { echo "$STRIPPED" | grep -qiE "$GIT_COMMIT_RE" || echo "$STRIPPED" | grep -qiE "$FORGE_WRITE_RE"; } \
+	&& echo "$INPUT" | grep -qiE 'co-authored-by|generated with \[claude code\]|🤖 generated|claude\.ai/code|claude\.com/claude-code|noreply@anthropic\.com'; then
+	deny "BLOCKED: AI attribution is forbidden — in commit messages and in MR/PR/issue descriptions or comments alike. Do not add Co-authored-by, Signed-off-by, '🤖 Generated with [Claude Code]', claude.ai/code or claude.com/claude-code links, noreply@anthropic.com co-authors, or any other AI agent attribution. The author is whoever owns the git config. Remove the attribution and retry."
 fi
 
 # 6. Block direct commits to protected branches

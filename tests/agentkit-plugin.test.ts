@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { readFileSync, statSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { basename, join } from 'node:path';
 
 // The comprehensive "agentkit" Claude Code plugin bundles, in one install:
@@ -68,6 +68,13 @@ describe('agentkit plugin hooks', () => {
     }
   });
 
+  test('mirrors every global hook event with plugin-relative commands', () => {
+    const source = readFileSync(join(repoRoot, 'hooks', 'claude', 'settings.json'), 'utf-8');
+    const expected = JSON.parse(source.replaceAll('$HOME/.claude', '${CLAUDE_PLUGIN_ROOT}'));
+
+    expect(readJson('hooks', 'hooks.json')).toEqual(expected);
+  });
+
   test('every referenced police script exists and is executable', () => {
     // hooks.json must reference these and they must be present + runnable.
     const referenced = new Set(
@@ -80,6 +87,20 @@ describe('agentkit plugin hooks', () => {
       expect(referenced.has(script), `${script} referenced in hooks.json`).toBe(true);
       const mode = statSync(join(pluginDir, 'hooks', script)).mode;
       expect((mode & 0o111) !== 0, `${script} is executable`).toBe(true);
+    }
+  });
+
+  test('keeps every source hook byte-identical in the plugin mirror', () => {
+    const sourceHooks = join(repoRoot, 'hooks', 'claude');
+    const sourceScripts = readdirSync(sourceHooks).filter((name) => name.endsWith('.sh')).sort();
+    const pluginScripts = readdirSync(join(pluginDir, 'hooks'))
+      .filter((name) => name.endsWith('.sh'))
+      .sort();
+    expect(pluginScripts).toEqual(sourceScripts);
+    for (const script of sourceScripts) {
+      expect(readFileSync(join(pluginDir, 'hooks', script), 'utf-8')).toBe(
+        readFileSync(join(sourceHooks, script), 'utf-8'),
+      );
     }
   });
 });
