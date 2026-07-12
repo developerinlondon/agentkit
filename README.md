@@ -50,7 +50,7 @@ Reusable AI agent skills, rules, plugins, hooks, and tools for OpenCode, Claude 
 | **format-police.sh**   | PostToolUse       | Auto-formats files after edit/write using dprint                                                                                                                           |
 | **coding-police.sh**   | PostToolUse       | Enforces DRY code, modular files (<1000 lines), short functions, single responsibility                                                                                     |
 | **pkg-police.sh**      | PreToolUse        | Enforces bun as package manager — blocks npm, npx, yarn, pnpm commands                                                                                                     |
-| **resource-police.sh** | PreToolUse        | Requires `bounded-run` for heavy commands and blocks cgroup delegation escapes                                                                                            |
+| **resource-police.sh** | PreToolUse        | Requires `bounded-run` for heavy commands and blocks cgroup delegation escapes                                                                                             |
 | **chime.sh**           | Notification/Stop | Audible nudge when Claude needs you: springy boing on permission prompts/questions, soft ping when a turn finishes. Mute: `touch ~/.claude/.chime-off` or `CLAUDE_CHIME=0` |
 | **mr-police.sh**       | PreToolUse        | Blocks opening a new MR while you already have an open MR you authored on the repo — stops unmerged MRs from stacking up                                                   |
 
@@ -96,7 +96,7 @@ claude plugin install infra-tools
 
 | Plugin          | Provides                                                                                                                                                                                                                                                                                                 | Source                                                                                        |
 | --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| **agentkit**    | Claude bundle: enforcement police hooks, skills, `tools/bounded-run`, and both MCP toolchains. Needs `jq`, `bun`, `assay`, cgroup v2, a systemd user manager, and a provisioned `agent-work.slice`.                                                                                                     | local `plugins-cc/agentkit/`                                                                  |
+| **agentkit**    | Claude bundle: enforcement police hooks, skills, `tools/bounded-run`, and both MCP toolchains. Needs `jq`, `bun`, `assay`, cgroup v2, a systemd user manager, and a provisioned `agent-work.slice`.                                                                                                      | local `plugins-cc/agentkit/`                                                                  |
 | **assay**       | Gated Lua infra toolkit (`assay_run` + `assay_context`) — Kubernetes, ArgoCD, Vault, Prometheus, GitLab, AWS, … through one read-only/approval-gated tool. Requires the `assay` binary on PATH.                                                                                                          | vendored from [developerinlondon/assay](https://github.com/developerinlondon/assay) `plugin/` |
 | **infra-tools** | Read-only helm / tofu / git tools (`helm_template`/`helm_list`/`helm_get_values`, `tofu_plan`/`tofu_show`/`tofu_state_list`, `git_log`/`git_diff`/`git_status`/`git_clone_ro`) as a typed MCP server — render charts, preview plans, read git history. Never applies or mutates. Requires `bun` on PATH. | local `plugins-cc/infra-tools/`                                                               |
 
@@ -160,7 +160,7 @@ Global installs place tools on `~/.local/bin/` and preserve a mirror in `~/.clau
 
 | Tool                   | Description                                                                          |
 | ---------------------- | ------------------------------------------------------------------------------------ |
-| **bounded-run**       | Runs one direct-argv workload in the bounded `agent-work.slice` systemd user service |
+| **bounded-run**        | Runs one direct-argv workload in the bounded `agent-work.slice` systemd user service |
 | **fix-ascii-boxes.py** | Fixes ASCII box-drawing alignment in markdown files, handles nested boxes inside-out |
 
 `bounded-run` fails closed unless the aggregate slice matches its expected limits (default

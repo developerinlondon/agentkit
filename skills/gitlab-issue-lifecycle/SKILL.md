@@ -58,14 +58,14 @@ project path from `git remote -v` (see issue-raiser Phase 0) — never hardcode 
 Statuses are grouped by category; discover the actual names per namespace (query
 below) — never hardcode status IDs across instances.
 
-| When                                                  | Category      |
-| ----------------------------------------------------- | ------------- |
-| Filed, awaiting human triage decision                 | `triage`      |
-| Triaged, accepted, parked (e.g. pending design)       | `to_do`       |
-| Anyone (human or bot) actively working it             | `in_progress` |
-| MR up or merged, awaiting verification                | `in_progress` (an "In review"-named status if the lifecycle has one) |
-| Verified and closed                                   | `done` (auto-set when the issue is closed) |
-| Rejected / superseded                                 | `canceled`    |
+| When                                            | Category                                                             |
+| ----------------------------------------------- | -------------------------------------------------------------------- |
+| Filed, awaiting human triage decision           | `triage`                                                             |
+| Triaged, accepted, parked (e.g. pending design) | `to_do`                                                              |
+| Anyone (human or bot) actively working it       | `in_progress`                                                        |
+| MR up or merged, awaiting verification          | `in_progress` (an "In review"-named status if the lifecycle has one) |
+| Verified and closed                             | `done` (auto-set when the issue is closed)                           |
+| Rejected / superseded                           | `canceled`                                                           |
 
 ## Recipes
 

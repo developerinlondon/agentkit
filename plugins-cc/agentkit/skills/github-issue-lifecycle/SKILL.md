@@ -50,13 +50,13 @@ the answer with `git config agentkit.issues.<key> <value>`.
 
 Field options vary per project — discover them (query below), match by intent:
 
-| When                                            | Typical option |
-| ----------------------------------------------- | -------------- |
-| Filed, awaiting triage decision                 | Triage / Backlog |
-| Triaged, accepted, parked                       | Todo           |
-| Anyone (human or bot) actively working it       | In Progress    |
-| PR up or merged, awaiting verification          | In Review      |
-| Verified and closed                             | Done           |
+| When                                      | Typical option   |
+| ----------------------------------------- | ---------------- |
+| Filed, awaiting triage decision           | Triage / Backlog |
+| Triaged, accepted, parked                 | Todo             |
+| Anyone (human or bot) actively working it | In Progress      |
+| PR up or merged, awaiting verification    | In Review        |
+| Verified and closed                       | Done             |
 
 ## Recipes
 
