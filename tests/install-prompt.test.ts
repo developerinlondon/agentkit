@@ -99,6 +99,15 @@ describe('global prompt installation', () => {
       expect(readFileSync(collaborationVisibility, 'utf-8')).toContain(
         'agentkit:collaboration-visibility:start',
       );
+      expect(readFileSync(collaborationVisibility, 'utf-8')).toContain(
+        'Codex and OpenCode terminal or TUI chats',
+      );
+      expect(readFileSync(collaborationVisibility, 'utf-8')).toContain(
+        'Neutron Core web UI',
+      );
+      expect(readFileSync(collaborationVisibility, 'utf-8')).toContain(
+        'When Mermaid support is unknown, use ASCII',
+      );
       expect(readFileSync(resourceSafety, 'utf-8')).toContain(
         'agentkit:resource-safety:start',
       );
