@@ -80,9 +80,16 @@ describe('global prompt installation', () => {
         'instructions',
         'collaboration-visibility.md',
       );
+      const resourceSafety = join(
+        home,
+        '.agents',
+        'instructions',
+        'resource-safety.md',
+      );
       expect(existsSync(antiGlaze)).toBe(true);
       expect(existsSync(codingDiscipline)).toBe(true);
       expect(existsSync(collaborationVisibility)).toBe(true);
+      expect(existsSync(resourceSafety)).toBe(true);
       expect(readFileSync(antiGlaze, 'utf-8')).toContain(
         'agentkit:anti-glaze:start',
       );
@@ -91,6 +98,9 @@ describe('global prompt installation', () => {
       );
       expect(readFileSync(collaborationVisibility, 'utf-8')).toContain(
         'agentkit:collaboration-visibility:start',
+      );
+      expect(readFileSync(resourceSafety, 'utf-8')).toContain(
+        'agentkit:resource-safety:start',
       );
 
       const codexConfig = readFileSync(join(codexDir, 'config.toml'), 'utf-8');
@@ -109,6 +119,9 @@ describe('global prompt installation', () => {
           'agentkit:collaboration-visibility:start',
         ),
       ).toBe(1);
+      expect(
+        countOccurrences(codexConfig, 'agentkit:resource-safety:start'),
+      ).toBe(1);
 
       const claudeInstructions = readFileSync(
         join(claudeDir, 'CLAUDE.md'),
@@ -120,6 +133,7 @@ describe('global prompt installation', () => {
       );
       expect(claudeInstructions).toContain('Coding Discipline');
       expect(claudeInstructions).toContain('Collaboration Visibility');
+      expect(claudeInstructions).toContain('Resource-safe Execution');
       expect(
         countOccurrences(claudeInstructions, 'agentkit:anti-glaze:start'),
       ).toBe(1);
@@ -132,6 +146,9 @@ describe('global prompt installation', () => {
           'agentkit:collaboration-visibility:start',
         ),
       ).toBe(1);
+      expect(
+        countOccurrences(claudeInstructions, 'agentkit:resource-safety:start'),
+      ).toBe(1);
 
       const opencodeConfig = JSON.parse(
         readFileSync(join(opencodeDir, 'opencode.json'), 'utf-8'),
@@ -140,6 +157,7 @@ describe('global prompt installation', () => {
       expect(opencodeConfig.instructions).toContain(antiGlaze);
       expect(opencodeConfig.instructions).toContain(codingDiscipline);
       expect(opencodeConfig.instructions).toContain(collaborationVisibility);
+      expect(opencodeConfig.instructions).toContain(resourceSafety);
       expect(
         opencodeConfig.instructions.filter(
           (entry: string) => entry === antiGlaze,
@@ -153,6 +171,11 @@ describe('global prompt installation', () => {
       expect(
         opencodeConfig.instructions.filter(
           (entry: string) => entry === collaborationVisibility,
+        ).length,
+      ).toBe(1);
+      expect(
+        opencodeConfig.instructions.filter(
+          (entry: string) => entry === resourceSafety,
         ).length,
       ).toBe(1);
     } finally {

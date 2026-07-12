@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-marketplace.json",
+  "name": "agentkit",
+  "owner": {
+    "name": "developerinlondon",
+    "url": "https://github.com/developerinlondon"
+  },
+  "description": "Reusable agent tooling distributed as Claude Code plugins. The generic units (MCP tools, skills) are the source of truth; the plugins wrap them for one-step install. See ADR #45.",
+  "plugins": [
+    {
+      "name": "agentkit",
+      "source": "./plugins-cc/agentkit",
+      "description": "Claude Code bundle with enforcement hooks, skills, tools/bounded-run, and the assay + infra-tools MCP toolchains. Requires jq, bun, assay, cgroup v2, a systemd user manager, and a provisioned agent-work.slice.",
+      "version": "0.2.0"
+    },
+    {
+      "name": "assay",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/developerinlondon/assay",
+        "path": "plugin"
+      },
+      "description": "Gated Lua infra toolkit — Kubernetes, ArgoCD, Vault, Prometheus, GitLab, AWS and more through one read-only/approval-gated tool. Requires the `assay` binary on PATH.",
+      "version": "0.17.0"
+    },
+    {
+      "name": "infra-tools",
+      "source": "./plugins-cc/infra-tools",
+      "description": "Read-only helm / tofu / git tools for infrastructure investigation, exposed as a typed MCP server. Renders charts, previews plans, and reads git history — never applies or mutates. Requires `bun` on PATH.",
+      "version": "0.1.0"
+    }
+  ]
+}

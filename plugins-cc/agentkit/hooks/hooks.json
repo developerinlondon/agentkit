@@ -1,0 +1,59 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/git-police.sh",
+            "timeout": 10,
+            "statusMessage": "git-police: checking safety rules..."
+          },
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/kubectl-police.sh",
+            "timeout": 10,
+            "statusMessage": "kubectl-police: checking Kargo safety..."
+          },
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/pkg-police.sh",
+            "timeout": 10,
+            "statusMessage": "pkg-police: enforcing bun as package manager..."
+          },
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/resource-police.sh",
+            "timeout": 10,
+            "statusMessage": "resource-police: requiring bounded execution..."
+          },
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/mr-police.sh",
+            "timeout": 15,
+            "statusMessage": "mr-police: checking for unmerged MRs..."
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/format-police.sh",
+            "timeout": 15
+          },
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/coding-police.sh",
+            "timeout": 15,
+            "statusMessage": "coding-police: checking coding standards..."
+          }
+        ]
+      }
+    ]
+  }
+}
