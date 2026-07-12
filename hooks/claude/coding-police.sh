@@ -14,22 +14,30 @@ MAX_EXPORTS_PER_FILE=15
 
 load_config() {
   [[ -f "$AGENTKIT_CONFIG" ]] || return 0
-  local section
-  section=$(sed -n '/^coding-police:/,/^[^ ]/p' "$AGENTKIT_CONFIG" | head -n -1)
-  [[ -z "$section" ]] && return 0
-
-  local val
-  val=$(echo "$section" | grep -oP 'max-file-lines:\s*\K\d+' || true)
-  [[ -n "$val" ]] && MAX_FILE_LINES="$val"
-
-  val=$(echo "$section" | grep -oP 'max-function-lines:\s*\K\d+' || true)
-  [[ -n "$val" ]] && MAX_FUNCTION_LINES="$val"
-
-  val=$(echo "$section" | grep -oP 'min-duplicate-lines:\s*\K\d+' || true)
-  [[ -n "$val" ]] && MIN_DUPLICATE_LINES="$val"
-
-  val=$(echo "$section" | grep -oP 'max-exports-per-file:\s*\K\d+' || true)
-  [[ -n "$val" ]] && MAX_EXPORTS_PER_FILE="$val"
+  local key value
+  while IFS='=' read -r key value; do
+    case "$key" in
+      max-file-lines) MAX_FILE_LINES="$value" ;;
+      max-function-lines) MAX_FUNCTION_LINES="$value" ;;
+      min-duplicate-lines) MIN_DUPLICATE_LINES="$value" ;;
+      max-exports-per-file) MAX_EXPORTS_PER_FILE="$value" ;;
+    esac
+  done < <(awk '
+    /^[^[:space:]#]/ {
+      in_section = ($0 ~ /^coding-police:/)
+      next
+    }
+    in_section {
+      line = $0
+      sub(/^[[:space:]]+/, "", line)
+      if (line !~ /^(max-file-lines|max-function-lines|min-duplicate-lines|max-exports-per-file):[[:space:]]*[0-9]+([[:space:]]*#.*)?$/) next
+      key = line
+      sub(/:.*/, "", key)
+      sub(/^[^:]*:[[:space:]]*/, "", line)
+      sub(/[[:space:]#].*$/, "", line)
+      print key "=" line
+    }
+  ' "$AGENTKIT_CONFIG")
 }
 load_config
 
@@ -228,7 +236,7 @@ check_export_count() {
   esac
 
   local count
-  count=$(grep -cE '^\s*export\s+(default\s+)?(function|class|const|let|var|type|interface|enum|async)' "$FILE_PATH" 2>/dev/null || true)
+  count=$(grep -cE '^[[:space:]]*export[[:space:]]+(default[[:space:]]+)?(function|class|const|let|var|type|interface|enum|async)' "$FILE_PATH" 2>/dev/null || true)
   count=${count:-0}
   if (( count > MAX_EXPORTS_PER_FILE )); then
     VIOLATIONS+=("TOO MANY EXPORTS: ${count} exports in this file (limit: ${MAX_EXPORTS_PER_FILE}). This suggests the file has multiple responsibilities. Group related exports into separate modules (e.g., types.ts, helpers.ts, constants.ts).")
