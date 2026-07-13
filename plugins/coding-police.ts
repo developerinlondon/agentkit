@@ -1,7 +1,8 @@
 import type { PluginInput } from '@opencode-ai/plugin';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
+import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 
 // ---------------------------------------------------------------------------
@@ -13,6 +14,7 @@ interface CodingPoliceConfig {
   maxFunctionLines: number;
   minDuplicateLines: number;
   maxExportsPerFile: number;
+  maxDirFiles: number;
   excludePatterns: string[];
 }
 
@@ -21,6 +23,7 @@ const DEFAULTS: CodingPoliceConfig = {
   maxFunctionLines: 100,
   minDuplicateLines: 6,
   maxExportsPerFile: 15,
+  maxDirFiles: 15,
   excludePatterns: [],
 };
 
@@ -69,6 +72,7 @@ export function loadConfig(): CodingPoliceConfig {
     const maxFunc = section.match(/max-function-lines:\s*(\d+)/);
     const minDup = section.match(/min-duplicate-lines:\s*(\d+)/);
     const maxExp = section.match(/max-exports-per-file:\s*(\d+)/);
+    const maxDir = section.match(/max-dir-files:\s*(\d+)/);
 
     const excludeMatch = section.match(
       /exclude-patterns:\s*\n((?:\s*-\s*.+\n?)*)/,
@@ -90,6 +94,7 @@ export function loadConfig(): CodingPoliceConfig {
       maxExportsPerFile: maxExp
         ? parseInt(maxExp[1], 10)
         : DEFAULTS.maxExportsPerFile,
+      maxDirFiles: maxDir ? parseInt(maxDir[1], 10) : DEFAULTS.maxDirFiles,
       excludePatterns: excludes.length > 0 ? excludes : DEFAULTS.excludePatterns,
     };
   } catch {
@@ -286,6 +291,81 @@ export function checkExportCount(
 }
 
 /**
+ * Check 6: Monolith directory — creating a new source file in a directory
+ * that already holds too many flat source files hurts discoverability the
+ * same way an oversized file does.
+ */
+export function checkMonolithDirectory(
+  siblingCount: number,
+  dirLabel: string,
+  maxDirFiles: number,
+): string | null {
+  if (maxDirFiles <= 0) return null;
+  if (siblingCount < maxDirFiles) return null;
+
+  return (
+    `MONOLITH DIRECTORY: ${dirLabel} already has ${siblingCount} source files (cap: ${maxDirFiles}).\n` +
+    `  Group files into domain subfolders instead of adding more flat files here.`
+  );
+}
+
+/**
+ * A file is "new" when git has never tracked it. Any failure (no git repo,
+ * git missing) fails open so the check never blocks when it can't tell.
+ */
+function isNewFile(absPath: string): boolean {
+  const result = spawnSync(
+    'git',
+    ['-C', path.dirname(absPath), 'ls-files', '--error-unmatch', '--', path.basename(absPath)],
+    { encoding: 'utf-8' },
+  );
+  if (result.error) return false;
+  if (result.status === 0) return false;
+  if ((result.stderr || '').includes('not a git repository')) return false;
+  return true;
+}
+
+/**
+ * Counts sibling CODE_FILE entries in a directory (non-recursive), applying
+ * the same SKIP_FILES and exclude-patterns filters as the rest of the plugin.
+ */
+function countDirectorySiblings(
+  dirAbsPath: string,
+  worktree: string,
+  excludeAbsPath: string,
+  excludePatterns: string[],
+): number {
+  let entries: string[];
+  try {
+    entries = readdirSync(dirAbsPath);
+  } catch {
+    return 0;
+  }
+
+  let count = 0;
+  for (const name of entries) {
+    if (!CODE_FILE.test(name) || SKIP_FILES.test(name)) continue;
+
+    const entryAbsPath = path.join(dirAbsPath, name);
+    if (entryAbsPath === excludeAbsPath) continue;
+
+    let stat;
+    try {
+      stat = statSync(entryAbsPath);
+    } catch {
+      continue;
+    }
+    if (!stat.isFile()) continue;
+
+    const entryRelPath = path.relative(worktree, entryAbsPath);
+    if (excludePatterns.some((pattern) => entryRelPath.includes(pattern))) continue;
+
+    count++;
+  }
+  return count;
+}
+
+/**
  * Check 5: Cross-repo sibling relative paths in durable config.
  *
  * Infrastructure and deploy config must not reach into sibling repositories
@@ -403,6 +483,23 @@ export default async function codingPolice(ctx: PluginInput) {
         if (exportWarning) violations.push(exportWarning);
       }
 
+      // Check 6: Monolith directory (Write only — Edit cannot create new files)
+      if (toolName === 'write' && isNewFile(absPath)) {
+        const dirAbsPath = path.dirname(absPath);
+        const siblingCount = countDirectorySiblings(
+          dirAbsPath,
+          ctx.worktree,
+          absPath,
+          config.excludePatterns,
+        );
+        const dirWarning = checkMonolithDirectory(
+          siblingCount,
+          path.dirname(relativePath) || '.',
+          config.maxDirFiles,
+        );
+        if (dirWarning) violations.push(dirWarning);
+      }
+
       if (violations.length === 0) return;
 
       output.output +=
@@ -416,6 +513,7 @@ export default async function codingPolice(ctx: PluginInput) {
         `- Keep files modular: split files exceeding ${config.maxFileLines} lines by functionality.\n` +
         `- Keep functions focused: break functions over ${config.maxFunctionLines} lines into composable helpers.\n` +
         `- Apply Single Responsibility: each file should have one clear purpose.\n` +
+        `- Keep directories navigable: group files into domain subfolders instead of growing past ${config.maxDirFiles} flat files.\n` +
         `- Remove cross-repo sibling relative paths from durable config.\n` +
         `\n` +
         `Fix these violations before proceeding.`;

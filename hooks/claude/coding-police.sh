@@ -11,6 +11,8 @@ MAX_FILE_LINES=1000
 MAX_FUNCTION_LINES=100
 MIN_DUPLICATE_LINES=6
 MAX_EXPORTS_PER_FILE=15
+MAX_DIR_FILES=15
+EXCLUDE_PATTERNS=()
 
 load_config() {
   [[ -f "$AGENTKIT_CONFIG" ]] || return 0
@@ -21,16 +23,35 @@ load_config() {
       max-function-lines) MAX_FUNCTION_LINES="$value" ;;
       min-duplicate-lines) MIN_DUPLICATE_LINES="$value" ;;
       max-exports-per-file) MAX_EXPORTS_PER_FILE="$value" ;;
+      max-dir-files) MAX_DIR_FILES="$value" ;;
+      exclude-pattern) EXCLUDE_PATTERNS+=("$value") ;;
     esac
   done < <(awk '
     /^[^[:space:]#]/ {
       in_section = ($0 ~ /^coding-police:/)
+      in_excludes = 0
       next
     }
     in_section {
       line = $0
       sub(/^[[:space:]]+/, "", line)
-      if (line !~ /^(max-file-lines|max-function-lines|min-duplicate-lines|max-exports-per-file):[[:space:]]*[0-9]+([[:space:]]*#.*)?$/) next
+
+      if (in_excludes) {
+        if (line ~ /^-[[:space:]]*.+$/) {
+          value = line
+          sub(/^-[[:space:]]*/, "", value)
+          print "exclude-pattern=" value
+          next
+        }
+        in_excludes = 0
+      }
+
+      if (line ~ /^exclude-patterns:[[:space:]]*$/) {
+        in_excludes = 1
+        next
+      }
+
+      if (line !~ /^(max-file-lines|max-function-lines|min-duplicate-lines|max-exports-per-file|max-dir-files):[[:space:]]*[0-9]+([[:space:]]*#.*)?$/) next
       key = line
       sub(/:.*/, "", key)
       sub(/^[^:]*:[[:space:]]*/, "", line)
@@ -74,6 +95,11 @@ case "$FILE_PATH" in
   *.lock|*.min.*|*.generated.*|*.snap|*.d.ts|package-lock.json|yarn.lock|pnpm-lock.yaml)
     exit 0 ;;
 esac
+
+# Skip paths matching an exclude-patterns entry (e.g. homogeneous routes/migrations dirs)
+for pattern in "${EXCLUDE_PATTERNS[@]}"; do
+  [[ "$FILE_PATH" == *"$pattern"* ]] && exit 0
+done
 
 [[ -f "$FILE_PATH" ]] || exit 0
 
@@ -243,6 +269,50 @@ check_export_count() {
   fi
 }
 
+# ── Check 6: Monolith directory (Write only — Edit cannot create new files) ─
+check_monolith_directory() {
+  case "$TOOL_NAME" in
+    Write|write) ;;
+    *) return 0 ;;
+  esac
+  (( MAX_DIR_FILES > 0 )) || return 0
+
+  local dir base git_err git_status=0
+  dir=$(dirname -- "$FILE_PATH")
+  base=$(basename -- "$FILE_PATH")
+
+  # A file is "new" when git has never tracked it. Any failure (no repo,
+  # git missing) fails open so the check never blocks when it can't tell.
+  git_err=$(git -C "$dir" ls-files --error-unmatch -- "$base" 2>&1) || git_status=$?
+  (( git_status == 0 )) && return 0
+  [[ "$git_err" == *"not a git repository"* ]] && return 0
+
+  local count=0 entry excluded pattern
+  for entry in "$dir"/*; do
+    [[ -f "$entry" ]] || continue
+    [[ "$entry" == "$FILE_PATH" ]] && continue
+    case "$entry" in
+      *.ts|*.tsx|*.js|*.jsx|*.py|*.rb|*.go|*.rs|*.java|*.kt|*.cs|*.cpp|*.c|*.h|*.hpp|*.swift|*.scala|*.vue|*.svelte) ;;
+      *) continue ;;
+    esac
+    case "$entry" in
+      *.lock|*.min.*|*.generated.*|*.snap|*.d.ts|package-lock.json|yarn.lock|pnpm-lock.yaml) continue ;;
+    esac
+
+    excluded=false
+    for pattern in "${EXCLUDE_PATTERNS[@]}"; do
+      [[ "$entry" == *"$pattern"* ]] && { excluded=true; break; }
+    done
+    [[ "$excluded" == true ]] && continue
+
+    count=$(( count + 1 ))
+  done
+
+  if (( count >= MAX_DIR_FILES )); then
+    VIOLATIONS+=("MONOLITH DIRECTORY: ${dir} already has ${count} source files (cap: ${MAX_DIR_FILES}). Group files into domain subfolders instead of adding more flat files here.")
+  fi
+}
+
 # ── Run all checks ──────────────────────────────────────────────────────────
 check_cross_repo_relative_paths
 
@@ -270,6 +340,7 @@ check_file_length
 check_function_lengths
 check_duplicate_blocks
 check_export_count
+check_monolith_directory
 
 # ── Output violations ──────────────────────────────────────────────────────
 if (( ${#VIOLATIONS[@]} > 0 )); then
@@ -286,6 +357,7 @@ if (( ${#VIOLATIONS[@]} > 0 )); then
     echo "- Keep files modular: split files exceeding ${MAX_FILE_LINES} lines by functionality."
     echo "- Keep functions focused: break functions over ${MAX_FUNCTION_LINES} lines into composable helpers."
     echo "- Apply Single Responsibility: each file should have one clear purpose."
+    echo "- Keep directories navigable: group files into domain subfolders instead of growing past ${MAX_DIR_FILES} flat files."
     echo "- Remove cross-repo sibling relative paths from durable config."
     echo ""
     echo "Fix these violations before proceeding."
