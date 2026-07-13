@@ -26,12 +26,21 @@ coding-police:
   # Maximum exports per file before warning about single responsibility.
   max-exports-per-file: 15
 
-  # File path patterns to exclude from checks.
+  # Maximum source files in one directory before warning to split into
+  # domain subfolders. Only fires when a Write creates a new source file;
+  # editing an existing file never triggers it. Set to 0 to disable.
+  max-dir-files: 15
+
+  # File path patterns to exclude from checks. Use this for homogeneous
+  # one-file-per-item collections (routes/, migrations/) that legitimately
+  # outgrow max-dir-files without being a mixed-concerns monolith.
   exclude-patterns: []
   # Example:
   #   exclude-patterns:
   #     - generated/
   #     - __snapshots__/
+  #     - routes/
+  #     - migrations/
 
 pkg-police:
   # Set to false to disable bun enforcement (allows npm/npx/yarn/pnpm).

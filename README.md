@@ -36,7 +36,7 @@ Reusable AI agent skills, rules, plugins, hooks, and tools for OpenCode, Claude 
 | **format-police.ts**   | Auto-formats files on write using dprint                                                                                 |
 | **kubectl-police.ts**  | Blocks kubectl create/apply for Kargo CRDs (unconditionally)                                                             |
 | **git-police.ts**      | Blocks commits to main/master, force push, --no-verify, AI attribution, push to protected branches                       |
-| **coding-police.ts**   | Enforces DRY code, modular files (<1000 lines), short functions, and single responsibility                               |
+| **coding-police.ts**   | Enforces DRY code, modular files (<1000 lines), short functions, single responsibility, and capped directory file counts |
 | **comment-police.ts**  | Warns on long comment blocks, tutorial-style file headers, PR/plan/closes-#N references, and high comment-to-code ratios |
 | **pkg-police.ts**      | Enforces bun as package manager — blocks npm, npx, yarn, pnpm commands                                                   |
 | **resource-police.ts** | Requires bounded execution for heavy commands and blocks cgroup delegation escapes                                       |
@@ -48,7 +48,7 @@ Reusable AI agent skills, rules, plugins, hooks, and tools for OpenCode, Claude 
 | **git-police.sh**      | PreToolUse        | Blocks force push, --no-verify, Co-authored-by trailers, commits to protected branches, stale pushes (feature branch behind the default branch)                            |
 | **kubectl-police.sh**  | PreToolUse        | Blocks kubectl create/apply on Kargo CRDs                                                                                                                                  |
 | **format-police.sh**   | PostToolUse       | Auto-formats files after edit/write using dprint                                                                                                                           |
-| **coding-police.sh**   | PostToolUse       | Enforces DRY code, modular files (<1000 lines), short functions, single responsibility                                                                                     |
+| **coding-police.sh**   | PostToolUse       | Enforces DRY code, modular files (<1000 lines), short functions, single responsibility, and capped directory file counts                                                   |
 | **pkg-police.sh**      | PreToolUse        | Enforces bun as package manager — blocks npm, npx, yarn, pnpm commands                                                                                                     |
 | **resource-police.sh** | PreToolUse        | Requires `bounded-run` for heavy commands and blocks cgroup delegation escapes                                                                                             |
 | **chime.sh**           | Notification/Stop | Audible nudge when Claude needs you: springy boing on permission prompts/questions, soft ping when a turn finishes. Mute: `touch ~/.claude/.chime-off` or `CLAUDE_CHIME=0` |
@@ -206,13 +206,21 @@ matches are supported.
 
 All thresholds are configurable:
 
-| Setting                | Default | Description                                              |
-| ---------------------- | ------- | -------------------------------------------------------- |
-| `max-file-lines`       | 1000    | Files exceeding this trigger a split warning             |
-| `max-function-lines`   | 100     | Functions exceeding this trigger a decompose warning     |
-| `min-duplicate-lines`  | 6       | Minimum identical consecutive lines to flag as duplicate |
-| `max-exports-per-file` | 15      | Exports exceeding this trigger a responsibility warning  |
-| `exclude-patterns`     | `[]`    | File path substrings to skip (e.g. `generated/`)         |
+| Setting                | Default | Description                                                              |
+| ---------------------- | ------- | ------------------------------------------------------------------------ |
+| `max-file-lines`       | 1000    | Files exceeding this trigger a split warning                             |
+| `max-function-lines`   | 100     | Functions exceeding this trigger a decompose warning                     |
+| `min-duplicate-lines`  | 6       | Minimum identical consecutive lines to flag as duplicate                 |
+| `max-exports-per-file` | 15      | Exports exceeding this trigger a responsibility warning                  |
+| `max-dir-files`        | 15      | Directory file count that blocks creating another flat file (0 disables) |
+| `exclude-patterns`     | `[]`    | File path substrings to skip (e.g. `generated/`)                         |
+
+`max-dir-files` only fires when a Write **creates a new** source file in a directory already at
+or over the cap — editing an existing file in a crowded directory is always allowed. A directory
+with mixed concerns (handlers, helpers, types all flat) should split into domain subfolders once
+it hits the cap. A homogeneous one-file-per-item collection (`routes/`, `migrations/`) is a
+different shape and legitimately outgrows the cap — add it to `exclude-patterns` instead of
+raising the cap globally.
 
 ## gitops-master Setup
 

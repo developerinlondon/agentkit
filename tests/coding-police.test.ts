@@ -1,10 +1,15 @@
 import { describe, test, expect } from 'bun:test';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
+import { spawnSync } from 'node:child_process';
 import codingPolice, {
   checkFileLength,
   checkFunctionLengths,
   checkDuplicateBlocks,
   checkExportCount,
   checkCrossRepoRelativePaths,
+  checkMonolithDirectory,
 } from '../plugins/coding-police';
 
 // ---------------------------------------------------------------------------
@@ -289,6 +294,35 @@ describe('checkExportCount', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Check 6: Monolith directory
+// ---------------------------------------------------------------------------
+
+describe('checkMonolithDirectory', () => {
+  test('returns null when the cap is disabled (0)', () => {
+    expect(checkMonolithDirectory(30, 'src/handlers', 0)).toBeNull();
+  });
+
+  test('returns null when sibling count is under the cap', () => {
+    expect(checkMonolithDirectory(14, 'src/handlers', 15)).toBeNull();
+  });
+
+  test('returns a warning when sibling count is at the cap', () => {
+    const result = checkMonolithDirectory(15, 'src/handlers', 15);
+    expect(result).not.toBeNull();
+    expect(result).toContain('MONOLITH DIRECTORY');
+    expect(result).toContain('src/handlers');
+    expect(result).toContain('15 source files');
+    expect(result).toContain('cap: 15');
+    expect(result).toContain('domain subfolders');
+  });
+
+  test('returns a warning when sibling count is over the cap', () => {
+    const result = checkMonolithDirectory(22, 'src/handlers', 15);
+    expect(result).toContain('22 source files');
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Check 5: Cross-repo relative paths
 // ---------------------------------------------------------------------------
 
@@ -368,5 +402,152 @@ describe('coding-police plugin', () => {
     await hooks['tool.execute.after']!(input, output);
 
     expect(output.output).toContain('CROSS-REPO RELATIVE PATH');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Plugin integration: monolith directory (Check 6)
+// ---------------------------------------------------------------------------
+
+function runGit(args: string[], cwd: string): void {
+  const result = spawnSync('git', args, { cwd, encoding: 'utf-8' });
+  if (result.status !== 0) {
+    throw new Error(`git ${args.join(' ')} failed: ${result.stderr}`);
+  }
+}
+
+function makeGitRepo(): string {
+  const dir = mkdtempSync(join(tmpdir(), 'agentkit-dircap-'));
+  runGit(['init', '-q'], dir);
+  runGit(['config', 'user.email', 'test@test.com'], dir);
+  runGit(['config', 'user.name', 'test'], dir);
+  return dir;
+}
+
+function commitFile(repoDir: string, relPath: string, content: string): void {
+  const abs = join(repoDir, relPath);
+  mkdirSync(dirname(abs), { recursive: true });
+  writeFileSync(abs, content);
+  runGit(['add', relPath], repoDir);
+  runGit(['commit', '-q', '-m', `add ${relPath}`], repoDir);
+}
+
+async function withXdgConfig<T>(
+  configYaml: string | null,
+  fn: () => Promise<T>,
+): Promise<T> {
+  const dir = mkdtempSync(join(tmpdir(), 'agentkit-xdg-'));
+  if (configYaml !== null) {
+    mkdirSync(join(dir, 'agentkit'), { recursive: true });
+    writeFileSync(join(dir, 'agentkit', 'config.yaml'), configYaml);
+  }
+  const previous = process.env.XDG_CONFIG_HOME;
+  process.env.XDG_CONFIG_HOME = dir;
+  try {
+    return await fn();
+  } finally {
+    if (previous === undefined) delete process.env.XDG_CONFIG_HOME;
+    else process.env.XDG_CONFIG_HOME = previous;
+    rmSync(dir, { force: true, recursive: true });
+  }
+}
+
+describe('coding-police plugin — monolith directory', () => {
+  test('blocks a new source file in a directory already at the cap', async () => {
+    await withXdgConfig(null, async () => {
+      const repo = makeGitRepo();
+      for (let i = 0; i < 15; i++) {
+        commitFile(repo, `src/handlers/h${i}.ts`, `export const h${i} = ${i};\n`);
+      }
+      writeFileSync(join(repo, 'src/handlers/h15.ts'), 'export const h15 = 15;\n');
+
+      const hooks = await codingPolice({ ...mockCtx, worktree: repo });
+      const input = { tool: 'write', sessionID: 'test', callID: 'test' };
+      const output = { title: 'src/handlers/h15.ts', output: 'done', metadata: {} };
+      await hooks['tool.execute.after']!(input, output);
+
+      expect(output.output).toContain('MONOLITH DIRECTORY');
+      expect(output.output).toContain('src/handlers');
+      expect(output.output).toContain('15 source files');
+      expect(output.output).toContain('cap: 15');
+
+      rmSync(repo, { force: true, recursive: true });
+    });
+  });
+
+  test('allows overwriting an already-tracked file in an over-cap directory', async () => {
+    await withXdgConfig(null, async () => {
+      const repo = makeGitRepo();
+      for (let i = 0; i < 16; i++) {
+        commitFile(repo, `src/handlers/h${i}.ts`, `export const h${i} = ${i};\n`);
+      }
+      writeFileSync(join(repo, 'src/handlers/h0.ts'), 'export const h0 = 100;\n');
+
+      const hooks = await codingPolice({ ...mockCtx, worktree: repo });
+      const input = { tool: 'write', sessionID: 'test', callID: 'test' };
+      const output = { title: 'src/handlers/h0.ts', output: 'done', metadata: {} };
+      await hooks['tool.execute.after']!(input, output);
+
+      expect(output.output).not.toContain('MONOLITH DIRECTORY');
+
+      rmSync(repo, { force: true, recursive: true });
+    });
+  });
+
+  test('max-dir-files: 0 disables the check', async () => {
+    await withXdgConfig('coding-police:\n  max-dir-files: 0\n', async () => {
+      const repo = makeGitRepo();
+      for (let i = 0; i < 20; i++) {
+        commitFile(repo, `src/handlers/h${i}.ts`, `export const h${i} = ${i};\n`);
+      }
+      writeFileSync(join(repo, 'src/handlers/h20.ts'), 'export const h20 = 20;\n');
+
+      const hooks = await codingPolice({ ...mockCtx, worktree: repo });
+      const input = { tool: 'write', sessionID: 'test', callID: 'test' };
+      const output = { title: 'src/handlers/h20.ts', output: 'done', metadata: {} };
+      await hooks['tool.execute.after']!(input, output);
+
+      expect(output.output).not.toContain('MONOLITH DIRECTORY');
+
+      rmSync(repo, { force: true, recursive: true });
+    });
+  });
+
+  test('exclude-patterns suppresses the check for homogeneous collections', async () => {
+    await withXdgConfig('coding-police:\n  exclude-patterns:\n    - routes/\n', async () => {
+      const repo = makeGitRepo();
+      for (let i = 0; i < 15; i++) {
+        commitFile(repo, `src/routes/r${i}.ts`, `export const r${i} = ${i};\n`);
+      }
+      writeFileSync(join(repo, 'src/routes/r15.ts'), 'export const r15 = 15;\n');
+
+      const hooks = await codingPolice({ ...mockCtx, worktree: repo });
+      const input = { tool: 'write', sessionID: 'test', callID: 'test' };
+      const output = { title: 'src/routes/r15.ts', output: 'done', metadata: {} };
+      await hooks['tool.execute.after']!(input, output);
+
+      expect(output.output).not.toContain('MONOLITH DIRECTORY');
+
+      rmSync(repo, { force: true, recursive: true });
+    });
+  });
+
+  test('ignores non-code files even in an over-cap directory', async () => {
+    await withXdgConfig(null, async () => {
+      const repo = makeGitRepo();
+      for (let i = 0; i < 15; i++) {
+        commitFile(repo, `src/handlers/h${i}.ts`, `export const h${i} = ${i};\n`);
+      }
+      writeFileSync(join(repo, 'src/handlers/notes.md'), '# notes\n');
+
+      const hooks = await codingPolice({ ...mockCtx, worktree: repo });
+      const input = { tool: 'write', sessionID: 'test', callID: 'test' };
+      const output = { title: 'src/handlers/notes.md', output: 'done', metadata: {} };
+      await hooks['tool.execute.after']!(input, output);
+
+      expect(output.output).not.toContain('MONOLITH DIRECTORY');
+
+      rmSync(repo, { force: true, recursive: true });
+    });
   });
 });
