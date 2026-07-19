@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'bun:test';
 import { execSync, spawnSync } from 'node:child_process';
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -72,6 +72,95 @@ beforeAll(() => {
 
 afterAll(() => rmSync(join(repo, '..'), { force: true, recursive: true }));
 beforeEach(() => rmSync(join(repo, '.agentkit'), { force: true, recursive: true }));
+
+describe('every police hook parses', () => {
+  // A hook with a shell syntax error prints nothing and exits non-zero, which
+  // the harness reads as ALLOW — so a typo in ANY of these silently disarms
+  // the gate it implements. This happened for real: an embedded python block
+  // quoted with "'"'" sequences terminated the shell string early, and the
+  // whole hook stopped running while the suite still passed.
+  const hookDir = join(import.meta.dir, '..', 'hooks', 'claude');
+  for (const name of readdirSync(hookDir).filter((f) => f.endsWith('.sh'))) {
+    test(`${name} is syntactically valid bash`, () => {
+      const res = spawnSync('bash', ['-n', join(hookDir, name)], { encoding: 'utf-8' });
+      expect(res.stderr, `${name}: ${res.stderr}`).toBe('');
+      expect(res.status).toBe(0);
+    });
+  }
+});
+
+describe('review-police: evasion probe table', () => {
+  // Cases live in tests/probe-cases.txt (tab-separated EXPECT<TAB>command) so
+  // the table can be extended without editing code, and so neither this file
+  // nor the harness contains a merge-shaped shell command of its own — the
+  // gate is installed in this very session and denies those in tool calls.
+  const lines = readFileSync(join(import.meta.dir, 'probe-cases.txt'), 'utf-8')
+    .split('\n')
+    .filter((l) => l.trim().length > 0 && !l.startsWith('#'));
+
+  test('the probe table is not silently empty', () => {
+    expect(lines.length).toBeGreaterThan(10);
+  });
+
+  for (const line of lines) {
+    const [want, cmd] = line.split('\t');
+    test(`${want}: ${cmd}`, () => {
+      record(passing);
+      const out = runHook(cmd);
+      if (want === 'DENY') expect(out).toContain('"deny"');
+      else expect(out).toBe('');
+    });
+  }
+});
+
+describe('review-police: the hook itself cannot fail open', () => {
+  // Every abort path is a fail-open: a hook that dies prints no decision and
+  // the harness allows the tool call. These two were reachable from the
+  // environment alone.
+  function runBare(env: Record<string, string | undefined>): ReturnType<typeof spawnSync> {
+    return spawnSync('bash', [HOOK], {
+      cwd: repo,
+      input: JSON.stringify({
+        tool_name: 'Bash',
+        tool_input: { command: MERGE },
+        session_id: 'test-session',
+      }),
+      encoding: 'utf-8',
+      env: { PATH: `${bin}:${process.env.PATH}`, HOME: home, ...env },
+    });
+  }
+
+  test('an unset HOME does not abort the gate', () => {
+    record(passing);
+    // AUDIT="${HOME}/..." tripped `set -u`, exiting 1 with no decision.
+    const res = runBare({ HOME: undefined });
+    expect(res.stderr).not.toContain('unbound variable');
+    expect(res.status).toBe(0);
+  });
+
+  test('a missing jq denies rather than dying', () => {
+    record(passing);
+    const stub = mkdtempSync(join(tmpdir(), 'nojq-'));
+    // A PATH with no jq: the hook used to exit 127 on its first parse.
+    // bash is invoked by ABSOLUTE path — an empty PATH would otherwise fail to
+    // locate bash itself, and the spawn error would masquerade as the hook
+    // staying silent (i.e. the test would "pass" for the wrong reason).
+    const bash = execSync('command -v bash', { encoding: 'utf-8' }).trim();
+    const res = spawnSync(bash, [HOOK], {
+      cwd: repo,
+      input: JSON.stringify({
+        tool_name: 'Bash',
+        tool_input: { command: MERGE },
+        session_id: 'test-session',
+      }),
+      encoding: 'utf-8',
+      env: { PATH: stub, HOME: home },
+    });
+    expect(res.stdout).toContain('"deny"');
+    expect(res.stdout).toContain('jq');
+    rmSync(stub, { force: true, recursive: true });
+  });
+});
 
 describe('review-police: intended semantics', () => {
   test('ignores non-merge commands', () => {
@@ -148,6 +237,49 @@ describe('review-police: bypasses found in adversarial review', () => {
     }
   });
 
+  test('commands that merely mention the push option are not merges', () => {
+    record(passing);
+    // `-o` is everywhere, so matching it bare denied ordinary work — including
+    // grepping for the very rule this hook enforces. That bit for real: the
+    // pre-fix hook blocked the command that was installing its own fix.
+    for (const cmd of [
+      'grep -o merge_request.merge_when_pipeline_succeeds README.md',
+      'rg -o "merge_request.merge" docs/',
+      'curl -o merge_request.merge.json https://example.com/x',
+      'gcc -o merge_request.merge main.c',
+    ]) {
+      expect(runHook(cmd)).toBe('');
+    }
+  });
+
+  test('a push option is caught even behind a flag with its own argument', () => {
+    record(passing);
+    // `git -C <dir> push` — the guard tolerated flags but not their arguments,
+    // the same shape that had already broken MR-id extraction once.
+    for (const cmd of [
+      'git -C /repo push -o merge_request.merge_when_pipeline_succeeds origin b',
+      'git --git-dir=/r/.git push --push-option=merge_request.merge_when_pipeline_succeeds origin b',
+    ]) {
+      expect(runHook(cmd)).toContain('"deny"');
+    }
+  });
+
+  test('quoted text is not a command: commit messages describing the rules', () => {
+    record(passing);
+    // This hook blocked the very commits that were fixing it, three times,
+    // because the rule it enforces appeared inside a commit message.
+    const msg = 'git commit -m "fix: git push -o merge_request.merge_when_pipeline_succeeds is refused"';
+    expect(runHook(msg)).toBe('');
+    expect(runHook('git commit -m "docs: glab mr merge 12 is gated" && git push')).toBe('');
+  });
+
+  test('reading a merge URL is not calling it', () => {
+    record(passing);
+    // Only an actual HTTP caller counts; grepping or editing the text does not.
+    expect(runHook('grep -rn "merge_requests/12/merge" docs/')).toBe('');
+    expect(runHook('rg "/pulls/7/merge" .')).toBe('');
+  });
+
   test('creating an MR over REST is not a merge', () => {
     record(passing);
     expect(runHook('curl -X POST https://gitlab.com/api/v4/projects/1/merge_requests -d x')).toBe('');
@@ -195,5 +327,125 @@ describe('review-police: bypasses found in adversarial review', () => {
     expect(runHook('curl -X PUT https://gitlab.com/api/v4/projects/1/merge_requests/999/merge'))
       .toContain('"deny"');
     expect(runHook('gh api --method PUT /repos/o/r/pulls/999/merge')).toContain('"deny"');
+  });
+
+  test('a shell-wrapped merge is still a merge, in every calling convention', () => {
+    record(passing);
+    // Tokenising treats quoted text as data — correct, EXCEPT when a shell is
+    // handed it to execute. These collapsed to one inert token and failed open.
+    // The first attempt at this recognised only `<bare shell> -c <script>`, and
+    // every form below EXCEPT that one still evaded it. Enumerating shell
+    // calling conventions is a losing game, which is why the rule is now
+    // "a shell is mentioned ⇒ expand every token".
+    for (const cmd of [
+      'bash -c "glab mr merge 999"',
+      "sh -c 'gh pr merge 999 --squash'",
+      'eval "glab mr merge 999"',
+      'bash -lc "glab mr merge 999"', // combined flags
+      '/bin/bash -c "glab mr merge 999"', // path-qualified interpreter
+      'bash -e -u -c "glab mr merge 999"', // extra leading flags
+      'sh -euc "gh pr merge 999"',
+      'bash -c -- "glab mr merge 999"', // -- separator before the script
+      'bash <<< "glab mr merge 999"', // here-string, no -c at all
+      'echo "glab mr merge 999" | bash', // piped into a shell
+      'env bash -c "glab mr merge 999"',
+      'timeout 5 bash -c "glab mr merge 999"',
+    ]) {
+      expect(runHook(cmd), cmd).toContain('"deny"');
+    }
+  });
+
+  test('nesting deeper than the expansion bound does not become a hole', () => {
+    record(passing);
+    // The bound existed to stop runaway recursion, but returning the level's
+    // tokens unexpanded at the cap made nest-5 ALLOW. Exhausting the bound now
+    // falls back to whitespace splitting, which over-matches.
+    let cmd = 'glab mr merge 999';
+    for (let i = 0; i < 8; i++) {
+      cmd = `bash -c ${JSON.stringify(cmd)}`;
+      expect(runHook(cmd), `nest ${i + 1}`).toContain('"deny"');
+    }
+  });
+
+  test('a shell-wrapped merge is caught even without python3', () => {
+    record(passing);
+    // The tokeniser needs python3; without it the hook splits on whitespace.
+    // That left quotes glued to the first word (`"glab`), so exact-token
+    // matching missed and the merge was ALLOWED — a fail-open on a machine
+    // that merely lacks python3.
+    const stub = join(bin, '..', 'stub');
+    mkdirSync(stub, { recursive: true });
+    const p = join(stub, 'python3');
+    writeFileSync(p, '#!/bin/sh\nexit 127\n');
+    chmodSync(p, 0o755);
+    const res = spawnSync('bash', [HOOK], {
+      cwd: repo,
+      input: JSON.stringify({
+        tool_name: 'Bash',
+        tool_input: { command: 'bash -c "glab mr merge 999"' },
+        session_id: 'test-session',
+      }),
+      encoding: 'utf-8',
+      env: { ...process.env, PATH: `${stub}:${bin}:${process.env.PATH}`, HOME: home },
+    });
+    expect(res.stdout ?? '').toContain('"deny"');
+  });
+
+  test('every push option is scanned, not just the first', () => {
+    record(passing);
+    // The idiomatic GitLab form passes several -o flags. Reading only the
+    // token after the FIRST one let the merge option through.
+    for (const cmd of [
+      'git push -o ci.skip -o merge_request.merge_when_pipeline_succeeds origin b',
+      'git push -o merge_request.target_branch=main -o merge_request.merge_when_pipeline_succeeds origin b',
+      'git push --push-option merge_request.merge_when_pipeline_succeeds origin b',
+      'git push -o "merge_request.merge_when_pipeline_succeeds" origin b',
+      "git push -o 'merge_request.merge_when_pipeline_succeeds' origin b",
+      'git push --push-option="merge_request.merge_when_pipeline_succeeds" origin b',
+    ]) {
+      expect(runHook(cmd), cmd).toContain('"deny"');
+    }
+  });
+
+  test('a flag AFTER merge does not lose the MR id', () => {
+    record(passing);
+    // Fails closed rather than open, but it denies an honest merge with a
+    // reason that misdiagnoses the cause.
+    expect(runHook('gh pr merge --squash 12')).toBe('');
+    expect(runHook('glab mr merge --yes 12')).toBe('');
+    // The allow-cases alone cannot catch a broken extraction: an unresolvable
+    // id makes the fake forge fall back to MR 12's branch, so they pass either
+    // way. These pin that the id READ is the id GIVEN — a different MR must
+    // still be denied when a flag sits between the verb and the number.
+    expect(runHook('gh pr merge --squash 999')).toContain('"deny"');
+    expect(runHook('glab mr merge --yes 999')).toContain('"deny"');
+  });
+
+  test('QUOTING a merge URL does not evade the gate', () => {
+    record(passing);
+    // The regression that made quote-STRIPPING the wrong fix: URLs are quoted
+    // in every idiomatic REST call, so blanking quoted spans turned these from
+    // gated into allowed — a fail-OPEN, the one direction a gate must not fail.
+    for (const cmd of [
+      'curl -X PUT "https://gitlab.com/api/v4/projects/1/merge_requests/999/merge"',
+      "curl -X PUT 'https://gitlab.com/api/v4/projects/1/merge_requests/999/merge'",
+      'gh api --method PUT "/repos/o/r/pulls/999/merge"',
+    ]) {
+      expect(runHook(cmd), cmd).toContain('"deny"');
+    }
+  });
+
+  test('quoting a CLI merge does not evade the gate either', () => {
+    record(passing);
+    expect(runHook('glab mr merge "999" --squash --yes')).toContain('"deny"');
+    expect(runHook('glab mr merge 999 --repo "group/proj"')).toContain('"deny"');
+  });
+
+  test('an unparseable command line still gates the merge', () => {
+    record(passing);
+    // Unbalanced quotes cannot be tokenised; the fallback splits on whitespace,
+    // which over-matches. A merge must never slip through because the line
+    // failed to parse.
+    expect(runHook('glab mr merge 999 --squash "oops')).toContain('"deny"');
   });
 });
