@@ -1,0 +1,14 @@
+DENY	result=`glab mr merge 999`
+DENY	`glab mr merge 999`
+DENY	bash -c "`glab mr merge 999`"
+DENY	echo $(glab mr merge 999)
+DENY	ssh host "glab mr merge 999"
+DENY	perl -e "system('glab mr merge 999')"
+DENY	python3 -c "import os; os.system('glab mr merge 999')"
+DENY	bash -lc "glab mr merge 999"
+DENY	/bin/bash -c "glab mr merge 999"
+DENY	echo "glab mr merge 999" | bash
+ALLOW	git commit -m "docs: glab mr merge 12 is gated"
+ALLOW	grep -rn "merge_requests/12/merge" docs/
+ALLOW	grep -o merge_request.merge_when_pipeline_succeeds README.md
+ALLOW	rg -o "merge_request.merge" docs/

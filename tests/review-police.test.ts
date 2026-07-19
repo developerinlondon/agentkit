@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'bun:test';
 import { execSync, spawnSync } from 'node:child_process';
-import { chmodSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -87,6 +87,79 @@ describe('every police hook parses', () => {
       expect(res.status).toBe(0);
     });
   }
+});
+
+describe('review-police: evasion probe table', () => {
+  // Cases live in tests/probe-cases.txt (tab-separated EXPECT<TAB>command) so
+  // the table can be extended without editing code, and so neither this file
+  // nor the harness contains a merge-shaped shell command of its own — the
+  // gate is installed in this very session and denies those in tool calls.
+  const lines = readFileSync(join(import.meta.dir, 'probe-cases.txt'), 'utf-8')
+    .split('\n')
+    .filter((l) => l.trim().length > 0 && !l.startsWith('#'));
+
+  test('the probe table is not silently empty', () => {
+    expect(lines.length).toBeGreaterThan(10);
+  });
+
+  for (const line of lines) {
+    const [want, cmd] = line.split('\t');
+    test(`${want}: ${cmd}`, () => {
+      record(passing);
+      const out = runHook(cmd);
+      if (want === 'DENY') expect(out).toContain('"deny"');
+      else expect(out).toBe('');
+    });
+  }
+});
+
+describe('review-police: the hook itself cannot fail open', () => {
+  // Every abort path is a fail-open: a hook that dies prints no decision and
+  // the harness allows the tool call. These two were reachable from the
+  // environment alone.
+  function runBare(env: Record<string, string | undefined>): ReturnType<typeof spawnSync> {
+    return spawnSync('bash', [HOOK], {
+      cwd: repo,
+      input: JSON.stringify({
+        tool_name: 'Bash',
+        tool_input: { command: MERGE },
+        session_id: 'test-session',
+      }),
+      encoding: 'utf-8',
+      env: { PATH: `${bin}:${process.env.PATH}`, HOME: home, ...env },
+    });
+  }
+
+  test('an unset HOME does not abort the gate', () => {
+    record(passing);
+    // AUDIT="${HOME}/..." tripped `set -u`, exiting 1 with no decision.
+    const res = runBare({ HOME: undefined });
+    expect(res.stderr).not.toContain('unbound variable');
+    expect(res.status).toBe(0);
+  });
+
+  test('a missing jq denies rather than dying', () => {
+    record(passing);
+    const stub = mkdtempSync(join(tmpdir(), 'nojq-'));
+    // A PATH with no jq: the hook used to exit 127 on its first parse.
+    // bash is invoked by ABSOLUTE path — an empty PATH would otherwise fail to
+    // locate bash itself, and the spawn error would masquerade as the hook
+    // staying silent (i.e. the test would "pass" for the wrong reason).
+    const bash = execSync('command -v bash', { encoding: 'utf-8' }).trim();
+    const res = spawnSync(bash, [HOOK], {
+      cwd: repo,
+      input: JSON.stringify({
+        tool_name: 'Bash',
+        tool_input: { command: MERGE },
+        session_id: 'test-session',
+      }),
+      encoding: 'utf-8',
+      env: { PATH: stub, HOME: home },
+    });
+    expect(res.stdout).toContain('"deny"');
+    expect(res.stdout).toContain('jq');
+    rmSync(stub, { force: true, recursive: true });
+  });
 });
 
 describe('review-police: intended semantics', () => {

@@ -28,6 +28,16 @@
 # never the local checkout, which says nothing about what is being merged.
 set -euo pipefail
 
+# A hook that DIES emits no decision, and the harness reads silence as ALLOW —
+# so every abort path here is a fail-open. Two were reachable from the
+# environment alone: `jq` missing (exit 127 on the first parse) and HOME unset
+# (set -u on the audit path). Neither is exotic; both silently disarmed the
+# gate. Refuse loudly instead of dying quietly.
+if ! command -v jq >/dev/null 2>&1; then
+	printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"BLOCKED: review-police cannot run — jq is not installed, so the merge cannot be checked against its review record. Install jq."}}'
+	exit 0
+fi
+
 INPUT=$(cat)
 TOOL=$(echo "$INPUT" | jq -r '.tool_name // empty')
 RAW_COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty')
@@ -51,14 +61,19 @@ SESSION=$(echo "$INPUT" | jq -r '.session_id // "unknown"')
 # one family: a quoted string that a shell then EXECUTES. `bash -c "glab mr
 # merge 999"` would otherwise collapse to one inert token and fail open.
 #
-# The rule, stated exactly as implemented: IF the command mentions a shell
-# interpreter (bash/sh/zsh/dash/ksh, by BASENAME so /bin/bash counts) or `eval`
-# ANYWHERE, then EVERY token of that command is re-tokenised and added to the
-# set, recursively. Not "the argument of -c" — that shape has been narrowed
-# wrong twice (`bash -lc`, `bash -e -u -c`, `bash -c -- …`, `bash <<< …`,
-# `echo … | bash` all evaded it), and enumerating shell calling conventions is
-# a losing game. Once a shell is in the line, treat every string in it as
-# potentially executed.
+# The rule, stated exactly as implemented: IF the command mentions any name in
+# SHELLS below (by BASENAME, so /bin/bash counts) ANYWHERE, then EVERY token of
+# that command is re-tokenised and added to the set, recursively and
+# unconditionally — the interpreter test gates the TOP level only.
+#
+# Not "the argument of -c". That shape was narrowed wrong twice (`bash -lc`,
+# `bash -e -u -c`, `bash -c -- …`, `bash <<< …`, `echo … | bash` all evaded
+# it), and enumerating calling conventions is a losing game.
+#
+# LIMITS, stated plainly rather than implied: SHELLS is a NAME LIST, so an
+# interpreter not on it (say `busybox`, or a wrapper script) is not expanded.
+# Widen the list when one turns up; do not read this as "all execution is
+# covered".
 #
 # This deliberately OVER-expands: `bash -c "echo hi" && git commit -m "glab mr
 # merge 12 is gated"` denies. That is the correct direction for a gate — a
@@ -78,11 +93,19 @@ SESSION=$(echo "$INPUT" | jq -r '.session_id // "unknown"')
 COMMAND=$(printf '%s' "$RAW_COMMAND" | python3 -c '
 import os, shlex, sys
 
-SHELLS = {"bash", "sh", "zsh", "dash", "ksh", "eval"}
+# Anything that takes a string and RUNS it — not only shells. `ssh host "<a
+# merge>"` and `python3 -c "os.system(...)"` execute their argument exactly as
+# surely as `bash -c` does, and each was a hole while this set said "shells".
+SHELLS = {"bash", "sh", "zsh", "dash", "ksh", "eval", "ssh",
+          "perl", "python", "python3", "ruby", "node", "xargs"}
 DEPTH = 6
 
 def split(raw):
-    lex = shlex.shlex(raw, posix=True, punctuation_chars=True)
+    # Explicit punctuation set, NOT True: shlex default omits the backtick, so
+    # it stayed glued to the command word and exact-token matching missed it.
+    # Command substitution with $() was caught while the backtick form was not
+    # — an arbitrary split rather than a principled boundary.
+    lex = shlex.shlex(raw, posix=True, punctuation_chars="();<>|&" + chr(96))
     lex.whitespace_split = True
     lex.commenters = ""  # a `#` in a URL fragment is not a comment
     return list(lex)
@@ -100,7 +123,12 @@ def expand(raw, depth=0):
         toks = split(raw)
     except ValueError:
         return rough(raw)
-    if not any(os.path.basename(t) in SHELLS for t in toks):
+    # The interpreter test gates the TOP level only. Once a line is known to
+    # run one, every level below it expands unconditionally — the payload is
+    # usually wrapped in a layer that mentions no interpreter of its own
+    # (perl -e "system(<a merge>)" nests it inside a call), and re-testing per
+    # level stopped the recursion exactly one layer short of the command.
+    if depth == 0 and not any(os.path.basename(t) in SHELLS for t in toks):
         return toks
     if depth >= DEPTH:
         return toks + rough(raw)
@@ -116,7 +144,9 @@ print("\n".join(expand(raw)))
 # Some checks still need the flat line (a URL split across variables never
 # survives tokenisation as one piece); those use RAW_COMMAND deliberately.
 
-AUDIT="${HOME}/.agentkit/review-audit.log"
+# :-/tmp so an unset HOME cannot trip `set -u` here — losing the audit trail is
+# survivable, aborting the gate is not.
+AUDIT="${HOME:-/tmp}/.agentkit/review-audit.log"
 
 deny() {
 	mkdir -p "$(dirname "$AUDIT")" 2>/dev/null || true
