@@ -175,6 +175,15 @@ describe('review-police: bypasses found in adversarial review', () => {
     }
   });
 
+  test('quoted text is not a command: commit messages describing the rules', () => {
+    record(passing);
+    // This hook blocked the very commits that were fixing it, three times,
+    // because the rule it enforces appeared inside a commit message.
+    const msg = 'git commit -m "fix: git push -o merge_request.merge_when_pipeline_succeeds is refused"';
+    expect(runHook(msg)).toBe('');
+    expect(runHook('git commit -m "docs: glab mr merge 12 is gated" && git push')).toBe('');
+  });
+
   test('reading a merge URL is not calling it', () => {
     record(passing);
     // Only an actual HTTP caller counts; grepping or editing the text does not.

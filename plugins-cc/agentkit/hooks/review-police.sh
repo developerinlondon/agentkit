@@ -30,8 +30,23 @@ set -euo pipefail
 
 INPUT=$(cat)
 TOOL=$(echo "$INPUT" | jq -r '.tool_name // empty')
-COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty')
+RAW_COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty')
 SESSION=$(echo "$INPUT" | jq -r '.session_id // "unknown"')
+
+# Match against the command with QUOTED SPANS AND HEREDOCS REMOVED. Every
+# false positive this hook has produced came from matching a pattern that
+# appeared inside a string: a commit message describing the rule, a grep for
+# it, a test fixture containing it. Three separate times the hook blocked the
+# very commit that was fixing it. git-police strips the same way
+# (stripQuotedContent) for the same reason.
+#
+# The tradeoff, stated plainly: a merge hidden inside quotes (bash -c "glab mr
+# merge 12") is no longer seen. That is a real bypass, and acceptable only
+# because this gate is friction plus an audit trail, never security — see the
+# header. Forge-side required approvals are what actually prevent a merge.
+COMMAND=$(printf '%s' "$RAW_COMMAND" |
+	perl -0777 -pe 's/<<-?\s*['"'"'"]?(\w+)['"'"'"]?.*?\n\1\b//gs; s/"(?:[^"\\]|\\.)*"/""/g; s/'"'"'[^'"'"']*'"'"'/'"''"'/g' 2>/dev/null ||
+	printf '%s' "$RAW_COMMAND")
 
 AUDIT="${HOME}/.agentkit/review-audit.log"
 
