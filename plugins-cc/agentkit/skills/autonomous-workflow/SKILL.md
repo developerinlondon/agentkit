@@ -41,8 +41,16 @@ Exceptions: bug fixes in already-approved work, read-only research, formatting.
 
 ## Review Gates The Merge
 
-Review is a gate, not a parallel task and not advice. Enforced by
-`review-police.sh`, which blocks merges (CLI or REST) without a passing record.
+Review is a gate, not a parallel task and not advice. `review-police.sh`
+blocks the CLI, REST and MCP merge paths without a passing record for the exact
+commit being merged.
+
+Be honest about its limits: the record lives in the repo and you can write it,
+so the hook cannot *prevent* a determined bypass — it makes the honest path
+correct, makes a missing or stale review impossible to merge past by accident,
+and logs every pass and override to `~/.agentkit/review-audit.log`. Only
+forge-side required approvals actually prevent a merge. Never describe this
+gate as something it is not.
 
 1. **Review completes before the merge starts.** Never dispatch a reviewer and
    merge while it works — a verdict that lands after the code is on main

@@ -1,128 +1,173 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'bun:test';
 import { execSync, spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-// The review gate needs real git state (a branch with a real head sha), so
-// these tests build a fixture repo rather than mocking rev-parse.
+// The gate resolves the merge target from the FORGE, so the fixture ships a
+// fake `glab`/`gh` on PATH. Every bypass the 2026-07-19 review found is a case
+// here — the previous suite passed with all of them present, which is how an
+// overstated "the agent cannot dismiss this" claim reached review.
 
 const HOOK = join(import.meta.dir, '..', 'hooks', 'claude', 'review-police.sh');
 
 let repo: string;
-let head: string;
+let bin: string;
+let home: string;
+const SOURCE_BRANCH = 'feat/thing';
+const HEAD = 'a'.repeat(40);
 
-function runHook(command: string): string {
-  const input = JSON.stringify({ tool_input: { command } });
-  const res = spawnSync('bash', [HOOK], { cwd: repo, input, encoding: 'utf-8' });
+function runHook(command: string, opts: { tool?: string; cwd?: string } = {}): string {
+  const input = JSON.stringify({
+    tool_name: opts.tool ?? 'Bash',
+    tool_input: opts.tool && opts.tool !== 'Bash' ? { pull_number: 12 } : { command },
+    session_id: 'test-session',
+  });
+  const res = spawnSync('bash', [HOOK], {
+    cwd: opts.cwd ?? repo,
+    input,
+    encoding: 'utf-8',
+    env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, HOME: home },
+  });
   return res.stdout ?? '';
 }
 
-function record(body: unknown): void {
-  mkdirSync(join(repo, '.agentkit', 'reviews'), { recursive: true });
-  writeFileSync(join(repo, '.agentkit', 'reviews', 'feat-thing.json'), JSON.stringify(body));
+/** Fake forge CLI: MR 12 -> feat/thing@HEAD, MR 999 -> other/branch. */
+function writeFakeForge(): void {
+  const script = `#!/usr/bin/env bash
+id=""
+for a in "$@"; do [[ "$a" =~ ^[0-9]+$ ]] && id="$a" && break; done
+if [[ "$id" == "999" ]]; then
+  echo '{"source_branch":"other/branch","sha":"${'b'.repeat(40)}","headRefName":"other/branch","headRefOid":"${'b'.repeat(40)}"}'
+else
+  echo '{"source_branch":"${SOURCE_BRANCH}","sha":"${HEAD}","headRefName":"${SOURCE_BRANCH}","headRefOid":"${HEAD}"}'
+fi
+`;
+  for (const name of ['glab', 'gh']) {
+    const p = join(bin, name);
+    writeFileSync(p, script);
+    chmodSync(p, 0o755);
+  }
 }
 
+function record(body: unknown, slug = 'feat__thing'): void {
+  mkdirSync(join(repo, '.agentkit', 'reviews'), { recursive: true });
+  writeFileSync(join(repo, '.agentkit', 'reviews', `${slug}.json`), JSON.stringify(body));
+}
+
+const passing = { head_sha: HEAD, verdict: 'pass', findings: [] };
 const MERGE = 'glab mr merge 12 --squash --yes';
 
 beforeAll(() => {
-  repo = mkdtempSync(join(tmpdir(), 'agentkit-review-'));
+  const root = mkdtempSync(join(tmpdir(), 'agentkit-review-'));
+  repo = join(root, 'repo');
+  bin = join(root, 'bin');
+  home = join(root, 'home');
+  mkdirSync(repo);
+  mkdirSync(bin);
+  mkdirSync(home);
   execSync('git init -q -b main', { cwd: repo, stdio: 'pipe' });
-  execSync('git config user.email t@e.com && git config user.name t', { cwd: repo, stdio: 'pipe' });
-  execSync('git commit -q --allow-empty -m init', { cwd: repo, stdio: 'pipe' });
-  execSync('git checkout -q -b feat/thing', { cwd: repo, stdio: 'pipe' });
-  execSync('git commit -q --allow-empty -m work', { cwd: repo, stdio: 'pipe' });
-  head = execSync('git rev-parse HEAD', { cwd: repo, encoding: 'utf-8' }).trim();
+  writeFakeForge();
 });
 
-afterAll(() => rmSync(repo, { force: true, recursive: true }));
-
+afterAll(() => rmSync(join(repo, '..'), { force: true, recursive: true }));
 beforeEach(() => rmSync(join(repo, '.agentkit'), { force: true, recursive: true }));
 
-describe('review-police', () => {
-  test('ignores commands that are not merges', () => {
+describe('review-police: intended semantics', () => {
+  test('ignores non-merge commands', () => {
     expect(runHook('glab mr create --title x')).toBe('');
     expect(runHook('git push origin feat/thing')).toBe('');
   });
 
-  test('blocks a merge with no review record', () => {
-    const out = runHook(MERGE);
-    expect(out).toContain('"deny"');
-    expect(out).toContain('no review record');
+  test('blocks with no review record', () => {
+    expect(runHook(MERGE)).toContain('no review record');
   });
 
   test('blocks when the review covers an older commit', () => {
-    record({ head_sha: 'deadbeef', verdict: 'pass', findings: [] });
-    const out = runHook(MERGE);
-    expect(out).toContain('"deny"');
-    expect(out).toContain('stale');
+    record({ ...passing, head_sha: 'c'.repeat(40) });
+    expect(runHook(MERGE)).toContain('does not cover the commit');
   });
 
-  test('blocks on an unresolved HIGH even when the verdict says pass', () => {
-    record({
-      head_sha: head,
-      verdict: 'pass',
-      findings: [{ severity: 'HIGH', summary: 'toggle has no backend', resolved: false }],
-    });
+  test('blocks an unresolved HIGH even when the verdict says pass', () => {
+    record({ ...passing, findings: [{ severity: 'HIGH', summary: 'no backend', resolved: false }] });
     const out = runHook(MERGE);
     expect(out).toContain('"deny"');
-    expect(out).toContain('toggle has no backend');
-  });
-
-  test('blocks on a blocked verdict with no findings listed', () => {
-    record({ head_sha: head, verdict: 'blocked', findings: [] });
-    expect(runHook(MERGE)).toContain('"deny"');
+    expect(out).toContain('no backend');
   });
 
   test('allows a clean pass for the exact head', () => {
-    record({
-      head_sha: head,
-      verdict: 'pass',
-      findings: [{ severity: 'MEDIUM', summary: 'nit', resolved: false }],
-    });
+    record(passing);
     expect(runHook(MERGE)).toBe('');
   });
 
-  test('allows once a blocking finding is resolved', () => {
-    record({
-      head_sha: head,
-      verdict: 'pass',
-      findings: [{ severity: 'BLOCKER', summary: 'fixed since', resolved: true }],
-    });
+  test('allows once the blocking finding is resolved', () => {
+    record({ ...passing, findings: [{ severity: 'BLOCKER', summary: 'fixed', resolved: true }] });
     expect(runHook(MERGE)).toBe('');
   });
 
-  test('only user consent unblocks an unresolved BLOCKER', () => {
+  test('only written user consent unblocks', () => {
     const findings = [{ severity: 'BLOCKER', summary: 'ships broken', resolved: false }];
-    record({ head_sha: head, verdict: 'blocked', findings });
+    record({ head_sha: HEAD, verdict: 'blocked', findings });
     expect(runHook(MERGE)).toContain('"deny"');
-
+    record({ head_sha: HEAD, verdict: 'blocked', findings, user_consent: { granted: true } });
+    expect(runHook(MERGE)).toContain('"deny"'); // granted without their words is not consent
     record({
-      head_sha: head,
+      head_sha: HEAD,
       verdict: 'blocked',
       findings,
       user_consent: { granted: true, quote: 'ship it anyway', at: '2026-07-19T00:00:00Z' },
     });
     expect(runHook(MERGE)).toBe('');
   });
+});
 
-  test('consent without the user\'s words does not count', () => {
-    record({
-      head_sha: head,
-      verdict: 'blocked',
-      findings: [{ severity: 'HIGH', summary: 'x', resolved: false }],
-      user_consent: { granted: true },
-    });
-    expect(runHook(MERGE)).toContain('"deny"');
+// Each of these merged cleanly past the first version of this hook.
+describe('review-police: bypasses found in adversarial review', () => {
+  test('B1: a pass for one branch does not authorise merging a different MR', () => {
+    record(passing); // covers feat/thing
+    expect(runHook('glab mr merge 999 --squash --yes')).toContain('"deny"');
   });
 
-  test('gates REST merges too, not just the CLIs', () => {
+  test('B2: MCP merge tools are refused outright', () => {
+    const out = runHook('', { tool: 'mcp__github__merge_pull_request' });
+    expect(out).toContain('"deny"');
+    expect(out).toContain('MCP tool');
+  });
+
+  test('H1: -R / --repo flag variants are still gated', () => {
+    record(passing);
     for (const cmd of [
-      'curl -X PUT https://gitlab.com/api/v4/projects/1/merge_requests/12/merge',
-      'gh pr merge 4 --squash',
-      'curl -X PUT https://api.github.com/repos/o/r/pulls/7/merge',
+      'glab -R group/proj mr merge 999',
+      'gh -R o/r pr merge 999',
+      'glab mr --repo group/proj merge 999',
     ]) {
       expect(runHook(cmd)).toContain('"deny"');
     }
+  });
+
+  test('H2: merging from another directory cannot borrow this repo record', () => {
+    record(passing);
+    // `cd /tmp && glab mr merge 12` used to ALLOW: the old hook read the local
+    // branch, found none, and exited 0. Now the record is looked up in the
+    // command's own directory, so it denies — whether because the target can't
+    // be resolved or because that directory holds no record for it.
+    expect(runHook('cd /tmp && glab mr merge 12', { cwd: '/tmp' })).toContain('"deny"');
+  });
+
+  test('H2b: a merge with no MR id cannot be gated, so it is denied', () => {
+    record(passing);
+    expect(runHook('glab mr merge')).toContain('cannot resolve');
+  });
+
+  test('M2: auto-merge is refused — it lands a head no review has seen', () => {
+    record(passing);
+    expect(runHook('glab mr merge 12 --auto')).toContain('auto-merge');
+  });
+
+  test('REST merges are gated, contiguous or split across variables', () => {
+    record(passing);
+    expect(runHook('curl -X PUT https://gitlab.com/api/v4/projects/1/merge_requests/999/merge'))
+      .toContain('"deny"');
+    expect(runHook('gh api --method PUT /repos/o/r/pulls/999/merge')).toContain('"deny"');
   });
 });
