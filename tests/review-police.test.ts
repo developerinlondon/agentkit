@@ -148,6 +148,21 @@ describe('review-police: bypasses found in adversarial review', () => {
     }
   });
 
+  test('commands that merely mention the push option are not merges', () => {
+    record(passing);
+    // `-o` is everywhere, so matching it bare denied ordinary work — including
+    // grepping for the very rule this hook enforces. That bit for real: the
+    // pre-fix hook blocked the command that was installing its own fix.
+    for (const cmd of [
+      'grep -o merge_request.merge_when_pipeline_succeeds README.md',
+      'rg -o "merge_request.merge" docs/',
+      'curl -o merge_request.merge.json https://example.com/x',
+      'gcc -o merge_request.merge main.c',
+    ]) {
+      expect(runHook(cmd)).toBe('');
+    }
+  });
+
   test('creating an MR over REST is not a merge', () => {
     record(passing);
     expect(runHook('curl -X POST https://gitlab.com/api/v4/projects/1/merge_requests -d x')).toBe('');

@@ -79,7 +79,11 @@ if echo "$COMMAND" | grep -qiE 'merge_requests?/[0-9]+/merge|/pulls/[0-9]+/merge
 # merge_requests/pulls reference AND a /merge path segment in the same command.
 if echo "$COMMAND" | grep -qiE 'merge_requests?|/pulls?/' &&
 	echo "$COMMAND" | grep -qiE '/merge\b|"\$\{?[A-Za-z_]+\}?/merge'; then is_merge=1; fi
-if echo "$COMMAND" | grep -qiE '(-o|--push-option)[= ][^ ]*merge_request\.merge'; then
+# Gate on an actual `git push` — `-o` is ubiquitous (grep -o, curl -o, cc -o),
+# and matching it bare denied any command that merely MENTIONED the pattern,
+# including grepping for the rule this hook enforces.
+if echo "$COMMAND" | grep -qiE '\bgit([[:space:]]+-{1,2}[A-Za-z][^[:space:]]*)*[[:space:]]+push\b' &&
+	echo "$COMMAND" | grep -qiE '(-o|--push-option)[= ][^ ]*merge_request\.merge'; then
 	deny "BLOCKED: a merge-on-pipeline push option queues a merge no review has seen.
 
 Push the branch without the merge push-option, then merge explicitly so the

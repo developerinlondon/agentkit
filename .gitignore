@@ -1,3 +1,10 @@
 node_modules/
 bun.lock
 .omc/
+
+# Review records are intentionally LOCAL. Committing one moves HEAD, which
+# stales the record against the branch it reviews — the gate would then deny
+# its own merge and invite regenerating records to suit, the exact loop the
+# gate exists to stop. The durable artifact is ~/.agentkit/review-audit.log,
+# outside the repo.
+.agentkit/
