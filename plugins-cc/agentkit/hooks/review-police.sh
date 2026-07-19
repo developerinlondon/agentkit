@@ -48,22 +48,38 @@ SESSION=$(echo "$INPUT" | jq -r '.session_id // "unknown"')
 # the raw line.
 #
 # The boundary this draws is "quoted text is DATA" — which is wrong for exactly
-# one family: a quoted string that a shell-invoking command then EXECUTES.
-# `bash -c "glab mr merge 999"` would otherwise collapse to one inert token and
-# fail open. So the tokeniser recursively expands the script argument of
-# bash/sh/zsh/dash/ksh -c and of eval, and the checks see the union. Quoted
-# text that is not handed to a shell stays data.
+# one family: a quoted string that a shell then EXECUTES. `bash -c "glab mr
+# merge 999"` would otherwise collapse to one inert token and fail open.
+#
+# The rule, stated exactly as implemented: IF the command mentions a shell
+# interpreter (bash/sh/zsh/dash/ksh, by BASENAME so /bin/bash counts) or `eval`
+# ANYWHERE, then EVERY token of that command is re-tokenised and added to the
+# set, recursively. Not "the argument of -c" — that shape has been narrowed
+# wrong twice (`bash -lc`, `bash -e -u -c`, `bash -c -- …`, `bash <<< …`,
+# `echo … | bash` all evaded it), and enumerating shell calling conventions is
+# a losing game. Once a shell is in the line, treat every string in it as
+# potentially executed.
+#
+# This deliberately OVER-expands: `bash -c "echo hi" && git commit -m "glab mr
+# merge 12 is gated"` denies. That is the correct direction for a gate — a
+# false deny is an inconvenience, a missed merge is the failure this exists to
+# prevent. Commands with no shell word (the overwhelming majority, including
+# every plain `git commit -m "…"`) are unaffected, which is what keeps the
+# commit-message false positives fixed.
+#
+# Depth is bounded, and exhausting the bound falls back to whitespace-splitting
+# the remaining text rather than returning it unexpanded — a 5-deep nest must
+# not become a hole.
 #
 # If tokenising is unavailable or the line does not parse (unbalanced quotes),
-# fall back to splitting on whitespace. Quoted prose then yields several tokens
-# instead of one, so the gate over-matches — a false deny, never a missed merge.
-# It must NOT fall back to the raw line: these checks match whole tokens, and a
-# single blob matches nothing, which would fail OPEN.
+# fall back to whitespace-splitting with quote characters stripped. Keeping the
+# quotes glued on (`"glab`) makes exact-token matching miss, which fails OPEN —
+# the one direction this must never take.
 COMMAND=$(printf '%s' "$RAW_COMMAND" | python3 -c '
-import shlex, sys
+import os, shlex, sys
 
-SHELLS = {"bash", "sh", "zsh", "dash", "ksh"}
-DEPTH = 4  # bash -c "bash -c ..." is pathological; bound it rather than recurse freely
+SHELLS = {"bash", "sh", "zsh", "dash", "ksh", "eval"}
+DEPTH = 6
 
 def split(raw):
     lex = shlex.shlex(raw, posix=True, punctuation_chars=True)
@@ -71,34 +87,32 @@ def split(raw):
     lex.commenters = ""  # a `#` in a URL fragment is not a comment
     return list(lex)
 
+def rough(raw):
+    # chr(34)/chr(39) rather than literal quote characters: this script is
+    # embedded in a single-quoted shell string, where a literal quote silently
+    # ends the block. That broke the hook once — and a hook that dies emits no
+    # decision, which the harness reads as ALLOW. Quote-free by construction.
+    drop = str.maketrans("", "", chr(34) + chr(39) + chr(92))
+    return [t.translate(drop) for t in raw.split()]
+
 def expand(raw, depth=0):
-    toks = split(raw)
-    if depth >= DEPTH:
+    try:
+        toks = split(raw)
+    except ValueError:
+        return rough(raw)
+    if not any(os.path.basename(t) in SHELLS for t in toks):
         return toks
+    if depth >= DEPTH:
+        return toks + rough(raw)
     out = list(toks)
-    for i, t in enumerate(toks):
-        # A script argument is EXECUTED, so its contents are command words, not
-        # data: bash -c "glab mr merge 999" is a merge. `eval` treats all of
-        # its arguments that way.
-        run = None
-        if t in SHELLS and "-c" in toks[i + 1:i + 3]:
-            j = toks.index("-c", i + 1)
-            run = toks[j + 1:j + 2]
-        elif t == "eval":
-            run = toks[i + 1:]
-        for arg in run or []:
-            try:
-                out.extend(expand(arg, depth + 1))
-            except ValueError:
-                out.extend(arg.split())
+    for t in toks:
+        if t != raw:
+            out.extend(expand(t, depth + 1))
     return out
 
 raw = sys.stdin.read()
-try:
-    print("\n".join(expand(raw)))
-except ValueError:
-    print("\n".join(raw.split()))
-' 2>/dev/null || printf '%s' "$RAW_COMMAND" | tr -s '[:space:]' '\n')
+print("\n".join(expand(raw)))
+' 2>/dev/null || printf '%s' "$RAW_COMMAND" | tr -s '[:space:]' '\n' | tr -d '\042\047\134')
 # Some checks still need the flat line (a URL split across variables never
 # survives tokenisation as one piece); those use RAW_COMMAND deliberately.
 

@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'bun:test';
 import { execSync, spawnSync } from 'node:child_process';
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -72,6 +72,22 @@ beforeAll(() => {
 
 afterAll(() => rmSync(join(repo, '..'), { force: true, recursive: true }));
 beforeEach(() => rmSync(join(repo, '.agentkit'), { force: true, recursive: true }));
+
+describe('every police hook parses', () => {
+  // A hook with a shell syntax error prints nothing and exits non-zero, which
+  // the harness reads as ALLOW — so a typo in ANY of these silently disarms
+  // the gate it implements. This happened for real: an embedded python block
+  // quoted with "'"'" sequences terminated the shell string early, and the
+  // whole hook stopped running while the suite still passed.
+  const hookDir = join(import.meta.dir, '..', 'hooks', 'claude');
+  for (const name of readdirSync(hookDir).filter((f) => f.endsWith('.sh'))) {
+    test(`${name} is syntactically valid bash`, () => {
+      const res = spawnSync('bash', ['-n', join(hookDir, name)], { encoding: 'utf-8' });
+      expect(res.stderr, `${name}: ${res.stderr}`).toBe('');
+      expect(res.status).toBe(0);
+    });
+  }
+});
 
 describe('review-police: intended semantics', () => {
   test('ignores non-merge commands', () => {
@@ -240,18 +256,66 @@ describe('review-police: bypasses found in adversarial review', () => {
     expect(runHook('gh api --method PUT /repos/o/r/pulls/999/merge')).toContain('"deny"');
   });
 
-  test('a shell-wrapped merge is still a merge', () => {
+  test('a shell-wrapped merge is still a merge, in every calling convention', () => {
     record(passing);
     // Tokenising treats quoted text as data — correct, EXCEPT when a shell is
     // handed it to execute. These collapsed to one inert token and failed open.
+    // The first attempt at this recognised only `<bare shell> -c <script>`, and
+    // every form below EXCEPT that one still evaded it. Enumerating shell
+    // calling conventions is a losing game, which is why the rule is now
+    // "a shell is mentioned ⇒ expand every token".
     for (const cmd of [
       'bash -c "glab mr merge 999"',
       "sh -c 'gh pr merge 999 --squash'",
       'eval "glab mr merge 999"',
-      'bash -c "bash -c \'glab mr merge 999\'"',
+      'bash -lc "glab mr merge 999"', // combined flags
+      '/bin/bash -c "glab mr merge 999"', // path-qualified interpreter
+      'bash -e -u -c "glab mr merge 999"', // extra leading flags
+      'sh -euc "gh pr merge 999"',
+      'bash -c -- "glab mr merge 999"', // -- separator before the script
+      'bash <<< "glab mr merge 999"', // here-string, no -c at all
+      'echo "glab mr merge 999" | bash', // piped into a shell
+      'env bash -c "glab mr merge 999"',
+      'timeout 5 bash -c "glab mr merge 999"',
     ]) {
       expect(runHook(cmd), cmd).toContain('"deny"');
     }
+  });
+
+  test('nesting deeper than the expansion bound does not become a hole', () => {
+    record(passing);
+    // The bound existed to stop runaway recursion, but returning the level's
+    // tokens unexpanded at the cap made nest-5 ALLOW. Exhausting the bound now
+    // falls back to whitespace splitting, which over-matches.
+    let cmd = 'glab mr merge 999';
+    for (let i = 0; i < 8; i++) {
+      cmd = `bash -c ${JSON.stringify(cmd)}`;
+      expect(runHook(cmd), `nest ${i + 1}`).toContain('"deny"');
+    }
+  });
+
+  test('a shell-wrapped merge is caught even without python3', () => {
+    record(passing);
+    // The tokeniser needs python3; without it the hook splits on whitespace.
+    // That left quotes glued to the first word (`"glab`), so exact-token
+    // matching missed and the merge was ALLOWED — a fail-open on a machine
+    // that merely lacks python3.
+    const stub = join(bin, '..', 'stub');
+    mkdirSync(stub, { recursive: true });
+    const p = join(stub, 'python3');
+    writeFileSync(p, '#!/bin/sh\nexit 127\n');
+    chmodSync(p, 0o755);
+    const res = spawnSync('bash', [HOOK], {
+      cwd: repo,
+      input: JSON.stringify({
+        tool_name: 'Bash',
+        tool_input: { command: 'bash -c "glab mr merge 999"' },
+        session_id: 'test-session',
+      }),
+      encoding: 'utf-8',
+      env: { ...process.env, PATH: `${stub}:${bin}:${process.env.PATH}`, HOME: home },
+    });
+    expect(res.stdout ?? '').toContain('"deny"');
   });
 
   test('every push option is scanned, not just the first', () => {
