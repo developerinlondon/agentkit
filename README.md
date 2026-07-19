@@ -43,16 +43,17 @@ Reusable AI agent skills, rules, plugins, hooks, and tools for OpenCode, Claude 
 
 ### Hooks (Claude Code -- PreToolUse / PostToolUse)
 
-| Hook                   | Type              | Description                                                                                                                                                                |
-| ---------------------- | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **git-police.sh**      | PreToolUse        | Blocks force push, --no-verify, Co-authored-by trailers, commits to protected branches, stale pushes (feature branch behind the default branch)                            |
-| **kubectl-police.sh**  | PreToolUse        | Blocks kubectl create/apply on Kargo CRDs                                                                                                                                  |
-| **format-police.sh**   | PostToolUse       | Auto-formats files after edit/write using dprint                                                                                                                           |
-| **coding-police.sh**   | PostToolUse       | Enforces DRY code, modular files (<1000 lines), short functions, single responsibility, and capped directory file counts                                                   |
-| **pkg-police.sh**      | PreToolUse        | Enforces bun as package manager — blocks npm, npx, yarn, pnpm commands                                                                                                     |
-| **resource-police.sh** | PreToolUse        | Requires `bounded-run` for heavy commands and blocks cgroup delegation escapes                                                                                             |
-| **chime.sh**           | Notification/Stop | Audible nudge when Claude needs you: springy boing on permission prompts/questions, soft ping when a turn finishes. Mute: `touch ~/.claude/.chime-off` or `CLAUDE_CHIME=0` |
-| **mr-police.sh**       | PreToolUse        | Blocks opening a new MR while you already have an open MR you authored on the repo — stops unmerged MRs from stacking up                                                   |
+| Hook                   | Type              | Description                                                                                                                                                                                                     |
+| ---------------------- | ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **git-police.sh**      | PreToolUse        | Blocks force push, --no-verify, Co-authored-by trailers, commits to protected branches, stale pushes (feature branch behind the default branch)                                                                 |
+| **kubectl-police.sh**  | PreToolUse        | Blocks kubectl create/apply on Kargo CRDs                                                                                                                                                                       |
+| **format-police.sh**   | PostToolUse       | Auto-formats files after edit/write using dprint                                                                                                                                                                |
+| **coding-police.sh**   | PostToolUse       | Enforces DRY code, modular files (<1000 lines), short functions, single responsibility, and capped directory file counts                                                                                        |
+| **pkg-police.sh**      | PreToolUse        | Enforces bun as package manager — blocks npm, npx, yarn, pnpm commands                                                                                                                                          |
+| **resource-police.sh** | PreToolUse        | Requires `bounded-run` for heavy commands and blocks cgroup delegation escapes                                                                                                                                  |
+| **chime.sh**           | Notification/Stop | Audible nudge when Claude needs you: springy boing on permission prompts/questions, soft ping when a turn finishes. Mute: `touch ~/.claude/.chime-off` or `CLAUDE_CHIME=0`                                      |
+| **mr-police.sh**       | PreToolUse        | Blocks opening a new MR while you already have an open MR you authored on the repo — stops unmerged MRs from stacking up                                                                                        |
+| **review-police.sh**   | PreToolUse        | Blocks CLI/REST/MCP merges unless a review record passes for the MR's real source branch and head sha (resolved from the forge). Unresolved BLOCKER/HIGH block; overrides need the user's written consent, logged to `~/.agentkit/review-audit.log`. NOT security — the record is agent-writable; forge-side required approvals are the only real enforcement |
 
 ### Policies (Codex CLI -- exec policy)
 
