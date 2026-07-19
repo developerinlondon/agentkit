@@ -62,6 +62,12 @@ fi
 
 [[ -z "$COMMAND" ]] && exit 0
 
+# A run of flags, each optionally taking its own ARGUMENT (`-C <dir>`, `-R o/r`).
+# Matching flags but not their arguments has now been a bug in this file twice.
+ARG='([[:space:]]+-{1,2}[A-Za-z][^[:space:]]*([[:space:]]+[^-][^[:space:]]*)?)*'
+# An actual HTTP caller, as opposed to a command that merely mentions a URL.
+HTTP='(curl|wget|http|https|gh[[:space:]]+api|glab[[:space:]]+api|fetch|axios|requests\.)'
+
 # --- Is this a merge attempt? ---------------------------------------------
 # Flag-tolerant: `glab -R o/r mr merge`, `gh --repo o/r pr merge`,
 # `glab mr --repo o/r merge` all count. Same shape as git-police's push regex.
@@ -74,15 +80,21 @@ is_merge=0
 if echo "$COMMAND" | grep -qiE "\bglab${FLAG}[[:space:]]+mr${FLAG}[[:space:]]+merge\b"; then is_merge=1; fi
 if echo "$COMMAND" | grep -qiE "\bgh${FLAG}[[:space:]]+pr${FLAG}[[:space:]]+merge\b"; then is_merge=1; fi
 # REST paths, contiguous or split across variables (…/merge_requests/12/merge).
-if echo "$COMMAND" | grep -qiE 'merge_requests?/[0-9]+/merge|/pulls/[0-9]+/merge'; then is_merge=1; fi
+# …and only when something is actually CALLING it: grepping or editing a merge
+# URL is not merging. Every check here matches raw command text, so requiring
+# the verb narrows the mention-vs-do confusion rather than eliminating it.
+if echo "$COMMAND" | grep -qiE 'merge_requests?/[0-9]+/merge|/pulls/[0-9]+/merge' &&
+	echo "$COMMAND" | grep -qiE "$HTTP"; then is_merge=1; fi
 # Split-variable REST forms: the URL is assembled at runtime, so look for a
 # merge_requests/pulls reference AND a /merge path segment in the same command.
 if echo "$COMMAND" | grep -qiE 'merge_requests?|/pulls?/' &&
-	echo "$COMMAND" | grep -qiE '/merge\b|"\$\{?[A-Za-z_]+\}?/merge'; then is_merge=1; fi
+	echo "$COMMAND" | grep -qiE '/merge\b|"\$\{?[A-Za-z_]+\}?/merge' &&
+	echo "$COMMAND" | grep -qiE "$HTTP"; then is_merge=1; fi
 # Gate on an actual `git push` — `-o` is ubiquitous (grep -o, curl -o, cc -o),
-# and matching it bare denied any command that merely MENTIONED the pattern,
-# including grepping for the rule this hook enforces.
-if echo "$COMMAND" | grep -qiE '\bgit([[:space:]]+-{1,2}[A-Za-z][^[:space:]]*)*[[:space:]]+push\b' &&
+# so matching it bare denied commands that merely MENTIONED the pattern,
+# including grepping for the rule this hook enforces. ${ARG} so a flag's own
+# argument (`git -C <dir> push`) doesn't break the match.
+if echo "$COMMAND" | grep -qiE "\bgit${ARG}[[:space:]]+push\b" &&
 	echo "$COMMAND" | grep -qiE '(-o|--push-option)[= ][^ ]*merge_request\.merge'; then
 	deny "BLOCKED: a merge-on-pipeline push option queues a merge no review has seen.
 

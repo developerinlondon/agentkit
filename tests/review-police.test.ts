@@ -163,6 +163,25 @@ describe('review-police: bypasses found in adversarial review', () => {
     }
   });
 
+  test('a push option is caught even behind a flag with its own argument', () => {
+    record(passing);
+    // `git -C <dir> push` — the guard tolerated flags but not their arguments,
+    // the same shape that had already broken MR-id extraction once.
+    for (const cmd of [
+      'git -C /repo push -o merge_request.merge_when_pipeline_succeeds origin b',
+      'git --git-dir=/r/.git push --push-option=merge_request.merge_when_pipeline_succeeds origin b',
+    ]) {
+      expect(runHook(cmd)).toContain('"deny"');
+    }
+  });
+
+  test('reading a merge URL is not calling it', () => {
+    record(passing);
+    // Only an actual HTTP caller counts; grepping or editing the text does not.
+    expect(runHook('grep -rn "merge_requests/12/merge" docs/')).toBe('');
+    expect(runHook('rg "/pulls/7/merge" .')).toBe('');
+  });
+
   test('creating an MR over REST is not a merge', () => {
     record(passing);
     expect(runHook('curl -X POST https://gitlab.com/api/v4/projects/1/merge_requests -d x')).toBe('');
