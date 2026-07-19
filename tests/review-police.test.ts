@@ -239,4 +239,32 @@ describe('review-police: bypasses found in adversarial review', () => {
       .toContain('"deny"');
     expect(runHook('gh api --method PUT /repos/o/r/pulls/999/merge')).toContain('"deny"');
   });
+
+  test('QUOTING a merge URL does not evade the gate', () => {
+    record(passing);
+    // The regression that made quote-STRIPPING the wrong fix: URLs are quoted
+    // in every idiomatic REST call, so blanking quoted spans turned these from
+    // gated into allowed — a fail-OPEN, the one direction a gate must not fail.
+    for (const cmd of [
+      'curl -X PUT "https://gitlab.com/api/v4/projects/1/merge_requests/999/merge"',
+      "curl -X PUT 'https://gitlab.com/api/v4/projects/1/merge_requests/999/merge'",
+      'gh api --method PUT "/repos/o/r/pulls/999/merge"',
+    ]) {
+      expect(runHook(cmd), cmd).toContain('"deny"');
+    }
+  });
+
+  test('quoting a CLI merge does not evade the gate either', () => {
+    record(passing);
+    expect(runHook('glab mr merge "999" --squash --yes')).toContain('"deny"');
+    expect(runHook('glab mr merge 999 --repo "group/proj"')).toContain('"deny"');
+  });
+
+  test('an unparseable command line still gates the merge', () => {
+    record(passing);
+    // Unbalanced quotes cannot be tokenised; the fallback splits on whitespace,
+    // which over-matches. A merge must never slip through because the line
+    // failed to parse.
+    expect(runHook('glab mr merge 999 --squash "oops')).toContain('"deny"');
+  });
 });

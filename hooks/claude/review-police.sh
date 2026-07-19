@@ -33,20 +33,38 @@ TOOL=$(echo "$INPUT" | jq -r '.tool_name // empty')
 RAW_COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty')
 SESSION=$(echo "$INPUT" | jq -r '.session_id // "unknown"')
 
-# Match against the command with QUOTED SPANS AND HEREDOCS REMOVED. Every
-# false positive this hook has produced came from matching a pattern that
-# appeared inside a string: a commit message describing the rule, a grep for
-# it, a test fixture containing it. Three separate times the hook blocked the
-# very commit that was fixing it. git-police strips the same way
-# (stripQuotedContent) for the same reason.
+# TOKENISE the way a shell does, then match on tokens joined by newlines.
 #
-# The tradeoff, stated plainly: a merge hidden inside quotes (bash -c "glab mr
-# merge 12") is no longer seen. That is a real bypass, and acceptable only
-# because this gate is friction plus an audit trail, never security — see the
-# header. Forge-side required approvals are what actually prevent a merge.
-COMMAND=$(printf '%s' "$RAW_COMMAND" |
-	perl -0777 -pe 's/<<-?\s*['"'"'"]?(\w+)['"'"'"]?.*?\n\1\b//gs; s/"(?:[^"\\]|\\.)*"/""/g; s/'"'"'[^'"'"']*'"'"'/'"''"'/g' 2>/dev/null ||
-	printf '%s' "$RAW_COMMAND")
+# Quoting is not the distinction that matters — POSITION is. Blanking quoted
+# spans (the previous attempt) fixed commit messages but silently defeated the
+# idiomatic REST forms, whose URLs are legitimately quoted: it turned a false
+# positive into a fail-OPEN, which is the wrong direction for a gate.
+#
+# Tokenising keeps both properties. `git commit -m "git push -o …"` yields the
+# message as ONE token, so it can never be read as the command word `push` or
+# the flag `-o`; while `curl -X PUT ".../merge_requests/12/merge"` keeps the
+# URL as a token whose value still matches. Checks below therefore anchor on
+# tokens (a token that IS `push`, a token that IS `-o`), not on substrings of
+# the raw line.
+#
+# If tokenising is unavailable or the line does not parse (unbalanced quotes),
+# fall back to splitting on whitespace. Quoted prose then yields several tokens
+# instead of one, so the gate over-matches — a false deny, never a missed merge.
+# It must NOT fall back to the raw line: these checks match whole tokens, and a
+# single blob matches nothing, which would fail OPEN.
+COMMAND=$(printf '%s' "$RAW_COMMAND" | python3 -c '
+import shlex, sys
+raw = sys.stdin.read()
+try:
+    lex = shlex.shlex(raw, posix=True, punctuation_chars=True)
+    lex.whitespace_split = True
+    lex.commenters = ""  # a `#` in a URL fragment is not a comment
+    print("\n".join(lex))
+except ValueError:
+    print("\n".join(raw.split()))
+' 2>/dev/null || printf '%s' "$RAW_COMMAND" | tr -s '[:space:]' '\n')
+# Some checks still need the flat line (a URL split across variables never
+# survives tokenisation as one piece); those use RAW_COMMAND deliberately.
 
 AUDIT="${HOME}/.agentkit/review-audit.log"
 
@@ -77,40 +95,45 @@ fi
 
 [[ -z "$COMMAND" ]] && exit 0
 
-# A run of flags, each optionally taking its own ARGUMENT (`-C <dir>`, `-R o/r`).
-# Matching flags but not their arguments has now been a bug in this file twice.
-ARG='([[:space:]]+-{1,2}[A-Za-z][^[:space:]]*([[:space:]]+[^-][^[:space:]]*)?)*'
 # An actual HTTP caller, as opposed to a command that merely mentions a URL.
-HTTP='(curl|wget|http|https|gh[[:space:]]+api|glab[[:space:]]+api|fetch|axios|requests\.)'
+HTTP='^(curl|wget|http|https|fetch|axios)$'
+
+# Token predicates. `has tok` is an EXACT token match, which is the whole point
+# of tokenising: the word `push` inside a commit message is one token of prose,
+# never the command word.
+has() { printf '%s' "$COMMAND" | grep -qxF -- "$1"; }
+# Any token matching a regex (URLs keep their value through tokenisation).
+tok_match() { printf '%s' "$COMMAND" | grep -qiE -- "$1"; }
+# The token following the first occurrence of a given token.
+after() { printf '%s' "$COMMAND" | awk -v k="$1" 'p { print; exit } $0 == k { p = 1 }'; }
 
 # --- Is this a merge attempt? ---------------------------------------------
-# Flag-tolerant: `glab -R o/r mr merge`, `gh --repo o/r pr merge`,
-# `glab mr --repo o/r merge` all count. Same shape as git-police's push regex.
-FLAG='(\s+(-[A-Za-z]\S*|--[A-Za-z][A-Za-z0-9-]*(=\S+)?)(\s+[^-\s]\S*)?)*'
+# Subcommands are separate tokens, so flags and their arguments no longer need
+# tolerating in a regex — `glab -R o/r mr merge` and `glab mr --repo o/r merge`
+# both simply contain the tokens glab, mr, merge.
 # NOTE: every match below is wrapped so a NON-match cannot abort the script.
 # `grep -q … && is_merge=1` returns non-zero when the pattern misses, and under
 # `set -e` that exits the hook silently — i.e. FAILS OPEN, allowing the merge.
-# Caught by this file's own tests before it ever shipped; keep the `if` form.
 is_merge=0
-if echo "$COMMAND" | grep -qiE "\bglab${FLAG}[[:space:]]+mr${FLAG}[[:space:]]+merge\b"; then is_merge=1; fi
-if echo "$COMMAND" | grep -qiE "\bgh${FLAG}[[:space:]]+pr${FLAG}[[:space:]]+merge\b"; then is_merge=1; fi
-# REST paths, contiguous or split across variables (…/merge_requests/12/merge).
-# …and only when something is actually CALLING it: grepping or editing a merge
-# URL is not merging. Every check here matches raw command text, so requiring
-# the verb narrows the mention-vs-do confusion rather than eliminating it.
-if echo "$COMMAND" | grep -qiE 'merge_requests?/[0-9]+/merge|/pulls/[0-9]+/merge' &&
-	echo "$COMMAND" | grep -qiE "$HTTP"; then is_merge=1; fi
-# Split-variable REST forms: the URL is assembled at runtime, so look for a
-# merge_requests/pulls reference AND a /merge path segment in the same command.
-if echo "$COMMAND" | grep -qiE 'merge_requests?|/pulls?/' &&
-	echo "$COMMAND" | grep -qiE '/merge\b|"\$\{?[A-Za-z_]+\}?/merge' &&
-	echo "$COMMAND" | grep -qiE "$HTTP"; then is_merge=1; fi
+if has glab && has mr && has merge; then is_merge=1; fi
+if has gh && has pr && has merge; then is_merge=1; fi
+# A REST merge: a token carrying the merge path, called by an HTTP client (or
+# `gh api` / `glab api`). Grepping or editing such a URL is not merging it.
+if tok_match 'merge_requests?/[0-9]+/merge|/pulls/[0-9]+/merge' &&
+	{ tok_match "$HTTP" || { has api && { has gh || has glab; }; }; }; then is_merge=1; fi
+# Split-variable REST forms: the URL is assembled at runtime, so no single token
+# carries the whole path — this one check reads RAW_COMMAND deliberately, and is
+# narrowed by requiring an HTTP caller among the TOKENS.
+if echo "$RAW_COMMAND" | grep -qiE 'merge_requests?|/pulls?/' &&
+	echo "$RAW_COMMAND" | grep -qiE '/merge\b|\$\{?[A-Za-z_]+\}?/merge' &&
+	tok_match "$HTTP"; then is_merge=1; fi
 # Gate on an actual `git push` — `-o` is ubiquitous (grep -o, curl -o, cc -o),
 # so matching it bare denied commands that merely MENTIONED the pattern,
-# including grepping for the rule this hook enforces. ${ARG} so a flag's own
-# argument (`git -C <dir> push`) doesn't break the match.
-if echo "$COMMAND" | grep -qiE "\bgit${ARG}[[:space:]]+push\b" &&
-	echo "$COMMAND" | grep -qiE '(-o|--push-option)[= ][^ ]*merge_request\.merge'; then
+# including grepping for the rule this hook enforces. As tokens: the option's
+# value is the token after `-o`, or is fused into `--push-option=…`.
+if has git && has push &&
+	{ printf '%s\n' "$(after -o)" | grep -qiE 'merge_request\.merge' ||
+		tok_match '^--push-option=.*merge_request\.merge'; }; then
 	deny "BLOCKED: a merge-on-pipeline push option queues a merge no review has seen.
 
 Push the branch without the merge push-option, then merge explicitly so the
@@ -120,7 +143,7 @@ fi
 
 # Auto-merge queues the merge for a LATER head — the sha we check now is not
 # the sha that lands. Refuse the mode rather than pretend to gate it.
-if echo "$COMMAND" | grep -qiE '(--auto|--merge-when-pipeline-succeeds|--when-pipeline-succeeds)\b'; then
+if tok_match '^--(auto|merge-when-pipeline-succeeds|when-pipeline-succeeds)$'; then
 	deny "BLOCKED: auto-merge cannot be review-gated.
 
 It merges a future head that no review has seen. Wait for the pipeline, then
@@ -130,18 +153,22 @@ fi
 # --- Resolve WHAT is being merged, from the forge ---------------------------
 # Fail CLOSED: if the target cannot be resolved, the gate denies. An
 # unresolvable merge is exactly when a mistake is most likely.
-REPO_DIR=$(echo "$COMMAND" | sed -nE 's/^[[:space:]]*cd[[:space:]]+([^[:space:];&|]+).*/\1/p' | head -1)
+REPO_DIR=$(after cd)
 [[ -z "$REPO_DIR" ]] && REPO_DIR="$PWD"
 
-ARG='([[:space:]]+-{1,2}[A-Za-z][^[:space:]]*([[:space:]]+[^-][^[:space:]]*)?)*'
-MR_ID=$(echo "$COMMAND" | grep -oiE "\b(mr|pr)${ARG}[[:space:]]+merge${ARG}[[:space:]]+[0-9]+" | grep -oE '[0-9]+$' | head -1 || true)
+# The id is simply the token after `merge` — flags and their arguments are
+# separate tokens now, so `glab mr --repo group/proj merge 12` needs no special
+# case. Extraction losing the id used to deny honest merges with "cannot resolve".
+MR_ID=$(after merge | grep -xE '[0-9]+' || true)
 if [[ -z "$MR_ID" ]]; then
-	MR_ID=$(echo "$COMMAND" | grep -oiE 'merge_requests?/[0-9]+|/pulls/[0-9]+' | grep -oE '[0-9]+' | head -1 || true)
+	MR_ID=$(printf '%s' "$COMMAND" | grep -oiE 'merge_requests?/[0-9]+|/pulls/[0-9]+' | grep -oE '[0-9]+' | head -1 || true)
 fi
-REPO_FLAG=$(echo "$COMMAND" | grep -oiE '(-R|--repo)[= ]+[^ ]+' | head -1 | sed -E 's/^(-R|--repo)[= ]+//' || true)
+REPO_FLAG=$(after -R)
+[[ -z "$REPO_FLAG" ]] && REPO_FLAG=$(after --repo)
+[[ -z "$REPO_FLAG" ]] && REPO_FLAG=$(printf '%s' "$COMMAND" | sed -nE 's/^--repo=(.+)$/\1/p' | head -1 || true)
 
 forge_json() {
-	if echo "$COMMAND" | grep -qiE '\bgh\b|/pulls/'; then
+	if has gh || tok_match '/pulls/'; then
 		gh pr view "$MR_ID" ${REPO_FLAG:+--repo "$REPO_FLAG"} \
 			--json headRefName,headRefOid 2>/dev/null |
 			jq -r '"\(.headRefName)\t\(.headRefOid)"'
