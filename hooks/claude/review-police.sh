@@ -40,12 +40,19 @@ SESSION=$(echo "$INPUT" | jq -r '.session_id // "unknown"')
 # idiomatic REST forms, whose URLs are legitimately quoted: it turned a false
 # positive into a fail-OPEN, which is the wrong direction for a gate.
 #
-# Tokenising keeps both properties. `git commit -m "git push -o …"` yields the
+# Tokenising separates the two. `git commit -m "git push -o …"` yields the
 # message as ONE token, so it can never be read as the command word `push` or
 # the flag `-o`; while `curl -X PUT ".../merge_requests/12/merge"` keeps the
 # URL as a token whose value still matches. Checks below therefore anchor on
 # tokens (a token that IS `push`, a token that IS `-o`), not on substrings of
 # the raw line.
+#
+# The boundary this draws is "quoted text is DATA" — which is wrong for exactly
+# one family: a quoted string that a shell-invoking command then EXECUTES.
+# `bash -c "glab mr merge 999"` would otherwise collapse to one inert token and
+# fail open. So the tokeniser recursively expands the script argument of
+# bash/sh/zsh/dash/ksh -c and of eval, and the checks see the union. Quoted
+# text that is not handed to a shell stays data.
 #
 # If tokenising is unavailable or the line does not parse (unbalanced quotes),
 # fall back to splitting on whitespace. Quoted prose then yields several tokens
@@ -54,12 +61,41 @@ SESSION=$(echo "$INPUT" | jq -r '.session_id // "unknown"')
 # single blob matches nothing, which would fail OPEN.
 COMMAND=$(printf '%s' "$RAW_COMMAND" | python3 -c '
 import shlex, sys
-raw = sys.stdin.read()
-try:
+
+SHELLS = {"bash", "sh", "zsh", "dash", "ksh"}
+DEPTH = 4  # bash -c "bash -c ..." is pathological; bound it rather than recurse freely
+
+def split(raw):
     lex = shlex.shlex(raw, posix=True, punctuation_chars=True)
     lex.whitespace_split = True
     lex.commenters = ""  # a `#` in a URL fragment is not a comment
-    print("\n".join(lex))
+    return list(lex)
+
+def expand(raw, depth=0):
+    toks = split(raw)
+    if depth >= DEPTH:
+        return toks
+    out = list(toks)
+    for i, t in enumerate(toks):
+        # A script argument is EXECUTED, so its contents are command words, not
+        # data: bash -c "glab mr merge 999" is a merge. `eval` treats all of
+        # its arguments that way.
+        run = None
+        if t in SHELLS and "-c" in toks[i + 1:i + 3]:
+            j = toks.index("-c", i + 1)
+            run = toks[j + 1:j + 2]
+        elif t == "eval":
+            run = toks[i + 1:]
+        for arg in run or []:
+            try:
+                out.extend(expand(arg, depth + 1))
+            except ValueError:
+                out.extend(arg.split())
+    return out
+
+raw = sys.stdin.read()
+try:
+    print("\n".join(expand(raw)))
 except ValueError:
     print("\n".join(raw.split()))
 ' 2>/dev/null || printf '%s' "$RAW_COMMAND" | tr -s '[:space:]' '\n')
@@ -131,9 +167,23 @@ if echo "$RAW_COMMAND" | grep -qiE 'merge_requests?|/pulls?/' &&
 # so matching it bare denied commands that merely MENTIONED the pattern,
 # including grepping for the rule this hook enforces. As tokens: the option's
 # value is the token after `-o`, or is fused into `--push-option=…`.
-if has git && has push &&
-	{ printf '%s\n' "$(after -o)" | grep -qiE 'merge_request\.merge' ||
-		tok_match '^--push-option=.*merge_request\.merge'; }; then
+# Scan EVERY option, not just the first: `git push -o ci.skip -o
+# merge_request.merge_when_pipeline_succeeds` is the idiomatic multi-option
+# form, and reading only the token after the first `-o` let it through.
+# A push-option value counts when its PREDECESSOR token is -o/--push-option
+# (covering both the short and the space-separated long form), or when it is
+# fused as --push-option=<value>.
+push_option_merge() {
+	printf '%s' "$COMMAND" | awk '
+		/^--push-option=.*merge_request\.merge/ { found = 1 }
+		prev == "-o" || prev == "--push-option" {
+			if ($0 ~ /^merge_request\.merge/) found = 1
+		}
+		{ prev = $0 }
+		END { exit(found ? 0 : 1) }
+	'
+}
+if has git && has push && push_option_merge; then
 	deny "BLOCKED: a merge-on-pipeline push option queues a merge no review has seen.
 
 Push the branch without the merge push-option, then merge explicitly so the
@@ -156,10 +206,14 @@ fi
 REPO_DIR=$(after cd)
 [[ -z "$REPO_DIR" ]] && REPO_DIR="$PWD"
 
-# The id is simply the token after `merge` — flags and their arguments are
-# separate tokens now, so `glab mr --repo group/proj merge 12` needs no special
-# case. Extraction losing the id used to deny honest merges with "cannot resolve".
-MR_ID=$(after merge | grep -xE '[0-9]+' || true)
+# The FIRST NUMERIC token after `merge` — not the immediately-next one. Flags
+# before `merge` are separate tokens and so take care of themselves, but a flag
+# AFTER it (`gh pr merge --squash 999`) still sits between the verb and the id.
+# Extraction losing the id denies honest merges with a misleading reason.
+MR_ID=$(printf '%s' "$COMMAND" | awk '
+	p && /^[0-9]+$/ { print; exit }
+	$0 == "merge" { p = 1 }
+' || true)
 if [[ -z "$MR_ID" ]]; then
 	MR_ID=$(printf '%s' "$COMMAND" | grep -oiE 'merge_requests?/[0-9]+|/pulls/[0-9]+' | grep -oE '[0-9]+' | head -1 || true)
 fi

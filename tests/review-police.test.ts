@@ -240,6 +240,50 @@ describe('review-police: bypasses found in adversarial review', () => {
     expect(runHook('gh api --method PUT /repos/o/r/pulls/999/merge')).toContain('"deny"');
   });
 
+  test('a shell-wrapped merge is still a merge', () => {
+    record(passing);
+    // Tokenising treats quoted text as data — correct, EXCEPT when a shell is
+    // handed it to execute. These collapsed to one inert token and failed open.
+    for (const cmd of [
+      'bash -c "glab mr merge 999"',
+      "sh -c 'gh pr merge 999 --squash'",
+      'eval "glab mr merge 999"',
+      'bash -c "bash -c \'glab mr merge 999\'"',
+    ]) {
+      expect(runHook(cmd), cmd).toContain('"deny"');
+    }
+  });
+
+  test('every push option is scanned, not just the first', () => {
+    record(passing);
+    // The idiomatic GitLab form passes several -o flags. Reading only the
+    // token after the FIRST one let the merge option through.
+    for (const cmd of [
+      'git push -o ci.skip -o merge_request.merge_when_pipeline_succeeds origin b',
+      'git push -o merge_request.target_branch=main -o merge_request.merge_when_pipeline_succeeds origin b',
+      'git push --push-option merge_request.merge_when_pipeline_succeeds origin b',
+      'git push -o "merge_request.merge_when_pipeline_succeeds" origin b',
+      "git push -o 'merge_request.merge_when_pipeline_succeeds' origin b",
+      'git push --push-option="merge_request.merge_when_pipeline_succeeds" origin b',
+    ]) {
+      expect(runHook(cmd), cmd).toContain('"deny"');
+    }
+  });
+
+  test('a flag AFTER merge does not lose the MR id', () => {
+    record(passing);
+    // Fails closed rather than open, but it denies an honest merge with a
+    // reason that misdiagnoses the cause.
+    expect(runHook('gh pr merge --squash 12')).toBe('');
+    expect(runHook('glab mr merge --yes 12')).toBe('');
+    // The allow-cases alone cannot catch a broken extraction: an unresolvable
+    // id makes the fake forge fall back to MR 12's branch, so they pass either
+    // way. These pin that the id READ is the id GIVEN — a different MR must
+    // still be denied when a flag sits between the verb and the number.
+    expect(runHook('gh pr merge --squash 999')).toContain('"deny"');
+    expect(runHook('glab mr merge --yes 999')).toContain('"deny"');
+  });
+
   test('QUOTING a merge URL does not evade the gate', () => {
     record(passing);
     // The regression that made quote-STRIPPING the wrong fix: URLs are quoted
