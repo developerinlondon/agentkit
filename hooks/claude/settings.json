@@ -41,6 +41,17 @@
             "statusMessage": "review-police: verifying the review gate..."
           }
         ]
+      },
+      {
+        "matcher": ".*[Mm]erge.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/review-police.sh",
+            "timeout": 15,
+            "statusMessage": "review-police: gating non-Bash merge tools..."
+          }
+        ]
       }
     ],
     "PostToolUse": [

@@ -75,8 +75,16 @@ if echo "$COMMAND" | grep -qiE "\bglab${FLAG}[[:space:]]+mr${FLAG}[[:space:]]+me
 if echo "$COMMAND" | grep -qiE "\bgh${FLAG}[[:space:]]+pr${FLAG}[[:space:]]+merge\b"; then is_merge=1; fi
 # REST paths, contiguous or split across variables (…/merge_requests/12/merge).
 if echo "$COMMAND" | grep -qiE 'merge_requests?/[0-9]+/merge|/pulls/[0-9]+/merge'; then is_merge=1; fi
-if echo "$COMMAND" | grep -qiE 'merge_requests?|/pulls/' &&
-	echo "$COMMAND" | grep -qiE '\b(PUT|POST)\b'; then is_merge=1; fi
+# Split-variable REST forms: the URL is assembled at runtime, so look for a
+# merge_requests/pulls reference AND a /merge path segment in the same command.
+if echo "$COMMAND" | grep -qiE 'merge_requests?|/pulls?/' &&
+	echo "$COMMAND" | grep -qiE '/merge\b|"\$\{?[A-Za-z_]+\}?/merge'; then is_merge=1; fi
+if echo "$COMMAND" | grep -qiE '(-o|--push-option)[= ][^ ]*merge_request\.merge'; then
+	deny "BLOCKED: a merge-on-pipeline push option queues a merge no review has seen.
+
+Push the branch without the merge push-option, then merge explicitly so the
+gate can check the commit that actually lands."
+fi
 [[ $is_merge -eq 1 ]] || exit 0
 
 # Auto-merge queues the merge for a LATER head — the sha we check now is not
@@ -94,7 +102,8 @@ fi
 REPO_DIR=$(echo "$COMMAND" | sed -nE 's/^[[:space:]]*cd[[:space:]]+([^[:space:];&|]+).*/\1/p' | head -1)
 [[ -z "$REPO_DIR" ]] && REPO_DIR="$PWD"
 
-MR_ID=$(echo "$COMMAND" | grep -oiE '\b(mr|pr)([[:space:]]+-{1,2}[A-Za-z][^[:space:]]*)*[[:space:]]+merge([[:space:]]+-{1,2}[A-Za-z][^[:space:]]*)*[[:space:]]+[0-9]+' | grep -oE '[0-9]+$' | head -1 || true)
+ARG='([[:space:]]+-{1,2}[A-Za-z][^[:space:]]*([[:space:]]+[^-][^[:space:]]*)?)*'
+MR_ID=$(echo "$COMMAND" | grep -oiE "\b(mr|pr)${ARG}[[:space:]]+merge${ARG}[[:space:]]+[0-9]+" | grep -oE '[0-9]+$' | head -1 || true)
 if [[ -z "$MR_ID" ]]; then
 	MR_ID=$(echo "$COMMAND" | grep -oiE 'merge_requests?/[0-9]+|/pulls/[0-9]+' | grep -oE '[0-9]+' | head -1 || true)
 fi

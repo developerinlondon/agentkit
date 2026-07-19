@@ -128,10 +128,36 @@ describe('review-police: bypasses found in adversarial review', () => {
     expect(runHook('glab mr merge 999 --squash --yes')).toContain('"deny"');
   });
 
-  test('B2: MCP merge tools are refused outright', () => {
+  // NOTE: this proves the script's behaviour only. That it is REACHED for MCP
+  // calls is a registration fact, asserted in tests/agentkit-plugin.test.ts —
+  // the first version of this hook refused MCP merges in code that no matcher
+  // ever routed to it, and this test passed anyway.
+  test('B2: MCP merge tools are refused by the script', () => {
     const out = runHook('', { tool: 'mcp__github__merge_pull_request' });
     expect(out).toContain('"deny"');
     expect(out).toContain('MCP tool');
+  });
+
+  test('push options that queue a merge are refused', () => {
+    record(passing);
+    for (const cmd of [
+      'git push -o merge_request.merge_when_pipeline_succeeds origin feat/thing',
+      'git push --push-option=merge_request.merge_when_pipeline_succeeds origin feat/thing',
+    ]) {
+      expect(runHook(cmd)).toContain('"deny"');
+    }
+  });
+
+  test('creating an MR over REST is not a merge', () => {
+    record(passing);
+    expect(runHook('curl -X POST https://gitlab.com/api/v4/projects/1/merge_requests -d x')).toBe('');
+  });
+
+  test('a flag with its own argument does not lose the MR id', () => {
+    record(passing);
+    // Detection caught this variant but extraction dropped the id, so it
+    // denied an honest merge with "cannot resolve".
+    expect(runHook('glab mr --repo group/proj merge 12')).toBe('');
   });
 
   test('H1: -R / --repo flag variants are still gated', () => {

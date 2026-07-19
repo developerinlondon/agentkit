@@ -51,8 +51,20 @@ describe('agentkit plugin hooks', () => {
   test('hooks.json wires exactly the police hooks under ${CLAUDE_PLUGIN_ROOT}', () => {
     const hooks = readJson('hooks', 'hooks.json').hooks;
 
-    expect(hooks.PreToolUse).toHaveLength(1);
+    // Bash block, plus a block matching merge-shaped tool names so MCP merge
+    // tools actually reach review-police (its MCP branch was unreachable dead
+    // code while only the Bash matcher existed).
+    expect(hooks.PreToolUse).toHaveLength(2);
     expect(hooks.PreToolUse[0].matcher).toBe('Bash');
+    const mcpBlock = hooks.PreToolUse[1];
+    // Assert what the matcher DOES, not how it is spelled: it must route real
+    // MCP merge tool names to review-police and leave everything else alone.
+    const routes = new RegExp(mcpBlock.matcher);
+    expect(routes.test('mcp__github__merge_pull_request')).toBe(true);
+    expect(routes.test('mcp__gitlab__merge_merge_request')).toBe(true);
+    expect(routes.test('Bash')).toBe(false);
+    expect(routes.test('Edit')).toBe(false);
+    expect(commandBasenames(mcpBlock.hooks)).toEqual(['review-police.sh']);
     expect(commandBasenames(hooks.PreToolUse[0].hooks).sort()).toEqual([...PRE_TOOL_USE_HOOKS].sort());
 
     expect(hooks.PostToolUse).toHaveLength(1);
