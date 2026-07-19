@@ -33,6 +33,12 @@
             "command": "${CLAUDE_PLUGIN_ROOT}/hooks/mr-police.sh",
             "timeout": 15,
             "statusMessage": "mr-police: checking for unmerged MRs..."
+          },
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/review-police.sh",
+            "timeout": 15,
+            "statusMessage": "review-police: verifying the review gate..."
           }
         ]
       }
