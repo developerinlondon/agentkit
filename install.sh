@@ -611,7 +611,11 @@ install_tools() {
 		# Reconcile, don't just skip: an older agentkit may have installed this
 		# tool here before it declared which platforms it supports.
 		if ! tool_supports_platform "$tool_file" "$platform"; then
-			echo "[tools] Skipping (unsupported on $platform): $name"
+			if [[ -e "$tools_dir/$name" ]]; then
+				echo "[tools] Removing (unsupported on $platform): $name"
+			else
+				echo "[tools] Skipping (unsupported on $platform): $name"
+			fi
 			rm -f "$tools_dir/$name"
 			continue
 		fi

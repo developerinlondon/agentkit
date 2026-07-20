@@ -86,6 +86,37 @@ describe('containment availability', () => {
     }
   });
 
+  // The payload after `--` was read as a launch directly, so it never got the
+  // wrapper normalisation a top-level command gets. Generalising over runner
+  // NAMES was not enough; the wrapper CLASS has to generalise too.
+  test('sees through no-op wrappers inside a runner payload', () => {
+    const laundered = [
+      'bounded-run --profile default -- nohup ssh prod-host rm -rf /data',
+      'bounded-run --profile default -- command ssh prod-host rm -rf /data',
+      'bounded-run --profile default -- time ssh prod-host rm -rf /data',
+      'bounded-run --profile default -- nohup sudo systemctl restart nginx',
+      'bounded-run --profile default -- nohup kubectl delete ns prod',
+      'bounded-run -- env agentkit-run -- kubectl delete ns prod',
+      'bounded-run -- nohup bounded-run -- ssh prod-host rm -rf /data',
+    ];
+    for (const command of laundered) {
+      for (const platform of ['darwin', 'linux']) {
+        expect(() => enforceResourcePolicy(command, platform)).toThrow(
+          'cannot be contained by bounded-run',
+        );
+      }
+    }
+  });
+
+  // "I stopped analysing" must not become "allowed" once containment stands
+  // down. Nesting past the depth limit was the way to say it quietly.
+  test('fails closed when a command nests too deeply to analyse', () => {
+    const deep = 'sh -c sh -c sh -c sh -c ssh prod-host rm';
+    for (const platform of ['darwin', 'linux']) {
+      expect(() => enforceResourcePolicy(deep, platform)).toThrow('too deeply to analyse');
+    }
+  });
+
   test('does not mistake a wrapped ordinary command for delegation', () => {
     expect(() =>
       enforceResourcePolicy('bounded-run --profile default -- bounded-run -- bun install', 'linux')

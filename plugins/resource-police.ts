@@ -12,6 +12,9 @@ interface Finding {
   /** The runner is not the INSTALLED bounded-run. Distinct from `delegated`:
    *  the delegated message advertises an escape hatch that cannot clear this. */
   untrustedRunner?: boolean;
+  /** Analysis gave up before reaching the real command. Must never be treated
+   *  as "nothing found" — a stand-down would turn it into permission. */
+  undecidable?: boolean;
 }
 
 function splitShellSegments(command: string): string[] {
@@ -209,11 +212,11 @@ function unwrapEnvironment(launch: Launch): Launch {
 function wrappedLaunch(launch: Launch): Launch | null {
   const separator = launch.args.indexOf('--');
   if (separator < 0 || !launch.args[separator + 1]) return null;
-  return {
-    token: launch.args[separator + 1],
-    executable: basename(launch.args[separator + 1]),
-    args: launch.args.slice(separator + 2),
-  };
+  // Route the payload through parseLaunch rather than reading the token after
+  // `--` directly: that skipped every wrapper normalisation the top-level path
+  // does, so `-- nohup ssh host rm` read as a launch of `nohup` and the remote
+  // command behind it was never seen.
+  return parseLaunch(launch.args.slice(separator + 1).join(' '));
 }
 
 // agentkit-run is the pre-rename compat alias, so both names are runner layers.
@@ -226,7 +229,7 @@ function detectUnboundedCommand(
   depth = 0,
   delegatedOk = false,
 ): Finding | null {
-  if (depth > 3) return { segment: command, delegated: false };
+  if (depth > 3) return { segment: command, delegated: false, undecidable: true };
   for (const segment of splitShellSegments(command)) {
     const launch = parseLaunch(segment);
     if (!launch) continue;
@@ -300,6 +303,15 @@ export function enforceResourcePolicy(
       `BLOCKED: delegated workload cannot be contained by bounded-run: ${finding.segment}\n` +
         'Use a separately approved dedicated runner or verified engine-native limits.\n' +
         'User-approved delegated workloads: prefix with AGENTKIT_ALLOW_DELEGATED=1.',
+    );
+  }
+  // Fails closed on every platform: the analyser stopped before it could tell
+  // whether this delegates, and standing down on "I do not know" is how a
+  // deeply nested command walks straight through.
+  if (finding.undecidable) {
+    throw new Error(
+      `BLOCKED: command nests too deeply to analyse: ${finding.segment}\n`
+        + 'Run the inner command on its own, so what it does can be seen.',
     );
   }
   // Only the containment requirement stands down. Delegation is checked above
