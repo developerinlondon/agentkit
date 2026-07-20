@@ -7,6 +7,7 @@ import {
   allowedResourceCommands,
   blockedResourceCommands,
   unsupportedResourceCommands,
+  untrustedRunnerCommands,
 } from './fixtures/resource-commands';
 
 const repoRoot = dirname(import.meta.dir);
@@ -82,6 +83,27 @@ describe('Claude resource-police', () => {
       const output = runHook(command);
       expect(output).toContain('"permissionDecision": "deny"');
       expect(output).toContain('cannot be contained by bounded-run');
+    });
+  }
+
+  for (const command of untrustedRunnerCommands) {
+    test(`refuses an unrecognised runner, and says why: ${command}`, () => {
+      const output = runHook(command);
+      expect(output).toContain('"permissionDecision": "deny"');
+      // The message must name the ACTUAL problem. These were previously
+      // refused with the delegated-workload text, which advertises an escape
+      // hatch this branch never consults — so a user following the message
+      // could not ever unblock, and would reasonably conclude the tool was
+      // broken. A gate that misdiagnoses itself wastes the reader's time.
+      expect(output).toContain('not a recognised bounded-run');
+      expect(output).not.toContain('cannot be contained by bounded-run');
+    });
+
+    test(`the delegated escape hatch does NOT clear it: ${command}`, () => {
+      // Pins the honesty of the message above: if this ever starts passing
+      // the guard, the message must change with it.
+      const output = runHook(`AGENTKIT_ALLOW_DELEGATED=1 ${command}`);
+      expect(output).toContain('"permissionDecision": "deny"');
     });
   }
 

@@ -1,0 +1,82 @@
+# agentkit's own product manifest — dogfooding the product-review skill.
+# See plugins-cc/agentkit/skills/product-review/SKILL.md for the contract.
+
+summary: >-
+  A Claude Code / OpenCode plugin that installs enforcement hooks (git, MR,
+  package, resource, review, formatting and comment discipline), a set of
+  agent skills, a memory-and-CPU-bounded command runner, and two MCP servers.
+  Installed once per machine; from then on it constrains how agents work in
+  every repo on that machine.
+
+surfaces:
+  - name: test-suite
+    kind: library
+    build: bun install
+    verify: bun test
+    expect: |
+      408 tests pass. The suite is the real gate on this repo: it asserts the
+      plugin wiring, that every police hook parses under `bash -n`, and that
+      `skills/` stays byte-identical to the plugin mirror.
+
+  - name: plugin
+    kind: desktop
+    # There is no build step — the plugin IS the repo contents, installed by
+    # reference from the marketplace.
+    run: |
+      claude plugin marketplace add developerinlondon/agentkit
+      claude plugin install agentkit
+    expect: |
+      A new Claude Code session prints an `[agentkit] armed:` line naming the
+      police hooks. Attempting a forge merge without a passing review record
+      in `.agentkit/reviews/` is refused with a BLOCKED message rather than
+      silently allowed.
+
+  - name: bounded-run
+    kind: cli
+    # The INSTALLED path, not ./tools/bounded-run. resource-police trusts the
+    # runner by installed path rather than by name (anything can be called
+    # `bounded-run`, and trusting the name would let a spoof neuter every
+    # limit), so running it in place from a fresh clone is refused. Declaring
+    # the in-place path here was the first thing dogfooding this manifest
+    # caught.
+    run: bounded-run --profile default -- echo ok
+    expect: |
+      Prints `ok` having run the command inside a systemd scope with memory
+      and CPU limits. A workload that exceeds the profile is killed rather
+      than allowed to exhaust the host.
+
+  - name: infra-tools-mcp
+    kind: api
+    run: bun plugins-cc/agentkit/server/index.ts
+    expect: |
+      Speaks JSON-RPC on stdin/stdout; `tools/list` returns ten read-only git,
+      helm and tofu tools and nothing that mutates infrastructure.
+
+requires:
+  hardware: []
+  credentials: []
+  notes:
+    - Claude Code (or OpenCode) must be installed to exercise the `plugin`
+      surface; the test suite needs only bun.
+    - >-
+      This repo's own hooks are usually already active on a developer machine,
+      and they will intercept naive verification: `./tools/bounded-run --help`
+      is refused by resource-police as an uncontained delegated workload
+      (prefix `AGENTKIT_ALLOW_DELEGATED=1`), and editing this repo's docs can
+      trip review-police because the text contains merge-shaped commands. A
+      reviewer hitting those is seeing the product work, not a defect — but it
+      does mean shell heredocs are the wrong tool for writing about it; use
+      file tools.
+
+cannot_verify:
+  - surface: plugin
+    what: hooks actually blocking a real tool call
+    why: >-
+      needs a live Claude Code session driving real tool calls. The suite
+      proves the scripts' behaviour and that they are registered for the right
+      matchers, which is one layer short of "the harness honoured the deny".
+  - surface: plugin
+    what: the install path itself (marketplace add + install)
+    why: >-
+      mutates the reviewer's own Claude Code configuration, so it is left to a
+      human rather than run automatically.
