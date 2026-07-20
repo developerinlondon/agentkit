@@ -83,12 +83,12 @@ gate as something it is not.
    **every, always, never, all, verified, probed, cannot** — and check each
    against reality with `git grep`, a probe, or the code itself.
 
-   Three claim defects landed in one day: an MR asserting "every currently
-   paired device sends the old frame shape" (the frame did not exist on the
-   other repo's main — the population was empty); a comment citing probe
-   evidence for a correlation branch (the probe predated the change that would
-   exercise it, so it evidenced a different case); an authority table added to
-   prevent drift, carrying a row contradicted by code in the same file.
+   Three shapes this takes, all observed in a single day: a change description
+   asserted a compatibility requirement over "every" existing client, and one
+   grep showed the population was empty; a comment cited probe evidence for a
+   branch, but the probe predated the change that would exercise it, so it
+   evidenced a different case; a table added to stop drift carried a row
+   contradicted by code in the same file.
 
    Report any claim that outruns its evidence, **even when the code is
    correct**. Wrong prose is not cosmetic — it teaches the next reader a wrong
@@ -98,19 +98,19 @@ gate as something it is not.
    (machine-global, append-only — these are lessons about how the agent works,
    not about a codebase):
 
-   ```json
-   {
-     "date": "2026-07-20",
-     "repo": "neutron",
-     "gap": "asserted every paired device sends the old frame without grepping the other repo",
-     "finding": "MR !13 HIGH: claim contradicted by git grep",
-     "repeat": false
-   }
+   ```text
+   {"date":"2026-07-20","harness":"claude","repo":"<repo>","gap":"asserted a compatibility requirement over all clients without grepping for one","finding":"HIGH: claim contradicted by git grep","repeat_of":null}
    ```
+
+   One object per line, no pretty-printing — the file is appended to by many
+   sessions and must stay line-addressable. `harness` is one of `claude`,
+   `codex`, `opencode`, `other`; it is not bookkeeping, it is what shows
+   whether different harnesses fail in different ways. `repeat_of` carries the
+   date of the earlier entry when the same gap recurs, else `null`.
 
    **Keep the filter narrow or nobody will read it.** Entry-worthy: the author
    asserted something without checking; no test could have caught this; this is
-   the second time this class appeared (set `repeat`). NOT entry-worthy: an
+   the second time this class appeared (set `repeat_of`). NOT entry-worthy: an
    ordinary logic bug found in review. A bug caught by review is the system
    working; a process gap is the system missing.
 
@@ -142,12 +142,11 @@ internally correct code that cannot be used is still broken.
 
 ## Observe External Behaviour Before Building On It
 
-The most expensive defect of one session: interruption was wired to
-`response.cancelled`, an event the OpenAI Realtime API does not emit on that
-transport. It shipped green because the tests synthesised the imaginary event. A
-five-minute live probe found it — and every subsequent probe also contradicted
-an assumption (truncation after `response.done` works; `event_id` arrives
-`null`, not absent).
+The most expensive defect of one session: a feature was wired to an event name
+the vendor's streaming API does not emit on that transport. It shipped green
+because the tests synthesised the imaginary event. A five-minute live probe
+found it — and every subsequent probe also contradicted an assumption, one
+about ordering and one about a field arriving `null` rather than absent.
 
 Before you build on another system's behaviour, OBSERVE it: run a probe, capture
 a real payload, or quote the doc with its URL. Assumptions about wire protocols,
@@ -159,8 +158,8 @@ and mark it observed vs inferred (see "Observed vs inferred" in product-review).
 
 ## Mutation-Check Load-Bearing Values
 
-`played_ms` — the number the entire feature turned on — passed all 158 tests
-when replaced with a constant zero. The test double could not report a non-zero
+The one number an entire feature turned on passed all 158 of its tests when
+replaced with a constant zero. The test double could not report a non-zero
 value, so no test could observe it.
 
 For each value the feature's correctness depends on, replace it with a constant
@@ -204,18 +203,18 @@ When a reviewer disproves something you asserted, **that** is the moment to
 write or correct a memory — not at session end, not on a schedule. The
 correction is cheapest while the evidence is still in front of you.
 
-Counterweight: memories and reflections rot. On 2026-07-20 a memory the author
-had written themselves sent them chasing a poisoned-cargo-target-dir theory for
-hours when the real cause was a toolchain mismatch (`RUSTUP_TOOLCHAIN` pinned to
-an older version than the cargo binary). Correcting and pruning matters as much
-as appending — a confident stale note is worse than none, because it is trusted.
+Counterweight: stored notes and reflections rot. A note the author had written
+themselves once sent them chasing a corrupted-build-directory theory for hours
+when the real cause was a toolchain mismatch — a pinned toolchain version older
+than the build tool invoking it. Correcting and pruning matters as much as
+appending: a confident stale note is worse than none, because it is trusted.
 
 ### Batching the reflection log
 
 Reviewers append process gaps to `~/.agentkit/reflections.jsonl` (see gate step
-6). As the **author**, read it and batch entries into an agentkit MR when there
-is real signal: a `repeat`, or several entries pointing the same way. One entry
-is an anecdote.
+6). As the **author**, read it and batch entries into a proposed change to these
+disciplines when there is real signal: a `repeat_of`, or several entries
+pointing the same way. One entry is an anecdote.
 
 **Never auto-apply.** An SOP change goes through review like any other change —
 that is the whole reason the log is a queue and not a config file.
