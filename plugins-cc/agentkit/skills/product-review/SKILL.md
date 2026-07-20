@@ -39,6 +39,30 @@ product into one that looks reviewed.
 Never invent the commands yourself. Inferring a build from the file tree is
 exactly the guess that produces a confident, wrong report.
 
+### Where these files live
+
+| artifact                         | location                                          | committed?        |
+| -------------------------------- | ------------------------------------------------- | ----------------- |
+| `.agentkit/product.yaml`         | repo root (nearest one walking up, for monorepos) | **yes**           |
+| `.agentkit/reviews/*.json`       | repo-local                                        | no — gitignored   |
+| `~/.config/agentkit/config.yaml` | machine/user                                      | n/a — policy only |
+
+The manifest is repo-specific and **must be committed**: a reviewer reads it in
+a fresh clone, so an untracked one is the same as no manifest at all. (It was
+briefly ignored by a blanket `.agentkit/` rule, which would have made every
+review refuse for want of a file that existed locally.)
+
+Review records are the opposite — deliberately local and ignored. They are keyed
+to a branch and head sha _of this repo_; a shared or global store would have to
+carry repo identity, and getting that wrong lets one repo's passing record
+authorise another repo's merge.
+
+**There is deliberately NO global fallback for the manifest.** A default "how to
+build" applied to a repo that never declared one turns _refuse and ask_ back
+into _guess confidently_, which is the failure this lane exists to remove. The
+global config carries POLICY only — whether product review is required, which
+severities block — never the commands themselves.
+
 ## Running it
 
 1. **Build each surface** with its declared `build`. A build failure is a
