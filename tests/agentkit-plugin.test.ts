@@ -141,6 +141,7 @@ describe('agentkit plugin skills', () => {
       'documentation',
       'gitops-master',
       'issue-raiser',
+      'product-review',
       'project-planning',
       'resource-safe-execution',
       'test-driven-development',
@@ -148,6 +149,34 @@ describe('agentkit plugin skills', () => {
     for (const skill of expectedSkills) {
       const skillMd = join(pluginDir, 'skills', skill, 'SKILL.md');
       expect(statSync(skillMd).isFile(), `${skill}/SKILL.md exists`).toBe(true);
+    }
+  });
+
+  test('keeps every skill byte-identical between skills/ and the plugin mirror', () => {
+    // The hooks had this check; the skills did not — and they drifted. The
+    // top-level copy of autonomous-workflow was missing the whole review-gate
+    // section that shipped to the plugin copy in #78, silently, for as long as
+    // nobody diffed them. Two copies with no mechanical check is one rotting
+    // copy waiting to be read by someone.
+    const sourceSkills = join(repoRoot, 'skills');
+    const names = readdirSync(sourceSkills).sort();
+    expect(readdirSync(join(pluginDir, 'skills')).sort()).toEqual(names);
+    // Recursive: some skills carry a references/ subdirectory, and a nested
+    // file that drifts is exactly as misleading as a top-level one.
+    const filesUnder = (dir: string, prefix = ''): string[] =>
+      readdirSync(join(dir, prefix), { withFileTypes: true }).flatMap((e) =>
+        e.isDirectory() ? filesUnder(dir, join(prefix, e.name)) : [join(prefix, e.name)]
+      );
+    for (const name of names) {
+      const files = filesUnder(join(sourceSkills, name)).sort();
+      expect(filesUnder(join(pluginDir, 'skills', name)).sort(), `${name}: file list differs`)
+        .toEqual(files);
+      for (const file of files) {
+        expect(
+          readFileSync(join(pluginDir, 'skills', name, file), 'utf-8'),
+          `${name}/${file} differs between skills/ and the plugin mirror`,
+        ).toBe(readFileSync(join(sourceSkills, name, file), 'utf-8'));
+      }
     }
   });
 });
