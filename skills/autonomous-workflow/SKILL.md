@@ -120,7 +120,20 @@ gate as something it is not.
    `stale-doc`, `other`. Free prose in `gap` cannot be matched reliably — a
    tired reviewer greps one wording and misses its twin, which is the failure
    this step exists to prevent. Add to the vocabulary deliberately, in an MR;
-   do not invent a class inline.
+   do not invent a class inline. Write entries compactly, with no spaces after
+   the colons, so the grep above matches.
+
+   **When a gap fits two classes, take the EARLIEST link in the chain** — the
+   step that, had it happened, would have stopped the rest. A rule table
+   contradicted by its own file is `unverified-claim` (nobody checked it against
+   the code), not `stale-doc` (what it became) or `duplicated-authority` (what it
+   was about). Consistency matters more than picking the best label, because the
+   entire value is that repeats collide.
+
+   **`other` is a debt, not an escape hatch.** It exists so a novel gap is
+   recorded rather than dropped — but name the would-be class in `gap`, and the
+   second time an `other` recurs, propose the new class in an MR. An `other`
+   that recurs unnamed has quietly restored free prose.
 
    **Entry-worthy is one binary test: would the fix be a line in the SOP, or a
    line in the code?** SOP ⇒ entry (the author asserted something without
@@ -167,8 +180,8 @@ cannot catch it, they encode it.
 
 Illustration: a feature wired to an event name the vendor's API does not emit on
 that transport shipped green, because the tests synthesised the imaginary event.
-A five-minute probe found it; every subsequent probe also contradicted an
-assumption.
+A five-minute probe found it, and each further probe in that session also
+contradicted an assumption.
 
 ## Mutation-Check Load-Bearing Values
 

@@ -63,13 +63,6 @@ Hosts sized differently from the defaults pin their slice values in root-owned
 `TASKS_MAX`); the runner verifies the live slice against that file and falls back to its built-in
 expectations when the file is absent.
 
-## Judge by output markers, not exit status
-
-`bounded-run` returns exit 0 even on a hard build failure, and a harness completion notice
-repeats that exit code — so a run that never compiled anything reads as success. Judge every
-build and test run by its own output markers (`test result:`, `N pass`, a compiler summary
-line) and treat a missing summary line as failure, not as a silent pass.
-
 Do not wrap `docker`, `podman`, or `systemd-run`. They can delegate work into a daemon, container,
 or sibling service outside the transient cgroup. Use a separately approved dedicated runner or
 verified engine-native limits for delegated workloads.
@@ -79,6 +72,15 @@ defense-in-depth rather than a sandbox for hostile scripts. A script can deliber
 daemon or user-systemd socket after launch. Preserve the host-level service limits and reserved
 capacity that protect the agent host, ingress, and tunnels even if a child evades the workload
 slice.
+
+## Judge by output markers, not exit status
+
+`bounded-run` returns exit 0 even on a hard build failure, and a harness completion notice
+repeats that exit code — so a run that never compiled anything reads as success. Judge every
+build and test run by its own output markers (`test result:`, `N pass`, a compiler summary
+line) and treat a missing summary line as failure, not as a silent pass. Treat EMPTY output
+the same way — a run that printed nothing did not pass, it did not run (a lock collision or a
+killed process looks identical to zero failures).
 
 ## Preserve connectivity
 
