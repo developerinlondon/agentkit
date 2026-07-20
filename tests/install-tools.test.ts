@@ -256,6 +256,16 @@ describe('platform directive grammar', () => {
     });
   });
 
+  test('does not treat a fully commented-out list as no list at all', () => {
+    // Stripping the comment unconditionally would empty this and install it
+    // everywhere — turning a skip into the opposite of what was written.
+    withFixtureTools({ commented: toolWith('# agentkit:platforms #linux') }, (run, home) => {
+      const result = run('linux');
+      expect(result.status).toBe(0);
+      expect(pathPresent(join(home, '.local', 'bin', 'commented'))).toBe(false);
+    });
+  });
+
   test('finds a directive that is indented', () => {
     withFixtureTools({ indented: toolWith('  # agentkit:platforms darwin') }, (run, home) => {
       expect(run('linux').status).toBe(0);

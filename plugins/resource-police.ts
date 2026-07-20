@@ -229,9 +229,12 @@ function detectUnboundedCommand(
       // NOT `delegated`: that message advertises AGENTKIT_ALLOW_DELEGATED=1,
       // which this path never consults, so it sent people chasing an escape
       // hatch that cannot clear it.
-      if (!isTrustedRunner(launch.token)) return { segment, delegated: false, untrustedRunner: true };
+      // Delegation first, trust second: reporting an untrusted runner without
+      // looking at its payload let `./bounded-run -- ssh prod ...` hide a
+      // delegated command behind seven characters.
       const nested = wrappedLaunch(launch);
       if (nested && !delegatedOk && isDelegating(nested)) return { segment, delegated: true };
+      if (!isTrustedRunner(launch.token)) return { segment, delegated: false, untrustedRunner: true };
       continue;
     }
     if (isShell(launch.executable)) {
@@ -274,6 +277,53 @@ export function containmentAvailable(platform: string = process.platform): boole
 
 let announcedUnbounded = false;
 
+// Exported so the policy can be driven at a chosen platform. Asserting this
+// through the plugin alone can only ever exercise the host's own platform, and
+// a test that cannot reach the off-Linux branch cannot guard it.
+export function enforceResourcePolicy(
+  command: string,
+  platform: string = process.platform,
+): void {
+  const finding = detectUnboundedCommand(command, 0, isDelegatedOverride(command));
+  if (!finding) return;
+  if (finding.delegated) {
+    throw new Error(
+      `BLOCKED: delegated workload cannot be contained by bounded-run: ${finding.segment}\n` +
+        'Use a separately approved dedicated runner or verified engine-native limits.\n' +
+        'User-approved delegated workloads: prefix with AGENTKIT_ALLOW_DELEGATED=1.',
+    );
+  }
+  // Only the containment requirement stands down. Delegation is checked above
+  // and inside the runner branch, so wrapping cannot launder it past here.
+  if (!containmentAvailable(platform)) {
+    if (!announcedUnbounded) {
+      announcedUnbounded = true;
+      console.warn(
+        `[resource-police] ${platform} has no cgroup containment; `
+          + 'heavy commands run unbounded and bounded-run is not installed here.',
+      );
+    }
+    return;
+  }
+  if (finding.untrustedRunner) {
+    throw new Error(
+      `BLOCKED: that is not a recognised bounded-run: ${finding.segment}\n`
+        + 'Anything can be named `bounded-run`, so it is trusted by INSTALLED PATH,\n'
+        + 'not by name — otherwise a spoof could silently neuter every limit.\n'
+        + 'AGENTKIT_ALLOW_DELEGATED=1 does NOT clear this. Install the runner\n'
+        + '(~/.local/bin/bounded-run) and invoke it from there, or use the\n'
+        + "plugin's copy under the plugin root.",
+    );
+  }
+  throw new Error(
+    `BLOCKED: resource-intensive command is not contained: ${finding.segment}\n` +
+      'Run it through the installed runner, for example:\n' +
+      '  bounded-run --profile compile -- bun run typecheck\n' +
+      '  ./.claude/tools/bounded-run --profile compile -- bun run typecheck\n' +
+      'Use profile browser for Playwright and browser builds.',
+  );
+}
+
 export default async function resourcePolice(_ctx: PluginInput) {
   return {
     'tool.execute.before': async (
@@ -283,45 +333,7 @@ export default async function resourcePolice(_ctx: PluginInput) {
       if (input.tool?.toLowerCase() !== 'bash') return;
       const command = output.args.command as string | undefined;
       if (!command) return;
-      const finding = detectUnboundedCommand(command, 0, isDelegatedOverride(command));
-      if (!finding) return;
-      if (finding.delegated) {
-        throw new Error(
-          `BLOCKED: delegated workload cannot be contained by bounded-run: ${finding.segment}\n` +
-            'Use a separately approved dedicated runner or verified engine-native limits.\n' +
-            'User-approved delegated workloads: prefix with AGENTKIT_ALLOW_DELEGATED=1.',
-        );
-      }
-      // Only the containment requirement stands down here. The delegated check
-      // above guards work escaping to a remote Linux target and is not about
-      // local cgroups, so it stays enforced on every platform.
-      if (!containmentAvailable()) {
-        if (!announcedUnbounded) {
-          announcedUnbounded = true;
-          console.warn(
-            `[resource-police] ${process.platform} has no cgroup containment; `
-              + 'heavy commands run unbounded and bounded-run is not installed here.',
-          );
-        }
-        return;
-      }
-      if (finding.untrustedRunner) {
-        throw new Error(
-          `BLOCKED: that is not a recognised bounded-run: ${finding.segment}\n`
-            + 'Anything can be named `bounded-run`, so it is trusted by INSTALLED PATH,\n'
-            + 'not by name — otherwise a spoof could silently neuter every limit.\n'
-            + 'AGENTKIT_ALLOW_DELEGATED=1 does NOT clear this. Install the runner\n'
-            + '(~/.local/bin/bounded-run) and invoke it from there, or use the\n'
-            + "plugin's copy under the plugin root.",
-        );
-      }
-      throw new Error(
-        `BLOCKED: resource-intensive command is not contained: ${finding.segment}\n` +
-          'Run it through the installed runner, for example:\n' +
-          '  bounded-run --profile compile -- bun run typecheck\n' +
-          '  ./.claude/tools/bounded-run --profile compile -- bun run typecheck\n' +
-          'Use profile browser for Playwright and browser builds.',
-      );
+      enforceResourcePolicy(command);
     },
   };
 }

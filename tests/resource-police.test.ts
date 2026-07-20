@@ -2,7 +2,10 @@ import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import resourcePolice, { containmentAvailable } from '../plugins/resource-police';
+import resourcePolice, {
+  containmentAvailable,
+  enforceResourcePolicy,
+} from '../plugins/resource-police';
 import {
   allowedResourceCommands,
   blockedResourceCommands,
@@ -53,26 +56,40 @@ describe('containment availability', () => {
 
   // Standing down containment must not stand down the delegation guard: that
   // one exists because the work escapes to a remote Linux target, which is
-  // exactly as dangerous from a laptop with no cgroups.
-  test('keeps blocking delegated workloads where containment is unavailable', async () => {
-    const hooks = await resourcePolice(mockCtx);
+  // exactly as dangerous from a laptop with no cgroups. Driven at an explicit
+  // platform — asserting this through the plugin only ever tests the host's own.
+  test('keeps blocking delegated workloads on a platform without containment', () => {
     for (const command of unsupportedResourceCommands) {
-      const { input, output } = makeInput(command);
-      expect(hooks['tool.execute.before']!(input, output)).rejects.toThrow(
+      expect(() => enforceResourcePolicy(command, 'darwin')).toThrow(
         'cannot be contained by bounded-run',
       );
     }
   });
 
-  test('checks delegation before containment availability', () => {
-    // Source-level guard: an early containment return placed above the
-    // delegated branch silently disables it, which no darwin-free test can see.
-    const source = readFileSync(join(repoRoot, 'plugins', 'resource-police.ts'), 'utf-8');
-    const delegatedAt = source.indexOf('if (finding.delegated)');
-    const containmentAt = source.indexOf('if (!containmentAvailable())');
-    expect(delegatedAt).toBeGreaterThan(-1);
-    expect(containmentAt).toBeGreaterThan(-1);
-    expect(delegatedAt).toBeLessThan(containmentAt);
+  // A wrapper is one token. If trust were decided before the payload was read,
+  // this would launder a delegated command straight through off Linux.
+  test('sees through an untrusted runner wrapping a delegated command', () => {
+    const laundered = [
+      './bounded-run --profile default -- ssh prod-host rm -rf /data',
+      '/tmp/evil/bounded-run --profile default -- kubectl delete ns prod',
+      './tools/bounded-run --profile default -- sudo systemctl restart nginx',
+    ];
+    for (const command of laundered) {
+      expect(() => enforceResourcePolicy(command, 'darwin')).toThrow(
+        'cannot be contained by bounded-run',
+      );
+      expect(() => enforceResourcePolicy(command, 'linux')).toThrow('BLOCKED');
+    }
+  });
+
+  // Named explicitly rather than looping blockedResourceCommands: that fixture
+  // also carries delegated entries like `sudo -n cargo test`, which must keep
+  // blocking off Linux. Only plain local work is let through.
+  test('still allows ordinary heavy commands where nothing can bound them', () => {
+    for (const command of ['bun install', 'bun run build', 'cargo test']) {
+      expect(() => enforceResourcePolicy(command, 'darwin')).not.toThrow();
+      expect(() => enforceResourcePolicy(command, 'linux')).toThrow('BLOCKED');
+    }
   });
 
   test('the Claude hook stands down off Linux rather than relying on a crash', () => {
