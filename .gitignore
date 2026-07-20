@@ -7,4 +7,10 @@ bun.lock
 # its own merge and invite regenerating records to suit, the exact loop the
 # gate exists to stop. The durable artifact is ~/.agentkit/review-audit.log,
 # outside the repo.
-.agentkit/
+.agentkit/reviews/
+
+# ...but NOT the whole directory. `.agentkit/product.yaml` is the opposite kind
+# of artifact: it must be COMMITTED, because it is the contract a product
+# reviewer reads in a fresh clone. Ignoring it wholesale meant it was silently
+# untracked and every reviewer refused for want of a file that was there all
+# along.

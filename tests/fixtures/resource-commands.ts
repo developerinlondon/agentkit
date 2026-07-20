@@ -50,7 +50,6 @@ export const unsupportedResourceCommands = [
   'systemd-run --user --scope cargo test',
   'sudo -u root systemd-run --scope cargo test',
   'ssh build-host bun test',
-  './bounded-run --profile compile -- bun run build',
   'systemctl restart cloudflared',
   'kubectl exec deploy/builder -- bun run build',
   'bounded-run --profile compile -- docker build .',
@@ -93,4 +92,19 @@ export const allowedResourceCommands = [
   'grep "cargo test; tsc --noEmit" build.log',
   "printf 'bun test && pytest'",
   "echo 'playwright test | bun test'",
+];
+
+// A runner that is not the INSTALLED bounded-run. Refused, but for a different
+// reason than a delegated workload: trust is by installed path, because
+// anything can be named `bounded-run` and trusting the name alone would let a
+// spoof silently neuter every limit.
+//
+// These used to sit in unsupportedResourceCommands and were asserted against
+// the *delegated* message — which is how that message's advice ("prefix
+// AGENTKIT_ALLOW_DELEGATED=1") went unnoticed as wrong: the untrusted-runner
+// branch never consults it, so following the instruction could not ever work.
+export const untrustedRunnerCommands = [
+  './bounded-run --profile compile -- bun run build',
+  './tools/bounded-run --profile default -- echo ok',
+  '/tmp/evil/bounded-run --profile compile -- bun test',
 ];

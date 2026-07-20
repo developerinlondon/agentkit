@@ -30,7 +30,9 @@ deny() {
 	elif [[ -x "$PWD/.claude/tools/bounded-run" ]]; then
 		runner_hint="$PWD/.claude/tools/bounded-run"
 	fi
-	if [[ "$kind" == delegated ]]; then
+	if [[ "$kind" == untrusted_runner ]]; then
+		reason="BLOCKED: that is not a recognised bounded-run: $segment. Anything can be named \`bounded-run\`, so it is trusted by INSTALLED PATH, not by name — otherwise a spoof could silently neuter every limit. AGENTKIT_ALLOW_DELEGATED=1 does NOT clear this. Install the runner (\`~/.local/bin/bounded-run\`) and invoke it from there, or use the plugin's copy under \$CLAUDE_PLUGIN_ROOT/tools/. In a fresh clone of agentkit itself, install it first rather than running ./tools/bounded-run in place."
+	elif [[ "$kind" == delegated ]]; then
 		reason="BLOCKED: delegated workload cannot be contained by bounded-run: $segment. Use a separately approved dedicated runner or verified engine-native limits. User-approved delegated workloads: prefix with AGENTKIT_ALLOW_DELEGATED=1."
 	else
 		reason="BLOCKED: resource-intensive command is not contained: $segment. Run it through $runner_hint, for example: $runner_hint --profile compile -- bun run typecheck. Use profile browser for Playwright and browser builds."
@@ -278,7 +280,13 @@ analyze_command() {
 		[[ -n "$segment" ]] || continue
 		parse_launch "$segment"
 		if [[ "$EXECUTABLE" == bounded-run || "$EXECUTABLE" == agentkit-run ]]; then
-			if ! is_trusted_runner; then deny "$segment" delegated; fi
+			# NOT `delegated`: that message advertises AGENTKIT_ALLOW_DELEGATED=1,
+			# which this branch never consults, so it sent people chasing an
+			# escape hatch that cannot clear it. The actual problem is that this
+			# path is not a recognised runner — anything can be named
+			# `bounded-run`, and trusting it by name alone would let a spoof
+			# neuter every limit.
+			if ! is_trusted_runner; then deny "$segment" untrusted_runner; fi
 			if parse_wrapped_launch; then
 				unwrap_environment
 				if is_delegating && [[ "$DELEGATED_OK" != 1 ]]; then

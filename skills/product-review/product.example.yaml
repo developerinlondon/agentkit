@@ -1,0 +1,70 @@
+# .agentkit/product.yaml — how to build, run and exercise THIS product.
+#
+# A product reviewer reads this file and RUNS what it declares. That is the
+# whole point: prose documentation rots silently (a stale build command in a
+# README cost a real debugging round and shipped a wrong instruction to a
+# user), whereas a declared command that no longer works fails the moment
+# somebody uses it.
+#
+# Copy to .agentkit/product.yaml and fill in. Every field is optional except
+# `surfaces` — but the fewer you declare, the less a reviewer can verify, and
+# it will say so plainly in its report rather than implying coverage.
+
+# What this product IS, in one or two sentences, from a user's point of view.
+# Not the architecture — what someone uses it for.
+summary: >-
+  Menu-bar daemon that pairs a Mac to a neutron instance so an agent can see
+  and drive the machine, and so the user can talk to the mascot.
+
+# Each surface is something a user actually touches. A reviewer picks the ones
+# it can reach in this environment and reports on the rest as unverified.
+surfaces:
+  - name: daemon
+    kind: cli # cli | service | web | desktop | library | api
+    # Commands are run VERBATIM from the repo root, in order. Keep them real:
+    # if a step needs a flag, put the flag here rather than in prose.
+    build: cargo build --release -p orbit-daemon
+    # `verify` should FAIL loudly when the product is broken. A command that
+    # cannot fail (`--help`, `--version`) verifies nothing.
+    verify: cargo test --workspace
+    run: ./target/release/orbit run
+    # What a reviewer should look at once it is running, in plain language.
+    # This is where "it builds" becomes "it works".
+    expect: |
+      A menu-bar icon appears. Clicking it opens a menu with the mascot entry.
+      `orbit status` prints the current pairing rather than an error.
+
+  - name: web-ui
+    kind: web
+    build: bun run build
+    run: bun run dev
+    url: http://localhost:5173
+    expect: |
+      Settings has a Devices tab listing paired computers, each with a
+      share control.
+
+# Be explicit about what CANNOT be verified here, and why. A reviewer must not
+# guess at this — an unstated requirement becomes a false "works for me".
+requires:
+  # Hardware, OS or peripherals the product needs.
+  hardware:
+    - macOS on Apple silicon (the audio path is CoreAudio VoiceProcessingIO)
+    - a microphone and speakers, for the voice surface
+  # Named credentials/secrets. NEVER put secret VALUES in this file — name
+  # them and say where they come from.
+  credentials:
+    - name: NEUTRON_INSTANCE_URL
+      how: pair against a running instance with `orbit pair <url>`
+  # Anything else that makes a surface unreachable in some environments.
+  notes:
+    - macOS grants (Accessibility, Screen Recording, Microphone) must be
+      approved by hand; the binary is unsigned, so they reset on every rebuild.
+
+# Surfaces that are known-unverifiable in an automated environment, with the
+# reason. A reviewer reports these as NOT VERIFIED instead of skipping quietly.
+cannot_verify:
+  - surface: daemon
+    what: barge-in (talking over a reply stops it)
+    why: >-
+      needs a real microphone, a speaker, and a human to talk over her;
+      no automated harness exists for the acoustic path.
