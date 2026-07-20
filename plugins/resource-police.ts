@@ -9,6 +9,9 @@ interface Launch {
 interface Finding {
   segment: string;
   delegated: boolean;
+  /** The runner is not the INSTALLED bounded-run. Distinct from `delegated`:
+   *  the delegated message advertises an escape hatch that cannot clear this. */
+  untrustedRunner?: boolean;
 }
 
 function splitShellSegments(command: string): string[] {
@@ -223,7 +226,10 @@ function detectUnboundedCommand(
     const launch = parseLaunch(segment);
     if (!launch) continue;
     if (launch.executable === 'bounded-run' || launch.executable === 'agentkit-run') {
-      if (!isTrustedRunner(launch.token)) return { segment, delegated: true };
+      // NOT `delegated`: that message advertises AGENTKIT_ALLOW_DELEGATED=1,
+      // which this path never consults, so it sent people chasing an escape
+      // hatch that cannot clear it.
+      if (!isTrustedRunner(launch.token)) return { segment, delegated: false, untrustedRunner: true };
       const nested = wrappedLaunch(launch);
       if (nested && !delegatedOk && isDelegating(nested)) return { segment, delegated: true };
       continue;
@@ -269,6 +275,16 @@ export default async function resourcePolice(_ctx: PluginInput) {
       if (!command) return;
       const finding = detectUnboundedCommand(command, 0, isDelegatedOverride(command));
       if (!finding) return;
+      if (finding.untrustedRunner) {
+        throw new Error(
+          `BLOCKED: that is not a recognised bounded-run: ${finding.segment}\n`
+            + 'Anything can be named `bounded-run`, so it is trusted by INSTALLED PATH,\n'
+            + 'not by name — otherwise a spoof could silently neuter every limit.\n'
+            + 'AGENTKIT_ALLOW_DELEGATED=1 does NOT clear this. Install the runner\n'
+            + '(~/.local/bin/bounded-run) and invoke it from there, or use the\n'
+            + "plugin's copy under the plugin root.",
+        );
+      }
       if (finding.delegated) {
         throw new Error(
           `BLOCKED: delegated workload cannot be contained by bounded-run: ${finding.segment}\n` +
