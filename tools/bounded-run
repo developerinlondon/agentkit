@@ -1,4 +1,7 @@
 #!/bin/bash -p
+# agentkit:platforms linux
+# Drives systemd-run and the cgroup v2 hierarchy directly; there is no
+# equivalent on other platforms, so installing it there is worse than absent.
 set -euo pipefail
 
 readonly EX_USAGE=64

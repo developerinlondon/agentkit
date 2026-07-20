@@ -159,10 +159,22 @@ cp plugins/version-police.ts your-project/.opencode/plugins/
 
 Global installs place tools on `~/.local/bin/` and preserve a mirror in `~/.claude/tools/`.
 
-| Tool                   | Description                                                                          |
-| ---------------------- | ------------------------------------------------------------------------------------ |
-| **bounded-run**        | Runs one direct-argv workload in the bounded `agent-work.slice` systemd user service |
-| **fix-ascii-boxes.py** | Fixes ASCII box-drawing alignment in markdown files, handles nested boxes inside-out |
+| Tool                   | Platforms | Description                                                                          |
+| ---------------------- | --------- | ------------------------------------------------------------------------------------ |
+| **bounded-run**        | linux     | Runs one direct-argv workload in the bounded `agent-work.slice` systemd user service |
+| **fix-ascii-boxes.py** | any       | Fixes ASCII box-drawing alignment in markdown files, handles nested boxes inside-out |
+
+A tool restricts itself to specific platforms with a header directive, and the installer skips it
+elsewhere rather than leaving a command that cannot run:
+
+```bash
+# agentkit:platforms linux darwin
+```
+
+Tools without the directive install everywhere. Platform is `uname -s` (`linux`/`darwin`), or
+`AGENTKIT_PLATFORM` when set. Re-running the installer reconciles: a tool that a previous version
+installed here is removed once it declares a platform this host is not. The Claude plugin bundle is
+a separate channel installed by `claude plugin install` — the directive does not gate it.
 
 `bounded-run` fails closed unless the aggregate slice matches its expected limits (default
 20G/24G memory high/max, 800% CPU, 1536 tasks; hosts sized differently pin their values in
@@ -366,4 +378,5 @@ externalsecret) that auto-generate and manage secrets for any GitOps app.
 2. Each skill lives in `skills/<name>/SKILL.md` with optional `references/` and `scripts/` subdirs
 3. Rules live in `rules/<name>.md` with frontmatter globs for auto-loading
 4. Plugins live in `plugins/<name>.ts` and implement the OpenCode plugin API
-5. Tools live in `tools/<name>` and are standalone executable scripts (Python/Bash)
+5. Tools live in `tools/<name>` and are standalone executable scripts (Python/Bash); ones that
+   cannot work everywhere declare `# agentkit:platforms <list>` in their header

@@ -540,14 +540,50 @@ merge_claude_settings() {
 
 # ─── Standalone Tools (Python/Bash scripts) ──────────────────────────────────
 
+detect_platform() {
+	if [[ -n "${AGENTKIT_PLATFORM:-}" ]]; then
+		printf '%s' "$AGENTKIT_PLATFORM"
+		return
+	fi
+	case "$(uname -s)" in
+		Linux) printf 'linux' ;;
+		Darwin) printf 'darwin' ;;
+		*) printf 'unknown' ;;
+	esac
+}
+
+# A tool restricts itself to specific platforms with a header directive:
+#   # agentkit:platforms linux darwin
+# Tools without the directive install everywhere.
+tool_supports_platform() {
+	local tool_file="$1" platform="$2" declared entry
+	declared="$(sed -n '1,15p' "$tool_file" | grep -m1 '^# agentkit:platforms ' || true)"
+	[[ -n "$declared" ]] || return 0
+
+	for entry in ${declared#\# agentkit:platforms }; do
+		[[ "$entry" == "$platform" ]] && return 0
+	done
+	return 1
+}
+
 install_tools() {
 	local tools_dir="$1"
+	local platform
+	platform="$(detect_platform)"
 	mkdir -p "$tools_dir"
 
 	for tool_file in "$REPO_DIR"/tools/*; do
 		[[ -f "$tool_file" ]] || continue
 		local name
 		name="$(basename "$tool_file")"
+
+		# Reconcile, don't just skip: an older agentkit may have installed this
+		# tool here before it declared which platforms it supports.
+		if ! tool_supports_platform "$tool_file" "$platform"; then
+			echo "[tools] Skipping (unsupported on $platform): $name"
+			rm -f "$tools_dir/$name"
+			continue
+		fi
 
 		if [[ -f "$tools_dir/$name" ]]; then
 			echo "[tools] Updating: $name"
@@ -562,6 +598,8 @@ install_tools() {
 	# Compat alias: bounded-run was previously named agentkit-run.
 	if [[ -f "$tools_dir/bounded-run" ]]; then
 		ln -sf bounded-run "$tools_dir/agentkit-run"
+	else
+		rm -f "$tools_dir/agentkit-run"
 	fi
 }
 
