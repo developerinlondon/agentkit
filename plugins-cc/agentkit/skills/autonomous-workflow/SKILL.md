@@ -78,10 +78,45 @@ gate as something it is not.
    workaround, not a flag that hides it, not a comment explaining why it is
    acceptable. Then re-run the reviewer against the new head and merge on a
    fresh pass.
-5. **Audit the claims, not just the logic.** Factual assertions in comments,
-   commit messages and the MR description are part of the review — see "Claims
-   audit" in the **product-review** skill. It applies to diff review too.
-6. **Do not hand findings to the user to approve.** They are not a queue for
+5. **Audit the claims, not just the logic.** Grep the diff's comments, commit
+   messages and MR/PR description for factual assertions — especially
+   **every, always, never, all, verified, probed, cannot** — and check each
+   against reality with `git grep`, a probe, or the code itself.
+
+   Three claim defects landed in one day: an MR asserting "every currently
+   paired device sends the old frame shape" (the frame did not exist on the
+   other repo's main — the population was empty); a comment citing probe
+   evidence for a correlation branch (the probe predated the change that would
+   exercise it, so it evidenced a different case); an authority table added to
+   prevent drift, carrying a row contradicted by code in the same file.
+
+   Report any claim that outruns its evidence, **even when the code is
+   correct**. Wrong prose is not cosmetic — it teaches the next reader a wrong
+   model, and the next change is made against that model.
+6. **Log process gaps to the reflection log.** Immediately after writing the
+   verdict, append one JSON object per gap to `~/.agentkit/reflections.jsonl`
+   (machine-global, append-only — these are lessons about how the agent works,
+   not about a codebase):
+
+   ```json
+   {
+     "date": "2026-07-20",
+     "repo": "neutron",
+     "gap": "asserted every paired device sends the old frame without grepping the other repo",
+     "finding": "MR !13 HIGH: claim contradicted by git grep",
+     "repeat": false
+   }
+   ```
+
+   **Keep the filter narrow or nobody will read it.** Entry-worthy: the author
+   asserted something without checking; no test could have caught this; this is
+   the second time this class appeared (set `repeat`). NOT entry-worthy: an
+   ordinary logic bug found in review. A bug caught by review is the system
+   working; a process gap is the system missing.
+
+   The signal must come from the **reviewer**, not the author — an author
+   under-reports their own errors by construction.
+7. **Do not hand findings to the user to approve.** They are not a queue for
    work you would rather not do. Escalate only when a finding genuinely cannot
    be fixed — an upstream or platform limitation — and say why. If they then
    approve in writing, record their exact words in `user_consent`. Fabricating
@@ -169,8 +204,18 @@ When a reviewer disproves something you asserted, **that** is the moment to
 write or correct a memory — not at session end, not on a schedule. The
 correction is cheapest while the evidence is still in front of you.
 
-Counterweight: memories rot. A previously-written memory sent an author chasing
-a poisoned-cargo-target-dir theory for hours when the real cause was a toolchain
-mismatch (`RUSTUP_TOOLCHAIN` pinned to an older version than the cargo binary).
-Correcting and pruning matters as much as appending — a confident stale note is
-worse than none.
+Counterweight: memories and reflections rot. On 2026-07-20 a memory the author
+had written themselves sent them chasing a poisoned-cargo-target-dir theory for
+hours when the real cause was a toolchain mismatch (`RUSTUP_TOOLCHAIN` pinned to
+an older version than the cargo binary). Correcting and pruning matters as much
+as appending — a confident stale note is worse than none, because it is trusted.
+
+### Batching the reflection log
+
+Reviewers append process gaps to `~/.agentkit/reflections.jsonl` (see gate step
+6). As the **author**, read it and batch entries into an agentkit MR when there
+is real signal: a `repeat`, or several entries pointing the same way. One entry
+is an anecdote.
+
+**Never auto-apply.** An SOP change goes through review like any other change —
+that is the whole reason the log is a queue and not a config file.

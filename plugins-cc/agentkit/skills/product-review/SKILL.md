@@ -119,24 +119,14 @@ Two rules carried over from diff review, because they were learned the hard
 way: report what you actually observed rather than what the code implies, and
 never describe coverage you did not obtain.
 
-## Claims audit — required, any review lane
+## Claims audit and reflection log
 
-Applies to diff review as much as product review. Reviewing only the logic
-lets false statements through: in one day, an MR description asserted "every
-currently paired device sends the old frame shape" (`git grep` showed the frame
-did not exist on the other repo's main — the population was empty); a comment
-cited probe evidence for a correlation branch (the probe predated the change
-that would exercise it, so it evidenced a different case); and an authority
-table added to prevent drift carried a row contradicted by code in the same
-file.
-
-Grep the diff's comments, commit messages and MR/PR description for factual
-claims — especially **every, always, never, all, verified, probed, cannot** —
-and check each one against reality: `git grep`, a probe, or the code itself.
-
-Report any claim that outruns its evidence as a finding, **even when the code
-is correct**. Wrong prose is not cosmetic: it teaches the next reader a wrong
-model of the system, and the next change is made against that model.
+Both apply here exactly as in diff review, and both are specified in the
+**autonomous-workflow** skill under "Review Gates The Merge": audit the diff's
+factual claims against reality before passing, and append any _process_ gap you
+find to `~/.agentkit/reflections.jsonl`. Do them as part of this lane too — a
+product reviewer sees claim defects a diff reviewer cannot (a README that
+promises behaviour the product does not have).
 
 ### Observed vs inferred
 
