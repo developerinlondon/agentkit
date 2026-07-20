@@ -98,21 +98,27 @@ gate as something it is not.
    (machine-global, append-only — these are lessons about how the agent works,
    not about a codebase):
 
+   **Read the log before appending.** Grep it for the same gap class; if one
+   matches, set `repeat_of` to that entry's `id`. Skip this and `repeat_of` is
+   null forever — and a repeat is the only thing separating a mistake from a
+   pattern, which is precisely what the batching step keys on.
+
    ```text
-   {"date":"2026-07-20","harness":"claude","repo":"<repo>","gap":"asserted a compatibility requirement over all clients without grepping for one","finding":"HIGH: claim contradicted by git grep","repeat_of":null}
+   {"id":"2026-07-20T14:32:07Z","harness":"claude","repo":"<repo>","gap":"asserted a compatibility requirement over all clients without grepping for one","finding":"HIGH: claim contradicted by git grep","repeat_of":null}
    ```
 
-   One object per line, no pretty-printing — the file is appended to by many
-   sessions and must stay line-addressable. `harness` is one of `claude`,
-   `codex`, `opencode`, `other`; it is not bookkeeping, it is what shows
-   whether different harnesses fail in different ways. `repeat_of` carries the
-   date of the earlier entry when the same gap recurs, else `null`.
+   One object per line, no pretty-printing — many sessions append here and the
+   file must stay line-addressable. `id` is an ISO-8601 timestamp to the second:
+   unique across concurrent sessions and stable to reference, which a date is
+   not. `repeat_of` carries an earlier entry's `id`, else `null`. `harness` is
+   one of `claude`, `codex`, `opencode`, `other` — not bookkeeping, it is what
+   shows whether different harnesses fail in different ways.
 
-   **Keep the filter narrow or nobody will read it.** Entry-worthy: the author
-   asserted something without checking; no test could have caught this; this is
-   the second time this class appeared (set `repeat_of`). NOT entry-worthy: an
-   ordinary logic bug found in review. A bug caught by review is the system
-   working; a process gap is the system missing.
+   **Entry-worthy is one binary test: would the fix be a line in the SOP, or a
+   line in the code?** SOP ⇒ entry (the author asserted something without
+   checking; the process had no step that would have caught it). Code ⇒
+   ordinary bug, no entry. A bug caught by review is the system working; a
+   process gap is the system missing.
 
    The signal must come from the **reviewer**, not the author — an author
    under-reports their own errors by construction.
@@ -142,34 +148,38 @@ internally correct code that cannot be used is still broken.
 
 ## Observe External Behaviour Before Building On It
 
-The most expensive defect of one session: a feature was wired to an event name
-the vendor's streaming API does not emit on that transport. It shipped green
-because the tests synthesised the imaginary event. A five-minute live probe
-found it — and every subsequent probe also contradicted an assumption, one
-about ordering and one about a field arriving `null` rather than absent.
+Before building on another system's behaviour, OBSERVE it: run a probe, capture
+a real payload, or quote the doc with its URL. Record the payload **verbatim,
+next to the code that depends on it**, marked observed vs inferred (see
+"Observed vs inferred" in product-review).
 
-Before you build on another system's behaviour, OBSERVE it: run a probe, capture
-a real payload, or quote the doc with its URL. Assumptions about wire protocols,
-event names, error shapes and field nullability are the ones that bite, and
-tests you write from the assumption cannot catch it — they encode it.
+Assumptions about wire protocols, event names, error shapes and field
+nullability are the ones that bite — and tests written from an assumption
+cannot catch it, they encode it.
 
-Record the observed payload **verbatim, next to the code that depends on it**,
-and mark it observed vs inferred (see "Observed vs inferred" in product-review).
+Illustration: a feature wired to an event name the vendor's API does not emit on
+that transport shipped green, because the tests synthesised the imaginary event.
+A five-minute probe found it; every subsequent probe also contradicted an
+assumption.
 
 ## Mutation-Check Load-Bearing Values
 
-The one number an entire feature turned on passed all 158 of its tests when
-replaced with a constant zero. The test double could not report a non-zero
-value, so no test could observe it.
+Take the **one or two values this change is actually about** — not every value
+the feature touches. A re-run per value is the one rule here that can eat an
+afternoon on a slow suite. Replace each with a constant and re-run.
 
-For each value the feature's correctness depends on, replace it with a constant
-and re-run. **A green suite means that value is not covered.**
+- **A green suite means that value is not covered.**
+- **If nothing can observe the value — the test double cannot report anything
+  else — building that seam is part of this change, not a follow-up.** No test
+  can exist until it does. This is the case that motivated the rule.
+- **Confirm the mutation applied and compiled** before believing any result. An
+  invalid mutation reads exactly like "covered".
+- **Judge by the run's output markers, never its exit status** — see
+  **resource-safe-execution**. Runners report success on builds that never ran.
 
-Verify the mutation actually APPLIED and COMPILED before believing the result —
-an invalid mutation reads exactly like "covered". Note that `bounded-run`
-returns exit 0 even on a hard build failure, and the harness completion notice
-repeats that exit code, so judge by output markers (`test result:`, `N pass`)
-and treat a missing summary line as failure.
+Illustration: the one number a feature turned on passed all 158 of its tests
+when replaced with a constant zero — the double could not report a non-zero, so
+no test could observe it.
 
 ## Commit Hygiene
 
@@ -197,23 +207,18 @@ pattern, a gotcha, a convention, a lesson learned -- PROPOSE updating the releva
 2. **Always propose first**: Never silently update config files. Describe what you learned and why
    it should be codified. Wait for approval.
 
-### The retro trigger is a disproof, not a timer
+### Correct notes the moment they are disproved
 
-When a reviewer disproves something you asserted, **that** is the moment to
-write or correct a memory — not at session end, not on a schedule. The
-correction is cheapest while the evidence is still in front of you.
-
-Counterweight: stored notes and reflections rot. A note the author had written
-themselves once sent them chasing a corrupted-build-directory theory for hours
-when the real cause was a toolchain mismatch — a pinned toolchain version older
-than the build tool invoking it. Correcting and pruning matters as much as
-appending: a confident stale note is worse than none, because it is trusted.
+When a reviewer disproves something you asserted, correct the stored note then —
+not at session end, not on a timer. Prune as readily as you append: a confident
+stale note is worse than none, because it is trusted. One self-written note cost
+hours of debugging down a theory it still endorsed after the cause was known.
 
 ### Batching the reflection log
 
 Reviewers append process gaps to `~/.agentkit/reflections.jsonl` (see gate step
 6). As the **author**, read it and batch entries into a proposed change to these
-disciplines when there is real signal: a `repeat_of`, or several entries
+disciplines when there is real signal: a non-null `repeat_of`, or several entries
 pointing the same way. One entry is an anecdote.
 
 **Never auto-apply.** An SOP change goes through review like any other change —

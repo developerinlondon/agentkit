@@ -54,6 +54,13 @@ in argv.
 5. Run the established profile repeatedly, then the remaining build and test gates.
 6. Confirm no child processes remain and live services stayed healthy.
 
+## Judge by output markers, not exit status
+
+`bounded-run` returns exit 0 even on a hard build failure, and a harness completion notice
+repeats that exit code — so a run that never compiled anything reads as success. Judge every
+build and test run by its own output markers (`test result:`, `N pass`, a compiler summary
+line) and treat a missing summary line as failure, not as a silent pass.
+
 If `bounded-run` reports a missing or misconfigured `agent-work.slice`, insufficient headroom,
 high load, or memory pressure, stop. Propose the required infrastructure correction and wait for
 approval.
