@@ -50,6 +50,39 @@ describe('containment availability', () => {
     const { input, output } = makeInput(blockedResourceCommands[0]!);
     expect(hooks['tool.execute.before']!(input, output)).rejects.toThrow('bounded-run');
   });
+
+  // Standing down containment must not stand down the delegation guard: that
+  // one exists because the work escapes to a remote Linux target, which is
+  // exactly as dangerous from a laptop with no cgroups.
+  test('keeps blocking delegated workloads where containment is unavailable', async () => {
+    const hooks = await resourcePolice(mockCtx);
+    for (const command of unsupportedResourceCommands) {
+      const { input, output } = makeInput(command);
+      expect(hooks['tool.execute.before']!(input, output)).rejects.toThrow(
+        'cannot be contained by bounded-run',
+      );
+    }
+  });
+
+  test('checks delegation before containment availability', () => {
+    // Source-level guard: an early containment return placed above the
+    // delegated branch silently disables it, which no darwin-free test can see.
+    const source = readFileSync(join(repoRoot, 'plugins', 'resource-police.ts'), 'utf-8');
+    const delegatedAt = source.indexOf('if (finding.delegated)');
+    const containmentAt = source.indexOf('if (!containmentAvailable())');
+    expect(delegatedAt).toBeGreaterThan(-1);
+    expect(containmentAt).toBeGreaterThan(-1);
+    expect(delegatedAt).toBeLessThan(containmentAt);
+  });
+
+  test('the Claude hook stands down off Linux rather than relying on a crash', () => {
+    const source = readFileSync(hook, 'utf-8');
+    expect(source).toContain('uname -s');
+    const guardAt = source.indexOf('[[ "$(uname -s)" == "Linux" ]] || exit 0');
+    expect(guardAt).toBeGreaterThan(-1);
+    // It has to stand down before the first hard-coded Linux binary runs.
+    expect(guardAt).toBeLessThan(source.indexOf('"$JQ_BIN"'));
+  });
 });
 
 describe('OpenCode resource-police', () => {

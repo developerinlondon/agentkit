@@ -283,6 +283,18 @@ export default async function resourcePolice(_ctx: PluginInput) {
       if (input.tool?.toLowerCase() !== 'bash') return;
       const command = output.args.command as string | undefined;
       if (!command) return;
+      const finding = detectUnboundedCommand(command, 0, isDelegatedOverride(command));
+      if (!finding) return;
+      if (finding.delegated) {
+        throw new Error(
+          `BLOCKED: delegated workload cannot be contained by bounded-run: ${finding.segment}\n` +
+            'Use a separately approved dedicated runner or verified engine-native limits.\n' +
+            'User-approved delegated workloads: prefix with AGENTKIT_ALLOW_DELEGATED=1.',
+        );
+      }
+      // Only the containment requirement stands down here. The delegated check
+      // above guards work escaping to a remote Linux target and is not about
+      // local cgroups, so it stays enforced on every platform.
       if (!containmentAvailable()) {
         if (!announcedUnbounded) {
           announcedUnbounded = true;
@@ -293,8 +305,6 @@ export default async function resourcePolice(_ctx: PluginInput) {
         }
         return;
       }
-      const finding = detectUnboundedCommand(command, 0, isDelegatedOverride(command));
-      if (!finding) return;
       if (finding.untrustedRunner) {
         throw new Error(
           `BLOCKED: that is not a recognised bounded-run: ${finding.segment}\n`
@@ -303,13 +313,6 @@ export default async function resourcePolice(_ctx: PluginInput) {
             + 'AGENTKIT_ALLOW_DELEGATED=1 does NOT clear this. Install the runner\n'
             + '(~/.local/bin/bounded-run) and invoke it from there, or use the\n'
             + "plugin's copy under the plugin root.",
-        );
-      }
-      if (finding.delegated) {
-        throw new Error(
-          `BLOCKED: delegated workload cannot be contained by bounded-run: ${finding.segment}\n` +
-            'Use a separately approved dedicated runner or verified engine-native limits.\n' +
-            'User-approved delegated workloads: prefix with AGENTKIT_ALLOW_DELEGATED=1.',
         );
       }
       throw new Error(

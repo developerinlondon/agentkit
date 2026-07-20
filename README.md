@@ -179,7 +179,11 @@ quietly disable the gate.
 
 Because `bounded-run` is Linux-only, `resource-police` stands down off Linux: heavy commands run
 with a warning that nothing is bounding them, rather than being blocked in favour of a runner the
-installer will not install. The Claude plugin bundle is a separate channel installed by
+installer will not install. **Only the containment requirement stands down.** Delegated workloads
+(`kubectl`, `ssh`, `docker`, `sudo`) stay blocked on every platform — that guard exists because the
+work escapes to a remote target, which is exactly as dangerous from a host with no cgroups. The
+Codex `.rules` policy is a static prefix list with no platform awareness, so it still asks for
+`bounded-run` off Linux. The Claude plugin bundle is a separate channel installed by
 `claude plugin install` — the directive does not gate it.
 
 `bounded-run` fails closed unless the aggregate slice matches its expected limits (default

@@ -249,6 +249,20 @@ describe('platform directive grammar', () => {
     });
   });
 
+  test('does not read a trailing comment as platform names', () => {
+    withFixtureTools({ noted: toolWith('# agentkit:platforms darwin # not linux') }, (run, home) => {
+      expect(run('linux').status).toBe(0);
+      expect(pathPresent(join(home, '.local', 'bin', 'noted'))).toBe(false);
+    });
+  });
+
+  test('finds a directive that is indented', () => {
+    withFixtureTools({ indented: toolWith('  # agentkit:platforms darwin') }, (run, home) => {
+      expect(run('linux').status).toBe(0);
+      expect(pathPresent(join(home, '.local', 'bin', 'indented'))).toBe(false);
+    });
+  });
+
   test('accepts the singular spelling rather than silently ignoring it', () => {
     withFixtureTools({ singular: toolWith('# agentkit:platform linux') }, (run, home) => {
       expect(run('darwin').status).toBe(0);

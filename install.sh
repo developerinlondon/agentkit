@@ -564,9 +564,12 @@ tool_supports_platform() {
 	local -a entries
 
 	while IFS= read -r line; do
-		if [[ "$line" =~ ^#[[:space:]]*agentkit:platforms?([[:space:]].*)?$ ]]; then
+		if [[ "$line" =~ ^[[:space:]]*#[[:space:]]*agentkit:platforms?([[:space:]].*)?$ ]]; then
 			# Trailing CR survives a core.autocrlf checkout and would never match.
 			values="${BASH_REMATCH[1]%$'\r'}"
+			# A trailing comment would otherwise be read as platform names, and
+			# an unmatched name installs the tool where it cannot run.
+			values="${values%%#*}"
 			found=1
 			break
 		fi

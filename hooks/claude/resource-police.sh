@@ -5,6 +5,12 @@ readonly AWK_BIN=/usr/bin/awk
 readonly CAT_BIN=/usr/bin/cat
 readonly JQ_BIN=/usr/bin/jq
 
+# bounded-run needs systemd-run and cgroup v2, and the installer will not put it
+# on a non-Linux host. Demanding it here would be an order that cannot be
+# followed. Off Linux this stood down only by accident — /usr/bin/jq does not
+# exist there, so the hook errored and Claude read the crash as allow.
+[[ "$(uname -s)" == "Linux" ]] || exit 0
+
 INPUT=$("$CAT_BIN")
 COMMAND=$(printf '%s' "$INPUT" | "$JQ_BIN" -r '.tool_input.command // empty')
 [[ -z "$COMMAND" ]] && exit 0
