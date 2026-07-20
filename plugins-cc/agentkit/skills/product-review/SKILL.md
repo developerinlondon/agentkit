@@ -119,6 +119,36 @@ Two rules carried over from diff review, because they were learned the hard
 way: report what you actually observed rather than what the code implies, and
 never describe coverage you did not obtain.
 
+## Claims audit — required, any review lane
+
+Applies to diff review as much as product review. Reviewing only the logic
+lets false statements through: in one day, an MR description asserted "every
+currently paired device sends the old frame shape" (`git grep` showed the frame
+did not exist on the other repo's main — the population was empty); a comment
+cited probe evidence for a correlation branch (the probe predated the change
+that would exercise it, so it evidenced a different case); and an authority
+table added to prevent drift carried a row contradicted by code in the same
+file.
+
+Grep the diff's comments, commit messages and MR/PR description for factual
+claims — especially **every, always, never, all, verified, probed, cannot** —
+and check each one against reality: `git grep`, a probe, or the code itself.
+
+Report any claim that outruns its evidence as a finding, **even when the code
+is correct**. Wrong prose is not cosmetic: it teaches the next reader a wrong
+model of the system, and the next change is made against that model.
+
+### Observed vs inferred
+
+When you state a fact — in a finding, a comment, a commit message, an MR
+description — mark which it is:
+
+- `Probe-verified: <the payload or output you actually saw>`
+- `Inferred from the documented meaning of X` / `inferred from the call site`
+
+Reviewers caught this exact overstatement repeatedly in one session. Marking it
+as you write costs a phrase; having it found costs a round.
+
 ## Scope
 
 Product review does NOT replace diff review — it adds the lens diff review

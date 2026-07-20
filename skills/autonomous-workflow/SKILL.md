@@ -78,7 +78,10 @@ gate as something it is not.
    workaround, not a flag that hides it, not a comment explaining why it is
    acceptable. Then re-run the reviewer against the new head and merge on a
    fresh pass.
-5. **Do not hand findings to the user to approve.** They are not a queue for
+5. **Audit the claims, not just the logic.** Factual assertions in comments,
+   commit messages and the MR description are part of the review — see "Claims
+   audit" in the **product-review** skill. It applies to diff review too.
+6. **Do not hand findings to the user to approve.** They are not a queue for
    work you would rather not do. Escalate only when a finding genuinely cannot
    be fixed — an upstream or platform limitation — and say why. If they then
    approve in writing, record their exact words in `user_consent`. Fabricating
@@ -101,6 +104,38 @@ a separate pass: build it, run it, use it, from a cold start. It reads
 `.agentkit/product.yaml` and refuses rather than guessing when that is absent.
 When the two lenses disagree on severity, the user-facing consequence wins —
 internally correct code that cannot be used is still broken.
+
+## Observe External Behaviour Before Building On It
+
+The most expensive defect of one session: interruption was wired to
+`response.cancelled`, an event the OpenAI Realtime API does not emit on that
+transport. It shipped green because the tests synthesised the imaginary event. A
+five-minute live probe found it — and every subsequent probe also contradicted
+an assumption (truncation after `response.done` works; `event_id` arrives
+`null`, not absent).
+
+Before you build on another system's behaviour, OBSERVE it: run a probe, capture
+a real payload, or quote the doc with its URL. Assumptions about wire protocols,
+event names, error shapes and field nullability are the ones that bite, and
+tests you write from the assumption cannot catch it — they encode it.
+
+Record the observed payload **verbatim, next to the code that depends on it**,
+and mark it observed vs inferred (see "Observed vs inferred" in product-review).
+
+## Mutation-Check Load-Bearing Values
+
+`played_ms` — the number the entire feature turned on — passed all 158 tests
+when replaced with a constant zero. The test double could not report a non-zero
+value, so no test could observe it.
+
+For each value the feature's correctness depends on, replace it with a constant
+and re-run. **A green suite means that value is not covered.**
+
+Verify the mutation actually APPLIED and COMPILED before believing the result —
+an invalid mutation reads exactly like "covered". Note that `bounded-run`
+returns exit 0 even on a hard build failure, and the harness completion notice
+repeats that exit code, so judge by output markers (`test result:`, `N pass`)
+and treat a missing summary line as failure.
 
 ## Commit Hygiene
 
@@ -127,3 +162,15 @@ pattern, a gotcha, a convention, a lesson learned -- PROPOSE updating the releva
    patterns that should be standardized
 2. **Always propose first**: Never silently update config files. Describe what you learned and why
    it should be codified. Wait for approval.
+
+### The retro trigger is a disproof, not a timer
+
+When a reviewer disproves something you asserted, **that** is the moment to
+write or correct a memory — not at session end, not on a schedule. The
+correction is cheapest while the evidence is still in front of you.
+
+Counterweight: memories rot. A previously-written memory sent an author chasing
+a poisoned-cargo-target-dir theory for hours when the real cause was a toolchain
+mismatch (`RUSTUP_TOOLCHAIN` pinned to an older version than the cargo binary).
+Correcting and pruning matters as much as appending — a confident stale note is
+worse than none.
