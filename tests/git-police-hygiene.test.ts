@@ -83,6 +83,29 @@ describe('git-police branch hygiene (rule 7)', () => {
     git(clone, 'branch -D feat/merged-away');
     expect(runHook(clone, 'git checkout -b feat/next')).not.toContain('feat/merged-away');
   });
+
+  test('a gone-upstream branch checked out in another worktree is NOT flagged as stale', () => {
+    // Under a worktree-per-branch workflow this is the normal state, not clutter:
+    // the branch is active elsewhere (git branch -vv prefixes it with `+`) and
+    // cannot be deleted from here. It must not block new branch creation.
+    git(clone, 'checkout -q -b feat/in-worktree');
+    git(clone, 'commit --allow-empty -m work');
+    git(clone, 'push -q -u origin feat/in-worktree');
+    git(clone, 'checkout -q main');
+    const wt = join(root, 'wt-active');
+    git(clone, `worktree add -q ${wt} feat/in-worktree`);
+    git(clone, 'push -q origin --delete feat/in-worktree');
+    git(clone, 'fetch -pq');
+
+    // git branch -vv now shows `+ feat/in-worktree ... : gone]`. Pre-fix this
+    // emitted `+` as a bogus stale-branch name and blocked; it must allow now.
+    const out = runHook(clone, 'git checkout -b feat/next');
+    expect(out).not.toContain('feat/in-worktree');
+    expect(out).not.toContain('Stale local branches');
+
+    git(clone, `worktree remove --force ${wt}`);
+    git(clone, 'branch -D feat/in-worktree');
+  });
 });
 
 describe('git-police branch creation resolves the targeted repo (rules 6-7)', () => {

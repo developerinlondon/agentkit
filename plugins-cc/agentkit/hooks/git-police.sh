@@ -230,9 +230,15 @@ if echo "$STRIPPED" | grep -qiE '\bgit\b.*(checkout\s+-b|switch\s+-c)\b'; then
 		fi
 	fi
 	tgit fetch -p --quiet 2>/dev/null || true
-	GONE=$(tgit branch -vv 2>/dev/null | grep ': gone]' | awk '{print $1}' | tr '\n' ' ' || true)
+	# `git branch -vv` prefixes a branch checked out in ANOTHER worktree with
+	# `+` and the current branch with `*`, so a bare `$1` prints that marker
+	# instead of the branch name — and worse, flags a branch that's actively
+	# checked out elsewhere (normal under a worktree-per-branch workflow) as
+	# stale clutter. Exclude `+` lines (active elsewhere, not deletable here)
+	# and take $2 when the current-branch `*` marker is present.
+	GONE=$(tgit branch -vv 2>/dev/null | grep ': gone]' | grep -v '^+ ' | awk '{print ($1=="*") ? $2 : $1}' | tr '\n' ' ' || true)
 	if [[ -n "${GONE// /}" ]]; then
-		deny "BLOCKED: Stale local branches with deleted upstreams: ${GONE}. Clean up before starting new work: git branch -vv | awk '/: gone]/ {print \$1}' | xargs -r git branch -D"
+		deny "BLOCKED: Stale local branches with deleted upstreams: ${GONE}. Clean up before starting new work: git branch -vv | grep ': gone]' | grep -v '^+ ' | awk '{print (\$1=="*")?\$2:\$1}' | xargs -r git branch -D"
 	fi
 fi
 
