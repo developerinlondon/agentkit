@@ -58,6 +58,19 @@ gate as something it is not.
 2. **The reviewer writes its verdict** to `.agentkit/reviews/<branch-slug>.json`
    with `head_sha`, `verdict`, and `findings[{severity, summary, resolved}]`.
    A review of an older commit is not a review of what you are merging.
+
+   That file is a machine-local GATE TOKEN, not an archive: it is gitignored,
+   it is only ever read by the hook on one machine, and after the merge it is
+   an orphan nobody can see. So **also post the verdict and findings as a
+   comment on the MR/PR** (`glab mr note` / `gh pr comment`). That copy is the
+   durable one — visible to whoever picks the work up, timestamped, and it
+   survives the merge. It must NOT be committed to the repo: a commit moves
+   HEAD, which stales the record against the branch it reviews, and the gate
+   would then deny its own merge.
+
+   Findings that outlive the branch — accepted limits, deferred fixes — belong
+   in an ISSUE, not only in a review record. If the only trace of a known
+   limitation is a local JSON file, it is already lost.
 3. **Any unresolved BLOCKER or HIGH blocks the merge.** Severity is the
    reviewer's call. You do not get to downgrade it, reinterpret it, or decide
    it is inert because you reason it cannot fire.
