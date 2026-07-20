@@ -567,12 +567,9 @@ tool_supports_platform() {
 		if [[ "$line" =~ ^[[:space:]]*#[[:space:]]*agentkit:platforms?([[:space:]].*)?$ ]]; then
 			# Trailing CR survives a core.autocrlf checkout and would never match.
 			values="${BASH_REMATCH[1]%$'\r'}"
-			# Drop a trailing comment, which would otherwise be read as platform
-			# names. Only after a real value: '#linux' is a commented-out list,
-			# and emptying it here would turn a skip into install-everywhere.
-			if [[ "$values" =~ ^([[:space:]]*[^#[:space:]][^#]*)# ]]; then
-				values="${BASH_REMATCH[1]}"
-			fi
+			# A comment starts at the first '#', whatever follows it. Anything
+			# else makes the result depend on the spelling of the comment.
+			values="${values%%#*}"
 			found=1
 			break
 		fi
@@ -583,9 +580,11 @@ tool_supports_platform() {
 	# read -ra, not word splitting: an unquoted expansion would glob a value
 	# like '*' against the working directory.
 	read -ra entries <<<"$values"
+	# The author wrote a restriction and named nothing usable. Installing anyway
+	# is the one outcome they certainly did not ask for, so withhold and say so.
 	if ((${#entries[@]} == 0)); then
-		echo "[tools] WARNING: $(basename "$tool_file") declares agentkit:platforms with no platforms — installing it everywhere" >&2
-		return 0
+		echo "[tools] WARNING: $(basename "$tool_file") declares agentkit:platforms with no usable platforms — not installing it" >&2
+		return 1
 	fi
 
 	for entry in "${entries[@]}"; do

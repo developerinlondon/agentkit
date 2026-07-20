@@ -174,8 +174,9 @@ elsewhere rather than leaving a command that cannot run:
 Tools without the directive install everywhere. Platform is `uname -s` (`linux`/`darwin`), or
 `AGENTKIT_PLATFORM` when set — an unrecognised value is an error, not a silent skip. Re-running the
 installer reconciles: a tool that a previous version installed here is removed once it declares a
-platform this host is not. A directive that names no platforms warns and installs, so a typo cannot
-quietly disable the gate.
+platform this host is not. A directive that names no usable platforms — empty, or entirely
+commented out — warns and withholds the tool rather than installing it everywhere, since installing
+is the one outcome the author certainly did not ask for.
 
 Because `bounded-run` is Linux-only, `resource-police` stands down off Linux: heavy commands run
 with a warning that nothing is bounding them, rather than being blocked in favour of a runner the

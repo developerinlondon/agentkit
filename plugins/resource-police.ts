@@ -216,6 +216,11 @@ function wrappedLaunch(launch: Launch): Launch | null {
   };
 }
 
+// agentkit-run is the pre-rename compat alias, so both names are runner layers.
+function isRunnerExecutable(executable: string): boolean {
+  return executable === 'bounded-run' || executable === 'agentkit-run';
+}
+
 function detectUnboundedCommand(
   command: string,
   depth = 0,
@@ -225,14 +230,18 @@ function detectUnboundedCommand(
   for (const segment of splitShellSegments(command)) {
     const launch = parseLaunch(segment);
     if (!launch) continue;
-    if (launch.executable === 'bounded-run' || launch.executable === 'agentkit-run') {
+    if (isRunnerExecutable(launch.executable)) {
       // NOT `delegated`: that message advertises AGENTKIT_ALLOW_DELEGATED=1,
       // which this path never consults, so it sent people chasing an escape
       // hatch that cannot clear it.
       // Delegation first, trust second: reporting an untrusted runner without
-      // looking at its payload let `./bounded-run -- ssh prod ...` hide a
-      // delegated command behind seven characters.
-      const nested = wrappedLaunch(launch);
+      // looking at its payload let a wrapper hide a delegated command. Unwrap
+      // every runner layer, not one — a runner wrapping a runner buried the
+      // payload one level deeper than a single check could see.
+      let nested = wrappedLaunch(launch);
+      while (nested && isRunnerExecutable(nested.executable)) {
+        nested = wrappedLaunch(nested);
+      }
       if (nested && !delegatedOk && isDelegating(nested)) return { segment, delegated: true };
       if (!isTrustedRunner(launch.token)) return { segment, delegated: false, untrustedRunner: true };
       continue;

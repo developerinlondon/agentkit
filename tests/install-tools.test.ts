@@ -221,14 +221,23 @@ describe('platform directive grammar', () => {
     });
   });
 
-  test('warns instead of failing open when a directive names no platforms', () => {
-    withFixtureTools({ empty: toolWith('# agentkit:platforms') }, (run, home) => {
-      const result = run('linux');
-      expect(result.status).toBe(0);
-      expect(result.stderr).toContain('declares agentkit:platforms with no platforms');
-      expect(existsSync(join(home, '.local', 'bin', 'empty'))).toBe(true);
+  // Every spelling of "named nothing usable" has to behave the same, or the
+  // outcome depends on how the author wrote their comment.
+  for (const [label, directive] of [
+    ['no values at all', '# agentkit:platforms'],
+    ['commented-out value', '# agentkit:platforms #linux'],
+    ['commented-out value, spaced', '# agentkit:platforms # linux'],
+    ['double hash', '# agentkit:platforms ## linux'],
+  ] as const) {
+    test(`withholds rather than installs when a directive names nothing (${label})`, () => {
+      withFixtureTools({ empty: toolWith(directive) }, (run, home) => {
+        const result = run('linux');
+        expect(result.status).toBe(0);
+        expect(result.stderr).toContain('no usable platforms');
+        expect(pathPresent(join(home, '.local', 'bin', 'empty'))).toBe(false);
+      });
     });
-  });
+  }
 
   test('reads a directive written with CRLF line endings', () => {
     withFixtureTools({ crlf: toolWith('# agentkit:platforms linux', '\r\n') }, (run, home) => {
@@ -253,16 +262,6 @@ describe('platform directive grammar', () => {
     withFixtureTools({ noted: toolWith('# agentkit:platforms darwin # not linux') }, (run, home) => {
       expect(run('linux').status).toBe(0);
       expect(pathPresent(join(home, '.local', 'bin', 'noted'))).toBe(false);
-    });
-  });
-
-  test('does not treat a fully commented-out list as no list at all', () => {
-    // Stripping the comment unconditionally would empty this and install it
-    // everywhere — turning a skip into the opposite of what was written.
-    withFixtureTools({ commented: toolWith('# agentkit:platforms #linux') }, (run, home) => {
-      const result = run('linux');
-      expect(result.status).toBe(0);
-      expect(pathPresent(join(home, '.local', 'bin', 'commented'))).toBe(false);
     });
   });
 

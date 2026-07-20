@@ -66,20 +66,30 @@ describe('containment availability', () => {
     }
   });
 
-  // A wrapper is one token. If trust were decided before the payload was read,
-  // this would launder a delegated command straight through off Linux.
-  test('sees through an untrusted runner wrapping a delegated command', () => {
+  // A wrapper is one token, and nothing stops an agent adding two. Checking the
+  // payload once only ever sees one layer down.
+  test('sees through runner wrappers hiding a delegated command', () => {
     const laundered = [
       './bounded-run --profile default -- ssh prod-host rm -rf /data',
       '/tmp/evil/bounded-run --profile default -- kubectl delete ns prod',
       './tools/bounded-run --profile default -- sudo systemctl restart nginx',
+      'bounded-run --profile default -- bounded-run --profile default -- ssh prod-host rm -rf /data',
+      'bounded-run --profile default -- agentkit-run --profile default -- kubectl delete ns prod',
+      'bounded-run -- bounded-run -- bounded-run -- ssh prod-host rm -rf /data',
     ];
     for (const command of laundered) {
-      expect(() => enforceResourcePolicy(command, 'darwin')).toThrow(
-        'cannot be contained by bounded-run',
-      );
-      expect(() => enforceResourcePolicy(command, 'linux')).toThrow('BLOCKED');
+      for (const platform of ['darwin', 'linux']) {
+        expect(() => enforceResourcePolicy(command, platform)).toThrow(
+          'cannot be contained by bounded-run',
+        );
+      }
     }
+  });
+
+  test('does not mistake a wrapped ordinary command for delegation', () => {
+    expect(() =>
+      enforceResourcePolicy('bounded-run --profile default -- bounded-run -- bun install', 'linux')
+    ).not.toThrow();
   });
 
   // Named explicitly rather than looping blockedResourceCommands: that fixture
