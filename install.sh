@@ -540,6 +540,8 @@ merge_claude_settings() {
 
 # ─── Standalone Tools (Python/Bash scripts) ──────────────────────────────────
 
+KNOWN_PLATFORMS="linux darwin unknown"
+
 detect_platform() {
 	if [[ -n "${AGENTKIT_PLATFORM:-}" ]]; then
 		printf '%s' "$AGENTKIT_PLATFORM"
@@ -554,13 +556,33 @@ detect_platform() {
 
 # A tool restricts itself to specific platforms with a header directive:
 #   # agentkit:platforms linux darwin
-# Tools without the directive install everywhere.
+# Tools without the directive install everywhere. A directive that matches but
+# names nothing is a typo, not a licence to install: say so rather than let a
+# silent fail-open put an unrunnable command on PATH.
 tool_supports_platform() {
-	local tool_file="$1" platform="$2" declared entry
-	declared="$(sed -n '1,15p' "$tool_file" | grep -m1 '^# agentkit:platforms ' || true)"
-	[[ -n "$declared" ]] || return 0
+	local tool_file="$1" platform="$2" line values="" found=0 entry
+	local -a entries
 
-	for entry in ${declared#\# agentkit:platforms }; do
+	while IFS= read -r line; do
+		if [[ "$line" =~ ^#[[:space:]]*agentkit:platforms?([[:space:]].*)?$ ]]; then
+			# Trailing CR survives a core.autocrlf checkout and would never match.
+			values="${BASH_REMATCH[1]%$'\r'}"
+			found=1
+			break
+		fi
+	done < <(sed -n '1,15p' "$tool_file")
+
+	((found)) || return 0
+
+	# read -ra, not word splitting: an unquoted expansion would glob a value
+	# like '*' against the working directory.
+	read -ra entries <<<"$values"
+	if ((${#entries[@]} == 0)); then
+		echo "[tools] WARNING: $(basename "$tool_file") declares agentkit:platforms with no platforms — installing it everywhere" >&2
+		return 0
+	fi
+
+	for entry in "${entries[@]}"; do
 		[[ "$entry" == "$platform" ]] && return 0
 	done
 	return 1
@@ -570,6 +592,10 @@ install_tools() {
 	local tools_dir="$1"
 	local platform
 	platform="$(detect_platform)"
+	if [[ " $KNOWN_PLATFORMS " != *" $platform "* ]]; then
+		echo "[tools] AGENTKIT_PLATFORM='$platform' is not one of: $KNOWN_PLATFORMS" >&2
+		return 64
+	fi
 	mkdir -p "$tools_dir"
 
 	for tool_file in "$REPO_DIR"/tools/*; do

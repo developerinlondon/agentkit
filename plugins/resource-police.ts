@@ -264,6 +264,16 @@ function isTrustedRunner(token: string): boolean {
     || /\/plugins\/.*\/tools\/bounded-run$/.test(normalized);
 }
 
+// bounded-run drives systemd-run and cgroup v2, so containment simply does not
+// exist off Linux. Blocking there would order the agent to install a runner the
+// installer deliberately refuses to install — a loop with no way out — so allow
+// the command and say plainly that nothing is bounding it.
+export function containmentAvailable(platform: string = process.platform): boolean {
+  return platform === 'linux';
+}
+
+let announcedUnbounded = false;
+
 export default async function resourcePolice(_ctx: PluginInput) {
   return {
     'tool.execute.before': async (
@@ -273,6 +283,16 @@ export default async function resourcePolice(_ctx: PluginInput) {
       if (input.tool?.toLowerCase() !== 'bash') return;
       const command = output.args.command as string | undefined;
       if (!command) return;
+      if (!containmentAvailable()) {
+        if (!announcedUnbounded) {
+          announcedUnbounded = true;
+          console.warn(
+            `[resource-police] ${process.platform} has no cgroup containment; `
+              + 'heavy commands run unbounded and bounded-run is not installed here.',
+          );
+        }
+        return;
+      }
       const finding = detectUnboundedCommand(command, 0, isDelegatedOverride(command));
       if (!finding) return;
       if (finding.untrustedRunner) {

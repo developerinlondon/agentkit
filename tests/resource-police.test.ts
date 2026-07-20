@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import resourcePolice from '../plugins/resource-police';
+import resourcePolice, { containmentAvailable } from '../plugins/resource-police';
 import {
   allowedResourceCommands,
   blockedResourceCommands,
@@ -33,6 +33,24 @@ function runHook(command: string): string {
   const input = JSON.stringify({ tool_input: { command } });
   return spawnSync('bash', [hook], { input, encoding: 'utf-8' }).stdout ?? '';
 }
+
+// The installer refuses to install bounded-run off Linux. If the policy still
+// demanded it there, the agent would be told to install something that will
+// never arrive, with no way to proceed.
+describe('containment availability', () => {
+  test('is Linux-only, matching where bounded-run can actually run', () => {
+    expect(containmentAvailable('linux')).toBe(true);
+    expect(containmentAvailable('darwin')).toBe(false);
+    expect(containmentAvailable('win32')).toBe(false);
+  });
+
+  test('blocks on this Linux host, so the guard is not vacuously open', async () => {
+    expect(containmentAvailable()).toBe(true);
+    const hooks = await resourcePolice(mockCtx);
+    const { input, output } = makeInput(blockedResourceCommands[0]!);
+    expect(hooks['tool.execute.before']!(input, output)).rejects.toThrow('bounded-run');
+  });
+});
 
 describe('OpenCode resource-police', () => {
   for (const command of blockedResourceCommands) {

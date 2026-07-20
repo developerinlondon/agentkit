@@ -172,9 +172,15 @@ elsewhere rather than leaving a command that cannot run:
 ```
 
 Tools without the directive install everywhere. Platform is `uname -s` (`linux`/`darwin`), or
-`AGENTKIT_PLATFORM` when set. Re-running the installer reconciles: a tool that a previous version
-installed here is removed once it declares a platform this host is not. The Claude plugin bundle is
-a separate channel installed by `claude plugin install` — the directive does not gate it.
+`AGENTKIT_PLATFORM` when set — an unrecognised value is an error, not a silent skip. Re-running the
+installer reconciles: a tool that a previous version installed here is removed once it declares a
+platform this host is not. A directive that names no platforms warns and installs, so a typo cannot
+quietly disable the gate.
+
+Because `bounded-run` is Linux-only, `resource-police` stands down off Linux: heavy commands run
+with a warning that nothing is bounding them, rather than being blocked in favour of a runner the
+installer will not install. The Claude plugin bundle is a separate channel installed by
+`claude plugin install` — the directive does not gate it.
 
 `bounded-run` fails closed unless the aggregate slice matches its expected limits (default
 20G/24G memory high/max, 800% CPU, 1536 tasks; hosts sized differently pin their values in
