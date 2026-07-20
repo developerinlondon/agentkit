@@ -11,12 +11,19 @@ summary: >-
 surfaces:
   - name: test-suite
     kind: library
-    build: bun install
-    verify: bun test
+    # Wrapped in bounded-run because agentkit's own resource-police DENIES a
+    # bare `bun install` / `bun test`. A reviewer following this manifest is,
+    # by definition, on a machine where these hooks are live — declaring the
+    # naive form would block them at step one of the skill's own procedure.
+    build: bounded-run --profile default -- bun install
+    verify: bounded-run --profile default -- bun test
     expect: |
-      408 tests pass. The suite is the real gate on this repo: it asserts the
-      plugin wiring, that every police hook parses under `bash -n`, and that
-      `skills/` stays byte-identical to the plugin mirror.
+      The suite passes with 0 failures (a few skips are expected). Deliberately
+      not a pinned count — this file exists to catch stale expectations, so it
+      should not carry one that drifts on every PR that adds a test.
+      The suite is the real gate on this repo: it asserts the plugin wiring,
+      that every police hook parses under `bash -n`, and that `skills/` stays
+      byte-identical to the plugin mirror.
 
   - name: plugin
     kind: desktop
@@ -59,14 +66,14 @@ requires:
     - Claude Code (or OpenCode) must be installed to exercise the `plugin`
       surface; the test suite needs only bun.
     - >-
-      This repo's own hooks are usually already active on a developer machine,
-      and they will intercept naive verification: `./tools/bounded-run --help`
-      is refused by resource-police as an uncontained delegated workload
-      (prefix `AGENTKIT_ALLOW_DELEGATED=1`), and editing this repo's docs can
-      trip review-police because the text contains merge-shaped commands. A
-      reviewer hitting those is seeing the product work, not a defect — but it
-      does mean shell heredocs are the wrong tool for writing about it; use
-      file tools.
+      This repo's own hooks are usually already active on a developer machine
+      and will intercept naive verification. Two you WILL hit: running the
+      runner in place (`./tools/bounded-run …`) is refused because trust is by
+      installed path, not by name — and `AGENTKIT_ALLOW_DELEGATED=1` does NOT
+      clear that one; and editing this repo's docs can trip review-police
+      because the text contains merge-shaped commands, so use file tools rather
+      than shell heredocs when writing about it. A reviewer hitting either is
+      seeing the product work, not a defect.
 
 cannot_verify:
   - surface: plugin

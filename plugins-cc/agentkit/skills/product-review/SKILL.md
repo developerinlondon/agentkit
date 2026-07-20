@@ -32,9 +32,14 @@ environment must provide, and what is known-unverifiable.
 
 Then **record the absence as a finding** in the review record, severity MEDIUM,
 summary "no product manifest — product surfaces unverified". Do NOT return a
-silent pass. A missing manifest that ends the review quietly makes "don't add
-the file" the cheapest way to dodge product review, and turns an unreviewed
-product into one that looks reviewed.
+silent pass: that turns an unreviewed product into one that looks reviewed.
+
+Be precise about what this buys. Only unresolved BLOCKER/HIGH findings block a
+merge, so a MEDIUM makes the omission **visible, not impossible** — skipping the
+manifest is still the cheapest way to skip product review. That is a deliberate
+trade: raising it to HIGH would gate every client repo that has no manifest yet,
+including ones we cannot run at all. Visible-and-merged beats silent, and beats
+blocking work we were never able to verify anyway.
 
 Never invent the commands yourself. Inferring a build from the file tree is
 exactly the guess that produces a confident, wrong report.
@@ -59,9 +64,14 @@ authorise another repo's merge.
 
 **There is deliberately NO global fallback for the manifest.** A default "how to
 build" applied to a repo that never declared one turns _refuse and ask_ back
-into _guess confidently_, which is the failure this lane exists to remove. The
-global config carries POLICY only — whether product review is required, which
-severities block — never the commands themselves.
+into _guess confidently_, which is the failure this lane exists to remove.
+
+Status, stated plainly rather than aspirationally: **product review is currently
+opt-in and mechanically unenforced.** No hook requires a manifest, no config key
+turns it on, and nothing blocks a merge for its absence. Policy keys in
+`~/.config/agentkit/config.yaml` (whether it is required, which severities
+block) are the intended home if that changes — they do not exist today. Never
+describe this lane as enforced.
 
 ## Running it
 

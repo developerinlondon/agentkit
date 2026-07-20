@@ -53,6 +53,21 @@ describe('OpenCode resource-police', () => {
     });
   }
 
+  for (const command of untrustedRunnerCommands) {
+    test(`refuses an unrecognised runner: ${command}`, async () => {
+      // This guard had ZERO coverage in the OpenCode implementation: moving
+      // the fixture into its own array took it out of the loop above, and
+      // deleting the guard outright still left every test passing. Two
+      // parallel implementations of one policy need the same cases run
+      // against BOTH, or one silently stops enforcing.
+      const hooks = await resourcePolice(mockCtx);
+      const { input, output } = makeInput(command);
+      expect(hooks['tool.execute.before']!(input, output)).rejects.toThrow(
+        'not a recognised bounded-run',
+      );
+    });
+  }
+
   test('allows wrapped, lightweight, and inspection commands', async () => {
     const hooks = await resourcePolice(mockCtx);
 
