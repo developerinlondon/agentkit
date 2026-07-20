@@ -98,13 +98,13 @@ gate as something it is not.
    (machine-global, append-only — these are lessons about how the agent works,
    not about a codebase):
 
-   **Read the log before appending.** Grep it for the same gap class; if one
-   matches, set `repeat_of` to that entry's `id`. Skip this and `repeat_of` is
-   null forever — and a repeat is the only thing separating a mistake from a
-   pattern, which is precisely what the batching step keys on.
+   **Read the log before appending.** `grep '"class":"<class>"'` for the same
+   class; if one matches, set `repeat_of` to that entry's `id`. Skip this and
+   `repeat_of` is null forever — and a repeat is the only thing separating a
+   mistake from a pattern, which is precisely what the batching step keys on.
 
    ```text
-   {"id":"2026-07-20T14:32:07Z","harness":"claude","repo":"<repo>","gap":"asserted a compatibility requirement over all clients without grepping for one","finding":"HIGH: claim contradicted by git grep","repeat_of":null}
+   {"id":"2026-07-20T14:32:07Z","harness":"claude","repo":"<repo>","class":"unverified-claim","gap":"asserted a compatibility requirement over all clients without grepping for one","finding":"HIGH: claim contradicted by git grep","repeat_of":null}
    ```
 
    One object per line, no pretty-printing — many sessions append here and the
@@ -113,6 +113,14 @@ gate as something it is not.
    not. `repeat_of` carries an earlier entry's `id`, else `null`. `harness` is
    one of `claude`, `codex`, `opencode`, `other` — not bookkeeping, it is what
    shows whether different harnesses fail in different ways.
+
+   `class` is a fixed vocabulary, so repeats are greppable rather than a
+   judgement about whether two sentences mean the same thing: `unverified-claim`,
+   `untested-value`, `unobserved-external-behaviour`, `duplicated-authority`,
+   `stale-doc`, `other`. Free prose in `gap` cannot be matched reliably — a
+   tired reviewer greps one wording and misses its twin, which is the failure
+   this step exists to prevent. Add to the vocabulary deliberately, in an MR;
+   do not invent a class inline.
 
    **Entry-worthy is one binary test: would the fix be a line in the SOP, or a
    line in the code?** SOP ⇒ entry (the author asserted something without
@@ -211,8 +219,10 @@ pattern, a gotcha, a convention, a lesson learned -- PROPOSE updating the releva
 
 When a reviewer disproves something you asserted, correct the stored note then —
 not at session end, not on a timer. Prune as readily as you append: a confident
-stale note is worse than none, because it is trusted. One self-written note cost
-hours of debugging down a theory it still endorsed after the cause was known.
+stale note is worse than none, because it is trusted. A note recording one cause
+for a class of build failure kept sending its own author back to that cause for
+hours after the real one — a different, unrelated misconfiguration — had been
+identified.
 
 ### Batching the reflection log
 
