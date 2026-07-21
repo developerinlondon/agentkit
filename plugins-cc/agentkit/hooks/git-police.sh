@@ -81,6 +81,22 @@ deny() {
 	exit 0
 }
 
+# advise: surface a reminder to the agent WITHOUT blocking the command. No
+# permissionDecision is emitted, so the normal permission flow runs and the
+# tool proceeds; `additionalContext` is the only PreToolUse channel Claude
+# Code injects into the model as a system reminder (permissionDecisionReason
+# reaches Claude only on "deny", and stdout on exit 0 is discarded).
+advise() {
+	local msg="$1"
+	jq -n --arg m "$msg" '{
+    hookSpecificOutput: {
+      hookEventName: "PreToolUse",
+      additionalContext: $m
+    }
+  }'
+	exit 0
+}
+
 # 1. Block --no-verify (skips pre-commit/commit-msg hooks)
 if echo "$STRIPPED" | grep -qiE '\bgit\b.*--no-verify\b'; then
 	deny "BLOCKED: --no-verify is forbidden. Skipping pre-commit hooks bypasses quality gates (linting, tests, formatting). Fix the issue that's causing the hook to fail instead."
@@ -258,6 +274,46 @@ if echo "$STRIPPED" | grep -qiE '\bgit\b.*(checkout\s+-b|switch\s+-c)\b'; then
 			fi
 		fi
 	done
+fi
+
+# 9. Merge-return branch hygiene (advisory — nudges, never blocks). Rule 7's
+#    hard-deny only fires when NEW work starts (checkout -b / switch -c), so
+#    stale merged branches linger unnoticed between a merge and the next
+#    branch creation. Fire a non-blocking reminder at the OTHER natural
+#    cleanup moment: returning to the default branch (checkout/switch to it,
+#    without -b/-c) or pulling while already on it. Same prune + gone
+#    detection as rule 7; the command is always allowed through.
+GIT_PULL_RE='\bgit([[:space:]]+(-[A-Za-z][^[:space:]]*|--[A-Za-z][A-Za-z0-9-]*(=[^[:space:]]+)?)([[:space:]]+[^-[:space:]][^[:space:]]*)?)*[[:space:]]+pull\b'
+if echo "$STRIPPED" | grep -qiE '\bgit\b.*\b(checkout|switch|pull)\b' \
+	&& ! echo "$STRIPPED" | grep -qiE '(checkout[[:space:]]+-b|switch[[:space:]]+-c)\b'; then
+	DEFAULT_BRANCH=$(tgit symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's|^origin/||' || true)
+	if [[ -z "$DEFAULT_BRANCH" ]]; then
+		for cand in "${PROTECTED_BRANCHES[@]}"; do
+			if tgit show-ref --verify --quiet "refs/heads/${cand}"; then
+				DEFAULT_BRANCH="$cand"
+				break
+			fi
+		done
+	fi
+	RETURN_TO_DEFAULT=false
+	if [[ -n "$DEFAULT_BRANCH" ]]; then
+		# checkout/switch to the default branch (flags allowed between)
+		if echo "$STRIPPED" | grep -qiE "\b(checkout|switch)\b([[:space:]]+-[^[:space:]]+)*[[:space:]]+${DEFAULT_BRANCH}\b"; then
+			RETURN_TO_DEFAULT=true
+		fi
+		# pull while already sitting on the default branch
+		if echo "$STRIPPED" | grep -qiE "$GIT_PULL_RE"; then
+			CURRENT_BRANCH=$(tgit symbolic-ref --short HEAD 2>/dev/null || echo "")
+			[[ "$CURRENT_BRANCH" == "$DEFAULT_BRANCH" ]] && RETURN_TO_DEFAULT=true
+		fi
+	fi
+	if [[ "$RETURN_TO_DEFAULT" == true ]]; then
+		tgit fetch -p --quiet 2>/dev/null || true
+		GONE=$(tgit branch -vv 2>/dev/null | grep ': gone]' | grep -v '^+ ' | awk '{print ($1=="*") ? $2 : $1}' | tr '\n' ' ' || true)
+		if [[ -n "${GONE// /}" ]]; then
+			advise "REMINDER: Stale local branches with deleted upstreams: ${GONE}. These were merged and their remotes deleted; now that you are back on ${DEFAULT_BRANCH}, clean them up: git branch -vv | grep ': gone]' | grep -v '^+ ' | awk '{print (\$1==\"*\")?\$2:\$1}' | xargs -r git branch -D"
+		fi
+	fi
 fi
 
 exit 0
