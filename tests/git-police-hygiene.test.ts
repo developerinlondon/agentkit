@@ -180,6 +180,66 @@ describe('git-police push branch resolution (rule 4)', () => {
   });
 });
 
+describe('git-police merge-return hygiene (rule 9, advisory)', () => {
+  // Rule 7 hard-denies gone branches only at branch CREATION. Rule 9 fires a
+  // non-blocking reminder at the other cleanup moment: returning to the
+  // default branch (or pulling while on it). Build a squash-merged (gone
+  // upstream) branch, then exercise those return moments.
+  function makeGoneBranch(name: string): void {
+    git(clone, `checkout -q -b ${name}`);
+    git(clone, 'commit --allow-empty -m work');
+    git(clone, `push -q -u origin ${name}`);
+    git(clone, 'checkout -q main');
+    git(clone, `push -q origin --delete ${name}`);
+    git(clone, 'fetch -pq');
+  }
+
+  test('reminds (without blocking) on checkout to default when a gone branch lingers', () => {
+    makeGoneBranch('feat/gone-a');
+    const out = runHook(clone, 'git checkout main');
+    expect(out).toContain('additionalContext'); // the reminder reaches the agent
+    expect(out).toContain('feat/gone-a'); // it names the stale branch
+    expect(out).toContain('xargs -r git branch -D'); // and gives the cleanup command
+    expect(out).not.toContain('"deny"'); // but never blocks the command
+    git(clone, 'branch -D feat/gone-a');
+  });
+
+  test('reminds on git pull while on the default branch', () => {
+    makeGoneBranch('feat/gone-b');
+    const out = runHook(clone, 'git pull');
+    expect(out).toContain('additionalContext');
+    expect(out).toContain('feat/gone-b');
+    expect(out).not.toContain('"deny"');
+    git(clone, 'branch -D feat/gone-b');
+  });
+
+  test('stays silent on checkout to default when no gone branches exist', () => {
+    git(clone, 'checkout -q main');
+    const out = runHook(clone, 'git checkout main');
+    expect(out.trim()).toBe(''); // no advisory, no deny — fully silent
+  });
+
+  test('does not fire when returning to a feature branch (only the default branch)', () => {
+    git(clone, 'checkout -q -b feat/keep');
+    makeGoneBranch('feat/gone-c'); // leaves the clone on main with a gone branch
+    const out = runHook(clone, 'git checkout feat/keep');
+    expect(out).not.toContain('additionalContext');
+    expect(out).not.toContain('feat/gone-c');
+    git(clone, 'checkout -q main');
+    git(clone, 'branch -D feat/gone-c');
+    git(clone, 'branch -D feat/keep');
+  });
+
+  test('branch creation still hard-denies with a gone branch present (rule 7 unchanged)', () => {
+    makeGoneBranch('feat/gone-d');
+    const out = runHook(clone, 'git checkout -b feat/after');
+    expect(out).toContain('"deny"'); // rule 7 still blocks new work
+    expect(out).toContain('feat/gone-d');
+    expect(out).not.toContain('additionalContext'); // deny short-circuits before rule 9
+    git(clone, 'branch -D feat/gone-d');
+  });
+});
+
 describe('git-police push rules require a push subcommand', () => {
   test('allows stash push combined with branch -f in a compound command', () => {
     git(clone, 'checkout -q main');
