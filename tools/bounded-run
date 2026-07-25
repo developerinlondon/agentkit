@@ -280,7 +280,11 @@ build_clean_environment() {
 		CI NO_COLOR FORCE_COLOR SSH_AUTH_SOCK
 	)
 	for name in "${allowed[@]}"; do
-		if [[ -v "$name" ]]; then
+		# `[[ -v VAR ]]` is bash 4.2+; macOS ships bash 3.2, where it is a
+		# parse error ("conditional binary operator expected") that aborts the
+		# runner. `${!name+x}` is the portable set-or-not test and, unlike
+		# `-n "${!name}"`, still passes through variables set to empty.
+		if [[ -n "${!name+x}" ]]; then
 			CLEAN_ENV+=("$name=${!name}")
 		fi
 	done

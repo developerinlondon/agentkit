@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import resourcePolice from '../plugins/resource-police';
@@ -9,6 +9,21 @@ import {
   unsupportedResourceCommands,
   untrustedRunnerCommands,
 } from './fixtures/resource-commands';
+
+/**
+ * The shell hook enforces only where bounding is possible.
+ *
+ * `bounded-run` contains work in a systemd scope backed by cgroup v2 and dies
+ * without it, so on a host with neither (macOS, most notably) the hook stands
+ * down rather than denying every heavy command and naming a remedy that cannot
+ * run. These cases assert DENY, so they are Linux-only by construction.
+ *
+ * Skipped, not deleted, and not silently passing: before this guard existed a
+ * macOS checkout reported 64 failures here, which is indistinguishable from a
+ * real regression and trains everyone to ignore the suite.
+ */
+const canBound = existsSync('/sys/fs/cgroup/cgroup.controllers');
+const describeShellHook = canBound ? describe : describe.skip;
 
 const repoRoot = dirname(import.meta.dir);
 const hook = join(repoRoot, 'hooks', 'claude', 'resource-police.sh');
@@ -84,7 +99,7 @@ describe('OpenCode resource-police', () => {
   });
 });
 
-describe('Claude resource-police', () => {
+describeShellHook('Claude resource-police', () => {
   for (const command of blockedResourceCommands) {
     test(`blocks unbounded command: ${command}`, () => {
       const output = runHook(command);
@@ -129,7 +144,7 @@ describe('Claude resource-police', () => {
   });
 });
 
-describe('Codex resource policy', () => {
+describeShellHook('Codex resource policy', () => {
   test('forbids direct heavy command prefixes without interactive prompts', () => {
     const contents = readFileSync(policy, 'utf-8');
     expect(contents).not.toContain('decision = "prompt"');

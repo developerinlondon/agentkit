@@ -1,9 +1,64 @@
 #!/bin/bash
 set -euo pipefail
 
-readonly AWK_BIN=/usr/bin/awk
-readonly CAT_BIN=/usr/bin/cat
-readonly JQ_BIN=/usr/bin/jq
+# Absolute paths are deliberate: a hook that inspects a command must not
+# resolve its own tools through a PATH that command could have manipulated.
+# But the locations are NOT the same everywhere — `cat` is /bin/cat on macOS
+# and /usr/bin/cat on most Linux, and jq is wherever it was installed. Probing
+# a short list of known locations keeps the intent while working on both.
+#
+# This mattered: the hardcoded /usr/bin/cat does not exist on macOS, so with
+# `set -e` the hook died on its very first line. Claude Code reported only
+# "non-blocking status code", which reads as noise — so the guard was not
+# merely broken, it was silently OFF while appearing to be installed.
+pick_bin() {
+	local p
+	for p in "$@"; do
+		[[ -x "$p" ]] && {
+			printf '%s' "$p"
+			return 0
+		}
+	done
+	return 1
+}
+
+AWK_BIN=$(pick_bin /usr/bin/awk /bin/awk) || AWK_BIN=""
+CAT_BIN=$(pick_bin /bin/cat /usr/bin/cat) || CAT_BIN=""
+JQ_BIN=$(pick_bin /usr/bin/jq /opt/homebrew/bin/jq /usr/local/bin/jq) || JQ_BIN=""
+readonly AWK_BIN CAT_BIN JQ_BIN
+
+# Missing tools mean this guard cannot run. Say so ONCE, loudly, and allow the
+# command: this is defence-in-depth detection, not a sandbox, so failing closed
+# would wedge every Bash call over a missing utility. What must not happen is
+# failing silently, which is exactly what it did before.
+if [[ -z "$AWK_BIN" || -z "$CAT_BIN" || -z "$JQ_BIN" ]]; then
+	printf 'resource-police: DISABLED — missing %s. Heavy commands are NOT being bounded.\n' \
+		"$([[ -z "$AWK_BIN" ]] && printf 'awk '; [[ -z "$CAT_BIN" ]] && printf 'cat '; [[ -z "$JQ_BIN" ]] && printf 'jq ')" >&2
+	exit 0
+fi
+
+# Stand down where bounding is IMPOSSIBLE, not merely unconfigured.
+#
+# bounded-run contains work in a systemd scope backed by cgroup v2, and dies
+# with 'cgroup v2 is unavailable' without it. macOS has neither cgroups nor
+# systemd, so enforcing here would deny every heavy command and name a remedy
+# that cannot run on this host — a deadlock with no way out except the escape
+# hatch, on every build, test and typecheck.
+#
+# Announced once per session rather than per command: a warning on every Bash
+# call is the kind of noise that trains people to ignore hooks, but silently
+# disabling a guard is how it stays broken for months.
+if [[ ! -r /sys/fs/cgroup/cgroup.controllers ]]; then
+	# Keyed on PPID — the client process, stable across every hook invocation
+	# in one session. $$ is this hook's own pid and changes each time, which
+	# would make "once" mean "always".
+	notice="${TMPDIR:-/tmp}/.agentkit-resource-police-inactive.$PPID"
+	if [[ ! -e "$notice" ]]; then
+		: >"$notice" 2>/dev/null || true
+		printf 'resource-police: INACTIVE on this host — cgroup v2 is unavailable, so bounded-run cannot contain anything. Heavy commands are not being bounded.\n' >&2
+	fi
+	exit 0
+fi
 
 INPUT=$("$CAT_BIN")
 COMMAND=$(printf '%s' "$INPUT" | "$JQ_BIN" -r '.tool_input.command // empty')
@@ -137,7 +192,12 @@ parse_launch() {
 }
 
 is_heavy() {
-	local executable="${EXECUTABLE,,}"
+	# `${VAR,,}` is bash 4+. macOS ships bash 3.2 at /bin/bash, which this
+	# script's shebang selects, so that expansion is a hard parse error there —
+	# and with `set -e` it killed the hook mid-run, leaving the guard off. `tr`
+	# is portable and the cost is irrelevant at one call per command.
+	local executable
+	executable=$(printf '%s' "$EXECUTABLE" | LC_ALL=C tr '[:upper:]' '[:lower:]')
 	local first="${ARGS[0]:-}"
 	local second="${ARGS[1]:-}"
 	case "$executable" in
