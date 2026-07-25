@@ -7,6 +7,13 @@
 # of whoever touched one line of it.
 set -euo pipefail
 
+# Kill switch, matching the AGENTKIT_* convention used by the PreToolUse
+# police. Comma-separated hook names; a blocking hook with no way off is a
+# hook that eventually gets deleted instead of configured.
+case ",${AGENTKIT_SKIP_HOOKS:-}," in
+  *",comment-police,"*|*",all,"*) exit 0 ;;
+esac
+
 AGENTKIT_CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/agentkit/config.yaml"
 
 MAX_BLOCK_LINES=6

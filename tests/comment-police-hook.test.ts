@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { dirname, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 
 const repoRoot = dirname(import.meta.dir);
@@ -129,5 +129,92 @@ describe('police hooks reach the model', () => {
       const b = readFileSync(join(repoRoot, 'plugins-cc', 'agentkit', 'hooks', name), 'utf-8');
       expect(b).toBe(a);
     }
+  });
+});
+
+describe("blocking hooks have a way off and a bounded blast radius", () => {
+  const hooks = ["comment-police", "coding-police", "format-police"];
+
+  test("AGENTKIT_SKIP_HOOKS disables them", () => {
+    // A blocking hook with no kill switch is one that gets deleted rather
+    // than configured — and there is no PostToolUse loop guard to fall back on.
+    const subject = join(tmpdir(), `agentkit-skip-${process.pid}.ts`);
+    writeFileSync(subject, `${"// filler comment line\n".repeat(8)}const a = 1;\n`);
+    const payload = JSON.stringify({
+      tool_name: "Edit",
+      tool_input: { file_path: subject, new_string: `${"// filler comment line\n".repeat(8)}const a = 1;\n` },
+    });
+    for (const h of hooks) {
+      const hook = join(repoRoot, "hooks", "claude", `${h}.sh`);
+      for (const value of ["all", h]) {
+        const r = spawnSync("bash", [hook], {
+          input: payload,
+          encoding: "utf-8",
+          env: { ...process.env, AGENTKIT_SKIP_HOOKS: value },
+        });
+        expect(r.status, `${h} with AGENTKIT_SKIP_HOOKS=${value}`).toBe(0);
+      }
+    }
+    rmSync(subject, { force: true });
+  });
+
+  test("a file that was ALREADY too long does not block every later edit", () => {
+    // The wedge: coding-police measures whole-file state, so without this an
+    // unrelated one-line edit to a big legacy file is unfixably blocked.
+    const dir = mkdtempSync(join(tmpdir(), "agentkit-baseline-"));
+    const file = join(dir, "big.ts");
+    const git = (...a: string[]) => spawnSync("git", a, { cwd: dir, encoding: "utf-8" });
+    git("init", "-q");
+    git("config", "user.email", "t@t.t");
+    git("config", "user.name", "t");
+    // Distinct lines: a repeated line would trip the duplicate-code check
+    // instead, and this test is about the LENGTH check alone.
+    const lines = (n: number) =>
+      Array.from({ length: n }, (_, i) => `const x${i} = ${i};`).join("\n") + "\n";
+    writeFileSync(file, lines(1200));
+    git("add", "-A");
+    git("commit", "-qm", "big file already exists");
+
+    // Unchanged size: still over the limit, but not this edit's doing.
+    writeFileSync(file, lines(1200));
+    const r = spawnSync("bash", [join(repoRoot, "hooks", "claude", "coding-police.sh")], {
+      input: JSON.stringify({ tool_name: "Edit", tool_input: { file_path: file, new_string: "const x = 1;\n" } }),
+      encoding: "utf-8",
+    });
+    expect(`${r.stdout ?? ""}${r.stderr ?? ""}`).not.toContain("FILE TOO LONG");
+    expect(r.status).toBe(0);
+
+    // Growing it further IS this edit's doing, and must block.
+    writeFileSync(file, lines(1400));
+    const worse = spawnSync("bash", [join(repoRoot, "hooks", "claude", "coding-police.sh")], {
+      input: JSON.stringify({ tool_name: "Edit", tool_input: { file_path: file, new_string: "const x = 1;\n" } }),
+      encoding: "utf-8",
+    });
+    expect(`${worse.stdout ?? ""}${worse.stderr ?? ""}`).toContain("FILE TOO LONG");
+    expect(worse.status).toBe(2);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("format-police exits 2 when dprint actually fails", () => {
+    // The surviving mutant: nothing tested format-police's exit at all.
+    // A stub dprint that always fails makes this deterministic — asserting
+    // "0 or 2" would pass whatever the hook did, which is the weakness this
+    // whole review round was about.
+    const dir = mkdtempSync(join(tmpdir(), "agentkit-fmt-"));
+    const file = join(dir, "broken.ts");
+    const bin = join(dir, "dprint");
+    writeFileSync(bin, "#!/usr/bin/env bash\necho 'syntax error' >&2\nexit 1\n");
+    chmodSync(bin, 0o755);
+    writeFileSync(join(dir, "dprint.json"), "{}");
+    writeFileSync(file, "const = = =;\n");
+    const r = spawnSync("bash", [join(repoRoot, "hooks", "claude", "format-police.sh")], {
+      input: JSON.stringify({ tool_name: "Edit", tool_input: { file_path: file, new_string: "x" } }),
+      encoding: "utf-8",
+      env: { ...process.env, PATH: `${dir}:${process.env.PATH ?? ""}` },
+      cwd: dir,
+    });
+    expect(`${r.stderr ?? ""}`).toContain("dprint fmt failed");
+    expect(r.status).toBe(2);
+    rmSync(dir, { recursive: true, force: true });
   });
 });

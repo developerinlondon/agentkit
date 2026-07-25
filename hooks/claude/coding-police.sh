@@ -4,6 +4,13 @@
 # Equivalent to: plugins/coding-police.ts (OpenCode)
 set -euo pipefail
 
+# Kill switch, matching the AGENTKIT_* convention used by the PreToolUse
+# police. Comma-separated hook names; a blocking hook with no way off is a
+# hook that eventually gets deleted instead of configured.
+case ",${AGENTKIT_SKIP_HOOKS:-}," in
+  *",coding-police,"*|*",all,"*) exit 0 ;;
+esac
+
 # ── Configuration ───────────────────────────────────────────────────────────
 AGENTKIT_CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/agentkit/config.yaml"
 
@@ -120,9 +127,32 @@ check_cross_repo_relative_paths() {
 }
 
 # ── Check 1: File length ───────────────────────────────────────────────────
+
+# The committed version of FILE_PATH, or empty when it is new / not in git.
+# Whole-file checks measure state the current edit may not have caused; a file
+# that was already too long would otherwise block EVERY later edit to it,
+# unfixably, and Claude Code has no PostToolUse loop guard to stop that.
+baseline_of() {
+  local top rel
+  top=$(git -C "$(dirname "$FILE_PATH")" rev-parse --show-toplevel 2>/dev/null) || return 0
+  rel=${FILE_PATH#"$top"/}
+  git -C "$top" show "HEAD:$rel" 2>/dev/null || true
+}
+
+# Whether this edit made `metric` worse than it already was at HEAD.
+worsened() {
+  local now="$1" was="$2"
+  (( now > was ))
+}
+
 check_file_length() {
-  local line_count
+  local line_count was
   line_count=$(wc -l < "$FILE_PATH")
+  was=$(baseline_of | wc -l)
+  # Already over before this edit and not made worse: not this edit's business.
+  if (( was > MAX_FILE_LINES )) && ! worsened "$line_count" "$was"; then
+    return 0
+  fi
   if (( line_count > MAX_FILE_LINES )); then
     local excess=$(( line_count - MAX_FILE_LINES ))
     VIOLATIONS+=("FILE TOO LONG: ${line_count} lines (limit: ${MAX_FILE_LINES}, over by ${excess}). Split this file into smaller modules grouped by functionality. Identify logical boundaries (types, helpers, handlers, constants) and extract them.")
@@ -332,6 +362,7 @@ if [[ "$IS_CODE_FILE" != true ]]; then
       echo ""
       echo "Fix these violations before proceeding."
     } >&2
+    exit 2
   fi
   exit 0
 fi

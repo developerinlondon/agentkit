@@ -4,6 +4,13 @@
 # Equivalent to: plugins/format-police.ts (OpenCode)
 set -euo pipefail
 
+# Kill switch, matching the AGENTKIT_* convention used by the PreToolUse
+# police. Comma-separated hook names; a blocking hook with no way off is a
+# hook that eventually gets deleted instead of configured.
+case ",${AGENTKIT_SKIP_HOOKS:-}," in
+  *",format-police,"*|*",all,"*) exit 0 ;;
+esac
+
 INPUT=$(cat)
 TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty')
 
