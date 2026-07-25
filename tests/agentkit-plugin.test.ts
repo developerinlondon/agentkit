@@ -25,7 +25,7 @@ const PRE_TOOL_USE_HOOKS = [
   'resource-police.sh',
   'review-police.sh',
 ];
-const POST_TOOL_USE_HOOKS = ['format-police.sh', 'coding-police.sh'];
+const POST_TOOL_USE_HOOKS = ['format-police.sh', 'coding-police.sh', 'comment-police.sh'];
 const ALL_POLICE_HOOKS = [...PRE_TOOL_USE_HOOKS, ...POST_TOOL_USE_HOOKS];
 
 function readJson(...parts: string[]): any {

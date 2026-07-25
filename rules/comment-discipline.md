@@ -10,6 +10,7 @@ Default to writing **no comments**. Add one only when the WHY is non-obvious and
 
 - **Multi-paragraph rationale blocks** above functions, jobs, steps. The PR description / commit message is where rationale lives.
 - **References to the current PR / task / commit / plan**: `closes #N`, `Plan-15 slice 2`, `for the v0.14.0 flow`, `added when we did X`. These rot the moment the surrounding code changes.
+- **Any forge reference at all**, including bare ones agents reach for reflexively: `(#170)`, `some-repo!31`, a GitLab/GitHub issue or MR URL, a commit sha. The durability argument is the whole point: a comment lives as long as the repo, but issues and merge requests live in the **forge**. Clone the repo elsewhere, or migrate forges, and the pointer dangles — the reasoning is unreachable exactly when someone needs it. Three homes are durable and travel with the code: the comment itself (state the reason, don't link to it), the commit message (traceability), and an in-repo design doc (decisions worth keeping). A merge request is none of them.
 - **WHAT-narration**: comments that re-state what the code clearly does (`# call API`, `// loop over items`, `# release jobs run after binaries succeed`).
 - **Tutorial-style top-of-file headers** longer than ~10 lines describing how to use the file. README / docs are the right home.
 - **Documenting default values** that are visible two lines below.

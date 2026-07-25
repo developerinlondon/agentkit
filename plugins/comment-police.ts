@@ -27,6 +27,11 @@ const DEFAULTS: CommentPoliceConfig = {
     'added (when|for) (we|the)',
     'as part of (this|the) (PR|MR|fix)',
     'see (issue|ticket|PR|MR)',
+    // Bare refs rot the same way spelled-out ones do, and are what agents
+    // reach for: a hash or bang glued to a number, often after a repo slug.
+    '[#!]\\d{1,6}(\\D|$)',
+    '(gitlab|github)\\.com/\\S*/(issues|merge_requests|pull)/',
+    '(commit|sha)\\s+[0-9a-f]{7,40}',
   ],
   excludePatterns: [],
 };
