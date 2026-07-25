@@ -139,6 +139,31 @@ if [[ -z "$PUSH_REMOTE" || "$PUSH_REMOTE" == "origin" ]]; then
 fi
 
 # 4. Block push when the targeted repo is on a protected branch (even without
+
+# 5. Block creating a branch in a clone that other worktrees share. Another
+#    agent may be working in it, and checkout swaps the tree under them.
+SHARED_BRANCH_OK="${AGENTKIT_ALLOW_SHARED_BRANCH:-}"
+# Also honoured inline, since a prefix never reaches this hook's environment.
+if echo "$COMMAND" | grep -qE '(^|[[:space:];&|])AGENTKIT_ALLOW_SHARED_BRANCH=1'; then
+	SHARED_BRANCH_OK=1
+fi
+if [[ "$SHARED_BRANCH_OK" != "1" ]] \
+	&& echo "$STRIPPED" | grep -qiE '\bgit([[:space:]]+-[A-Za-z][^[:space:]]*([[:space:]]+[^-[:space:]][^[:space:]]*)?)*[[:space:]]+(checkout[[:space:]]+(-b|-B)|switch[[:space:]]+(-c|-C))\b'; then
+	GIT_DIR_PATH=$(tgit rev-parse --git-dir 2>/dev/null || echo "")
+	COMMON_DIR_PATH=$(tgit rev-parse --git-common-dir 2>/dev/null || echo "")
+	# Equal ⇒ this IS the main clone; differing ⇒ already inside a worktree.
+	if [[ -n "$GIT_DIR_PATH" && "$GIT_DIR_PATH" == "$COMMON_DIR_PATH" ]]; then
+		WORKTREE_COUNT=$(tgit worktree list 2>/dev/null | wc -l | tr -d ' ')
+		if [[ "${WORKTREE_COUNT:-0}" -gt 1 ]]; then
+			REPO_BASE=$(basename "$(tgit rev-parse --show-toplevel 2>/dev/null || echo repo)")
+			deny "BLOCKED: creating a branch in a shared clone. This checkout has ${WORKTREE_COUNT} worktrees, so another agent may be working in it and a checkout swaps the tree under them. Create a worktree instead:
+
+  git worktree add ../${REPO_BASE}-wt/<name> -b <branch> origin/<default>
+
+Intentional (nobody else is in this clone): prefix with AGENTKIT_ALLOW_SHARED_BRANCH=1."
+		fi
+	fi
+fi
 #    branch name in command) — same origin scoping as rule 3.
 if [[ -z "$PUSH_REMOTE" || "$PUSH_REMOTE" == "origin" ]] \
 	&& echo "$STRIPPED" | grep -qiE "$GIT_PUSH_RE"; then
