@@ -215,26 +215,48 @@ describe("blocking hooks have a way off and a bounded blast radius", () => {
     rmSync(subject, { force: true });
   });
 
-  test("format-police does NOT block on a broken formatter install", () => {
-    // dprint fetches wasm plugins over the network. An offline machine or one
-    // bad config key must not turn every edit into an error nobody can fix.
-    const dir = mkdtempSync(join(tmpdir(), "agentkit-fmtinfra-"));
-    const bin = join(dir, "dprint");
-    writeFileSync(bin, "#!/usr/bin/env bash\necho 'Error resolving plugin https://x/y.wasm: 404 Not Found' >&2\nexit 1\n");
-    chmodSync(bin, 0o755);
-    writeFileSync(join(dir, "dprint.json"), "{}");
-    writeFileSync(join(dir, "clean.ts"), "const a = 1;\n");
+  test("format-police does NOT block on infrastructure failures", () => {
+    // dprint fetches wasm plugins over the network, and a repo's `includes`
+    // may not cover this extension at all. Neither is something the model can
+    // act on, so neither may block. agentkit's OWN dprint.json omits .ts —
+    // blocking on that would have made this repo un-editable.
+    const cases = [
+      "Error resolving plugin https://x/y.wasm: 404 Not Found",
+      "No files found to format with the specified plugins",
+      "error sending request for url (https://plugins.dprint.dev/x.wasm)",
+    ];
+    for (const stderr of cases) {
+      const dir = mkdtempSync(join(tmpdir(), "agentkit-fmtinfra-"));
+      const bin = join(dir, "dprint");
+      writeFileSync(bin, `#!/usr/bin/env bash\necho ${JSON.stringify(stderr)} >&2\nexit 1\n`);
+      chmodSync(bin, 0o755);
+      writeFileSync(join(dir, "dprint.json"), "{}");
+      const file = join(dir, "clean.ts");
+      writeFileSync(file, "const a = 1;\n");
+      const r = spawnSync("bash", [join(repoRoot, "hooks", "claude", "format-police.sh")], {
+        input: JSON.stringify({ tool_name: "Edit", tool_input: { file_path: file, new_string: "x" } }),
+        encoding: "utf-8",
+        env: { ...process.env, PATH: `${dir}:${process.env.PATH ?? ""}` },
+        cwd: dir,
+      });
+      expect(r.status, stderr).toBe(0);
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a real edit to a .ts file in THIS repo does not error", () => {
+    // The regression that would have shipped: agentkit's dprint.json covers
+    // md/json/toml/yaml only, so dprint reports "no files found" for every .ts
+    // — and blocking on that makes the repo un-editable.
     const r = spawnSync("bash", [join(repoRoot, "hooks", "claude", "format-police.sh")], {
       input: JSON.stringify({
         tool_name: "Edit",
-        tool_input: { file_path: join(dir, "clean.ts"), new_string: "x" },
+        tool_input: { file_path: join(repoRoot, "plugins", "comment-police.ts"), new_string: "x" },
       }),
       encoding: "utf-8",
-      env: { ...process.env, PATH: `${dir}:${process.env.PATH ?? ""}` },
-      cwd: dir,
+      cwd: repoRoot,
     });
-    expect(r.status).toBe(0);
-    rmSync(dir, { recursive: true, force: true });
+    expect(r.status, `${r.stdout ?? ""}${r.stderr ?? ""}`).toBe(0);
   });
 
   test("format-police exits 2 when dprint actually fails", () => {
@@ -245,7 +267,11 @@ describe("blocking hooks have a way off and a bounded blast radius", () => {
     const dir = mkdtempSync(join(tmpdir(), "agentkit-fmt-"));
     const file = join(dir, "broken.ts");
     const bin = join(dir, "dprint");
-    writeFileSync(bin, "#!/usr/bin/env bash\necho 'syntax error' >&2\nexit 1\n");
+    // dprint's own attributable wording — the allowlisted signal.
+    writeFileSync(
+      bin,
+      `#!/usr/bin/env bash\necho "Error formatting $4: Unexpected token" >&2\nexit 1\n`,
+    );
     chmodSync(bin, 0o755);
     writeFileSync(join(dir, "dprint.json"), "{}");
     writeFileSync(file, "const = = =;\n");
@@ -256,6 +282,91 @@ describe("blocking hooks have a way off and a bounded blast radius", () => {
       cwd: dir,
     });
     expect(`${r.stderr ?? ""}`).toContain("dprint fmt failed");
+    expect(r.status).toBe(2);
+    rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe("coding-police reports what the EDIT did, not what the file already was", () => {
+  // The subtraction pass had no coverage: narrowing it back to file-length
+  // only — reintroducing the bug it was written for — passed the whole suite.
+  function legacyRepo(): { dir: string; file: string; git: (...a: string[]) => void; } {
+    const dir = mkdtempSync(join(tmpdir(), "agentkit-sub-"));
+    const file = join(dir, "legacy.ts");
+    const git = (...a: string[]) => {
+      spawnSync("git", a, { cwd: dir, encoding: "utf-8" });
+    };
+    git("init", "-q");
+    git("config", "user.email", "t@t.t");
+    git("config", "user.name", "t");
+    return { dir, file, git };
+  }
+  const longFn = (name: string, n: number) =>
+    `export function ${name}() {\n${
+      Array.from({ length: n }, (_, i) => `  const v${i} = ${i};`).join("\n")
+    }\n}\n`;
+  const dupBlock = (tag: string) =>
+    `// dup ${tag}\nconst a = 1;\nconst b = 2;\nconst c = 3;\nconst d = 4;\nconst e = 5;\n`;
+
+  const run = (file: string) => {
+    const r = spawnSync("bash", [join(repoRoot, "hooks", "claude", "coding-police.sh")], {
+      input: JSON.stringify({ tool_name: "Edit", tool_input: { file_path: file, new_string: "x" } }),
+      encoding: "utf-8",
+    });
+    return { out: `${r.stdout ?? ""}${r.stderr ?? ""}`, status: r.status };
+  };
+
+  test("a legacy long function is not re-reported when unrelated lines shift it", () => {
+    const { dir, file, git } = legacyRepo();
+    writeFileSync(file, longFn("legacy", 130));
+    git("add", "-A");
+    git("commit", "-qm", "legacy");
+    // Prepend unrelated lines: the function moves down but is untouched.
+    writeFileSync(file, `const x0 = 0;\nconst x1 = 1;\n${longFn("legacy", 130)}`);
+    const r = run(file);
+    expect(r.out).not.toContain("LONG FUNCTION");
+    expect(r.status).toBe(0);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("a NEW long function IS reported even though one already existed", () => {
+    // The failure mode of comparing a single max number: the new violation's
+    // metric was lower than the legacy one's, so it vanished.
+    const { dir, file, git } = legacyRepo();
+    writeFileSync(file, longFn("legacy", 130));
+    git("add", "-A");
+    git("commit", "-qm", "legacy");
+    writeFileSync(file, `${longFn("fresh", 112)}${longFn("legacy", 130)}`);
+    const r = run(file);
+    expect(r.out).toContain("`fresh`");
+    expect(r.out).not.toContain("`legacy`");
+    expect(r.status).toBe(2);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("an ADDITIONAL duplicate block is reported; the pre-existing ones are not", () => {
+    const { dir, file, git } = legacyRepo();
+    writeFileSync(file, `${dupBlock("one")}${dupBlock("two")}`);
+    git("add", "-A");
+    git("commit", "-qm", "legacy dups");
+    const r0 = run(file);
+    expect(r0.out).not.toContain("DUPLICATE CODE");
+    writeFileSync(file, `${dupBlock("one")}${dupBlock("two")}${dupBlock("three")}`);
+    const r1 = run(file);
+    expect(r1.out).toContain("DUPLICATE CODE");
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("cross-repo relative paths survive the baseline pass", () => {
+    // The subtraction reset the violations array, silently disabling this
+    // check on every TRACKED file — exactly the files it targets.
+    const { dir, git } = legacyRepo();
+    const file = join(dir, "conf.ts");
+    writeFileSync(file, 'export const p = "../../core/roles";\n');
+    git("add", "-A");
+    git("commit", "-qm", "tracked");
+    const r = run(file);
+    expect(r.out).toContain("CROSS-REPO RELATIVE PATH");
     expect(r.status).toBe(2);
     rmSync(dir, { recursive: true, force: true });
   });

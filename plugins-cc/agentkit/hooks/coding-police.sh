@@ -144,11 +144,6 @@ baseline_of() {
   git -C "$top" show "HEAD:$rel" 2>/dev/null || true
 }
 
-# Whether this edit made `metric` worse than it already was at HEAD.
-worsened() {
-  local now="$1" was="$2"
-  (( now > was ))
-}
 
 check_file_length() {
   local line_count
@@ -369,26 +364,30 @@ fi
 
 # Whole-file checks measure state this edit may not have caused. Run them once
 # against the committed baseline and once against the working file, then report
-# only what got WORSE — otherwise a legacy file with a long function or a
+# only what is NEW — otherwise a legacy file with a long function or a
 # duplicated block nags after every unrelated edit, forever, and there is no
 # PostToolUse loop guard to stop it.
 #
-# Keyed by violation LABEL with the largest number seen for that label: line
-# numbers shift, counts and sizes are what "worse" means.
-worst_by_label() {
-  local v label n
-  for v in "$@"; do
-    label=${v%%:*}
-    n=$(printf '%s' "$v" | grep -oE '[0-9]+' | sort -rn | head -1)
-    printf '%s\t%s\n' "$label" "${n:-0}"
-  done | awk -F'\t' '{ if ($2+0 > m[$1]) m[$1]=$2+0 } END { for (k in m) printf "%s\t%s\n", k, m[k] }'
+# Compared as a MULTISET of violations with every number blanked. Numbers are
+# line offsets and sizes that shift when unrelated lines move, so matching on
+# them reported untouched legacy code and hid genuinely new violations. Blanking
+# them compares the SHAPE and the identifier; counting occurrences means a
+# second duplicate block, or a second over-long function, still surfaces.
+# Blank only POSITIONS (line numbers), never sizes or counts — those are the
+# severity. "1200 lines" vs "1400 lines" must differ; "starts at line 201" vs
+# "line 211" must not.
+violation_shape() {
+  printf '%s' "$1" | sed -E 's/(at lines? )[0-9]+/\1#/g; s/(and )[0-9]+/\1#/g'
 }
 
-BASELINE_WORST=""
-BASELINE_FILE=""
+# The cross-repo check already ran and its findings are NOT whole-file state —
+# they must survive the baseline pass, which resets the array.
+PRE_EXISTING=("${VIOLATIONS[@]+"${VIOLATIONS[@]}"}")
+
+BASE_SHAPES=()
 baseline_content=$(baseline_of)
 if [[ -n "$baseline_content" ]]; then
-  BASELINE_FILE=$(mktemp "${TMPDIR:-/tmp}/coding-police-base.XXXXXX.${FILE_PATH##*.}")
+  BASELINE_FILE=$(mktemp "${TMPDIR:-/tmp}/coding-police-base-XXXXXX")
   printf '%s\n' "$baseline_content" > "$BASELINE_FILE"
   REAL_FILE_PATH="$FILE_PATH"
   FILE_PATH="$BASELINE_FILE"
@@ -397,30 +396,39 @@ if [[ -n "$baseline_content" ]]; then
   check_function_lengths
   check_duplicate_blocks
   check_export_count
-  BASELINE_WORST=$(worst_by_label "${VIOLATIONS[@]+"${VIOLATIONS[@]}"}")
+  for v in "${VIOLATIONS[@]+"${VIOLATIONS[@]}"}"; do
+    BASE_SHAPES+=("$(violation_shape "$v")")
+  done
   FILE_PATH="$REAL_FILE_PATH"
   rm -f "$BASELINE_FILE"
-  VIOLATIONS=()
 fi
 
+VIOLATIONS=()
 check_file_length
 check_function_lengths
 check_duplicate_blocks
 check_export_count
 check_monolith_directory
 
-if [[ -n "$BASELINE_WORST" ]]; then
+if (( ${#BASE_SHAPES[@]} > 0 )); then
   KEPT=()
   for v in "${VIOLATIONS[@]+"${VIOLATIONS[@]}"}"; do
-    label=${v%%:*}
-    n=$(printf '%s' "$v" | grep -oE '[0-9]+' | sort -rn | head -1); n=${n:-0}
-    was=$(printf '%s' "$BASELINE_WORST" | awk -F'\t' -v l="$label" '$1==l { print $2 }')
-    # Present at HEAD and no worse now: not this edit's doing.
-    if [[ -n "$was" ]] && (( n <= was )); then continue; fi
-    KEPT+=("$v")
+    shape=$(violation_shape "$v")
+    matched=false
+    for i in "${!BASE_SHAPES[@]}"; do
+      if [[ "${BASE_SHAPES[$i]}" == "$shape" ]]; then
+        # Consume it: a THIRD duplicate block when the baseline had two is new.
+        unset 'BASE_SHAPES[i]'
+        matched=true
+        break
+      fi
+    done
+    [[ "$matched" == true ]] || KEPT+=("$v")
   done
   VIOLATIONS=("${KEPT[@]+"${KEPT[@]}"}")
 fi
+
+VIOLATIONS=("${PRE_EXISTING[@]+"${PRE_EXISTING[@]}"}" "${VIOLATIONS[@]+"${VIOLATIONS[@]}"}")
 
 # ── Output violations ──────────────────────────────────────────────────────
 if (( ${#VIOLATIONS[@]} > 0 )); then

@@ -83,17 +83,17 @@ trap 'rm -f "$ERR_LOG"' EXIT
 if ! "$DPRINT" fmt $CONFIG_FLAG "$FILE_PATH" 2>"$ERR_LOG"; then
   err=$(cat "$ERR_LOG")
   echo "⚠ dprint fmt failed for $FILE_PATH: $err" >&2
-  # Exit 2 ONLY when the failure is attributable to the edited file, i.e. the
-  # model can act on it. dprint fetches wasm plugins over the network, so a
-  # config typo or an offline machine would otherwise turn EVERY edit to any
-  # formattable file into an error nobody can fix — the exact blast-radius
-  # problem this hook set out to bound.
+  # ALLOWLIST, not a denylist. Only a failure dprint attributes to THIS file is
+  # something the model can act on; everything else — an unresolvable plugin, a
+  # scoped `includes` that excludes this extension, no network — is
+  # infrastructure, and blocking on it turns every edit into an error nobody
+  # can fix. Denylisting was tried and was unsound: dprint echoes the path into
+  # the message, so a pattern like *config* silently swallowed real errors in
+  # any file under a config/ directory.
   case "$err" in
-    *"Error resolving plugin"*|*"plugin"*"404"*|*"error sending request"*|*"os error"*|\
-    *"No such file or directory"*|*"Had 0 plugins"*|*"config"*)
-      exit 0 ;;
+    *"Error formatting $FILE_PATH"*) exit 2 ;;
   esac
-  exit 2
+  exit 0
 fi
 
 exit 0
