@@ -10,9 +10,14 @@ set -euo pipefail
 # Kill switch, matching the AGENTKIT_* convention used by the PreToolUse
 # police. Comma-separated hook names; a blocking hook with no way off is a
 # hook that eventually gets deleted instead of configured.
-case ",${AGENTKIT_SKIP_HOOKS:-}," in
-  *",comment-police,"*|*",all,"*) exit 0 ;;
-esac
+# Trimmed, so "a, b" behaves like "a,b" — version-police already trims, and two
+# readings of one env var is a silent disagreement.
+if [[ -n "${AGENTKIT_SKIP_HOOKS:-}" ]]; then
+  _skip=",$(printf '%s' "$AGENTKIT_SKIP_HOOKS" | tr -d '[:space:]'),"
+  case "$_skip" in
+    *",comment-police,"*|*",all,"*) exit 0 ;;
+  esac
+fi
 
 AGENTKIT_CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/agentkit/config.yaml"
 

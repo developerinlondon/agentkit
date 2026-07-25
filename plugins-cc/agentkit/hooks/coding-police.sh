@@ -7,9 +7,14 @@ set -euo pipefail
 # Kill switch, matching the AGENTKIT_* convention used by the PreToolUse
 # police. Comma-separated hook names; a blocking hook with no way off is a
 # hook that eventually gets deleted instead of configured.
-case ",${AGENTKIT_SKIP_HOOKS:-}," in
-  *",coding-police,"*|*",all,"*) exit 0 ;;
-esac
+# Trimmed, so "a, b" behaves like "a,b" — version-police already trims, and two
+# readings of one env var is a silent disagreement.
+if [[ -n "${AGENTKIT_SKIP_HOOKS:-}" ]]; then
+  _skip=",$(printf '%s' "$AGENTKIT_SKIP_HOOKS" | tr -d '[:space:]'),"
+  case "$_skip" in
+    *",coding-police,"*|*",all,"*) exit 0 ;;
+  esac
+fi
 
 # ── Configuration ───────────────────────────────────────────────────────────
 AGENTKIT_CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/agentkit/config.yaml"
@@ -146,13 +151,8 @@ worsened() {
 }
 
 check_file_length() {
-  local line_count was
+  local line_count
   line_count=$(wc -l < "$FILE_PATH")
-  was=$(baseline_of | wc -l)
-  # Already over before this edit and not made worse: not this edit's business.
-  if (( was > MAX_FILE_LINES )) && ! worsened "$line_count" "$was"; then
-    return 0
-  fi
   if (( line_count > MAX_FILE_LINES )); then
     local excess=$(( line_count - MAX_FILE_LINES ))
     VIOLATIONS+=("FILE TOO LONG: ${line_count} lines (limit: ${MAX_FILE_LINES}, over by ${excess}). Split this file into smaller modules grouped by functionality. Identify logical boundaries (types, helpers, handlers, constants) and extract them.")
@@ -367,11 +367,60 @@ if [[ "$IS_CODE_FILE" != true ]]; then
   exit 0
 fi
 
+# Whole-file checks measure state this edit may not have caused. Run them once
+# against the committed baseline and once against the working file, then report
+# only what got WORSE — otherwise a legacy file with a long function or a
+# duplicated block nags after every unrelated edit, forever, and there is no
+# PostToolUse loop guard to stop it.
+#
+# Keyed by violation LABEL with the largest number seen for that label: line
+# numbers shift, counts and sizes are what "worse" means.
+worst_by_label() {
+  local v label n
+  for v in "$@"; do
+    label=${v%%:*}
+    n=$(printf '%s' "$v" | grep -oE '[0-9]+' | sort -rn | head -1)
+    printf '%s\t%s\n' "$label" "${n:-0}"
+  done | awk -F'\t' '{ if ($2+0 > m[$1]) m[$1]=$2+0 } END { for (k in m) printf "%s\t%s\n", k, m[k] }'
+}
+
+BASELINE_WORST=""
+BASELINE_FILE=""
+baseline_content=$(baseline_of)
+if [[ -n "$baseline_content" ]]; then
+  BASELINE_FILE=$(mktemp "${TMPDIR:-/tmp}/coding-police-base.XXXXXX.${FILE_PATH##*.}")
+  printf '%s\n' "$baseline_content" > "$BASELINE_FILE"
+  REAL_FILE_PATH="$FILE_PATH"
+  FILE_PATH="$BASELINE_FILE"
+  VIOLATIONS=()
+  check_file_length
+  check_function_lengths
+  check_duplicate_blocks
+  check_export_count
+  BASELINE_WORST=$(worst_by_label "${VIOLATIONS[@]+"${VIOLATIONS[@]}"}")
+  FILE_PATH="$REAL_FILE_PATH"
+  rm -f "$BASELINE_FILE"
+  VIOLATIONS=()
+fi
+
 check_file_length
 check_function_lengths
 check_duplicate_blocks
 check_export_count
 check_monolith_directory
+
+if [[ -n "$BASELINE_WORST" ]]; then
+  KEPT=()
+  for v in "${VIOLATIONS[@]+"${VIOLATIONS[@]}"}"; do
+    label=${v%%:*}
+    n=$(printf '%s' "$v" | grep -oE '[0-9]+' | sort -rn | head -1); n=${n:-0}
+    was=$(printf '%s' "$BASELINE_WORST" | awk -F'\t' -v l="$label" '$1==l { print $2 }')
+    # Present at HEAD and no worse now: not this edit's doing.
+    if [[ -n "$was" ]] && (( n <= was )); then continue; fi
+    KEPT+=("$v")
+  done
+  VIOLATIONS=("${KEPT[@]+"${KEPT[@]}"}")
+fi
 
 # ── Output violations ──────────────────────────────────────────────────────
 if (( ${#VIOLATIONS[@]} > 0 )); then

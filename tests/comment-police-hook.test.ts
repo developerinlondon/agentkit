@@ -195,6 +195,48 @@ describe("blocking hooks have a way off and a bounded blast radius", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
+  test("AGENTKIT_SKIP_HOOKS tolerates spaces, matching version-police", () => {
+    const subject = join(tmpdir(), `agentkit-skipws-${process.pid}.ts`);
+    const bad = `${"// filler comment line\n".repeat(8)}const a = 1;\n`;
+    writeFileSync(subject, bad);
+    const payload = JSON.stringify({
+      tool_name: "Edit",
+      tool_input: { file_path: subject, new_string: bad },
+    });
+    const hook = join(repoRoot, "hooks", "claude", "comment-police.sh");
+    for (const value of [" all ", "coding-police, comment-police", "\tall"]) {
+      const r = spawnSync("bash", [hook], {
+        input: payload,
+        encoding: "utf-8",
+        env: { ...process.env, AGENTKIT_SKIP_HOOKS: value },
+      });
+      expect(r.status, `AGENTKIT_SKIP_HOOKS=${JSON.stringify(value)}`).toBe(0);
+    }
+    rmSync(subject, { force: true });
+  });
+
+  test("format-police does NOT block on a broken formatter install", () => {
+    // dprint fetches wasm plugins over the network. An offline machine or one
+    // bad config key must not turn every edit into an error nobody can fix.
+    const dir = mkdtempSync(join(tmpdir(), "agentkit-fmtinfra-"));
+    const bin = join(dir, "dprint");
+    writeFileSync(bin, "#!/usr/bin/env bash\necho 'Error resolving plugin https://x/y.wasm: 404 Not Found' >&2\nexit 1\n");
+    chmodSync(bin, 0o755);
+    writeFileSync(join(dir, "dprint.json"), "{}");
+    writeFileSync(join(dir, "clean.ts"), "const a = 1;\n");
+    const r = spawnSync("bash", [join(repoRoot, "hooks", "claude", "format-police.sh")], {
+      input: JSON.stringify({
+        tool_name: "Edit",
+        tool_input: { file_path: join(dir, "clean.ts"), new_string: "x" },
+      }),
+      encoding: "utf-8",
+      env: { ...process.env, PATH: `${dir}:${process.env.PATH ?? ""}` },
+      cwd: dir,
+    });
+    expect(r.status).toBe(0);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
   test("format-police exits 2 when dprint actually fails", () => {
     // The surviving mutant: nothing tested format-police's exit at all.
     // A stub dprint that always fails makes this deterministic — asserting

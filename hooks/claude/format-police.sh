@@ -7,9 +7,14 @@ set -euo pipefail
 # Kill switch, matching the AGENTKIT_* convention used by the PreToolUse
 # police. Comma-separated hook names; a blocking hook with no way off is a
 # hook that eventually gets deleted instead of configured.
-case ",${AGENTKIT_SKIP_HOOKS:-}," in
-  *",format-police,"*|*",all,"*) exit 0 ;;
-esac
+# Trimmed, so "a, b" behaves like "a,b" — version-police already trims, and two
+# readings of one env var is a silent disagreement.
+if [[ -n "${AGENTKIT_SKIP_HOOKS:-}" ]]; then
+  _skip=",$(printf '%s' "$AGENTKIT_SKIP_HOOKS" | tr -d '[:space:]'),"
+  case "$_skip" in
+    *",format-police,"*|*",all,"*) exit 0 ;;
+  esac
+fi
 
 INPUT=$(cat)
 TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty')
@@ -70,10 +75,24 @@ else
   exit 0
 fi
 
-# Format the file — warn on failure instead of silently swallowing
-if ! "$DPRINT" fmt $CONFIG_FLAG "$FILE_PATH" 2>/tmp/dprint-err.log; then
-  echo "⚠ dprint fmt failed for $FILE_PATH: $(cat /tmp/dprint-err.log)" >&2
-  # Exit 2: a formatting failure that nobody hears lands unformatted code.
+# Per-invocation temp file: a fixed /tmp path races concurrent sessions and is
+# a symlink target.
+ERR_LOG=$(mktemp "${TMPDIR:-/tmp}/dprint-err.XXXXXX")
+trap 'rm -f "$ERR_LOG"' EXIT
+
+if ! "$DPRINT" fmt $CONFIG_FLAG "$FILE_PATH" 2>"$ERR_LOG"; then
+  err=$(cat "$ERR_LOG")
+  echo "⚠ dprint fmt failed for $FILE_PATH: $err" >&2
+  # Exit 2 ONLY when the failure is attributable to the edited file, i.e. the
+  # model can act on it. dprint fetches wasm plugins over the network, so a
+  # config typo or an offline machine would otherwise turn EVERY edit to any
+  # formattable file into an error nobody can fix — the exact blast-radius
+  # problem this hook set out to bound.
+  case "$err" in
+    *"Error resolving plugin"*|*"plugin"*"404"*|*"error sending request"*|*"os error"*|\
+    *"No such file or directory"*|*"Had 0 plugins"*|*"config"*)
+      exit 0 ;;
+  esac
   exit 2
 fi
 
