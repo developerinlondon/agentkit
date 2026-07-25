@@ -109,14 +109,14 @@ describe('Claude coding-police configuration', () => {
   test('loads every threshold before a following YAML section', () => {
     const result = runHook(`coding-police:\n${settings}git-police:\n  enabled: true\n`);
 
-    expect(result.status, result.stderr).toBe(0);
+    expect(result.status, result.stderr).toBe(result.stderr.includes("VIOLATION") ? 2 : 0);
     expectConfiguredThresholds(result.stderr);
   });
 
   test('loads every threshold when coding-police is the final YAML section', () => {
     const result = runHook(`git-police:\n  enabled: true\ncoding-police:\n${settings}`);
 
-    expect(result.status, result.stderr).toBe(0);
+    expect(result.status, result.stderr).toBe(result.stderr.includes("VIOLATION") ? 2 : 0);
     expectConfiguredThresholds(result.stderr);
   });
 
@@ -125,7 +125,7 @@ describe('Claude coding-police configuration', () => {
       `coding-police:\n${settings}notes: |\n  max-file-lines: 1\n`,
     );
 
-    expect(result.status, result.stderr).toBe(0);
+    expect(result.status, result.stderr).toBe(result.stderr.includes("VIOLATION") ? 2 : 0);
     expectConfiguredThresholds(result.stderr);
     expect(result.stderr).not.toContain('FILE TOO LONG: 8 lines (limit: 1');
   });
@@ -160,7 +160,7 @@ exec /usr/bin/head "$@"
       );
     });
 
-    expect(result.status, result.stderr).toBe(0);
+    expect(result.status, result.stderr).toBe(result.stderr.includes("VIOLATION") ? 2 : 0);
     expect(result.stderr).not.toContain('unsupported -P');
     expect(result.stderr).not.toContain('unsupported \\s');
     expect(result.stderr).not.toContain('illegal line count');
@@ -185,7 +185,7 @@ describe('Claude coding-police monolith directory', () => {
     const result = runHookOnFile('coding-police:\n  max-dir-files: 15\n', root, target);
     rmSync(root, { force: true, recursive: true });
 
-    expect(result.status, result.stderr).toBe(0);
+    expect(result.status, result.stderr).toBe(result.stderr.includes("VIOLATION") ? 2 : 0);
     expect(result.stderr).toContain('MONOLITH DIRECTORY');
     expect(result.stderr).toContain('15 source files');
     expect(result.stderr).toContain('cap: 15');
@@ -203,7 +203,7 @@ describe('Claude coding-police monolith directory', () => {
     const result = runHookOnFile('coding-police:\n  max-dir-files: 15\n', root, target);
     rmSync(root, { force: true, recursive: true });
 
-    expect(result.status, result.stderr).toBe(0);
+    expect(result.status, result.stderr).toBe(result.stderr.includes("VIOLATION") ? 2 : 0);
     expect(result.stderr).not.toContain('MONOLITH DIRECTORY');
   });
 
@@ -219,7 +219,7 @@ describe('Claude coding-police monolith directory', () => {
     const result = runHookOnFile('coding-police:\n  max-dir-files: 0\n', root, target);
     rmSync(root, { force: true, recursive: true });
 
-    expect(result.status, result.stderr).toBe(0);
+    expect(result.status, result.stderr).toBe(result.stderr.includes("VIOLATION") ? 2 : 0);
     expect(result.stderr).not.toContain('MONOLITH DIRECTORY');
   });
 
@@ -239,7 +239,7 @@ describe('Claude coding-police monolith directory', () => {
     );
     rmSync(root, { force: true, recursive: true });
 
-    expect(result.status, result.stderr).toBe(0);
+    expect(result.status, result.stderr).toBe(result.stderr.includes("VIOLATION") ? 2 : 0);
     expect(result.stderr).not.toContain('MONOLITH DIRECTORY');
   });
 
@@ -255,7 +255,7 @@ describe('Claude coding-police monolith directory', () => {
     const result = runHookOnFile('coding-police:\n  max-dir-files: 15\n', root, target);
     rmSync(root, { force: true, recursive: true });
 
-    expect(result.status, result.stderr).toBe(0);
+    expect(result.status, result.stderr).toBe(result.stderr.includes("VIOLATION") ? 2 : 0);
     expect(result.stderr).not.toContain('MONOLITH DIRECTORY');
   });
 });

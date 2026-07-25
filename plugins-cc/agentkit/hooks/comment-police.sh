@@ -148,6 +148,9 @@ if (( ${#VIOLATIONS[@]} > 0 )); then
     echo ""
     echo "Fix these before proceeding."
   } >&2
+  # Exit 2 is what delivers this. Claude Code discards a PostToolUse
+  # hook's stderr at exit 0, so the check ran and nobody heard it.
+  exit 2
 fi
 
 exit 0

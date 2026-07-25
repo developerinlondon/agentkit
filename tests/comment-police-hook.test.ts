@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'bun:test';
 import { dirname, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 
 const repoRoot = dirname(import.meta.dir);
 const hook = join(repoRoot, 'hooks', 'claude', 'comment-police.sh');
@@ -12,8 +14,12 @@ function run(added: string, filePath = '/tmp/subject.ts', hookPath = hook): stri
     tool_input: { file_path: filePath, new_string: added },
   });
   const result = spawnSync('bash', [hookPath], { input: payload, encoding: 'utf-8' });
-  expect(result.status).toBe(0);
-  return `${result.stdout ?? ''}${result.stderr ?? ''}`;
+  const out = `${result.stdout ?? ''}${result.stderr ?? ''}`;
+  // Delivery is half the contract: Claude Code discards a PostToolUse hook's
+  // stderr at exit 0, so a violation reported at 0 is one nobody hears. This
+  // helper previously asserted 0 unconditionally, which pinned that bug.
+  expect(result.status).toBe(out.includes('VIOLATION') ? 2 : 0);
+  return out;
 }
 
 const flagged = (out: string) => out.includes('COMMENT DISCIPLINE VIOLATION');
@@ -73,5 +79,55 @@ describe('comment-police hook', () => {
     const sample = '// Drain window (#170): nothing to cancel\nconst a = 1;\n';
     expect(flagged(run(sample, '/tmp/subject.ts', pluginHook))).toBe(true);
     expect(flagged(run('// A single honest reason.\nconst a = 1;\n', '/tmp/subject.ts', pluginHook))).toBe(false);
+  });
+});
+
+describe('police hooks reach the model', () => {
+  // coding-police measures the file ON DISK; comment-police reads the added
+  // string. Both need a real path, so each case writes its own subject.
+  const cases = [
+    { name: 'comment-police', hook: join(repoRoot, 'hooks', 'claude', 'comment-police.sh'),
+      bad: `${'// filler comment line\n'.repeat(8)}const a = 1;\n` },
+    { name: 'coding-police', hook: join(repoRoot, 'hooks', 'claude', 'coding-police.sh'),
+      bad: 'const x = 1;\n'.repeat(1200) },
+  ];
+  const subject = join(tmpdir(), `agentkit-police-${process.pid}.ts`);
+
+  // A PostToolUse hook that reports a violation at exit 0 has its stderr
+  // discarded — it runs, finds the problem, and the model never learns of it.
+  for (const c of cases) {
+    test(`${c.name} exits 2 on a violation, so its stderr is delivered`, () => {
+      writeFileSync(subject, c.bad);
+      const payload = JSON.stringify({
+        tool_name: 'Edit',
+        tool_input: { file_path: subject, new_string: c.bad },
+      });
+      const r = spawnSync('bash', [c.hook], { input: payload, encoding: 'utf-8' });
+      rmSync(subject, { force: true });
+      expect(`${r.stdout ?? ''}${r.stderr ?? ''}`).toContain('VIOLATION');
+      expect(r.status).toBe(2);
+    });
+
+    test(`${c.name} stays silent and exits 0 on a clean edit`, () => {
+      const clean = 'const a = 1;\nconst b = 2;\n';
+      writeFileSync(subject, clean);
+      const payload = JSON.stringify({
+        tool_name: 'Edit',
+        tool_input: { file_path: subject, new_string: clean },
+      });
+      const r = spawnSync('bash', [c.hook], { input: payload, encoding: 'utf-8' });
+      rmSync(subject, { force: true });
+      expect(r.status).toBe(0);
+    });
+  }
+
+  test('the packaged plugin copy matches the canonical hook byte for byte', () => {
+    // Two copies ship; a fix applied to one and not the other is a hook that
+    // behaves differently depending on how agentkit was installed.
+    for (const name of ['comment-police.sh', 'coding-police.sh', 'format-police.sh']) {
+      const a = readFileSync(join(repoRoot, 'hooks', 'claude', name), 'utf-8');
+      const b = readFileSync(join(repoRoot, 'plugins-cc', 'agentkit', 'hooks', name), 'utf-8');
+      expect(b).toBe(a);
+    }
   });
 });

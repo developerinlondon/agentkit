@@ -66,6 +66,8 @@ fi
 # Format the file — warn on failure instead of silently swallowing
 if ! "$DPRINT" fmt $CONFIG_FLAG "$FILE_PATH" 2>/tmp/dprint-err.log; then
   echo "⚠ dprint fmt failed for $FILE_PATH: $(cat /tmp/dprint-err.log)" >&2
+  # Exit 2: a formatting failure that nobody hears lands unformatted code.
+  exit 2
 fi
 
 exit 0
