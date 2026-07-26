@@ -73,15 +73,35 @@ resolve_target() {
 	return 1
 }
 
+is_tasks_value() {
+	[[ "$1" =~ ^([0-9]+|infinity)$ ]]
+}
+
+is_size_value() {
+	[[ "$1" =~ ^([0-9]+[[:space:]]*[KMGTPE]?|[0-9]+[[:space:]]*%|infinity)$ ]]
+}
+
+warn_bad() {
+	warn "ignoring $1='$2' in $SESSION_CONF: not a valid systemd value"
+}
+
 load_conf() {
 	[[ -f "$SESSION_CONF" ]] || return 0
 
 	# Root-owned only; a user-writable limits file would be a trivial escape.
-	local owner
-	owner="$(stat -c '%u' "$SESSION_CONF" 2>/dev/null || printf '')"
-	if [[ "$owner" != "0" ]]; then
-		warn "ignoring $SESSION_CONF: not root-owned"
-		return 0
+	# Root's or our own; a third party's limits file is not trusted. Our own is
+	# no escalation — the same user can already run the runtime unshimmed.
+	if [[ ! -O "$SESSION_CONF" ]]; then
+		local owner
+		owner="$(stat -c '%u' "$SESSION_CONF" 2>/dev/null || printf '')"
+		if [[ -z "$owner" ]]; then
+			warn "ignoring $SESSION_CONF: cannot determine owner"
+			return 0
+		fi
+		if [[ "$owner" != "0" ]]; then
+			warn "ignoring $SESSION_CONF: owned by neither root nor $(id -un)"
+			return 0
+		fi
 	fi
 
 	local line key value
@@ -94,11 +114,14 @@ load_conf() {
 
 		key="${line%%=*}"
 		value="${line#*=}"
+		# systemd rejects a malformed property and never runs the payload, and
+		# we exec into it — so an unvalidated typo here would stop every session
+		# on the host from starting. Keep the built-in default instead.
 		case "$key" in
-			TASKS_MAX) [[ "$value" =~ ^[0-9]+$ ]] && TASKS_MAX="$value" ;;
-			MEMORY_HIGH) MEMORY_HIGH="$value" ;;
-			MEMORY_MAX) MEMORY_MAX="$value" ;;
-			MEMORY_SWAP_MAX) MEMORY_SWAP_MAX="$value" ;;
+			TASKS_MAX) is_tasks_value "$value" && TASKS_MAX="$value" || warn_bad "$key" "$value" ;;
+			MEMORY_HIGH) is_size_value "$value" && MEMORY_HIGH="$value" || warn_bad "$key" "$value" ;;
+			MEMORY_MAX) is_size_value "$value" && MEMORY_MAX="$value" || warn_bad "$key" "$value" ;;
+			MEMORY_SWAP_MAX) is_size_value "$value" && MEMORY_SWAP_MAX="$value" || warn_bad "$key" "$value" ;;
 			*) ;; # forward-compatible: unknown keys are ignored, never fatal
 		esac
 	done <"$SESSION_CONF"
@@ -165,4 +188,7 @@ main() {
 		-- "$target" "$@"
 }
 
-main "$@"
+# Sourcing exposes the validators for testing without running a session.
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+	main "$@"
+fi

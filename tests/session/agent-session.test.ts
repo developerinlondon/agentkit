@@ -124,17 +124,51 @@ describe('agent-session', () => {
     expect(result.stderr).toContain('cannot find');
   });
 
-  test('ignores a session conf that is not root-owned, and says so', () => {
+  test('honours a conf we own', () => {
     const conf = join(root, 'session-guard.conf');
-    writeFileSync(conf, 'TASKS_MAX=2048\n');
+    writeFileSync(conf, 'TASKS_MAX=2048\nMEMORY_MAX=8G\n');
     const result = run([join(shimDir, 'probecmd'), 'theta'], { AGENTKIT_SESSION_CONF: conf });
 
     expect(result.status).toBe(0);
-    expect(result.stderr).toContain('not root-owned');
-    // The attacker-supplied limit must not reach systemd.
     const invocation = readFileSync(systemdLog, 'utf8');
+    expect(invocation).toContain('TasksMax=2048');
+    expect(invocation).toContain('MemoryMax=8G');
+  });
+
+  test('a value systemd would refuse never reaches systemd', () => {
+    // systemd rejects the whole property and runs nothing, and the shim execs
+    // into it — so an unvalidated typo here would stop the session starting.
+    const conf = join(root, 'session-guard.conf');
+    writeFileSync(conf, 'MEMORY_MAX=16GB\nTASKS_MAX=lots\n');
+    const result = run([join(shimDir, 'probecmd'), 'kappa'], { AGENTKIT_SESSION_CONF: conf });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('real probecmd kappa');
+    expect(result.stderr).toContain('not a valid systemd value');
+
+    const invocation = readFileSync(systemdLog, 'utf8');
+    expect(invocation).not.toContain('16GB');
+    expect(invocation).not.toContain('lots');
+    expect(invocation).toContain('MemoryMax=16G');
     expect(invocation).toContain('TasksMax=4096');
-    expect(invocation).not.toContain('TasksMax=2048');
+  });
+
+  test('rejects conf values systemd would refuse, and keeps systemd-accepted ones', () => {
+    // systemd rejecting a property means the payload never runs, and the shim
+    // execs into it — so an unvalidated typo would stop every session starting.
+    const probe = (fn: string, value: string) =>
+      spawnSync('bash', ['-c', `. '${shim}'; ${fn} '${value}' && echo accept || echo reject`], {
+        encoding: 'utf8',
+      }).stdout.trim();
+
+    for (const good of ['16G', '512M', '1024', 'infinity', '50%', '16 G']) {
+      expect(`${good}:${probe('is_size_value', good)}`).toBe(`${good}:accept`);
+    }
+    for (const bad of ['notanumber', '16GB', '', 'G16']) {
+      expect(`${bad}:${probe('is_size_value', bad)}`).toBe(`${bad}:reject`);
+    }
+    expect(probe('is_tasks_value', '4096')).toBe('accept');
+    expect(probe('is_tasks_value', 'lots')).toBe('reject');
   });
 
   test('a missing session conf leaves the built-in defaults in place', () => {
