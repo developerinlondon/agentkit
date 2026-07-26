@@ -5,6 +5,10 @@
 # Equivalent to: plugins/git-police.ts (OpenCode)
 set -euo pipefail
 
+# bash 3.2 cannot parse `(` inside [[ =~ ]], and this is a PreToolUse Bash
+# hook: a parse error denies EVERY command, with no way to switch it off.
+RE_YAML_ITEM='^[[:space:]]*-[[:space:]]+(.*)'
+
 PROTECTED_BRANCHES=("main" "master")
 AGENTKIT_CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/agentkit/config.yaml"
 
@@ -24,7 +28,7 @@ load_allowed_repos() {
 		if [[ "$in_section" == true && "$line" =~ ^[[:space:]]*allowed-repos: ]]; then
 			continue
 		fi
-		if [[ "$in_section" == true && "$line" =~ ^[[:space:]]*-[[:space:]]+(.*) ]]; then
+		if [[ "$in_section" == true && "$line" =~ $RE_YAML_ITEM ]]; then
 			ALLOWED_REPOS+=("${BASH_REMATCH[1]}")
 		elif [[ "$in_section" == true && ! "$line" =~ ^[[:space:]] ]]; then
 			break

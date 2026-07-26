@@ -1,6 +1,28 @@
 #!/bin/bash
 set -euo pipefail
 
+# bash 3.2 — stock on macOS — cannot parse `(` inside [[ =~ ]]. Held in
+# variables, these parse everywhere and BASH_REMATCH still works.
+# A parse error here is fatal: this is a PreToolUse Bash hook, so it would
+# deny EVERY command with the kill switch unreachable.
+RE_BARE_TASK='^(build|check|type-?check|lint)(:[[:alnum:]_-]+)?$'
+RE_BUN_HEAVY='^(add|install|update|test)$'
+RE_CARGO_HEAVY='^(build|check|test|clippy)$'
+RE_DELEGATING='^(ansible|ansible-playbook|doas|mosh|pkexec|run0|ssh|sudo|systemd-run)$'
+RE_DOCKER_READONLY='^(diff|events|history|images|info|inspect|logs|port|ps|stats|top|version)$'
+RE_GO_HEAVY='^(build|test)$'
+RE_KUBECTL_READONLY='^(api-resources|api-versions|auth|cluster-info|describe|explain|get|logs|top|version)$'
+RE_MACHINECTL_READONLY='^(list|show|status)$'
+RE_NPM_HEAVY='^(add|install|i|ci|update|upgrade|test)$'
+RE_ORCHESTRATOR='^(buildah|docker|kubectl|machinectl|nerdctl|podman|service|systemctl)$'
+RE_PODMAN_READONLY='^(containers|images|info|inspect|version)$'
+RE_SCRIPT_TASK='^(build|check|type-?check|lint|test)(:[[:alnum:]_-]+)?$'
+RE_SHELL='^(bash|dash|fish|sh|zsh)$'
+RE_SYSTEMCTL_READONLY='^(cat|get-default|is-active|is-enabled|is-failed|list-|show|status)'
+RE_UV_HEAVY='^(add|sync)$'
+RE_YARN_HEAVY='^(add|install|up|upgrade|test)$'
+
+
 # Absolute paths are deliberate: a hook that inspects a command must not
 # resolve its own tools through a PATH that command could have manipulated.
 # But the locations are NOT the same everywhere — `cat` is /bin/cat on macOS
@@ -202,30 +224,30 @@ is_heavy() {
 	local second="${ARGS[1]:-}"
 	case "$executable" in
 	bun)
-		[[ "$first" =~ ^(add|install|update|test)$ ]] && return 0
-		[[ "$first" == run && "$second" =~ ^(build|check|type-?check|lint|test)(:[[:alnum:]_-]+)?$ ]]
+		[[ "$first" =~ $RE_BUN_HEAVY ]] && return 0
+		[[ "$first" == run && "$second" =~ $RE_SCRIPT_TASK ]]
 		;;
 	bunx | npx)
 		[[ "$first" == tsc && "$second" != --version ]] \
 			|| [[ "$first" == playwright && "$second" == test ]]
 		;;
 	npm | pnpm)
-		[[ "$first" =~ ^(add|install|i|ci|update|upgrade|test)$ ]] && return 0
-		[[ "$first" == run && "$second" =~ ^(build|check|type-?check|lint|test)(:[[:alnum:]_-]+)?$ ]]
+		[[ "$first" =~ $RE_NPM_HEAVY ]] && return 0
+		[[ "$first" == run && "$second" =~ $RE_SCRIPT_TASK ]]
 		;;
 	yarn)
 		[[ -z "$first" ]] && return 0
-		[[ "$first" =~ ^(add|install|up|upgrade|test)$ ]] && return 0
-		[[ "$first" == run && "$second" =~ ^(build|check|type-?check|lint|test)(:[[:alnum:]_-]+)?$ ]] && return 0
-		[[ "$first" =~ ^(build|check|type-?check|lint)(:[[:alnum:]_-]+)?$ ]]
+		[[ "$first" =~ $RE_YARN_HEAVY ]] && return 0
+		[[ "$first" == run && "$second" =~ $RE_SCRIPT_TASK ]] && return 0
+		[[ "$first" =~ $RE_BARE_TASK ]]
 		;;
 	tsc) [[ "$first" != --version ]] ;;
 	playwright) [[ "$first" == test ]] ;;
-	cargo) [[ "$first" =~ ^(build|check|test|clippy)$ ]] ;;
-	go) [[ "$first" =~ ^(build|test)$ ]] ;;
+	cargo) [[ "$first" =~ $RE_CARGO_HEAVY ]] ;;
+	go) [[ "$first" =~ $RE_GO_HEAVY ]] ;;
 	pip | pip3) [[ "$first" == install ]] ;;
 	uv)
-		[[ "$first" =~ ^(add|sync)$ ]] && return 0
+		[[ "$first" =~ $RE_UV_HEAVY ]] && return 0
 		[[ "$first" == pip && "$second" == install ]] && return 0
 		[[ "$first" == run && "$second" == pytest ]]
 		;;
@@ -256,12 +278,12 @@ shell_command_payload() {
 }
 
 is_delegating() {
-	[[ "$EXECUTABLE" =~ ^(ansible|ansible-playbook|doas|mosh|pkexec|run0|ssh|sudo|systemd-run)$ ]] && return 0
-	if [[ "$EXECUTABLE" =~ ^(buildah|docker|kubectl|machinectl|nerdctl|podman|service|systemctl)$ ]]; then
+	[[ "$EXECUTABLE" =~ $RE_DELEGATING ]] && return 0
+	if [[ "$EXECUTABLE" =~ $RE_ORCHESTRATOR ]]; then
 		is_read_only_diagnostic && return 1
 		return 0
 	fi
-	if [[ "$EXECUTABLE" =~ ^(bash|dash|fish|sh|zsh)$ ]]; then
+	if [[ "$EXECUTABLE" =~ $RE_SHELL ]]; then
 		shell_command_payload && return 0
 	fi
 	return 1
@@ -279,11 +301,11 @@ is_read_only_diagnostic() {
 		break
 	done
 	case "$EXECUTABLE" in
-	systemctl) [[ "$first" =~ ^(cat|get-default|is-active|is-enabled|is-failed|list-|show|status) ]] ;;
-	kubectl) [[ "$first" =~ ^(api-resources|api-versions|auth|cluster-info|describe|explain|get|logs|top|version)$ ]] ;;
-	docker | nerdctl | podman) [[ "$first" =~ ^(diff|events|history|images|info|inspect|logs|port|ps|stats|top|version)$ ]] ;;
-	buildah) [[ "$first" =~ ^(containers|images|info|inspect|version)$ ]] ;;
-	machinectl) [[ "$first" =~ ^(list|show|status)$ ]] ;;
+	systemctl) [[ "$first" =~ $RE_SYSTEMCTL_READONLY ]] ;;
+	kubectl) [[ "$first" =~ $RE_KUBECTL_READONLY ]] ;;
+	docker | nerdctl | podman) [[ "$first" =~ $RE_DOCKER_READONLY ]] ;;
+	buildah) [[ "$first" =~ $RE_PODMAN_READONLY ]] ;;
+	machinectl) [[ "$first" =~ $RE_MACHINECTL_READONLY ]] ;;
 	service) [[ "$second" == status ]] ;;
 	*) return 1 ;;
 	esac
@@ -355,7 +377,7 @@ analyze_command() {
 			fi
 			continue
 		fi
-		if [[ "$EXECUTABLE" =~ ^(bash|dash|fish|sh|zsh)$ ]] && shell_command_payload; then
+		if [[ "$EXECUTABLE" =~ $RE_SHELL ]] && shell_command_payload; then
 			analyze_command "$PAYLOAD" $((depth + 1))
 			continue
 		fi

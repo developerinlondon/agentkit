@@ -118,35 +118,16 @@ done
 VIOLATIONS=()
 
 # ── Check 0: Cross-repo sibling relative paths ─────────────────────────────
-CROSS_REPO_RE='\{\{[[:space:]]*(inventory_dir|playbook_dir|role_path|ansible_parent_role_paths\[[^]]+\])[[:space:]]*\}\}[[:space:]]*/(\.\./){2,}|(^|["'"'"'=[:space:]])(\.\./){2,}(core|eda|fullcircle|dashboard|gitops|infra|ansible-roles)(/|["'"'"'[:space:]]|$)'
-
 check_cross_repo_relative_paths() {
   [[ "$SHOULD_CHECK_PATHS" == true ]] || return 0
 
-  # Matched by CONTENT against the committed file, so a path that is already in
-  # the repo — a deliberate test fixture, say — is not re-reported on every
-  # later edit. Unlike the whole-file checks this is per line, so the baseline
-  # is a set of lines rather than a severity: anything not in it is this edit's.
-  local matches committed line body seen_n committed_n
-  matches=$(grep -hE "$CROSS_REPO_RE" "$FILE_PATH" 2>/dev/null || true)
-  committed=$(baseline_of | grep -hE "$CROSS_REPO_RE" 2>/dev/null || true)
+  local matches
+  matches=$(grep -nE '\{\{[[:space:]]*(inventory_dir|playbook_dir|role_path|ansible_parent_role_paths\[[^]]+\])[[:space:]]*\}\}[[:space:]]*/(\.\./){2,}|(^|["'"'"'=[:space:]])(\.\./){2,}(core|eda|fullcircle|dashboard|gitops|infra|ansible-roles)(/|["'"'"'[:space:]]|$)' "$FILE_PATH" 2>/dev/null || true)
 
-  # COUNTS, not membership: asking only "is this line committed?" let a second,
-  # byte-identical copy of an offending line be added and reported as nothing.
-  # A duplicated list entry in config is exactly this check's target.
-  seen_n=""
   while IFS= read -r line; do
-    [[ -n "$line" ]] || continue
-    body=${line#"${line%%[![:space:]]*}"}
-    committed_n=0
-    if [[ -n "$committed" ]]; then
-      committed_n=$(printf '%s\n' "$committed" | grep -cxF -- "$line" || true)
+    if [[ -n "$line" ]]; then
+      VIOLATIONS+=("CROSS-REPO RELATIVE PATH: ${line}. Do not depend on checkout layout across repos; use a published artifact, a vendored/submodule path inside this repo, or runtime configuration.")
     fi
-    seen_n=$(printf '%s\n%s' "$seen_n" "$line")
-    if (( $(printf '%s' "$seen_n" | grep -cxF -- "$line" || true) <= committed_n )); then
-      continue
-    fi
-    VIOLATIONS+=("CROSS-REPO RELATIVE PATH: ${body}. Do not depend on checkout layout across repos; use a published artifact, a vendored/submodule path inside this repo, or runtime configuration.")
   done <<< "$matches"
 }
 
@@ -157,18 +138,9 @@ check_cross_repo_relative_paths() {
 # that was already too long would otherwise block EVERY later edit to it,
 # unfixably, and Claude Code has no PostToolUse loop guard to stop that.
 baseline_of() {
-  local top rel abs
-  # git answers with the PHYSICAL path; stripping it off a logical FILE_PATH is
-  # a no-op that leaves `rel` absolute, finds nothing, and switches the whole
-  # subtraction off — the wedge, back, for any checkout under a symlink.
-  # `cd -P` + $PWD are builtins. realpath is not POSIX — busybox and older
-  # macOS lack it — and falling back to the unresolved path silently restores
-  # the very wedge this resolves.
-  abs=$(cd -P -- "$(dirname -- "$FILE_PATH")" 2>/dev/null && printf '%s/%s' "$PWD" "$(basename -- "$FILE_PATH")") || abs=$FILE_PATH
-  top=$(git -C "$(dirname -- "$abs")" rev-parse --show-toplevel 2>/dev/null) || return 0
-  top=$(cd -P -- "$top" 2>/dev/null && printf '%s' "$PWD") || top=$top
-  rel=${abs#"$top"/}
-  [[ "$rel" == "$abs" ]] && return 0
+  local top rel
+  top=$(git -C "$(dirname "$FILE_PATH")" rev-parse --show-toplevel 2>/dev/null) || return 0
+  rel=${FILE_PATH#"$top"/}
   git -C "$top" show "HEAD:$rel" 2>/dev/null || true
 }
 
@@ -448,15 +420,6 @@ violation_metric() {
 # they must survive the baseline pass, which resets the array.
 PRE_EXISTING=("${VIOLATIONS[@]+"${VIOLATIONS[@]}"}")
 
-# The subtraction compares every violation against every earlier one, twice.
-# A pathological file emits roughly one violation per line, and at ~1500 the
-# hook ran past the harness's 60s timeout — where it is KILLED, emits no
-# decision, and the harness reads silence as ALLOW. Bound it so no input can
-# do that. Truncation is announced, never silent.
-MAX_SUBTRACT=150
-TRUNCATED=false
-
-BASE_KEYS=()
 BASE_SHAPES=()
 BASE_METRICS=()
 BASELINE_FILE=""
@@ -478,9 +441,6 @@ if [[ -n "$baseline_content" ]]; then
     else
       rm -f "$BASELINE_FILE"
       BASELINE_FILE=""
-      # Leaving it armed runs `rm -f ""` at every exit; a trap command that
-      # fails rewrites a blocking 2 into a non-blocking 1.
-      trap - EXIT
     fi
   fi
 fi
@@ -497,22 +457,7 @@ if [[ -n "$BASELINE_FILE" ]]; then
   check_duplicate_blocks
   check_export_count
   for v in "${VIOLATIONS[@]+"${VIOLATIONS[@]}"}"; do
-    if (( ${#BASE_KEYS[@]} >= MAX_SUBTRACT )); then
-      break
-    fi
-    base_shape=$(violation_shape "$v")
-    # Counted in-shell. A command substitution here is a FORK PER VIOLATION,
-    # and a duplicate-heavy file emits roughly one violation per line: it took
-    # a 1500-line file past the harness's 60s hook timeout, and a hook that is
-    # killed emits no decision, which reads as ALLOW.
-    base_occ=1
-    for prev in "${BASE_SHAPES[@]+"${BASE_SHAPES[@]}"}"; do
-      if [[ "$prev" == "$base_shape" ]]; then
-        base_occ=$((base_occ + 1))
-      fi
-    done
-    BASE_KEYS+=("$base_shape @$base_occ")
-    BASE_SHAPES+=("$base_shape")
+    BASE_SHAPES+=("$(violation_shape "$v")")
     BASE_METRICS+=("$(violation_metric "$v")")
   done
   FILE_PATH="$REAL_FILE_PATH"
@@ -527,46 +472,39 @@ check_duplicate_blocks
 check_export_count
 check_monolith_directory
 
-if (( ${#VIOLATIONS[@]} > MAX_SUBTRACT )); then
-  TRUNCATED=true
-  VIOLATIONS=("${VIOLATIONS[@]:0:MAX_SUBTRACT}")
-fi
-
-if (( ${#BASE_KEYS[@]} > 0 )); then
+if (( ${#BASE_SHAPES[@]} > 0 )); then
   KEPT=()
-  CUR_SHAPES=()
   for v in "${VIOLATIONS[@]+"${VIOLATIONS[@]}"}"; do
     shape=$(violation_shape "$v")
     metric=$(violation_metric "$v")
-    occ=1
-    for prev in "${CUR_SHAPES[@]+"${CUR_SHAPES[@]}"}"; do
-      if [[ "$prev" == "$shape" ]]; then
-        occ=$((occ + 1))
-      fi
-    done
-    key="$shape @$occ"
-    CUR_SHAPES+=("$shape")
-    # Silent only where the SAME occurrence was already there and no worse, so
-    # an improvement never reports and a regression always does. An occurrence
-    # the baseline never had — a third duplicate block — has no key and stays.
-    keep=true
-    for i in "${!BASE_KEYS[@]}"; do
-      if [[ "${BASE_KEYS[$i]}" == "$key" ]] && (( BASE_METRICS[i] >= metric )); then
-        keep=false
+    matched=""
+    # Same severity first, so an unchanged violation claims its own baseline
+    # slot before a shrunken one consumes a bigger neighbour's and leaves the
+    # neighbour looking new.
+    for i in "${!BASE_SHAPES[@]}"; do
+      if [[ "${BASE_SHAPES[$i]}" == "$shape" ]] && (( BASE_METRICS[i] == metric )); then
+        matched=$i
         break
       fi
     done
-    if [[ "$keep" == true ]]; then
+    if [[ -z "$matched" ]]; then
+      # Otherwise any baseline slot that was WORSE absorbs it — an improvement
+      # is silent. A metric above every slot is a real regression and is kept.
+      for i in "${!BASE_SHAPES[@]}"; do
+        if [[ "${BASE_SHAPES[$i]}" == "$shape" ]] && (( BASE_METRICS[i] > metric )); then
+          matched=$i
+          break
+        fi
+      done
+    fi
+    if [[ -n "$matched" ]]; then
+      # Consume it: a THIRD duplicate block when the baseline had two is new.
+      unset 'BASE_SHAPES[matched]' 'BASE_METRICS[matched]'
+    else
       KEPT+=("$v")
     fi
   done
   VIOLATIONS=("${KEPT[@]+"${KEPT[@]}"}")
-fi
-
-# Only ever a caveat ON something, never a finding in itself: alone it would
-# block an edit whose file has nothing this edit can fix.
-if [[ "$TRUNCATED" == true && ${#VIOLATIONS[@]} -gt 0 ]]; then
-  VIOLATIONS+=("LIST TRUNCATED: this file produced more than ${MAX_SUBTRACT} findings, so only the first ${MAX_SUBTRACT} were compared against the committed version — others are not shown.")
 fi
 
 VIOLATIONS=("${PRE_EXISTING[@]+"${PRE_EXISTING[@]}"}" "${VIOLATIONS[@]+"${VIOLATIONS[@]}"}")
