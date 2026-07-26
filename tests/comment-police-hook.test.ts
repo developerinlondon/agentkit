@@ -357,6 +357,62 @@ describe("coding-police reports what the EDIT did, not what the file already was
     rmSync(dir, { recursive: true, force: true });
   });
 
+  test("the export check runs against the baseline too, so an over-cap file stays quiet", () => {
+    // The baseline was written to an extensionless temp file, and
+    // check_export_count returns early on anything that is not .ts/.tsx/.js/.jsx.
+    // So TOO MANY EXPORTS never entered the baseline, could never be subtracted,
+    // and every edit to an over-cap file was blocked by a count it did not change.
+    const { dir, file, git } = legacyRepo();
+    const exports = (n: number) =>
+      Array.from({ length: n }, (_, i) => `export const e${i} = ${i};`).join("\n") + "\n";
+    writeFileSync(file, exports(20));
+    git("add", "-A");
+    git("commit", "-qm", "already over the export cap");
+    const unchanged = run(file);
+    expect(unchanged.out).not.toContain("TOO MANY EXPORTS");
+    expect(unchanged.status).toBe(0);
+    // One more export IS this edit's doing.
+    writeFileSync(file, exports(21));
+    const worse = run(file);
+    expect(worse.out).toContain("TOO MANY EXPORTS");
+    expect(worse.status).toBe(2);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("shrinking a violation that is still over the limit is silent, not 'different'", () => {
+    // Comparing shapes for equality is symmetric: it reported an improvement as
+    // a new violation, blocking the exact cleanup the rule asks for. Severity
+    // must be compared as a NUMBER, and only upward.
+    const { dir, file, git } = legacyRepo();
+    const lines = (n: number) =>
+      Array.from({ length: n }, (_, i) => `const x${i} = ${i};`).join("\n") + "\n";
+    writeFileSync(file, lines(1200));
+    git("add", "-A");
+    git("commit", "-qm", "over the length cap");
+    writeFileSync(file, lines(1100));
+    const shrunk = run(file);
+    expect(shrunk.out).not.toContain("FILE TOO LONG");
+    expect(shrunk.status).toBe(0);
+    // A single line the other way is a regression and must still block.
+    writeFileSync(file, lines(1201));
+    const grown = run(file);
+    expect(grown.out).toContain("FILE TOO LONG");
+    expect(grown.status).toBe(2);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("a legacy long function shortened but still over the limit is silent", () => {
+    const { dir, file, git } = legacyRepo();
+    writeFileSync(file, longFn("legacy", 130));
+    git("add", "-A");
+    git("commit", "-qm", "legacy");
+    writeFileSync(file, longFn("legacy", 115));
+    const r = run(file);
+    expect(r.out).not.toContain("LONG FUNCTION");
+    expect(r.status).toBe(0);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
   test("cross-repo relative paths survive the baseline pass", () => {
     // The subtraction reset the violations array, silently disabling this
     // check on every TRACKED file — exactly the files it targets.

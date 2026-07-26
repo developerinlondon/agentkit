@@ -373,11 +373,30 @@ fi
 # them reported untouched legacy code and hid genuinely new violations. Blanking
 # them compares the SHAPE and the identifier; counting occurrences means a
 # second duplicate block, or a second over-long function, still surfaces.
-# Blank only POSITIONS (line numbers), never sizes or counts — those are the
-# severity. "1200 lines" vs "1400 lines" must differ; "starts at line 201" vs
-# "line 211" must not.
+# Blank EVERY number for the shape, and carry the severity separately. Keeping
+# sizes in the shape made the compare symmetric: a metric that moved in either
+# direction stopped matching, so DELETING 100 lines from an over-limit file
+# reported it as new — punishing the model for the cleanup the rule asks for.
+# The shape answers "same violation?"; the metric answers "worse?".
 violation_shape() {
-  printf '%s' "$1" | sed -E 's/(at lines? )[0-9]+/\1#/g; s/(and )[0-9]+/\1#/g'
+  printf '%s' "$1" | sed -E 's/[0-9]+/#/g'
+}
+
+# The severity number, chosen per message TYPE. Never "the largest number in
+# the line" — that picked up `starts at line 201` and inverted the comparison
+# on any file long enough for a line number to exceed a length.
+violation_metric() {
+  local m
+  case "$1" in
+    "FILE TOO LONG: "*) m=$(printf '%s' "$1" | sed -E 's/^FILE TOO LONG: ([0-9]+) lines.*/\1/') ;;
+    "LONG FUNCTION: "*) m=$(printf '%s' "$1" | sed -E 's/^LONG FUNCTION: .* is ([0-9]+) lines.*/\1/') ;;
+    "DUPLICATE CODE: "*) m=$(printf '%s' "$1" | sed -E 's/^DUPLICATE CODE: ([0-9]+)\+ line.*/\1/') ;;
+    "TOO MANY EXPORTS: "*) m=$(printf '%s' "$1" | sed -E 's/^TOO MANY EXPORTS: ([0-9]+) exports.*/\1/') ;;
+    *) m=0 ;;
+  esac
+  # A sed that did not match returns the whole line; that must not reach $(( )).
+  [[ "$m" =~ ^[0-9]+$ ]] || m=0
+  printf '%s' "$m"
 }
 
 # The cross-repo check already ran and its findings are NOT whole-file state —
@@ -385,9 +404,19 @@ violation_shape() {
 PRE_EXISTING=("${VIOLATIONS[@]+"${VIOLATIONS[@]}"}")
 
 BASE_SHAPES=()
+BASE_METRICS=()
 baseline_content=$(baseline_of)
 if [[ -n "$baseline_content" ]]; then
+  # mktemp needs the X's LAST (BSD accepts no suffix), but the baseline file is
+  # then measured as if it were the real one — and check_export_count gates on
+  # the extension, so an extensionless temp file silently skipped that check and
+  # left every over-cap file blocking its own edits forever. Rename it back.
   BASELINE_FILE=$(mktemp "${TMPDIR:-/tmp}/coding-police-base-XXXXXX")
+  baseline_ext="${FILE_PATH##*.}"
+  if [[ "$baseline_ext" != "$FILE_PATH" ]]; then
+    mv "$BASELINE_FILE" "$BASELINE_FILE.$baseline_ext"
+    BASELINE_FILE="$BASELINE_FILE.$baseline_ext"
+  fi
   printf '%s\n' "$baseline_content" > "$BASELINE_FILE"
   REAL_FILE_PATH="$FILE_PATH"
   FILE_PATH="$BASELINE_FILE"
@@ -398,6 +427,7 @@ if [[ -n "$baseline_content" ]]; then
   check_export_count
   for v in "${VIOLATIONS[@]+"${VIOLATIONS[@]}"}"; do
     BASE_SHAPES+=("$(violation_shape "$v")")
+    BASE_METRICS+=("$(violation_metric "$v")")
   done
   FILE_PATH="$REAL_FILE_PATH"
   rm -f "$BASELINE_FILE"
@@ -414,16 +444,33 @@ if (( ${#BASE_SHAPES[@]} > 0 )); then
   KEPT=()
   for v in "${VIOLATIONS[@]+"${VIOLATIONS[@]}"}"; do
     shape=$(violation_shape "$v")
-    matched=false
+    metric=$(violation_metric "$v")
+    matched=""
+    # Same severity first, so an unchanged violation claims its own baseline
+    # slot before a shrunken one consumes a bigger neighbour's and leaves the
+    # neighbour looking new.
     for i in "${!BASE_SHAPES[@]}"; do
-      if [[ "${BASE_SHAPES[$i]}" == "$shape" ]]; then
-        # Consume it: a THIRD duplicate block when the baseline had two is new.
-        unset 'BASE_SHAPES[i]'
-        matched=true
+      if [[ "${BASE_SHAPES[$i]}" == "$shape" ]] && (( BASE_METRICS[i] == metric )); then
+        matched=$i
         break
       fi
     done
-    [[ "$matched" == true ]] || KEPT+=("$v")
+    if [[ -z "$matched" ]]; then
+      # Otherwise any baseline slot that was WORSE absorbs it — an improvement
+      # is silent. A metric above every slot is a real regression and is kept.
+      for i in "${!BASE_SHAPES[@]}"; do
+        if [[ "${BASE_SHAPES[$i]}" == "$shape" ]] && (( BASE_METRICS[i] > metric )); then
+          matched=$i
+          break
+        fi
+      done
+    fi
+    if [[ -n "$matched" ]]; then
+      # Consume it: a THIRD duplicate block when the baseline had two is new.
+      unset 'BASE_SHAPES[matched]' 'BASE_METRICS[matched]'
+    else
+      KEPT+=("$v")
+    fi
   done
   VIOLATIONS=("${KEPT[@]+"${KEPT[@]}"}")
 fi
