@@ -175,9 +175,6 @@ fi
 
 [[ -z "$COMMAND" ]] && exit 0
 
-# An actual HTTP caller, as opposed to a command that merely mentions a URL.
-HTTP='^(curl|wget|http|https|fetch|axios)$'
-
 # Token predicates. `has tok` is an EXACT token match, which is the whole point
 # of tokenising: the word `push` inside a commit message is one token of prose,
 # never the command word.
@@ -197,16 +194,16 @@ after() { printf '%s' "$COMMAND" | awk -v k="$1" 'p { print; exit } $0 == k { p 
 is_merge=0
 if has glab && has mr && has merge; then is_merge=1; fi
 if has gh && has pr && has merge; then is_merge=1; fi
-# A REST merge: a token carrying the merge path, called by an HTTP client (or
-# `gh api` / `glab api`). Grepping or editing such a URL is not merging it.
-if tok_match 'merge_requests?/[0-9]+/merge|/pulls/[0-9]+/merge' &&
-	{ tok_match "$HTTP" || { has api && { has gh || has glab; }; }; }; then is_merge=1; fi
-# Split-variable REST forms: the URL is assembled at runtime, so no single token
-# carries the whole path — this one check reads RAW_COMMAND deliberately, and is
-# narrowed by requiring an HTTP caller among the TOKENS.
+# The merge path IS the attempt, whatever calls it: any caller allowlist leaves
+# python, node, ruby and every wrapper script outside it. Reading such a URL
+# therefore denies too — a false deny is the cheaper failure here.
+if tok_match 'merge_requests?/[0-9]+/merge|/pulls/[0-9]+/merge'; then is_merge=1; fi
+# Split-variable form: the URL is assembled at runtime. The second half must
+# show an INTERPOLATION reaching /merge ($BASE/$ID/merge), not a bare /merge —
+# once the caller stopped being required, a bare match denied any prose carrying
+# both words, so `git commit -m "...merge_requests... /merge..."` was refused.
 if echo "$RAW_COMMAND" | grep -qiE 'merge_requests?|/pulls?/' &&
-	echo "$RAW_COMMAND" | grep -qiE '/merge\b|\$\{?[A-Za-z_]+\}?/merge' &&
-	tok_match "$HTTP"; then is_merge=1; fi
+	echo "$RAW_COMMAND" | grep -qE '\$\{?[A-Za-z_][A-Za-z_0-9]*\}?[^"'"'"' ]*/merge\b'; then is_merge=1; fi
 # Gate on an actual `git push` — `-o` is ubiquitous (grep -o, curl -o, cc -o),
 # so matching it bare denied commands that merely MENTIONED the pattern,
 # including grepping for the rule this hook enforces. As tokens: the option's

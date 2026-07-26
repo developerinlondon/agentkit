@@ -327,9 +327,24 @@ describe('review-police: bypasses found in adversarial review', () => {
       'curl https://gitlab.com/api/v4/projects/1/merge_requests?state=opened',
       'git commit -m "feat: add a thing"',
       'git push -u origin feat/thing',
+      // Prose naming both halves. Dropping the caller requirement made the
+      // split-variable arm fire on any text carrying `merge_requests` and
+      // `/merge`, so describing this very rule in a commit message was refused.
+      // The arm now needs an INTERPOLATION reaching /merge, which prose has not.
+      'git commit -m "docs: describe the merge_requests API and its /merge endpoint"',
+      'echo "see docs on merge_requests and /merge for details"',
     ]) {
       expect(runHook(cmd)).toBe('');
     }
+  });
+
+  test('a runtime-assembled merge URL is still caught', () => {
+    record(passing);
+    // The case the split-variable arm exists for — and the one narrowing it
+    // must not lose: no single token carries the whole path.
+    const cmd = 'BASE=https://gitlab.com/api/v4/projects/1/merge_requests; '
+      + 'ID=999; curl -X PUT "$BASE/$ID/merge"';
+    expect(runHook(cmd)).toContain('"deny"');
   });
 
   test('a heredoc-fed interpreter is gated too', () => {
