@@ -111,6 +111,32 @@ describe('agent-session', () => {
     expect(() => readFileSync(systemdLog, 'utf8')).toThrow();
   });
 
+  test('resolves the runtime in the deployed topology: shim symlinks into a separate bin dir', () => {
+    // What install.sh actually creates: shims/<runtime> -> <bin>/agent-session,
+    // with the real runtime ALSO in <bin>. Resolving the symlink would make the
+    // shim skip <bin> and never find the runtime.
+    const binDir = join(root, 'bin');
+    const deployedShims = join(root, 'deployed-shims');
+    mkdirSync(binDir);
+    mkdirSync(deployedShims);
+    writeExecutable(join(binDir, 'agent-session'), readFileSync(shim, 'utf8'));
+    writeExecutable(join(binDir, 'probecmd'), '#!/bin/bash\necho "real probecmd $*"\n');
+    symlinkSync(join(binDir, 'agent-session'), join(deployedShims, 'probecmd'));
+    // The systemd stand-ins must travel with binDir, because realDir is kept
+    // OFF PATH so binDir is the only source of probecmd — a second copy there
+    // would mask the skip-the-wrong-dir bug entirely.
+    symlinkSync(join(realDir, 'systemd-run'), join(binDir, 'systemd-run'));
+    symlinkSync(join(realDir, 'systemctl'), join(binDir, 'systemctl'));
+
+    const result = run([join(deployedShims, 'probecmd'), 'deployed'], {
+      PATH: `${deployedShims}:${binDir}:/usr/bin:/bin`,
+    });
+
+    expect(result.stderr).not.toContain('cannot find');
+    expect(result.stdout).toContain('real probecmd deployed');
+    expect(readFileSync(systemdLog, 'utf8')).toContain('--slice=agent-sessions.slice');
+  });
+
   test('never resolves itself when the shim directory is duplicated on PATH', () => {
     const result = run([join(shimDir, 'probecmd'), 'zeta'], {
       PATH: `${shimDir}:${shimDir}:${realDir}:/usr/bin:/bin`,
