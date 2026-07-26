@@ -413,6 +413,25 @@ describe("coding-police reports what the EDIT did, not what the file already was
     rmSync(dir, { recursive: true, force: true });
   });
 
+  test("functions whose names differ only in digits keep distinct shapes", () => {
+    // Blanking every number to compare shapes also rewrote the backticked
+    // identifier, so `step1` and `step2` became one shape — and the
+    // worse-was-already-there pass then handed a real regression the OTHER
+    // function's slot and reported nothing at all. Silence is the fail-open
+    // direction, so this is the case that matters most.
+    const { dir, file, git } = legacyRepo();
+    writeFileSync(file, `${longFn("step2", 120)}${longFn("step1", 250)}`);
+    git("add", "-A");
+    git("commit", "-qm", "two over-cap functions, digit-suffixed names");
+    // One edit: step2 doubles (a real regression) while step1 shrinks.
+    writeFileSync(file, `${longFn("step2", 242)}${longFn("step1", 112)}`);
+    const r = run(file);
+    expect(r.out).toContain("`step2`");
+    expect(r.out).not.toContain("`step1`");
+    expect(r.status).toBe(2);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
   test("cross-repo relative paths survive the baseline pass", () => {
     // The subtraction reset the violations array, silently disabling this
     // check on every TRACKED file — exactly the files it targets.

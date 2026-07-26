@@ -373,13 +373,30 @@ fi
 # them reported untouched legacy code and hid genuinely new violations. Blanking
 # them compares the SHAPE and the identifier; counting occurrences means a
 # second duplicate block, or a second over-long function, still surfaces.
-# Blank EVERY number for the shape, and carry the severity separately. Keeping
-# sizes in the shape made the compare symmetric: a metric that moved in either
-# direction stopped matching, so DELETING 100 lines from an over-limit file
-# reported it as new — punishing the model for the cleanup the rule asks for.
-# The shape answers "same violation?"; the metric answers "worse?".
+# Blank the numeric FIELDS for the shape, and carry the severity separately.
+# Keeping sizes in the shape made the compare symmetric: a metric that moved in
+# either direction stopped matching, so DELETING 100 lines from an over-limit
+# file reported it as new — punishing the model for the cleanup the rule asks
+# for. The shape answers "same violation?"; the metric answers "worse?".
+#
+# Field by field, never a blanket s/[0-9]+/#/g: that also rewrote the backticked
+# identifier, so `handleV1Request` and `handleV2Request` collapsed into ONE
+# shape and the worse-slot pass below handed a real regression the other
+# function's slot — reporting nothing at all. Silence is the fail-open
+# direction. Directory paths and quoted source lines have the same hazard.
 violation_shape() {
-  printf '%s' "$1" | sed -E 's/[0-9]+/#/g'
+  printf '%s' "$1" | sed -E '
+    s/^(FILE TOO LONG: )[0-9]+/\1#/
+    s/^(DUPLICATE CODE: )[0-9]+/\1#/
+    s/^(TOO MANY EXPORTS: )[0-9]+/\1#/
+    s/( is )[0-9]+( lines)/\1#\2/
+    s/(limit: )[0-9]+/\1#/
+    s/(cap: )[0-9]+/\1#/
+    s/(over by )[0-9]+/\1#/
+    s/(already has )[0-9]+/\1#/
+    s/(at lines? )[0-9]+/\1#/g
+    s/( and )[0-9]+/\1#/g
+  '
 }
 
 # The severity number, chosen per message TYPE. Never "the largest number in
@@ -405,6 +422,7 @@ PRE_EXISTING=("${VIOLATIONS[@]+"${VIOLATIONS[@]}"}")
 
 BASE_SHAPES=()
 BASE_METRICS=()
+BASELINE_FILE=""
 baseline_content=$(baseline_of)
 if [[ -n "$baseline_content" ]]; then
   # mktemp needs the X's LAST (BSD accepts no suffix), but the baseline file is
@@ -412,11 +430,24 @@ if [[ -n "$baseline_content" ]]; then
   # the extension, so an extensionless temp file silently skipped that check and
   # left every over-cap file blocking its own edits forever. Rename it back.
   BASELINE_FILE=$(mktemp "${TMPDIR:-/tmp}/coding-police-base-XXXXXX")
+  # Under `set -e` a failure here would kill the hook between mktemp and rm:
+  # it would leak the file and, worse, emit no decision at all — which the
+  # harness reads as ALLOW. Degrade to "no baseline" instead of dying.
+  trap 'rm -f "$BASELINE_FILE"' EXIT
   baseline_ext="${FILE_PATH##*.}"
   if [[ "$baseline_ext" != "$FILE_PATH" ]]; then
-    mv "$BASELINE_FILE" "$BASELINE_FILE.$baseline_ext"
-    BASELINE_FILE="$BASELINE_FILE.$baseline_ext"
+    if mv -f -- "$BASELINE_FILE" "$BASELINE_FILE.$baseline_ext"; then
+      BASELINE_FILE="$BASELINE_FILE.$baseline_ext"
+    else
+      rm -f "$BASELINE_FILE"
+      BASELINE_FILE=""
+    fi
   fi
+fi
+
+# Empty when there is no committed baseline, or the rename failed and the
+# baseline was abandoned. Both mean "measure nothing" — never "die".
+if [[ -n "$BASELINE_FILE" ]]; then
   printf '%s\n' "$baseline_content" > "$BASELINE_FILE"
   REAL_FILE_PATH="$FILE_PATH"
   FILE_PATH="$BASELINE_FILE"
@@ -431,6 +462,7 @@ if [[ -n "$baseline_content" ]]; then
   done
   FILE_PATH="$REAL_FILE_PATH"
   rm -f "$BASELINE_FILE"
+  trap - EXIT
 fi
 
 VIOLATIONS=()
