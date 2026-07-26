@@ -273,11 +273,46 @@ describe('review-police: bypasses found in adversarial review', () => {
     expect(runHook('git commit -m "docs: glab mr merge 12 is gated" && git push')).toBe('');
   });
 
-  test('reading a merge URL is not calling it', () => {
+  test('a merge URL denies even when only being read', () => {
     record(passing);
-    // Only an actual HTTP caller counts; grepping or editing the text does not.
-    expect(runHook('grep -rn "merge_requests/12/merge" docs/')).toBe('');
-    expect(runHook('rg "/pulls/7/merge" .')).toBe('');
+    // Deliberate: this used to allow, on the theory that only a recognised HTTP
+    // caller counts. That theory WAS the hole — the caller list could never
+    // cover every interpreter, so a real merge slipped through as "not a merge".
+    // Denying a grep is the cheap failure; missing a merge is the expensive one.
+    expect(runHook('grep -rn "merge_requests/999/merge" docs/')).toContain('"deny"');
+    expect(runHook('rg "/pulls/999/merge" .')).toContain('"deny"');
+  });
+
+  test('a REST merge is gated whatever calls it', () => {
+    record(passing);
+    // Each of these evaded while the gate required a caller from a fixed list.
+    // The python form is not hypothetical: it is how a merge actually reached
+    // the forge with no review record.
+    const url = 'https://gitlab.com/api/v4/projects/1%2Fp/merge_requests/999/merge';
+    for (const cmd of [
+      `python3 -c "import urllib.request; urllib.request.urlopen('${url}')"`,
+      `node -e "fetch('${url}', {method:'PUT'})"`,
+      `ruby -e "Net::HTTP.put(URI('${url}'))"`,
+      `perl -e "put('${url}')"`,
+      `bun run merge.ts --url '${url}'`,
+      // No recognisable client at all — a wrapper script is still a caller.
+      `./deploy.sh --endpoint '${url}'`,
+    ]) {
+      expect(runHook(cmd)).toContain('"deny"');
+    }
+  });
+
+  test('a heredoc-fed interpreter is gated too', () => {
+    record(passing);
+    // The exact shape that got through: the URL lives inside a heredoc body,
+    // and nothing on the command line looks like an HTTP client.
+    const cmd = [
+      "python3 - <<'PY'",
+      'import urllib.request',
+      'urllib.request.urlopen("https://gitlab.com/api/v4/projects/1/merge_requests/999/merge")',
+      'PY',
+    ].join('\n');
+    expect(runHook(cmd)).toContain('"deny"');
   });
 
   test('creating an MR over REST is not a merge', () => {
