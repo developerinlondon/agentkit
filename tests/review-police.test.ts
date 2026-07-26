@@ -302,6 +302,36 @@ describe('review-police: bypasses found in adversarial review', () => {
     }
   });
 
+  test('URL shapes that vary the path do not evade', () => {
+    record(passing);
+    // Each of these reaches the same endpoint by a slightly different spelling.
+    // A gate that matches only the tidiest form is a gate with a door in it.
+    for (const cmd of [
+      'curl -X PUT https://gitlab.com/api/v4/projects/1/merge_requests/999/merge/',
+      'curl -X PUT "https://gitlab.com/api/v4/projects/1/merge_requests/999/merge?squash=true"',
+      'curl -X PUT "https://gitlab.com/api/v4/projects/grp%2Fproj/merge_requests/999/merge"',
+      'glab api --method PUT projects/1/merge_requests/999/merge',
+      // Assembled at runtime, so no single token carries the whole path.
+      'BASE=https://gitlab.com/api/v4/projects/1/merge_requests; curl -X PUT "$BASE/999/merge"',
+    ]) {
+      expect(runHook(cmd)).toContain('"deny"');
+    }
+  });
+
+  test('ordinary work is not caught by the wider rule', () => {
+    record(passing);
+    // The trade was "reading a merge URL denies". It was NOT "anything near a
+    // merge_requests endpoint denies" — creating or listing must still pass.
+    for (const cmd of [
+      'curl -X POST https://gitlab.com/api/v4/projects/1/merge_requests -d x',
+      'curl https://gitlab.com/api/v4/projects/1/merge_requests?state=opened',
+      'git commit -m "feat: add a thing"',
+      'git push -u origin feat/thing',
+    ]) {
+      expect(runHook(cmd)).toBe('');
+    }
+  });
+
   test('a heredoc-fed interpreter is gated too', () => {
     record(passing);
     // The exact shape that got through: the URL lives inside a heredoc body,
