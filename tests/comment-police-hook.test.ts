@@ -191,27 +191,6 @@ describe("the hooks run on the bash the target platform actually ships", () => {
   });
 });
 
-describe("git-police works on a stock install", () => {
-  test("a force push is denied with no agentkit config present", () => {
-    // `[[ -f $CONFIG ]] || return` propagated status 1 into `set -e`, so the
-    // hook exited 1 with ZERO output before any guard ran — and a hook that
-    // emits no decision is read as ALLOW. Every protection in it was off for
-    // anyone who had never written a config file.
-    const empty = mkdtempSync(join(tmpdir(), "agentkit-noconfig-"));
-    const r = spawnSync("bash", [join(repoRoot, "hooks", "claude", "git-police.sh")], {
-      input: JSON.stringify({
-        tool_name: "Bash",
-        tool_input: { command: "git push --force origin main" },
-        session_id: "t",
-      }),
-      encoding: "utf-8",
-      env: { ...process.env, XDG_CONFIG_HOME: empty },
-    });
-    expect(`${r.stdout ?? ""}`).toContain('"permissionDecision": "deny"');
-    rmSync(empty, { recursive: true, force: true });
-  });
-});
-
 describe("blocking hooks have a way off and a bounded blast radius", () => {
   const hooks = ["comment-police", "coding-police", "format-police"];
 

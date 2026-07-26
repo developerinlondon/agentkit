@@ -1,7 +1,10 @@
 import { describe, test, expect, mock } from 'bun:test';
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import gitPolice from '../plugins/git-police';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+const repoRoot = dirname(import.meta.dir);
 
 const mockCtx = { client: {}, project: {}, directory: '/tmp', worktree: '/tmp', serverUrl: new URL('http://localhost'), $: {} } as any;
 
@@ -198,5 +201,39 @@ describe('git-police', () => {
     const input = { tool: 'edit', sessionID: 'test', callID: 'test' };
     const output = { args: { command: 'git push --force origin main' } };
     expect(hooks['tool.execute.before']!(input, output)).resolves.toBeUndefined();
+  });
+});
+
+describe("git-police works on a stock install", () => {
+  test("a force push is denied with no agentkit config present", () => {
+    // `[[ -f $CONFIG ]] || return` propagated status 1 into `set -e`, so the
+    // hook exited 1 with ZERO output before any guard ran — and a hook that
+    // emits no decision is read as ALLOW. Every protection in it was off for
+    // anyone who had never written a config file.
+    const empty = mkdtempSync(join(tmpdir(), "agentkit-noconfig-"));
+    const r = spawnSync("bash", [join(repoRoot, "hooks", "claude", "git-police.sh")], {
+      input: JSON.stringify({
+        tool_name: "Bash",
+        tool_input: { command: "git push --force origin main" },
+        session_id: "t",
+      }),
+      encoding: "utf-8",
+      env: { ...process.env, XDG_CONFIG_HOME: empty },
+    });
+    expect(`${r.stdout ?? ""}`).toContain('"permissionDecision": "deny"');
+    // ...and only the right things: a hook that denied everything would also
+    // satisfy the assertion above.
+    const benign = spawnSync("bash", [join(repoRoot, "hooks", "claude", "git-police.sh")], {
+      input: JSON.stringify({
+        tool_name: "Bash",
+        tool_input: { command: "git status" },
+        session_id: "t",
+      }),
+      encoding: "utf-8",
+      env: { ...process.env, XDG_CONFIG_HOME: empty },
+    });
+    expect(`${benign.stdout ?? ""}`).not.toContain("permissionDecision");
+    expect(benign.status).toBe(0);
+    rmSync(empty, { recursive: true, force: true });
   });
 });
