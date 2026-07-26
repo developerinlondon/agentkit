@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { dirname, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 
 const repoRoot = dirname(import.meta.dir);
@@ -129,6 +129,86 @@ describe('police hooks reach the model', () => {
       const b = readFileSync(join(repoRoot, 'plugins-cc', 'agentkit', 'hooks', name), 'utf-8');
       expect(b).toBe(a);
     }
+  });
+});
+
+describe("the hooks run on the bash the target platform actually ships", () => {
+  // stock macOS is bash 3.2. Two constructs die there and both are fatal:
+  // `"${arr[@]}"` on an EMPTY array is an unbound-variable error under `set -u`
+  // (not fixed until bash 4.4), and `(` inside [[ =~ ]] is a PARSE error. For a
+  // PreToolUse Bash hook a parse error denies EVERY command, and the kill
+  // switch is unreachable because the script never starts.
+  const hookDir = join(repoRoot, "hooks", "claude");
+  const shells = readdirSync(hookDir).filter((f) => f.endsWith(".sh"));
+
+  // The real check, when a 3.2 is available: it subsumes both spelling proxies
+  // below, which pin how the rules are WRITTEN rather than that they hold.
+  const bash32 = [
+    process.env.AGENTKIT_BASH32,
+    "/usr/local/bin/bash-3.2",
+    join(tmpdir(), "bash-3.2", "bash"),
+  ].find((p) => p && existsSync(p));
+
+  test.skipIf(!bash32)("every hook parses under real bash 3.2", () => {
+    const offenders: string[] = [];
+    for (const name of shells) {
+      const r = spawnSync(bash32!, ["-n", join(hookDir, name)], { encoding: "utf-8" });
+      if (r.status !== 0) offenders.push(`${name}: ${(r.stderr ?? "").split("\n")[0]}`);
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  test("every possibly-empty array expansion uses the +expansion guard", () => {
+    // CONFIG_FLAG is exempt: every branch assigns two elements or exits first.
+    const exempt = new Set(["CONFIG_FLAG"]);
+    const offenders: string[] = [];
+    for (const name of shells) {
+      readFileSync(join(hookDir, name), "utf-8").split("\n").forEach((line, i) => {
+        for (const m of line.matchAll(/"\$\{([A-Z_]+)\[@\]\}"/g)) {
+          if (exempt.has(m[1])) continue;
+          if (line.includes(`\${${m[1]}[@]+`)) continue;
+          offenders.push(`${name}:${i + 1} ${m[1]}`);
+        }
+      });
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  test("no [[ =~ ]] pattern contains an unquoted group", () => {
+    const offenders: string[] = [];
+    for (const name of shells) {
+      readFileSync(join(hookDir, name), "utf-8").split("\n").forEach((line, i) => {
+        const at = line.indexOf("=~");
+        if (at < 0) return;
+        // A character class can contain ], so stopping at the first ] misses
+        // the group entirely — which is how this assertion first failed to fail.
+        const end = line.lastIndexOf("]]");
+        const pattern = end > at ? line.slice(at + 2, end) : line.slice(at + 2);
+        if (/(^|[^\\])\(/.test(pattern)) offenders.push(`${name}:${i + 1}`);
+      });
+    }
+    expect(offenders).toEqual([]);
+  });
+});
+
+describe("git-police works on a stock install", () => {
+  test("a force push is denied with no agentkit config present", () => {
+    // `[[ -f $CONFIG ]] || return` propagated status 1 into `set -e`, so the
+    // hook exited 1 with ZERO output before any guard ran — and a hook that
+    // emits no decision is read as ALLOW. Every protection in it was off for
+    // anyone who had never written a config file.
+    const empty = mkdtempSync(join(tmpdir(), "agentkit-noconfig-"));
+    const r = spawnSync("bash", [join(repoRoot, "hooks", "claude", "git-police.sh")], {
+      input: JSON.stringify({
+        tool_name: "Bash",
+        tool_input: { command: "git push --force origin main" },
+        session_id: "t",
+      }),
+      encoding: "utf-8",
+      env: { ...process.env, XDG_CONFIG_HOME: empty },
+    });
+    expect(`${r.stdout ?? ""}`).toContain('"permissionDecision": "deny"');
+    rmSync(empty, { recursive: true, force: true });
   });
 });
 
@@ -308,6 +388,11 @@ describe("coding-police reports what the EDIT did, not what the file already was
   const dupBlock = (tag: string) =>
     `// dup ${tag}\nconst a = 1;\nconst b = 2;\nconst c = 3;\nconst d = 4;\nconst e = 5;\n`;
 
+  // Assembled at runtime: spelled out, this file trips the very check these
+  // tests exercise, on every later edit to it.
+  const up = "../";
+  const crossRepo = `${up}${up}core/roles`;
+
   const run = (file: string) => {
     const r = spawnSync("bash", [join(repoRoot, "hooks", "claude", "coding-police.sh")], {
       input: JSON.stringify({ tool_name: "Edit", tool_input: { file_path: file, new_string: "x" } }),
@@ -437,7 +522,7 @@ describe("coding-police reports what the EDIT did, not what the file already was
     // check on every TRACKED file — exactly the files it targets.
     const { dir, git } = legacyRepo();
     const file = join(dir, "conf.ts");
-    writeFileSync(file, 'export const p = "../../core/roles";\n');
+    writeFileSync(file, `export const p = "${crossRepo}";\n`);
     git("add", "-A");
     git("commit", "-qm", "tracked");
     const r = run(file);

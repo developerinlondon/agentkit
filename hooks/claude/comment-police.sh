@@ -84,7 +84,7 @@ esac
 case "$FILE_PATH" in
   *.lock|*.min.*|*.generated.*|*.snap|*.d.ts) exit 0 ;;
 esac
-for pattern in "${EXCLUDE_PATTERNS[@]}"; do
+for pattern in "${EXCLUDE_PATTERNS[@]+"${EXCLUDE_PATTERNS[@]}"}"; do
   [[ "$FILE_PATH" == *"$pattern"* ]] && exit 0
 done
 
@@ -93,8 +93,12 @@ ADDED=$(echo "$INPUT" | jq -r '.tool_input.new_string // .tool_input.content // 
 
 VIOLATIONS=()
 
+# Held in a variable: bash 3.2 cannot parse an unquoted `(` inside [[ =~ ]],
+# and stock macOS still ships 3.2.
+COMMENT_OPENERS='^[[:space:]]*(//|#|--|/\*|\*[^/])'
+
 is_comment_line() {
-  [[ "$1" =~ ^[[:space:]]*(//|#|--|/\*|\*[^/]) ]] || [[ "$1" =~ ^[[:space:]]*\*$ ]]
+  [[ "$1" =~ $COMMENT_OPENERS ]] || [[ "$1" =~ ^[[:space:]]*\*$ ]]
 }
 
 check_blocks_and_ratio() {
@@ -128,7 +132,7 @@ check_forbidden() {
   local hits="" pat
   while IFS= read -r line; do
     is_comment_line "$line" || continue
-    for pat in "${FORGE_PATTERNS[@]}"; do
+    for pat in "${FORGE_PATTERNS[@]+"${FORGE_PATTERNS[@]}"}"; do
       if [[ "$line" =~ $pat ]]; then
         hits+="    ${line#"${line%%[![:space:]]*}"}"$'\n'
         break

@@ -109,7 +109,7 @@ case "$FILE_PATH" in
 esac
 
 # Skip paths matching an exclude-patterns entry (e.g. homogeneous routes/migrations dirs)
-for pattern in "${EXCLUDE_PATTERNS[@]}"; do
+for pattern in "${EXCLUDE_PATTERNS[@]+"${EXCLUDE_PATTERNS[@]}"}"; do
   [[ "$FILE_PATH" == *"$pattern"* ]] && exit 0
 done
 
@@ -325,7 +325,7 @@ check_monolith_directory() {
     esac
 
     excluded=false
-    for pattern in "${EXCLUDE_PATTERNS[@]}"; do
+    for pattern in "${EXCLUDE_PATTERNS[@]+"${EXCLUDE_PATTERNS[@]}"}"; do
       [[ "$entry" == *"$pattern"* ]] && { excluded=true; break; }
     done
     [[ "$excluded" == true ]] && continue

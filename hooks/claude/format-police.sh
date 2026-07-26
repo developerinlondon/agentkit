@@ -64,12 +64,12 @@ find_config() {
   done
 }
 
-CONFIG_FLAG=""
+CONFIG_FLAG=()
 LOCAL_CONFIG=$(find_config "$(dirname "$FILE_PATH")")
 if [[ -n "$LOCAL_CONFIG" ]]; then
-  CONFIG_FLAG="--config $LOCAL_CONFIG"
+  CONFIG_FLAG=(--config "$LOCAL_CONFIG")
 elif [[ -n "${DPRINT_DEFAULT_CONFIG:-}" && -f "$DPRINT_DEFAULT_CONFIG" ]]; then
-  CONFIG_FLAG="--config $DPRINT_DEFAULT_CONFIG"
+  CONFIG_FLAG=(--config "$DPRINT_DEFAULT_CONFIG")
 else
   echo "⚠ no dprint.json found — set DPRINT_DEFAULT_CONFIG for a global fallback" >&2
   exit 0
@@ -80,7 +80,7 @@ fi
 ERR_LOG=$(mktemp "${TMPDIR:-/tmp}/dprint-err.XXXXXX")
 trap 'rm -f "$ERR_LOG"' EXIT
 
-if ! "$DPRINT" fmt $CONFIG_FLAG "$FILE_PATH" 2>"$ERR_LOG"; then
+if ! "$DPRINT" fmt "${CONFIG_FLAG[@]}" "$FILE_PATH" 2>"$ERR_LOG"; then
   err=$(cat "$ERR_LOG")
   echo "⚠ dprint fmt failed for $FILE_PATH: $err" >&2
   # ALLOWLIST, not a denylist. Only a failure dprint attributes to THIS file is
