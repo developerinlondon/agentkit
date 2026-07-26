@@ -74,6 +74,37 @@ describe('aggregate session slice', () => {
     }
   });
 
+  test('finds the user bus when XDG_RUNTIME_DIR is unset', () => {
+    // Terminals spawned by a service manager inherit no XDG_RUNTIME_DIR, so
+    // without this the reload defers to next login and the slice is unapplied.
+    const home = mkdtempSync(join(tmpdir(), 'agentkit-bus-'));
+    try {
+      const runtime = join(home, 'run');
+      const stubBin = join(home, 'stub');
+      mkdirSync(runtime, { recursive: true });
+      mkdirSync(stubBin, { recursive: true });
+      writeFileSync(join(runtime, 'bus'), '');
+      writeFileSync(join(stubBin, 'systemctl'), '#!/bin/bash\nexit 0\n');
+      spawnSync('chmod', ['+x', join(stubBin, 'systemctl')]);
+      spawnSync('chmod', ['+x', join(stubBin, 'id')]);
+
+      const probe = (extra: string) =>
+        spawnSync('bash', [
+          '-c',
+          `source <(sed -n '/^user_bus_env()/,/^}/p' '${installScript}')
+           export XDG_RUNTIME_DIR='${runtime}'
+           ${extra}
+           if user_bus_env; then echo "ok:$DBUS_SESSION_BUS_ADDRESS"; else echo no; fi`,
+        ], { encoding: 'utf-8', env: { ...process.env, PATH: `${stubBin}:${process.env.PATH}` } });
+
+      expect(probe('').stdout.trim()).toBe(`ok:unix:path=${join(runtime, 'bus')}`);
+      // No bus at the derived path must report unavailable, not pretend success.
+      expect(probe(`rm -f '${join(runtime, 'bus')}'`).stdout.trim()).toBe('no');
+    } finally {
+      rmSync(home, { force: true, recursive: true });
+    }
+  });
+
   test('--no-session-scope writes no slice', () => {
     const home = mkdtempSync(join(tmpdir(), 'agentkit-slice-'));
     try {

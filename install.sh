@@ -576,12 +576,24 @@ install_session_slice() {
 	SLICE
 	echo "[shims] Aggregate slice: $unit"
 
-	if systemctl --user show-environment > /dev/null 2>&1; then
+	if user_bus_env; then
 		systemctl --user daemon-reload || true
 		echo "[shims] Reloaded user systemd manager"
 	else
 		echo "[shims] User systemd manager unavailable; slice applies at next login"
 	fi
+}
+
+# Terminals spawned by a service manager (code-server, CI) inherit neither of
+# these, so the reload silently deferred to next login — leaving the slice
+# unapplied exactly when it is needed. Same fix agent-session already makes.
+user_bus_env() {
+	local runtime_dir="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+	[[ -e "$runtime_dir/bus" ]] || return 1
+
+	export XDG_RUNTIME_DIR="$runtime_dir"
+	export DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime_dir/bus"
+	systemctl --user show-environment > /dev/null 2>&1
 }
 
 path_without() {
