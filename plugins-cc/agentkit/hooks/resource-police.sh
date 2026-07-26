@@ -15,7 +15,7 @@ RE_KUBECTL_READONLY='^(api-resources|api-versions|auth|cluster-info|describe|exp
 RE_MACHINECTL_READONLY='^(list|show|status)$'
 RE_NPM_HEAVY='^(add|install|i|ci|update|upgrade|test)$'
 RE_ORCHESTRATOR='^(buildah|docker|kubectl|machinectl|nerdctl|podman|service|systemctl)$'
-RE_PODMAN_READONLY='^(containers|images|info|inspect|version)$'
+RE_BUILDAH_READONLY='^(containers|images|info|inspect|version)$'
 RE_SCRIPT_TASK='^(build|check|type-?check|lint|test)(:[[:alnum:]_-]+)?$'
 RE_SHELL='^(bash|dash|fish|sh|zsh)$'
 RE_SYSTEMCTL_READONLY='^(cat|get-default|is-active|is-enabled|is-failed|list-|show|status)'
@@ -304,7 +304,7 @@ is_read_only_diagnostic() {
 	systemctl) [[ "$first" =~ $RE_SYSTEMCTL_READONLY ]] ;;
 	kubectl) [[ "$first" =~ $RE_KUBECTL_READONLY ]] ;;
 	docker | nerdctl | podman) [[ "$first" =~ $RE_DOCKER_READONLY ]] ;;
-	buildah) [[ "$first" =~ $RE_PODMAN_READONLY ]] ;;
+	buildah) [[ "$first" =~ $RE_BUILDAH_READONLY ]] ;;
 	machinectl) [[ "$first" =~ $RE_MACHINECTL_READONLY ]] ;;
 	service) [[ "$second" == status ]] ;;
 	*) return 1 ;;

@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { dirname, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { chmodSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 
 const repoRoot = dirname(import.meta.dir);
@@ -141,6 +141,23 @@ describe("the hooks run on the bash the target platform actually ships", () => {
   const hookDir = join(repoRoot, "hooks", "claude");
   const shells = readdirSync(hookDir).filter((f) => f.endsWith(".sh"));
 
+  // The real check, when a 3.2 is available: it subsumes both spelling proxies
+  // below, which pin how the rules are WRITTEN rather than that they hold.
+  const bash32 = [
+    process.env.AGENTKIT_BASH32,
+    "/usr/local/bin/bash-3.2",
+    join(tmpdir(), "bash-3.2", "bash"),
+  ].find((p) => p && existsSync(p));
+
+  test.skipIf(!bash32)("every hook parses under real bash 3.2", () => {
+    const offenders: string[] = [];
+    for (const name of shells) {
+      const r = spawnSync(bash32!, ["-n", join(hookDir, name)], { encoding: "utf-8" });
+      if (r.status !== 0) offenders.push(`${name}: ${(r.stderr ?? "").split("\n")[0]}`);
+    }
+    expect(offenders).toEqual([]);
+  });
+
   test("every possibly-empty array expansion uses the +expansion guard", () => {
     // CONFIG_FLAG is exempt: every branch assigns two elements or exits first.
     const exempt = new Set(["CONFIG_FLAG"]);
@@ -171,6 +188,27 @@ describe("the hooks run on the bash the target platform actually ships", () => {
       });
     }
     expect(offenders).toEqual([]);
+  });
+});
+
+describe("git-police works on a stock install", () => {
+  test("a force push is denied with no agentkit config present", () => {
+    // `[[ -f $CONFIG ]] || return` propagated status 1 into `set -e`, so the
+    // hook exited 1 with ZERO output before any guard ran — and a hook that
+    // emits no decision is read as ALLOW. Every protection in it was off for
+    // anyone who had never written a config file.
+    const empty = mkdtempSync(join(tmpdir(), "agentkit-noconfig-"));
+    const r = spawnSync("bash", [join(repoRoot, "hooks", "claude", "git-police.sh")], {
+      input: JSON.stringify({
+        tool_name: "Bash",
+        tool_input: { command: "git push --force origin main" },
+        session_id: "t",
+      }),
+      encoding: "utf-8",
+      env: { ...process.env, XDG_CONFIG_HOME: empty },
+    });
+    expect(`${r.stdout ?? ""}`).toContain('"permissionDecision": "deny"');
+    rmSync(empty, { recursive: true, force: true });
   });
 });
 

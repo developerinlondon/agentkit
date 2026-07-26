@@ -18,7 +18,10 @@ COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty')
 [[ -z "$COMMAND" ]] && exit 0
 
 load_allowed_repos() {
-	[[ -f "$AGENTKIT_CONFIG" ]] || return
+	# `return` alone propagates the failed test's status 1, and this runs as a
+	# plain command under `set -e`: with no config file the hook exited 1 with
+	# NO decision — every guard below it off — which the harness reads as ALLOW.
+	[[ -f "$AGENTKIT_CONFIG" ]] || return 0
 	local in_section=false
 	while IFS= read -r line; do
 		if [[ "$line" =~ ^[[:space:]]*branch-protection: ]]; then
