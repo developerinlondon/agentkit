@@ -124,13 +124,24 @@ describe('agent-session', () => {
     expect(result.stderr).toContain('cannot find');
   });
 
-  test('honours a root-owned session conf but ignores unknown keys', () => {
-    // Root-owned conf is unavailable in test, so this asserts the parser stays
-    // forward-compatible: an unknown key must not abort the launch.
+  test('ignores a session conf that is not root-owned, and says so', () => {
     const conf = join(root, 'session-guard.conf');
-    writeFileSync(conf, 'TASKS_MAX=2048\nFUTURE_KEY=whatever\n');
-    const result = run([join(shimDir, 'probecmd'), 'theta']);
+    writeFileSync(conf, 'TASKS_MAX=2048\n');
+    const result = run([join(shimDir, 'probecmd'), 'theta'], { AGENTKIT_SESSION_CONF: conf });
+
     expect(result.status).toBe(0);
-    expect(result.stdout).toContain('real probecmd theta');
+    expect(result.stderr).toContain('not root-owned');
+    // The attacker-supplied limit must not reach systemd.
+    const invocation = readFileSync(systemdLog, 'utf8');
+    expect(invocation).toContain('TasksMax=4096');
+    expect(invocation).not.toContain('TasksMax=2048');
+  });
+
+  test('a missing session conf leaves the built-in defaults in place', () => {
+    const result = run([join(shimDir, 'probecmd'), 'iota'], {
+      AGENTKIT_SESSION_CONF: join(root, 'does-not-exist.conf'),
+    });
+    expect(result.status).toBe(0);
+    expect(readFileSync(systemdLog, 'utf8')).toContain('TasksMax=4096');
   });
 });
