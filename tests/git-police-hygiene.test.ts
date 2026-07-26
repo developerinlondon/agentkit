@@ -258,3 +258,48 @@ describe('git-police push rules require a push subcommand', () => {
     expect(out).toContain('Force push');
   });
 });
+
+describe('shared-clone branch guard', () => {
+  let solo: string;
+  let shared: string;
+  let linked: string;
+
+  beforeAll(() => {
+    solo = join(root, 'solo');
+    shared = join(root, 'shared');
+    linked = join(root, 'shared-wt', 'feat');
+    execSync(`git clone ${origin} ${solo}`, { stdio: 'pipe' });
+    execSync(`git clone ${origin} ${shared}`, { stdio: 'pipe' });
+    git(shared, `worktree add ${linked} -b wt/existing`);
+  });
+
+  test('a clone with no worktrees is left alone', () => {
+    expect(runHook(solo, 'git checkout -b feat/x')).not.toContain('shared clone');
+  });
+
+  test('creating a branch in a clone others share is refused', () => {
+    const out = runHook(shared, 'git checkout -b feat/x');
+    expect(out).toContain('shared clone');
+    expect(out).toContain('git worktree add');
+    expect(runHook(shared, 'git switch -c feat/x')).toContain('shared clone');
+  });
+
+  test('inside a worktree it is allowed — that is the point', () => {
+    expect(runHook(linked, 'git checkout -b feat/y')).not.toContain('shared clone');
+  });
+
+  test('the escape hatch works inline, where a prefix cannot reach the hook env', () => {
+    expect(runHook(shared, 'AGENTKIT_ALLOW_SHARED_BRANCH=1 git checkout -b feat/x'))
+      .not.toContain('shared clone');
+  });
+
+  test('switching to an existing branch, and creating a worktree, are untouched', () => {
+    expect(runHook(shared, 'git checkout main')).not.toContain('shared clone');
+    expect(runHook(shared, 'git worktree add ../x -b feat/z')).not.toContain('shared clone');
+  });
+
+  test('the words appearing in a commit message are not a branch creation', () => {
+    expect(runHook(shared, "git commit -m 'git checkout -b is blocked'"))
+      .not.toContain('shared clone');
+  });
+});

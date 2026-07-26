@@ -446,74 +446,23 @@ merge_claude_settings() {
 		return
 	fi
 
-	# Build the hooks JSON using the actual installed hook paths
+	# Derived from the canonical wiring, never a second copy of it. A duplicate
+	# list here silently drifts: review-police was wired in settings.json for
+	# months and never installed, so the merge gate was inert on every machine
+	# that used this installer.
+	local canonical="$REPO_DIR/hooks/claude/settings.json"
+	if [[ ! -f "$canonical" ]]; then
+		echo "[claude] ERROR: missing $canonical — cannot wire hooks." >&2
+		return 1
+	fi
 	local hooks_json
-	hooks_json=$(jq -n \
-		--arg git_police "$hooks_dir/git-police.sh" \
-		--arg kubectl_police "$hooks_dir/kubectl-police.sh" \
-		--arg pkg_police "$hooks_dir/pkg-police.sh" \
-		--arg resource_police "$hooks_dir/resource-police.sh" \
-		--arg mr_police "$hooks_dir/mr-police.sh" \
-		--arg format_police "$hooks_dir/format-police.sh" \
-		--arg coding_police "$hooks_dir/coding-police.sh" \
-		'{
-      hooks: {
-        PreToolUse: [
-          {
-            matcher: "Bash",
-            hooks: [
-              {
-                type: "command",
-                command: $git_police,
-                timeout: 10,
-                statusMessage: "git-police: checking safety rules..."
-              },
-              {
-                type: "command",
-                command: $kubectl_police,
-                timeout: 10,
-                statusMessage: "kubectl-police: checking Kargo safety..."
-              },
-              {
-                type: "command",
-                command: $pkg_police,
-                timeout: 10,
-                statusMessage: "pkg-police: enforcing bun..."
-              },
-              {
-                type: "command",
-                command: $resource_police,
-                timeout: 10,
-                statusMessage: "resource-police: requiring bounded execution..."
-              },
-              {
-                type: "command",
-                command: $mr_police,
-                timeout: 15,
-                statusMessage: "mr-police: checking for unmerged MRs..."
-              }
-            ]
-          }
-        ],
-        PostToolUse: [
-          {
-            matcher: "Edit|Write",
-            hooks: [
-              {
-                type: "command",
-                command: $format_police,
-                timeout: 15
-              },
-              {
-                type: "command",
-                command: $coding_police,
-                timeout: 15
-              }
-            ]
-          }
-        ]
-      }
-    }')
+	hooks_json=$(jq --arg dir "$hooks_dir" '
+    {hooks: (.hooks | with_entries(
+      .value |= map(.hooks |= map(
+        .command |= sub("^\\$HOME/\\.claude/hooks"; $dir)
+      ))
+    ))}
+  ' "$canonical")
 
 	if [[ -f "$settings_file" ]]; then
 		# Merge: existing settings + our hooks (our hooks win on conflict)

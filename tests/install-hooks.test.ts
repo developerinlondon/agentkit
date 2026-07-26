@@ -38,25 +38,36 @@ describe('Claude Code hook wiring', () => {
         readFileSync(join(claudeDir, 'settings.json'), 'utf-8'),
       );
 
-      const preToolUse = settings.hooks.PreToolUse;
-      expect(preToolUse).toHaveLength(1);
-      expect(preToolUse[0].matcher).toBe('Bash');
-      expect(commandNames(preToolUse[0].hooks).sort()).toEqual(
-        [
-          'git-police.sh',
-          'kubectl-police.sh',
-          'mr-police.sh',
-          'pkg-police.sh',
-          'resource-police.sh',
-        ].sort(),
+      // The installed wiring must equal the canonical file, not a second copy
+      // maintained by hand — the drift between them left review-police shipped
+      // but never wired, so the merge gate was inert wherever this installer ran.
+      const canonical = JSON.parse(
+        readFileSync(join(repoRoot, 'hooks', 'claude', 'settings.json'), 'utf-8'),
       );
+      for (const event of Object.keys(canonical.hooks)) {
+        const want = canonical.hooks[event];
+        const got = settings.hooks[event];
+        expect(got, `${event} missing from installed settings`).toBeDefined();
+        expect(got).toHaveLength(want.length);
+        want.forEach((group: any, i: number) => {
+          expect(got[i].matcher).toEqual(group.matcher);
+          expect(commandNames(got[i].hooks)).toEqual(commandNames(group.hooks));
+        });
+      }
 
-      const postToolUse = settings.hooks.PostToolUse;
-      expect(postToolUse).toHaveLength(1);
-      expect(postToolUse[0].matcher).toBe('Edit|Write');
-      expect(commandNames(postToolUse[0].hooks).sort()).toEqual(
-        ['coding-police.sh', 'format-police.sh'].sort(),
-      );
+      // Every command must point at the installed hooks dir, never the token.
+      for (const groups of Object.values<any>(settings.hooks)) {
+        for (const group of groups) {
+          for (const entry of group.hooks) {
+            expect(entry.command).not.toContain('$HOME');
+            expect(entry.command).toStartWith(join(claudeDir, 'hooks'));
+          }
+        }
+      }
+
+      // Named explicitly so deleting one from the canonical file fails here.
+      expect(commandNames(settings.hooks.PreToolUse[0].hooks)).toContain('review-police.sh');
+      expect(commandNames(settings.hooks.PostToolUse[0].hooks)).toContain('comment-police.sh');
     } finally {
       rmSync(home, { force: true, recursive: true });
     }

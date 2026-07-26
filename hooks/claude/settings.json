@@ -68,6 +68,12 @@
             "command": "$HOME/.claude/hooks/coding-police.sh",
             "timeout": 15,
             "statusMessage": "coding-police: checking coding standards..."
+          },
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/comment-police.sh",
+            "timeout": 15,
+            "statusMessage": "comment-police: checking comment discipline..."
           }
         ]
       }

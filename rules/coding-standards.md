@@ -35,3 +35,16 @@ Enforce these standards proactively to ensure the codebase remains modular, DRY,
 - Plan your file structure **before** writing large amounts of code.
 - If you realize a feature requires 1000+ lines, create the directory structure and multiple files from the start.
 - Do not wait for the "Coding Police" plugin to warn you — modularity should be built-in.
+
+## Worktrees, not branches, in a shared clone
+
+Assume another agent is working in any clone you did not just create. Creating a
+branch there swaps the working tree under them mid-edit. Use a worktree:
+
+```sh
+git worktree add ../<repo>-wt/<name> -b <branch> origin/<default>
+```
+
+`git-police` refuses branch creation in a clone that has other worktrees.
+Override with `AGENTKIT_ALLOW_SHARED_BRANCH=1` only when you know nobody else
+is in it.
