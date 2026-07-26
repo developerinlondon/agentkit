@@ -260,6 +260,11 @@ check_duplicate_blocks() {
           biggest[run_first] = size
           echo_at[run_first] = run_here
         }
+        # Total duplicated LINES, not a count of runs. A run boundary is a
+        # property of layout — a normalised-away comment splits one — so
+        # counting runs let an unrelated deletion RAISE the number. Lines only
+        # go up when there is more duplicated text.
+        dup_lines[run_first] += size
         copies[run_first]++
         run = 0
       }
@@ -298,8 +303,25 @@ check_duplicate_blocks() {
       # the severity. A repeated block used to emit one finding per repetition;
       # as a count it is both less noise and a metric the subtraction can
       # compare, so a THIRD copy of an existing pair still reports as worse.
-      for (f in copies) {
-        printf "DUPLICATE CODE: %d copies of a %d+ line block, first at line %d, again at line %d. Extract into a shared function to keep code DRY.\n", copies[f] + 1, biggest[f], f, echo_at[f]
+      # ONE finding for the file. Per-region findings all normalise to the
+      # same shape, so the subtraction could only pair them by position — and
+      # `for (f in ...)` has no defined order, so adding or removing any region
+      # reshuffled the pairing and reported untouched code. The question this
+      # check exists to answer is whether the edit left MORE duplication.
+      total = 0
+      regions = 0
+      top = 0
+      for (f in dup_lines) {
+        total += dup_lines[f]
+        regions++
+        if (biggest[f] > top) {
+          top = biggest[f]
+          top_at = f
+          top_echo = echo_at[f]
+        }
+      }
+      if (regions > 0) {
+        printf "DUPLICATE CODE: %d duplicated lines across %d region(s); the largest is %d+ lines, first at line %d, again at line %d. Extract into a shared function to keep code DRY.\n", total, regions, top, top_at, top_echo
       }
     }
   ' "$FILE_PATH" 2>/dev/null || true)
@@ -417,7 +439,7 @@ fi
 violation_shape() {
   printf '%s' "$1" | sed -E '
     s/^(FILE TOO LONG: )[0-9]+/\1#/
-    s/^(DUPLICATE CODE: )[0-9]+( copies of a )[0-9]+/\1#\2#/
+    s/^(DUPLICATE CODE: )[0-9]+( duplicated lines across )[0-9]+( region\(s\); the largest is )[0-9]+/\1#\2#\3#/
     s/(first at line )[0-9]+/\1#/
     s/(again at line )[0-9]+/\1#/
     s/^(TOO MANY EXPORTS: )[0-9]+/\1#/
@@ -439,7 +461,11 @@ violation_metric() {
   case "$1" in
     "FILE TOO LONG: "*) m=$(printf '%s' "$1" | sed -E 's/^FILE TOO LONG: ([0-9]+) lines.*/\1/') ;;
     "LONG FUNCTION: "*) m=$(printf '%s' "$1" | sed -E 's/^LONG FUNCTION: .* is ([0-9]+) lines.*/\1/') ;;
-    "DUPLICATE CODE: "*) m=$(printf '%s' "$1" | sed -E 's/^DUPLICATE CODE: ([0-9]+) copies.*/\1/') ;;
+    "DUPLICATE CODE: "*)
+      # Both dimensions: more copies OR a longer region must raise it, or
+      # newly duplicated code adjacent to an existing region reports nothing.
+      m=$(printf '%s' "$1" | sed -E 's/^DUPLICATE CODE: ([0-9]+) duplicated lines.*/\1/')
+      ;;
     "TOO MANY EXPORTS: "*) m=$(printf '%s' "$1" | sed -E 's/^TOO MANY EXPORTS: ([0-9]+) exports.*/\1/') ;;
     *) m=0 ;;
   esac

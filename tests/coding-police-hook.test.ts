@@ -101,9 +101,9 @@ function runHook(config: string, shimBin?: (directory: string) => void) {
 function expectConfiguredThresholds(stderr: string): void {
   expect(stderr).toContain('FILE TOO LONG: 8 lines (limit: 5');
   expect(stderr).toContain('LONG FUNCTION: `alpha` is 4 lines (limit: 2');
-  // The threshold is what this pins; the count and wording are the check's
-  // own business.
-  expect(stderr).toContain('of a 2+ line block');
+  // The configured minimum is what this pins; the wording is the check's own
+  // business.
+  expect(stderr).toContain('the largest is 2+ lines');
   expect(stderr).toContain('TOO MANY EXPORTS: 2 exports in this file (limit: 1');
 }
 
@@ -269,6 +269,19 @@ describe('Claude coding-police duplicate reporting is bounded', () => {
       encoding: 'utf-8',
     });
 
+  const block = (tag: string, n: number) =>
+    Array.from({ length: n }, (_, i) => `const ${tag}${i} = ${i};`).join('\n') + '\n';
+
+  const dupRepo = () => {
+    const dir = mkdtempSync(join(tmpdir(), 'agentkit-dup-'));
+    const file = join(dir, 'd.ts');
+    const git = (...a: string[]) => spawnSync('git', a, { cwd: dir, encoding: 'utf-8' });
+    git('init', '-q');
+    git('config', 'user.email', 't@t.t');
+    git('config', 'user.name', 't');
+    return { dir, file, git };
+  };
+
   test('a repeated block is ONE finding, not one per repetition', () => {
     // The window slides by one, so a duplicated region used to emit roughly one
     // finding per line: 1489 of them on a 1500-line file, which made the
@@ -287,22 +300,54 @@ describe('Claude coding-police duplicate reporting is bounded', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  test('the copy count is the severity, so another copy still reports', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'agentkit-dupcount-'));
-    const file = join(dir, 'd.ts');
-    const git = (...a: string[]) => spawnSync('git', a, { cwd: dir, encoding: 'utf-8' });
-    git('init', '-q');
-    git('config', 'user.email', 't@t.t');
-    git('config', 'user.name', 't');
-    const block = (t: string) => `const ${t}0 = 0;\nconst a = 1;\nconst b = 2;\nconst c = 3;\nconst d = 4;\nconst e = 5;\nconst f = 6;\n`;
-    writeFileSync(file, `${block('x')}${block('y')}`);
+  test('the reported region size is the real one, not the window minimum', () => {
+    // Without coalescing every sliding-window position is its own match, so
+    // the largest region reads as the configured minimum however much code is
+    // actually duplicated — and the size is what tells you what to extract.
+    const dir = mkdtempSync(join(tmpdir(), 'agentkit-dupsize-'));
+    const file = join(dir, 'big.ts');
+    const P = Array.from({ length: 48 }, (_, i) => `const p${i} = ${i};`).join('\n') + '\n';
+    writeFileSync(file, `${P}const z = 0;\n${P}`);
+    const out = `${run(file).stdout ?? ''}${run(file).stderr ?? ''}`;
+    const m = out.match(/the largest is (\d+)\+ lines/);
+    expect(m).not.toBeNull();
+    expect(Number(m![1])).toBeGreaterThan(40);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test('MORE duplicated text reports, even adjacent to an existing region', () => {
+    // The first cut coalesced regions but kept only the copy COUNT as
+    // severity, so 40 lines that became duplicated next to an existing
+    // duplicate were byte-identical in shape and equal in metric — silent.
+    const { dir, file, git } = dupRepo();
+    const P = block('p', 8);
+    const Q = block('q', 40);
+    writeFileSync(file, `${P}${Q}const z1 = 9;\n${P}const z2 = 9;\n`);
     git('add', '-A');
-    git('commit', '-qm', 'two copies already here');
+    git('commit', '-qm', 'P is duplicated, Q is not');
     expect(run(file).status).toBe(0);
-    writeFileSync(file, `${block('x')}${block('y')}${block('z')}`);
+    // Q is now duplicated too.
+    writeFileSync(file, `${P}${Q}const z1 = 9;\n${P}${Q}const z2 = 9;\n`);
     const worse = run(file);
     expect(`${worse.stdout ?? ''}${worse.stderr ?? ''}`).toContain('DUPLICATE CODE');
     expect(worse.status).toBe(2);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test('LESS duplicated text is silent, whatever it does to region layout', () => {
+    // Counting regions or runs made this report: a deletion merges or splits
+    // runs, which is a property of layout rather than of how much duplication
+    // exists. Total duplicated lines only falls when there is less of it.
+    const { dir, file, git } = dupRepo();
+    const P = block('p', 8);
+    writeFileSync(file, `${P}const a = 9;\n${P}const b = 9;\n${P}const c = 9;\n`);
+    git('add', '-A');
+    git('commit', '-qm', 'three copies');
+    expect(run(file).status).toBe(0);
+    writeFileSync(file, `${P}const a = 9;\n${P}const c = 9;\n`);
+    const better = run(file);
+    expect(`${better.stdout ?? ''}${better.stderr ?? ''}`).not.toContain('DUPLICATE CODE');
+    expect(better.status).toBe(0);
     rmSync(dir, { recursive: true, force: true });
   });
 });
