@@ -62,7 +62,7 @@ tgit() {
 
 if [[ ${#ALLOWED_REPOS[@]} -gt 0 ]]; then
 	REPO_NAME=$(tgit remote get-url origin 2>/dev/null | sed -E 's|.*[:/]([^/]+/[^/]+?)(\.git)?$|\1|' || echo "")
-	for allowed in "${ALLOWED_REPOS[@]}"; do
+	for allowed in "${ALLOWED_REPOS[@]+"${ALLOWED_REPOS[@]}"}"; do
 		if [[ "$REPO_NAME" == *"$allowed"* ]]; then
 			exit 0
 		fi
@@ -131,7 +131,7 @@ PUSH_REMOTE=$(push_remote "$STRIPPED")
 
 # 3. Block pushing directly to protected branches (on origin / implicit upstream)
 if [[ -z "$PUSH_REMOTE" || "$PUSH_REMOTE" == "origin" ]]; then
-	for branch in "${PROTECTED_BRANCHES[@]}"; do
+	for branch in "${PROTECTED_BRANCHES[@]+"${PROTECTED_BRANCHES[@]}"}"; do
 		if echo "$STRIPPED" | grep -qiE "${GIT_PUSH_RE}.*\b${branch}\b"; then
 			deny "BLOCKED: Pushing directly to '${branch}' is forbidden. Create a feature branch and raise a PR instead."
 		fi
@@ -168,7 +168,7 @@ fi
 if [[ -z "$PUSH_REMOTE" || "$PUSH_REMOTE" == "origin" ]] \
 	&& echo "$STRIPPED" | grep -qiE "$GIT_PUSH_RE"; then
 	CURRENT_BRANCH=$(tgit symbolic-ref --short HEAD 2>/dev/null || echo "")
-	for branch in "${PROTECTED_BRANCHES[@]}"; do
+	for branch in "${PROTECTED_BRANCHES[@]+"${PROTECTED_BRANCHES[@]}"}"; do
 		if [[ "$CURRENT_BRANCH" == "$branch" ]]; then
 			deny "BLOCKED: You are on '${branch}'. Pushing from a protected branch is forbidden. Create a feature branch first: git checkout -b feat/your-feature-name"
 		fi
@@ -236,7 +236,7 @@ fi
 # 6. Block direct commits to protected branches
 if echo "$STRIPPED" | grep -qiE "$GIT_COMMIT_RE"; then
 	CURRENT_BRANCH=$(tgit symbolic-ref --short HEAD 2>/dev/null || echo "")
-	for branch in "${PROTECTED_BRANCHES[@]}"; do
+	for branch in "${PROTECTED_BRANCHES[@]+"${PROTECTED_BRANCHES[@]}"}"; do
 		if [[ "$CURRENT_BRANCH" == "$branch" ]]; then
 			deny "BLOCKED: Committing directly to '${branch}' is forbidden. You are on the ${branch} branch. Create a feature branch first: git checkout -b feat/your-feature-name"
 		fi
@@ -263,7 +263,7 @@ if echo "$STRIPPED" | grep -qiE '\bgit\b.*(checkout\s+-b|switch\s+-c)\b'; then
 	CURRENT_BRANCH=$(tgit symbolic-ref --short HEAD 2>/dev/null || echo "")
 	if [[ -n "$CURRENT_BRANCH" && "$STACKING_OK" != "1" ]]; then
 		ON_BASE=false
-		for base in "$DEFAULT_BRANCH" "${PROTECTED_BRANCHES[@]}" dev; do
+		for base in "$DEFAULT_BRANCH" "${PROTECTED_BRANCHES[@]+"${PROTECTED_BRANCHES[@]}"}" dev; do
 			[[ -n "$base" && "$CURRENT_BRANCH" == "$base" ]] && ON_BASE=true
 		done
 		if [[ "$ON_BASE" == false ]]; then
@@ -286,7 +286,7 @@ fi
 # 8. Stale branch protection — warn when creating a branch from a stale base
 if echo "$STRIPPED" | grep -qiE '\bgit\b.*(checkout\s+-b|switch\s+-c)\b'; then
 	CURRENT_BRANCH=$(tgit symbolic-ref --short HEAD 2>/dev/null || echo "")
-	for branch in "${PROTECTED_BRANCHES[@]}"; do
+	for branch in "${PROTECTED_BRANCHES[@]+"${PROTECTED_BRANCHES[@]}"}"; do
 		if [[ "$CURRENT_BRANCH" == "$branch" ]]; then
 			tgit fetch origin "$branch" --quiet 2>/dev/null || true
 			LOCAL_SHA=$(tgit rev-parse "$branch" 2>/dev/null || echo "")
@@ -313,7 +313,7 @@ if echo "$STRIPPED" | grep -qiE '\bgit\b.*\b(checkout|switch|pull)\b' \
 	&& ! echo "$STRIPPED" | grep -qiE '(checkout[[:space:]]+-b|switch[[:space:]]+-c)\b'; then
 	DEFAULT_BRANCH=$(tgit symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's|^origin/||' || true)
 	if [[ -z "$DEFAULT_BRANCH" ]]; then
-		for cand in "${PROTECTED_BRANCHES[@]}"; do
+		for cand in "${PROTECTED_BRANCHES[@]+"${PROTECTED_BRANCHES[@]}"}"; do
 			if tgit show-ref --verify --quiet "refs/heads/${cand}"; then
 				DEFAULT_BRANCH="$cand"
 				break

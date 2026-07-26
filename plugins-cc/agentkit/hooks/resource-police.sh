@@ -269,7 +269,7 @@ is_delegating() {
 
 is_read_only_diagnostic() {
 	local first='' second='' argument
-	for argument in "${ARGS[@]}"; do
+	for argument in "${ARGS[@]+"${ARGS[@]}"}"; do
 		[[ "$argument" == -* ]] && continue
 		if [[ -z "$first" ]]; then
 			first="$argument"

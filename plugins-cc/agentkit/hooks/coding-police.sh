@@ -109,7 +109,7 @@ case "$FILE_PATH" in
 esac
 
 # Skip paths matching an exclude-patterns entry (e.g. homogeneous routes/migrations dirs)
-for pattern in "${EXCLUDE_PATTERNS[@]}"; do
+for pattern in "${EXCLUDE_PATTERNS[@]+"${EXCLUDE_PATTERNS[@]}"}"; do
   [[ "$FILE_PATH" == *"$pattern"* ]] && exit 0
 done
 
@@ -127,14 +127,23 @@ check_cross_repo_relative_paths() {
   # the repo — a deliberate test fixture, say — is not re-reported on every
   # later edit. Unlike the whole-file checks this is per line, so the baseline
   # is a set of lines rather than a severity: anything not in it is this edit's.
-  local matches committed line body
+  local matches committed line body seen_n committed_n
   matches=$(grep -hE "$CROSS_REPO_RE" "$FILE_PATH" 2>/dev/null || true)
   committed=$(baseline_of | grep -hE "$CROSS_REPO_RE" 2>/dev/null || true)
 
+  # COUNTS, not membership: asking only "is this line committed?" let a second,
+  # byte-identical copy of an offending line be added and reported as nothing.
+  # A duplicated list entry in config is exactly this check's target.
+  seen_n=""
   while IFS= read -r line; do
     [[ -n "$line" ]] || continue
     body=${line#"${line%%[![:space:]]*}"}
-    if [[ -n "$committed" ]] && printf '%s\n' "$committed" | grep -qxF -- "$line"; then
+    committed_n=0
+    if [[ -n "$committed" ]]; then
+      committed_n=$(printf '%s\n' "$committed" | grep -cxF -- "$line" || true)
+    fi
+    seen_n=$(printf '%s\n%s' "$seen_n" "$line")
+    if (( $(printf '%s' "$seen_n" | grep -cxF -- "$line" || true) <= committed_n )); then
       continue
     fi
     VIOLATIONS+=("CROSS-REPO RELATIVE PATH: ${body}. Do not depend on checkout layout across repos; use a published artifact, a vendored/submodule path inside this repo, or runtime configuration.")
@@ -152,9 +161,12 @@ baseline_of() {
   # git answers with the PHYSICAL path; stripping it off a logical FILE_PATH is
   # a no-op that leaves `rel` absolute, finds nothing, and switches the whole
   # subtraction off — the wedge, back, for any checkout under a symlink.
-  abs=$(realpath "$FILE_PATH" 2>/dev/null || printf '%s' "$FILE_PATH")
-  top=$(git -C "$(dirname "$abs")" rev-parse --show-toplevel 2>/dev/null) || return 0
-  top=$(realpath "$top" 2>/dev/null || printf '%s' "$top")
+  # `cd -P` + $PWD are builtins. realpath is not POSIX — busybox and older
+  # macOS lack it — and falling back to the unresolved path silently restores
+  # the very wedge this resolves.
+  abs=$(cd -P -- "$(dirname -- "$FILE_PATH")" 2>/dev/null && printf '%s/%s' "$PWD" "$(basename -- "$FILE_PATH")") || abs=$FILE_PATH
+  top=$(git -C "$(dirname -- "$abs")" rev-parse --show-toplevel 2>/dev/null) || return 0
+  top=$(cd -P -- "$top" 2>/dev/null && printf '%s' "$PWD") || top=$top
   rel=${abs#"$top"/}
   [[ "$rel" == "$abs" ]] && return 0
   git -C "$top" show "HEAD:$rel" 2>/dev/null || true
@@ -341,7 +353,7 @@ check_monolith_directory() {
     esac
 
     excluded=false
-    for pattern in "${EXCLUDE_PATTERNS[@]}"; do
+    for pattern in "${EXCLUDE_PATTERNS[@]+"${EXCLUDE_PATTERNS[@]}"}"; do
       [[ "$entry" == *"$pattern"* ]] && { excluded=true; break; }
     done
     [[ "$excluded" == true ]] && continue
@@ -432,23 +444,17 @@ violation_metric() {
   printf '%s' "$m"
 }
 
-# Which occurrence of `shape` this is. Same-named functions otherwise share a
-# key, and a grown one could match a shrunken namesake's slot and report
-# nothing. No `declare -A`: these run on stock macOS bash 3.2.
-occurrence_of() {
-  local shape=$1 n=1 s
-  shift
-  for s in "$@"; do
-    if [[ "$s" == "$shape" ]]; then
-      n=$((n + 1))
-    fi
-  done
-  printf '%s' "$n"
-}
-
 # The cross-repo check already ran and its findings are NOT whole-file state —
 # they must survive the baseline pass, which resets the array.
 PRE_EXISTING=("${VIOLATIONS[@]+"${VIOLATIONS[@]}"}")
+
+# The subtraction compares every violation against every earlier one, twice.
+# A pathological file emits roughly one violation per line, and at ~1500 the
+# hook ran past the harness's 60s timeout — where it is KILLED, emits no
+# decision, and the harness reads silence as ALLOW. Bound it so no input can
+# do that. Truncation is announced, never silent.
+MAX_SUBTRACT=150
+TRUNCATED=false
 
 BASE_KEYS=()
 BASE_SHAPES=()
@@ -491,8 +497,21 @@ if [[ -n "$BASELINE_FILE" ]]; then
   check_duplicate_blocks
   check_export_count
   for v in "${VIOLATIONS[@]+"${VIOLATIONS[@]}"}"; do
+    if (( ${#BASE_KEYS[@]} >= MAX_SUBTRACT )); then
+      break
+    fi
     base_shape=$(violation_shape "$v")
-    BASE_KEYS+=("$base_shape @$(occurrence_of "$base_shape" "${BASE_SHAPES[@]+"${BASE_SHAPES[@]}"}")")
+    # Counted in-shell. A command substitution here is a FORK PER VIOLATION,
+    # and a duplicate-heavy file emits roughly one violation per line: it took
+    # a 1500-line file past the harness's 60s hook timeout, and a hook that is
+    # killed emits no decision, which reads as ALLOW.
+    base_occ=1
+    for prev in "${BASE_SHAPES[@]+"${BASE_SHAPES[@]}"}"; do
+      if [[ "$prev" == "$base_shape" ]]; then
+        base_occ=$((base_occ + 1))
+      fi
+    done
+    BASE_KEYS+=("$base_shape @$base_occ")
     BASE_SHAPES+=("$base_shape")
     BASE_METRICS+=("$(violation_metric "$v")")
   done
@@ -508,13 +527,24 @@ check_duplicate_blocks
 check_export_count
 check_monolith_directory
 
+if (( ${#VIOLATIONS[@]} > MAX_SUBTRACT )); then
+  TRUNCATED=true
+  VIOLATIONS=("${VIOLATIONS[@]:0:MAX_SUBTRACT}")
+fi
+
 if (( ${#BASE_KEYS[@]} > 0 )); then
   KEPT=()
   CUR_SHAPES=()
   for v in "${VIOLATIONS[@]+"${VIOLATIONS[@]}"}"; do
     shape=$(violation_shape "$v")
     metric=$(violation_metric "$v")
-    key="$shape @$(occurrence_of "$shape" "${CUR_SHAPES[@]+"${CUR_SHAPES[@]}"}")"
+    occ=1
+    for prev in "${CUR_SHAPES[@]+"${CUR_SHAPES[@]}"}"; do
+      if [[ "$prev" == "$shape" ]]; then
+        occ=$((occ + 1))
+      fi
+    done
+    key="$shape @$occ"
     CUR_SHAPES+=("$shape")
     # Silent only where the SAME occurrence was already there and no worse, so
     # an improvement never reports and a regression always does. An occurrence
@@ -531,6 +561,12 @@ if (( ${#BASE_KEYS[@]} > 0 )); then
     fi
   done
   VIOLATIONS=("${KEPT[@]+"${KEPT[@]}"}")
+fi
+
+# Only ever a caveat ON something, never a finding in itself: alone it would
+# block an edit whose file has nothing this edit can fix.
+if [[ "$TRUNCATED" == true && ${#VIOLATIONS[@]} -gt 0 ]]; then
+  VIOLATIONS+=("LIST TRUNCATED: this file produced more than ${MAX_SUBTRACT} findings, so only the first ${MAX_SUBTRACT} were compared against the committed version — others are not shown.")
 fi
 
 VIOLATIONS=("${PRE_EXISTING[@]+"${PRE_EXISTING[@]}"}" "${VIOLATIONS[@]+"${VIOLATIONS[@]}"}")
