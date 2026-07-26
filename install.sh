@@ -554,6 +554,36 @@ install_session_shims() {
 	fi
 }
 
+# Per-session scopes bound one session; this bounds all of them together. Base
+# unit only — operator overrides belong in agent-sessions.slice.d/ drop-ins,
+# which systemd layers on top and a re-install will not clobber.
+install_session_slice() {
+	local unit_dir="$1"
+	local unit="$unit_dir/agent-sessions.slice"
+
+	mkdir -p "$unit_dir"
+	cat >"$unit" <<-'SLICE'
+		# Managed by agentkit install.sh. Override via agent-sessions.slice.d/.
+		[Unit]
+		Description=Aggregate resource guard for interactive agent CLI sessions
+
+		[Slice]
+		CPUQuota=1600%
+		MemoryHigh=24G
+		MemoryMax=32G
+		MemorySwapMax=4G
+		TasksMax=24576
+	SLICE
+	echo "[shims] Aggregate slice: $unit"
+
+	if systemctl --user show-environment > /dev/null 2>&1; then
+		systemctl --user daemon-reload || true
+		echo "[shims] Reloaded user systemd manager"
+	else
+		echo "[shims] User systemd manager unavailable; slice applies at next login"
+	fi
+}
+
 path_without() {
 	local drop="$1"
 	local entry out=""
@@ -754,6 +784,7 @@ if [[ "$GLOBAL" == true ]]; then
 	if [[ "$SESSION_SCOPE" == true ]]; then
 		echo "--- Per-session resource scoping ---"
 		install_session_shims "$SESSION_SHIMS" "$PATH_TOOLS"
+		install_session_slice "${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
 		install_shim_path "$SESSION_SHIMS" "$HOME/.bashrc"
 		echo ""
 	fi
