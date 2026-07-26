@@ -151,7 +151,10 @@ main() {
 
 	local invoked_as shim_dir target
 	invoked_as="$(basename "${BASH_SOURCE[0]}")"
-	shim_dir="$(cd "$(dirname "$SELF")" && pwd -P)"
+	# The directory we were INVOKED through, not the one the script lives in:
+	# a shim is a symlink into ~/.local/bin, and resolving it would make us skip
+	# ~/.local/bin itself — the directory holding the real runtime.
+	shim_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 
 	if [[ "$invoked_as" == "agent-session" ]]; then
 		[[ $# -ge 1 ]] || die "usage: agent-session <command> [args...]" "$EX_USAGE"
