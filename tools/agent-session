@@ -1,0 +1,194 @@
+#!/bin/bash -p
+set -euo pipefail
+
+# Runs an interactive agent CLI inside its own systemd scope so one session
+# cannot exhaust the task or memory budget shared with its siblings.
+#
+# Two invocation forms:
+#   agent-session <command> [args...]   explicit
+#   <shim-dir>/claude [args...]         via a symlink named after the runtime
+#
+# Fail-open by contract: if scoping is unavailable for any reason, the real
+# command still runs unscoped. Never block a session from starting.
+
+readonly EX_USAGE=64
+readonly EX_UNAVAILABLE=69
+
+readonly SESSION_CONF="${AGENTKIT_SESSION_CONF:-/etc/agentkit/session-guard.conf}"
+readonly USER_RUNTIME_ROOT=/run/user
+readonly SLICE=agent-sessions.slice
+readonly SCOPE_MARKER=AGENTKIT_SESSION_SCOPE
+
+# Deliberately NOT /etc/agentkit/resource-guard.conf: bounded-run parses that
+# file strictly and dies on unknown keys, so session limits need their own file.
+TASKS_MAX=4096
+MEMORY_HIGH=12G
+MEMORY_MAX=16G
+MEMORY_SWAP_MAX=2G
+
+SELF=""
+
+die() {
+	printf 'agent-session: %s\n' "$1" >&2
+	exit "${2:-$EX_UNAVAILABLE}"
+}
+
+warn() {
+	printf 'agent-session: %s\n' "$1" >&2
+}
+
+resolve_self() {
+	local path="${BASH_SOURCE[0]}"
+	SELF="$(readlink -f "$path" 2>/dev/null || printf '%s' "$path")"
+}
+
+# Finds the real executable, skipping this shim and the directory it lives in
+# so a shim named `claude` never re-executes itself.
+resolve_target() {
+	local name="$1"
+	local shim_dir="$2"
+	local entry candidate resolved
+
+	local saved_ifs="$IFS"
+	IFS=:
+	# shellcheck disable=SC2086
+	set -- $PATH
+	IFS="$saved_ifs"
+
+	for entry in "$@"; do
+		[[ -n "$entry" ]] || entry=.
+		resolved="$(readlink -f "$entry" 2>/dev/null || true)"
+		[[ -n "$resolved" && "$resolved" == "$shim_dir" ]] && continue
+
+		candidate="$entry/$name"
+		[[ -f "$candidate" && -x "$candidate" ]] || continue
+
+		resolved="$(readlink -f "$candidate" 2>/dev/null || true)"
+		[[ -n "$resolved" && "$resolved" == "$SELF" ]] && continue
+
+		printf '%s\n' "$candidate"
+		return 0
+	done
+
+	return 1
+}
+
+is_tasks_value() {
+	[[ "$1" =~ ^([0-9]+|infinity)$ ]]
+}
+
+is_size_value() {
+	[[ "$1" =~ ^([0-9]+[[:space:]]*[KMGTPE]?|[0-9]+[[:space:]]*%|infinity)$ ]]
+}
+
+warn_bad() {
+	warn "ignoring $1='$2' in $SESSION_CONF: not a valid systemd value"
+}
+
+load_conf() {
+	[[ -f "$SESSION_CONF" ]] || return 0
+
+	# Root-owned only; a user-writable limits file would be a trivial escape.
+	# Root's or our own; a third party's limits file is not trusted. Our own is
+	# no escalation — the same user can already run the runtime unshimmed.
+	if [[ ! -O "$SESSION_CONF" ]]; then
+		local owner
+		owner="$(stat -c '%u' "$SESSION_CONF" 2>/dev/null || printf '')"
+		if [[ -z "$owner" ]]; then
+			warn "ignoring $SESSION_CONF: cannot determine owner"
+			return 0
+		fi
+		if [[ "$owner" != "0" ]]; then
+			warn "ignoring $SESSION_CONF: owned by neither root nor $(id -un)"
+			return 0
+		fi
+	fi
+
+	local line key value
+	while IFS= read -r line; do
+		line="${line%%#*}"
+		line="${line#"${line%%[![:space:]]*}"}"
+		line="${line%"${line##*[![:space:]]}"}"
+		[[ -n "$line" ]] || continue
+		[[ "$line" == *=* ]] || continue
+
+		key="${line%%=*}"
+		value="${line#*=}"
+		# systemd rejects a malformed property and never runs the payload, and
+		# we exec into it — so an unvalidated typo here would stop every session
+		# on the host from starting. Keep the built-in default instead.
+		case "$key" in
+			TASKS_MAX) is_tasks_value "$value" && TASKS_MAX="$value" || warn_bad "$key" "$value" ;;
+			MEMORY_HIGH) is_size_value "$value" && MEMORY_HIGH="$value" || warn_bad "$key" "$value" ;;
+			MEMORY_MAX) is_size_value "$value" && MEMORY_MAX="$value" || warn_bad "$key" "$value" ;;
+			MEMORY_SWAP_MAX) is_size_value "$value" && MEMORY_SWAP_MAX="$value" || warn_bad "$key" "$value" ;;
+			*) ;; # forward-compatible: unknown keys are ignored, never fatal
+		esac
+	done <"$SESSION_CONF"
+}
+
+# Mirrors bounded-run's prepare_user_bus(): code-server terminals inherit
+# neither XDG_RUNTIME_DIR nor DBUS_SESSION_BUS_ADDRESS, so systemd-run --user
+# cannot reach the user manager without this.
+scoping_available() {
+	command -v systemd-run >/dev/null 2>&1 || return 1
+	command -v systemctl >/dev/null 2>&1 || return 1
+
+	local uid runtime_dir
+	uid="$(id -u)"
+	runtime_dir="${XDG_RUNTIME_DIR:-$USER_RUNTIME_ROOT/$uid}"
+	[[ -e "$runtime_dir/bus" ]] || return 1
+
+	export XDG_RUNTIME_DIR="$runtime_dir"
+	export DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime_dir/bus"
+
+	systemctl --user show-environment >/dev/null 2>&1 || return 1
+	return 0
+}
+
+main() {
+	resolve_self
+
+	local invoked_as shim_dir target
+	invoked_as="$(basename "${BASH_SOURCE[0]}")"
+	shim_dir="$(cd "$(dirname "$SELF")" && pwd -P)"
+
+	if [[ "$invoked_as" == "agent-session" ]]; then
+		[[ $# -ge 1 ]] || die "usage: agent-session <command> [args...]" "$EX_USAGE"
+		invoked_as="$1"
+		shift
+	fi
+
+	target="$(resolve_target "$invoked_as" "$shim_dir")" \
+		|| die "cannot find '$invoked_as' on PATH outside the shim directory"
+
+	# A session that spawns subagents must not nest a scope per subagent; the
+	# outermost scope already accounts for the whole session tree.
+	if [[ -n "${!SCOPE_MARKER:-}" ]]; then
+		exec "$target" "$@"
+	fi
+
+	if ! scoping_available; then
+		exec "$target" "$@"
+	fi
+
+	load_conf
+	export "$SCOPE_MARKER=1"
+
+	# --scope keeps the process in the caller's TTY, session and process group,
+	# so interactive TUIs keep job control and signal delivery; only the cgroup
+	# changes. Verified: same pts, TERM preserved, SIGINT delivered.
+	exec systemd-run --user --scope --quiet \
+		--slice="$SLICE" \
+		--unit="agent-session-$invoked_as-$$" \
+		--property=TasksMax="$TASKS_MAX" \
+		--property=MemoryHigh="$MEMORY_HIGH" \
+		--property=MemoryMax="$MEMORY_MAX" \
+		--property=MemorySwapMax="$MEMORY_SWAP_MAX" \
+		-- "$target" "$@"
+}
+
+# Sourcing exposes the validators for testing without running a session.
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+	main "$@"
+fi
