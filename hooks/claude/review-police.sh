@@ -197,7 +197,10 @@ if has gh && has pr && has merge; then is_merge=1; fi
 # The merge path IS the attempt, whatever calls it: any caller allowlist leaves
 # python, node, ruby and every wrapper script outside it. Reading such a URL
 # therefore denies too — a false deny is the cheaper failure here.
-if tok_match 'merge_requests?/[0-9]+/merge|/pulls/[0-9]+/merge'; then is_merge=1; fi
+if tok_match 'merge_requests?(/|%2f)[0-9]+(/|%2f)merge|/pulls/[0-9]+/merge'; then is_merge=1; fi
+# GraphQL reaches the same act by name rather than by path, so no URL shape
+# appears at all. These are the merge mutations either forge exposes.
+if tok_match 'mergeRequestAccept|mergePullRequest'; then is_merge=1; fi
 # Split-variable form: the URL is assembled at runtime. What separates that from
 # prose is not an interpolation — `$(…)`, backticks, `$1` and a string built
 # inside an interpreter all lack one — but ADJACENCY: an assembled path has

@@ -9,6 +9,10 @@ DENY	bash -lc "glab mr merge 999"
 DENY	/bin/bash -c "glab mr merge 999"
 DENY	echo "glab mr merge 999" | bash
 ALLOW	git commit -m "docs: glab mr merge 12 is gated"
-ALLOW	grep -rn "merge_requests/12/merge" docs/
+DENY	grep -rn "merge_requests/999/merge" docs/
+DENY	curl -X PUT "https://gitlab.com/api/v4/projects/1/merge_requests%2F999%2Fmerge"
+DENY	curl -X POST https://gitlab.com/api/graphql -d 'mutation { mergeRequestAccept(input: {iid: "999"}) { errors } }'
+DENY	gh api graphql -f query='mutation { mergePullRequest(input: {pullRequestId: "x"}) { clientMutationId } }'
+ALLOW	echo "see the merge_requests docs and its /merge endpoint"
 ALLOW	grep -o merge_request.merge_when_pipeline_succeeds README.md
 ALLOW	rg -o "merge_request.merge" docs/
