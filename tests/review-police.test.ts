@@ -273,11 +273,104 @@ describe('review-police: bypasses found in adversarial review', () => {
     expect(runHook('git commit -m "docs: glab mr merge 12 is gated" && git push')).toBe('');
   });
 
-  test('reading a merge URL is not calling it', () => {
+  test('a merge URL denies even when only being read', () => {
     record(passing);
-    // Only an actual HTTP caller counts; grepping or editing the text does not.
-    expect(runHook('grep -rn "merge_requests/12/merge" docs/')).toBe('');
-    expect(runHook('rg "/pulls/7/merge" .')).toBe('');
+    // Deliberate: this used to allow, on the theory that only a recognised HTTP
+    // caller counts. That theory WAS the hole — the caller list could never
+    // cover every interpreter, so a real merge slipped through as "not a merge".
+    // Denying a grep is the cheap failure; missing a merge is the expensive one.
+    expect(runHook('grep -rn "merge_requests/999/merge" docs/')).toContain('"deny"');
+    expect(runHook('rg "/pulls/999/merge" .')).toContain('"deny"');
+  });
+
+  test('a REST merge is gated whatever calls it', () => {
+    record(passing);
+    // Each of these evaded while the gate required a caller from a fixed list.
+    // The python form is not hypothetical: it is how a merge actually reached
+    // the forge with no review record.
+    const url = 'https://gitlab.com/api/v4/projects/1%2Fp/merge_requests/999/merge';
+    for (const cmd of [
+      `python3 -c "import urllib.request; urllib.request.urlopen('${url}')"`,
+      `node -e "fetch('${url}', {method:'PUT'})"`,
+      `ruby -e "Net::HTTP.put(URI('${url}'))"`,
+      `perl -e "put('${url}')"`,
+      `bun run merge.ts --url '${url}'`,
+      // No recognisable client at all — a wrapper script is still a caller.
+      `./deploy.sh --endpoint '${url}'`,
+    ]) {
+      expect(runHook(cmd)).toContain('"deny"');
+    }
+  });
+
+  test('URL shapes that vary the path do not evade', () => {
+    record(passing);
+    // Each of these reaches the same endpoint by a slightly different spelling.
+    // A gate that matches only the tidiest form is a gate with a door in it.
+    for (const cmd of [
+      'curl -X PUT https://gitlab.com/api/v4/projects/1/merge_requests/999/merge/',
+      'curl -X PUT "https://gitlab.com/api/v4/projects/1/merge_requests/999/merge?squash=true"',
+      'curl -X PUT "https://gitlab.com/api/v4/projects/grp%2Fproj/merge_requests/999/merge"',
+      'glab api --method PUT projects/1/merge_requests/999/merge',
+      // Assembled at runtime, so no single token carries the whole path.
+      'BASE=https://gitlab.com/api/v4/projects/1/merge_requests; curl -X PUT "$BASE/999/merge"',
+    ]) {
+      expect(runHook(cmd)).toContain('"deny"');
+    }
+  });
+
+  test('ordinary work is not caught by the wider rule', () => {
+    record(passing);
+    // The trade was "reading a merge URL denies". It was NOT "anything near a
+    // merge_requests endpoint denies" — creating or listing must still pass.
+    for (const cmd of [
+      'curl -X POST https://gitlab.com/api/v4/projects/1/merge_requests -d x',
+      'curl https://gitlab.com/api/v4/projects/1/merge_requests?state=opened',
+      'git commit -m "feat: add a thing"',
+      'git push -u origin feat/thing',
+      // Prose naming both halves. Dropping the caller requirement made the
+      // split-variable arm fire on any text carrying `merge_requests` and
+      // `/merge`, so describing this very rule in a commit message was refused.
+      // The arm now needs an INTERPOLATION reaching /merge, which prose has not.
+      'git commit -m "docs: describe the merge_requests API and its /merge endpoint"',
+      'echo "see docs on merge_requests and /merge for details"',
+    ]) {
+      expect(runHook(cmd)).toBe('');
+    }
+  });
+
+  test('a runtime-assembled merge URL is caught however it is assembled', () => {
+    record(passing);
+    // The split-variable arm exists for these. An earlier narrowing keyed on a
+    // `$VAR` interpolation and let five of the six through: command
+    // substitution, backticks, `printf -v`, a positional parameter and a string
+    // built inside an interpreter all reach the endpoint with no `$name` before
+    // /merge. Adjacency is the signal — an assembled path joins something to
+    // /merge, English puts a space in front of it.
+    const mrs = 'https://gitlab.com/api/v4/projects/1/merge_requests';
+    for (const cmd of [
+      `BASE=${mrs}; ID=999; curl -X PUT "$BASE/$ID/merge"`,
+      `BASE=$(echo ${mrs}); curl -X PUT "$(printf %s "$BASE/999")/merge"`,
+      `curl -X PUT "\`echo ${mrs}/999\`/merge"`,
+      `A=(${mrs}); curl -X PUT "\${A[0]}/999/merge"`,
+      `printf -v U "%s/999/merge" "${mrs}"; curl -X PUT "$U"`,
+      `set -- ${mrs}; curl -X PUT "$1/999/merge"`,
+      `python3 -c "b='${mrs}'; put(b+'/999/merge')"`,
+    ]) {
+      expect(runHook(cmd)).toContain('"deny"');
+    }
+  });
+
+  test('a heredoc-fed interpreter is gated too', () => {
+    record(passing);
+    // The exact shape that got through: the URL lives inside a heredoc body,
+    // and nothing on the command line looks like an HTTP client.
+    const cmd = [
+      "python3 - <<'PY'",
+      'import urllib.request',
+      'urllib.request.urlopen("https://gitlab.com/api/v4/projects/1/merge_requests/999/merge")',
+      'PY',
+    ].join('\n');
+    expect(runHook(cmd)).toContain('"deny"');
   });
 
   test('creating an MR over REST is not a merge', () => {
