@@ -101,7 +101,9 @@ function runHook(config: string, shimBin?: (directory: string) => void) {
 function expectConfiguredThresholds(stderr: string): void {
   expect(stderr).toContain('FILE TOO LONG: 8 lines (limit: 5');
   expect(stderr).toContain('LONG FUNCTION: `alpha` is 4 lines (limit: 2');
-  expect(stderr).toContain('DUPLICATE CODE: 2+ line block');
+  // The threshold is what this pins; the count and wording are the check's
+  // own business.
+  expect(stderr).toContain('of a 2+ line block');
   expect(stderr).toContain('TOO MANY EXPORTS: 2 exports in this file (limit: 1');
 }
 
@@ -257,5 +259,50 @@ describe('Claude coding-police monolith directory', () => {
 
     expect(result.status, result.stderr).toBe(result.stderr.includes("VIOLATION") ? 2 : 0);
     expect(result.stderr).not.toContain('MONOLITH DIRECTORY');
+  });
+});
+
+describe('Claude coding-police duplicate reporting is bounded', () => {
+  const run = (file: string) =>
+    spawnSync('bash', [hook], {
+      input: JSON.stringify({ tool_name: 'Edit', tool_input: { file_path: file, new_string: 'x' } }),
+      encoding: 'utf-8',
+    });
+
+  test('a repeated block is ONE finding, not one per repetition', () => {
+    // The window slides by one, so a duplicated region used to emit roughly one
+    // finding per line: 1489 of them on a 1500-line file, which made the
+    // subtraction quadratic and took the hook past its 15s registered budget.
+    const dir = mkdtempSync(join(tmpdir(), 'agentkit-dupcost-'));
+    const file = join(dir, 'big.ts');
+    const block = 'const a = 1;\nconst b = 2;\nconst c = 3;\nconst d = 4;\nconst e = 5;\nconst f = 6;\n';
+    writeFileSync(file, block.repeat(250));
+    const started = Date.now();
+    const out = `${run(file).stdout ?? ''}${run(file).stderr ?? ''}`;
+    const elapsed = Date.now() - started;
+    const findings = out.split('\n').filter((l) => l.includes('DUPLICATE CODE')).length;
+    expect(findings).toBe(1);
+    // Two runs; the registered timeout for this hook is 15s for one.
+    expect(elapsed).toBeLessThan(10_000);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test('the copy count is the severity, so another copy still reports', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'agentkit-dupcount-'));
+    const file = join(dir, 'd.ts');
+    const git = (...a: string[]) => spawnSync('git', a, { cwd: dir, encoding: 'utf-8' });
+    git('init', '-q');
+    git('config', 'user.email', 't@t.t');
+    git('config', 'user.name', 't');
+    const block = (t: string) => `const ${t}0 = 0;\nconst a = 1;\nconst b = 2;\nconst c = 3;\nconst d = 4;\nconst e = 5;\nconst f = 6;\n`;
+    writeFileSync(file, `${block('x')}${block('y')}`);
+    git('add', '-A');
+    git('commit', '-qm', 'two copies already here');
+    expect(run(file).status).toBe(0);
+    writeFileSync(file, `${block('x')}${block('y')}${block('z')}`);
+    const worse = run(file);
+    expect(`${worse.stdout ?? ''}${worse.stderr ?? ''}`).toContain('DUPLICATE CODE');
+    expect(worse.status).toBe(2);
+    rmSync(dir, { recursive: true, force: true });
   });
 });

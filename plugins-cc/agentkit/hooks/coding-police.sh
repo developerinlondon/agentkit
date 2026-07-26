@@ -253,7 +253,22 @@ check_duplicate_blocks() {
       norm[idx] = line
       orig[idx] = NR
     }
+    function flush() {
+      if (run > 0) {
+        size = min + run - 1
+        if (!(run_first in copies) || size > biggest[run_first]) {
+          biggest[run_first] = size
+          echo_at[run_first] = run_here
+        }
+        copies[run_first]++
+        run = 0
+      }
+    }
     END {
+      # ONE finding per duplicated REGION. The window slides by one, so a
+      # region of L lines used to emit L-min+1 near-identical findings — about
+      # one per line, which is what made the subtraction quadratic and took the
+      # hook past its 15s budget on ordinary files.
       for (i = 1; i <= idx - min + 1; i++) {
         block = ""
         for (k = 0; k < min; k++) {
@@ -262,14 +277,29 @@ check_duplicate_blocks() {
 
         if (block in seen) {
           first = seen[block]
-          key = first ":" orig[i]
-          if (!(key in reported)) {
-            reported[key] = 1
-            printf "DUPLICATE CODE: %d+ line block duplicated at lines %d and %d. Extract into a shared function to keep code DRY.\n", min, first, orig[i]
+          # The same region continues when both sides advanced together.
+          if (run > 0 && i == prev_i + 1 && first == prev_first + 1) {
+            run++
+          } else {
+            flush()
+            run = 1
+            run_first = first
+            run_here = orig[i]
           }
+          prev_i = i
+          prev_first = first
         } else {
           seen[block] = orig[i]
+          flush()
         }
+      }
+      flush()
+      # One finding per duplicated SOURCE region, with the number of copies as
+      # the severity. A repeated block used to emit one finding per repetition;
+      # as a count it is both less noise and a metric the subtraction can
+      # compare, so a THIRD copy of an existing pair still reports as worse.
+      for (f in copies) {
+        printf "DUPLICATE CODE: %d copies of a %d+ line block, first at line %d, again at line %d. Extract into a shared function to keep code DRY.\n", copies[f] + 1, biggest[f], f, echo_at[f]
       }
     }
   ' "$FILE_PATH" 2>/dev/null || true)
@@ -387,7 +417,9 @@ fi
 violation_shape() {
   printf '%s' "$1" | sed -E '
     s/^(FILE TOO LONG: )[0-9]+/\1#/
-    s/^(DUPLICATE CODE: )[0-9]+/\1#/
+    s/^(DUPLICATE CODE: )[0-9]+( copies of a )[0-9]+/\1#\2#/
+    s/(first at line )[0-9]+/\1#/
+    s/(again at line )[0-9]+/\1#/
     s/^(TOO MANY EXPORTS: )[0-9]+/\1#/
     s/( is )[0-9]+( lines)/\1#\2/
     s/(limit: )[0-9]+/\1#/
@@ -407,7 +439,7 @@ violation_metric() {
   case "$1" in
     "FILE TOO LONG: "*) m=$(printf '%s' "$1" | sed -E 's/^FILE TOO LONG: ([0-9]+) lines.*/\1/') ;;
     "LONG FUNCTION: "*) m=$(printf '%s' "$1" | sed -E 's/^LONG FUNCTION: .* is ([0-9]+) lines.*/\1/') ;;
-    "DUPLICATE CODE: "*) m=$(printf '%s' "$1" | sed -E 's/^DUPLICATE CODE: ([0-9]+)\+ line.*/\1/') ;;
+    "DUPLICATE CODE: "*) m=$(printf '%s' "$1" | sed -E 's/^DUPLICATE CODE: ([0-9]+) copies.*/\1/') ;;
     "TOO MANY EXPORTS: "*) m=$(printf '%s' "$1" | sed -E 's/^TOO MANY EXPORTS: ([0-9]+) exports.*/\1/') ;;
     *) m=0 ;;
   esac
