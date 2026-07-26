@@ -260,11 +260,6 @@ check_duplicate_blocks() {
           biggest[run_first] = size
           echo_at[run_first] = run_here
         }
-        # Total duplicated LINES, not a count of runs. A run boundary is a
-        # property of layout — a normalised-away comment splits one — so
-        # counting runs let an unrelated deletion RAISE the number. Lines only
-        # go up when there is more duplicated text.
-        dup_lines[run_first] += size
         copies[run_first]++
         run = 0
       }
@@ -281,6 +276,14 @@ check_duplicate_blocks() {
         }
 
         if (block in seen) {
+          # Mark the LINES this window covers. Summing run lengths instead
+          # double-counted min-1 at every run boundary, and a boundary is a
+          # property of layout: deleting a blank line inside a region merged
+          # two runs and made the total FALL, which silently paid for new
+          # duplication elsewhere. A line marked twice is still one line.
+          for (d = 0; d < min; d++) {
+            dup_line[i + d] = 1
+          }
           first = seen[block]
           # The same region continues when both sides advanced together.
           if (run > 0 && i == prev_i + 1 && first == prev_first + 1) {
@@ -309,10 +312,12 @@ check_duplicate_blocks() {
       # reshuffled the pairing and reported untouched code. The question this
       # check exists to answer is whether the edit left MORE duplication.
       total = 0
+      for (d in dup_line) {
+        total++
+      }
       regions = 0
       top = 0
-      for (f in dup_lines) {
-        total += dup_lines[f]
+      for (f in copies) {
         regions++
         if (biggest[f] > top) {
           top = biggest[f]
@@ -320,7 +325,7 @@ check_duplicate_blocks() {
           top_echo = echo_at[f]
         }
       }
-      if (regions > 0) {
+      if (total > 0) {
         printf "DUPLICATE CODE: %d duplicated lines across %d region(s); the largest is %d+ lines, first at line %d, again at line %d. Extract into a shared function to keep code DRY.\n", total, regions, top, top_at, top_echo
       }
     }

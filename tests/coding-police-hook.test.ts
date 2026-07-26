@@ -282,7 +282,7 @@ describe('Claude coding-police duplicate reporting is bounded', () => {
     return { dir, file, git };
   };
 
-  test('a repeated block is ONE finding, not one per repetition', () => {
+  test('a pathological file stays far inside the hook timeout', () => {
     // The window slides by one, so a duplicated region used to emit roughly one
     // finding per line: 1489 of them on a 1500-line file, which made the
     // subtraction quadratic and took the hook past its 15s registered budget.
@@ -294,8 +294,9 @@ describe('Claude coding-police duplicate reporting is bounded', () => {
     const out = `${run(file).stdout ?? ''}${run(file).stderr ?? ''}`;
     const elapsed = Date.now() - started;
     const findings = out.split('\n').filter((l) => l.includes('DUPLICATE CODE')).length;
+    // The count assertion is near-tautological under one-finding-per-file; the
+    // bound is what carries weight. hooks.json registers 15s for ONE run.
     expect(findings).toBe(1);
-    // Two runs; the registered timeout for this hook is 15s for one.
     expect(elapsed).toBeLessThan(10_000);
     rmSync(dir, { recursive: true, force: true });
   });
@@ -334,20 +335,62 @@ describe('Claude coding-police duplicate reporting is bounded', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  test('LESS duplicated text is silent, whatever it does to region layout', () => {
-    // Counting regions or runs made this report: a deletion merges or splits
-    // runs, which is a property of layout rather than of how much duplication
-    // exists. Total duplicated lines only falls when there is less of it.
+  test('LESS duplicated text is silent even when the edit MERGES runs', () => {
+    // A run breaks on a normalised-away line inside the FIRST copy, so removing
+    // one merges two runs. Summing run lengths counted min-1 twice at that
+    // boundary, so the merge alone lowered the total — a refund that could pay
+    // for new duplication. The earlier fixture could not catch it: with no
+    // interior gaps it was monotone-down under every candidate metric.
     const { dir, file, git } = dupRepo();
-    const P = block('p', 8);
-    writeFileSync(file, `${P}const a = 9;\n${P}const b = 9;\n${P}const c = 9;\n`);
+    const R = block('r', 20).trimEnd().split('\n');
+    const split = `${R.slice(0, 7).join('\n')}\n\n${R.slice(7, 13).join('\n')}\n\n${R.slice(13).join('\n')}\n`;
+    const flat = `${R.join('\n')}\n`;
+    writeFileSync(file, `${split}const z1 = 9;\n${flat}const z2 = 9;\n${flat}`);
     git('add', '-A');
-    git('commit', '-qm', 'three copies');
+    git('commit', '-qm', 'three copies, gaps inside the first');
     expect(run(file).status).toBe(0);
-    writeFileSync(file, `${P}const a = 9;\n${P}const c = 9;\n`);
+    // Gaps removed AND a copy deleted: strictly less duplicated text.
+    writeFileSync(file, `${flat}const z1 = 9;\n${flat}`);
     const better = run(file);
     expect(`${better.stdout ?? ''}${better.stderr ?? ''}`).not.toContain('DUPLICATE CODE');
     expect(better.status).toBe(0);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test('a THIRD copy of an existing pair reports', () => {
+    // Kills the max class: a metric that keeps only the largest region, rather
+    // than how much is duplicated, is unmoved by another copy of the same size.
+    const { dir, file, git } = dupRepo();
+    const P = block('p', 10);
+    writeFileSync(file, `${P}const z1 = 9;\n${P}`);
+    git('add', '-A');
+    git('commit', '-qm', 'two copies');
+    expect(run(file).status).toBe(0);
+    writeFileSync(file, `${P}const z1 = 9;\n${P}const z2 = 9;\n${P}`);
+    const worse = run(file);
+    expect(`${worse.stdout ?? ''}${worse.stderr ?? ''}`).toContain('DUPLICATE CODE');
+    expect(worse.status).toBe(2);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test('removing interior gaps does not refund NEW duplication elsewhere', () => {
+    // The R2-1 fixture: duplication genuinely rises 20 -> 28 lines while two
+    // blank lines come out of the first copy. Summing run lengths read the
+    // baseline as 30 and the edit as 28, so the subtraction absorbed it and
+    // said nothing.
+    const { dir, file, git } = dupRepo();
+    const R = block('r', 20).trimEnd().split('\n');
+    const M = block('m', 8);
+    const split = `${R.slice(0, 7).join('\n')}\n\n${R.slice(7, 13).join('\n')}\n\n${R.slice(13).join('\n')}\n`;
+    const flat = `${R.join('\n')}\n`;
+    writeFileSync(file, `${split}const z1 = 9;\n${flat}`);
+    git('add', '-A');
+    git('commit', '-qm', 'R duplicated once, gaps inside the first copy');
+    expect(run(file).status).toBe(0);
+    writeFileSync(file, `${flat}const z1 = 9;\n${flat}const z2 = 9;\n${M}const z3 = 9;\n${M}`);
+    const worse = run(file);
+    expect(`${worse.stdout ?? ''}${worse.stderr ?? ''}`).toContain('DUPLICATE CODE');
+    expect(worse.status).toBe(2);
     rmSync(dir, { recursive: true, force: true });
   });
 });
