@@ -338,13 +338,26 @@ describe('review-police: bypasses found in adversarial review', () => {
     }
   });
 
-  test('a runtime-assembled merge URL is still caught', () => {
+  test('a runtime-assembled merge URL is caught however it is assembled', () => {
     record(passing);
-    // The case the split-variable arm exists for — and the one narrowing it
-    // must not lose: no single token carries the whole path.
-    const cmd = 'BASE=https://gitlab.com/api/v4/projects/1/merge_requests; '
-      + 'ID=999; curl -X PUT "$BASE/$ID/merge"';
-    expect(runHook(cmd)).toContain('"deny"');
+    // The split-variable arm exists for these. An earlier narrowing keyed on a
+    // `$VAR` interpolation and let five of the six through: command
+    // substitution, backticks, `printf -v`, a positional parameter and a string
+    // built inside an interpreter all reach the endpoint with no `$name` before
+    // /merge. Adjacency is the signal — an assembled path joins something to
+    // /merge, English puts a space in front of it.
+    const mrs = 'https://gitlab.com/api/v4/projects/1/merge_requests';
+    for (const cmd of [
+      `BASE=${mrs}; ID=999; curl -X PUT "$BASE/$ID/merge"`,
+      `BASE=$(echo ${mrs}); curl -X PUT "$(printf %s "$BASE/999")/merge"`,
+      `curl -X PUT "\`echo ${mrs}/999\`/merge"`,
+      `A=(${mrs}); curl -X PUT "\${A[0]}/999/merge"`,
+      `printf -v U "%s/999/merge" "${mrs}"; curl -X PUT "$U"`,
+      `set -- ${mrs}; curl -X PUT "$1/999/merge"`,
+      `python3 -c "b='${mrs}'; put(b+'/999/merge')"`,
+    ]) {
+      expect(runHook(cmd)).toContain('"deny"');
+    }
   });
 
   test('a heredoc-fed interpreter is gated too', () => {

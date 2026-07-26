@@ -198,12 +198,12 @@ if has gh && has pr && has merge; then is_merge=1; fi
 # python, node, ruby and every wrapper script outside it. Reading such a URL
 # therefore denies too — a false deny is the cheaper failure here.
 if tok_match 'merge_requests?/[0-9]+/merge|/pulls/[0-9]+/merge'; then is_merge=1; fi
-# Split-variable form: the URL is assembled at runtime. The second half must
-# show an INTERPOLATION reaching /merge ($BASE/$ID/merge), not a bare /merge —
-# once the caller stopped being required, a bare match denied any prose carrying
-# both words, so `git commit -m "...merge_requests... /merge..."` was refused.
+# Split-variable form: the URL is assembled at runtime. What separates that from
+# prose is not an interpolation — `$(…)`, backticks, `$1` and a string built
+# inside an interpreter all lack one — but ADJACENCY: an assembled path has
+# something joined to /merge, while English puts a space before it.
 if echo "$RAW_COMMAND" | grep -qiE 'merge_requests?|/pulls?/' &&
-	echo "$RAW_COMMAND" | grep -qE '\$\{?[A-Za-z_][A-Za-z_0-9]*\}?[^"'"'"' ]*/merge\b'; then is_merge=1; fi
+	echo "$RAW_COMMAND" | grep -qE '[^[:space:]]/merge\b'; then is_merge=1; fi
 # Gate on an actual `git push` — `-o` is ubiquitous (grep -o, curl -o, cc -o),
 # so matching it bare denied commands that merely MENTIONED the pattern,
 # including grepping for the rule this hook enforces. As tokens: the option's
