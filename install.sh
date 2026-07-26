@@ -19,6 +19,9 @@ Options:
                        copying hooks/skills and merging settings.json. The two
                        modes are mutually exclusive — plugin hooks.json on top
                        of settings.json hooks would fire every hook twice.
+  --no-session-scope   Global only: skip the per-session resource shims that
+                       run each agent CLI in its own systemd scope, and leave
+                       ~/.bashrc untouched.
   target-project-dir   Project directory to install into (default: current dir)
 
 Global install locations:
@@ -46,11 +49,13 @@ USAGE
 }
 
 CLAUDE_PLUGIN=false
+SESSION_SCOPE=true
 for arg in "$@"; do
 	case "$arg" in
 	-h | --help) usage ;;
 	--global) GLOBAL=true ;;
 	--claude-plugin) CLAUDE_PLUGIN=true ;;
+	--no-session-scope) SESSION_SCOPE=false ;;
 	*) TARGET_DIR="$arg" ;;
 	esac
 done
@@ -514,6 +519,83 @@ install_tools() {
 	fi
 }
 
+# ─── Per-Session Resource Shims ──────────────────────────────────────────────
+
+readonly SESSION_RUNTIMES=(claude codex opencode grok)
+
+install_session_shims() {
+	local shim_dir="$1"
+	local tools_dir="$2"
+	local created=0
+
+	if [[ ! -x "$tools_dir/agent-session" ]]; then
+		echo "[shims] Skipped: agent-session not installed"
+		return 0
+	fi
+
+	mkdir -p "$shim_dir"
+
+	local runtime real
+	for runtime in "${SESSION_RUNTIMES[@]}"; do
+		# Without dropping the shim dir, a re-install resolves its own shim.
+		real="$(PATH="$(path_without "$shim_dir")" command -v "$runtime" 2>/dev/null || true)"
+		if [[ -z "$real" ]]; then
+			[[ -L "$shim_dir/$runtime" ]] && rm -f "$shim_dir/$runtime"
+			continue
+		fi
+
+		ln -sf "$tools_dir/agent-session" "$shim_dir/$runtime"
+		echo "[shims] Scoping: $runtime -> $real"
+		created=$((created + 1))
+	done
+
+	if [[ "$created" -eq 0 ]]; then
+		echo "[shims] No supported agent runtimes found on PATH"
+	fi
+}
+
+path_without() {
+	local drop="$1"
+	local entry out=""
+	local saved_ifs="$IFS"
+	IFS=:
+	# shellcheck disable=SC2086
+	set -- $PATH
+	IFS="$saved_ifs"
+
+	for entry in "$@"; do
+		[[ -n "$entry" ]] || continue
+		[[ "$entry" == "$drop" ]] && continue
+		out="${out:+$out:}$entry"
+	done
+	printf '%s' "$out"
+}
+
+# Markers keep repeated installs idempotent and the block cleanly removable.
+install_shim_path() {
+	local shim_dir="$1"
+	local rc_file="$2"
+	local begin="# >>> agentkit session shims >>>"
+	local end="# <<< agentkit session shims <<<"
+
+	if [[ -f "$rc_file" ]] && grep -Fq "$begin" "$rc_file"; then
+		echo "[shims] PATH entry already present in $rc_file"
+		return 0
+	fi
+
+	{
+		printf '\n%s\n' "$begin"
+		printf '# Runs each agent CLI session in its own systemd scope.\n'
+		printf 'case ":$PATH:" in\n'
+		printf '  *":%s:"*) ;;\n' "$shim_dir"
+		printf '  *) PATH="%s:$PATH" ;;\n' "$shim_dir"
+		printf 'esac\n'
+		printf '%s\n' "$end"
+	} >>"$rc_file"
+
+	echo "[shims] Added PATH entry to $rc_file"
+}
+
 # ─── Codex CLI: Starlark .rules Files ────────────────────────────────────────
 
 install_codex_policies() {
@@ -667,6 +749,15 @@ if [[ "$GLOBAL" == true ]]; then
 	install_tools "$CLAUDE_TOOLS"
 	echo ""
 
+	# ── Per-session resource scoping ──
+	SESSION_SHIMS="${XDG_DATA_HOME:-$HOME/.local/share}/agentkit/shims"
+	if [[ "$SESSION_SCOPE" == true ]]; then
+		echo "--- Per-session resource scoping ---"
+		install_session_shims "$SESSION_SHIMS" "$PATH_TOOLS"
+		install_shim_path "$SESSION_SHIMS" "$HOME/.bashrc"
+		echo ""
+	fi
+
 	# ── Codex CLI ──
 	CODEX_RULES="$HOME/.codex/rules"
 	CODEX_PROMPTS="$HOME/.codex/prompts"
@@ -687,6 +778,7 @@ if [[ "$GLOBAL" == true ]]; then
 	echo "  OpenCode:        $OPENCODE_PLUGINS/ (auto-loaded)"
 	echo "  Claude Code:     $CLAUDE_MODE"
 	echo "  PATH tools:      $PATH_TOOLS/"
+	[[ "$SESSION_SCOPE" == true ]] && echo "  Session shims:   $SESSION_SHIMS/ (prepended to PATH in ~/.bashrc)"
 	echo "  Claude tools:    $CLAUDE_TOOLS/"
 	echo "  Codex CLI:       $CODEX_RULES/ (auto-loaded), $CODEX_PROMPTS/ (/name prompts)"
 
