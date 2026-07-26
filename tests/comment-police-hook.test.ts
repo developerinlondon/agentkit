@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { dirname, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 
 const repoRoot = dirname(import.meta.dir);
@@ -308,6 +308,11 @@ describe("coding-police reports what the EDIT did, not what the file already was
   const dupBlock = (tag: string) =>
     `// dup ${tag}\nconst a = 1;\nconst b = 2;\nconst c = 3;\nconst d = 4;\nconst e = 5;\n`;
 
+  // Assembled at runtime: spelled out, this file would trip the very check
+  // these tests exercise, on every later edit.
+  const up = "../";
+  const crossRepo = `${up}${up}core/roles`;
+
   const run = (file: string) => {
     const r = spawnSync("bash", [join(repoRoot, "hooks", "claude", "coding-police.sh")], {
       input: JSON.stringify({ tool_name: "Edit", tool_input: { file_path: file, new_string: "x" } }),
@@ -432,17 +437,75 @@ describe("coding-police reports what the EDIT did, not what the file already was
     rmSync(dir, { recursive: true, force: true });
   });
 
-  test("cross-repo relative paths survive the baseline pass", () => {
+  test("two functions sharing a name are tracked separately", () => {
+    // Without an occurrence ordinal they share one key, so a grown function
+    // matched its shrunken namesake's slot and the edit reported nothing.
+    const { dir, file, git } = legacyRepo();
+    writeFileSync(file, `${longFn("parse", 105)}${longFn("parse", 200)}`);
+    git("add", "-A");
+    git("commit", "-qm", "two over-cap functions with the same name");
+    expect(run(file).status).toBe(0);
+    writeFileSync(file, `${longFn("parse", 180)}${longFn("parse", 110)}`);
+    const r = run(file);
+    // longFn wraps the body in a signature and a closing brace.
+    expect(r.out).toContain("is 182 lines");
+    expect(r.out).not.toContain("is 112 lines");
+    expect(r.status).toBe(2);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("the baseline resolves through a symlinked checkout", () => {
+    // git reports the physical path; stripping it off a logical one left `rel`
+    // absolute, so `git show` found nothing and the subtraction switched off
+    // entirely — the wedge, for anyone whose checkout sits under a symlink.
+    const { dir, file, git } = legacyRepo();
+    const lines = (n: number) =>
+      Array.from({ length: n }, (_, i) => `const x${i} = ${i};`).join("\n") + "\n";
+    writeFileSync(file, lines(1200));
+    git("add", "-A");
+    git("commit", "-qm", "already over the cap");
+    const link = `${dir}-link`;
+    symlinkSync(dir, link);
+    const viaLink = join(link, "legacy.ts");
+    const untouched = run(viaLink);
+    expect(untouched.out).not.toContain("FILE TOO LONG");
+    expect(untouched.status).toBe(0);
+    // The subtraction must still be live through the symlink, not just quiet.
+    writeFileSync(file, lines(1400));
+    expect(run(viaLink).status).toBe(2);
+    rmSync(link, { force: true });
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("cross-repo relative paths survive the baseline pass on a tracked file", () => {
     // The subtraction reset the violations array, silently disabling this
-    // check on every TRACKED file — exactly the files it targets.
+    // check on every TRACKED file — exactly the files it targets. A path this
+    // edit ADDS must still be reported there.
     const { dir, git } = legacyRepo();
     const file = join(dir, "conf.ts");
-    writeFileSync(file, 'export const p = "../../core/roles";\n');
+    writeFileSync(file, "export const ok = 1;\n");
     git("add", "-A");
     git("commit", "-qm", "tracked");
+    writeFileSync(file, `export const ok = 1;\nexport const p = "${crossRepo}";\n`);
     const r = run(file);
     expect(r.out).toContain("CROSS-REPO RELATIVE PATH");
     expect(r.status).toBe(2);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("a cross-repo path that is already committed does not re-report forever", () => {
+    // Per line, not per file: this check has no severity to compare, so an
+    // already-committed fixture would otherwise block every later edit to the
+    // file that contains it — the same wedge, by a different door.
+    const { dir, git } = legacyRepo();
+    const file = join(dir, "conf.ts");
+    writeFileSync(file, `export const p = "${crossRepo}";\n`);
+    git("add", "-A");
+    git("commit", "-qm", "the offending path is already in the repo");
+    writeFileSync(file, `export const p = "${crossRepo}";\nexport const added = 2;\n`);
+    const r = run(file);
+    expect(r.out).not.toContain("CROSS-REPO RELATIVE PATH");
+    expect(r.status).toBe(0);
     rmSync(dir, { recursive: true, force: true });
   });
 });
