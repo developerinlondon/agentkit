@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { readdirSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { validateFile } from '../../skills/product-intelligence/scripts/validate.ts';
@@ -50,6 +50,32 @@ describe('product-intelligence schemas', () => {
       expect(errors.join('\n')).toContain(message);
     });
   }
+});
+
+describe('worked examples', () => {
+  const examples = join(skillRoot, 'examples');
+  const dirs = () =>
+    readdirSync(examples, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name);
+
+  test('ships the three evidence situations, each schema-valid', () => {
+    expect(dirs().sort()).toEqual(['mixed', 'repo-only', 'website-only']);
+    for (const name of dirs()) {
+      expect(validateFile(join(examples, name, 'brief.yaml')), name).toEqual([]);
+    }
+  });
+
+  test('every claim id cited in the rendered markdown exists in the ledger', () => {
+    const ledger = Bun.YAML.parse(readFileSync(join(examples, 'mixed', 'ledger.yaml'), 'utf-8')) as {
+      claims: { id: string }[];
+    };
+    const known = new Set(ledger.claims.map((c) => c.id));
+    for (const doc of ['brief.md', 'findings.md']) {
+      const text = readFileSync(join(examples, 'mixed', doc), 'utf-8');
+      const cited = [...text.matchAll(/\[(C-\d{3,})\]/g)].map((m) => m[1]);
+      expect(cited.length, doc).toBeGreaterThan(0);
+      for (const id of cited) expect(known.has(id), `${doc} cites ${id}`).toBe(true);
+    }
+  });
 });
 
 describe('validate.ts CLI', () => {

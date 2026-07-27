@@ -1,0 +1,64 @@
+ledger_version: "1.0"
+generated_by: product-intelligence
+generated_at: "2026-07-27T10:00:00Z"
+claims:
+  - id: C-001
+    statement: The pricing page lists a free tier limited to three projects.
+    class: observed
+    confidence: high
+    contradicts: [C-002]
+    sources:
+      - locator: "site:/pricing#plans"
+        quote: "Free — up to 3 projects"
+        stance: supports
+        as_of: "2026-07-27"
+  - id: C-002
+    statement: The repository README states the free tier allows five projects.
+    class: observed
+    confidence: high
+    contradicts: [C-001]
+    sources:
+      - locator: "repo:README.md:12-14"
+        quote: "The free plan covers up to 5 projects."
+        stance: supports
+        as_of: "2026-07-27"
+  - id: C-003
+    statement: acme-notes stores notes as markdown files inside a git repository.
+    class: observed
+    confidence: high
+    sources:
+      - locator: "repo:README.md:1-4"
+        quote: "Your notes are plain markdown in your own repo."
+        stance: supports
+        as_of: "2026-07-27"
+      - locator: "site:/"
+        quote: "Notes that live in git, next to your code"
+        stance: supports
+        as_of: "2026-07-27"
+  - id: C-004
+    statement: The product is aimed at solo developers rather than teams.
+    class: inferred
+    confidence: moderate
+    derived_from: [C-001, C-003]
+    sources:
+      - locator: "site:/pricing#plans"
+        quote: "Perfect for personal projects"
+        stance: context
+        as_of: "2026-07-27"
+  - id: C-005
+    statement: The latest release is v1.4.0, published 2026-07-02.
+    class: observed
+    confidence: high
+    sources:
+      - locator: "gh:releases/v1.4.0"
+        quote: "v1.4.0 — 2026-07-02"
+        stance: supports
+        as_of: "2026-07-27"
+  - id: C-006
+    statement: A migration guide from CompetitorX should be added to the docs.
+    class: proposed
+    confidence: low
+  - id: C-007
+    statement: The product holds SOC 2 Type II certification.
+    class: unverified
+    confidence: low
