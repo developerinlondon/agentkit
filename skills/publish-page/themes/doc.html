@@ -7,7 +7,7 @@
 <script>
   (() => {
     const saved = localStorage.getItem("agentkit-theme");
-    if (saved) document.documentElement.dataset.theme = saved;
+    if (saved === "light" || saved === "dark") document.documentElement.dataset.theme = saved;
   })();
 </script>
 <style>
@@ -312,8 +312,8 @@
       defs.innerHTML = '<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker>';
       svg.appendChild(defs);
       edges.forEach((e) => {
-        const a = fig.querySelector("#" + e.dataset.from);
-        const b = fig.querySelector("#" + e.dataset.to);
+        const a = fig.querySelector("#" + CSS.escape(e.dataset.from));
+        const b = fig.querySelector("#" + CSS.escape(e.dataset.to));
         if (!a || !b) return;
         const ra = a.getBoundingClientRect(), rb = b.getBoundingClientRect();
         const x1 = ra.left + ra.width / 2 - fr.left, y1 = ra.top + ra.height / 2 - fr.top;
@@ -340,6 +340,7 @@
     });
   }
   addEventListener("load", drawEdges);
+  addEventListener("agentkit-theme", () => setTimeout(drawEdges, 350));
   addEventListener("resize", () => { clearTimeout(window.__et); window.__et = setTimeout(drawEdges, 150); });
 </script>
 </body>
