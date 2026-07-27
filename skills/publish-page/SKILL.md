@@ -53,21 +53,21 @@ strongest component for each idea — don't produce walls of prose.
 
 **Route every visual by what the concept IS**, never by the tool you used last:
 
-| Concept                                                 | Treatment                                     | Never                                                          |
-| ------------------------------------------------------- | --------------------------------------------- | -------------------------------------------------------------- |
-| System topology, trust/ownership boundaries             | `diagram` skill centerpiece                   | mermaid — auto-layout destroys boundary semantics              |
-| Deployable inventory, ≤7 nodes, relationships secondary | `.iso` kit + `.edge` connectors               | `diagram` skill (overkill)                                     |
-| Linear pipeline, all edges forward, stages need prose   | `.arch` flat kit                              | —                                                              |
-| Flow with a loop-back, gate, or failure branch          | `diagram` skill                               | `.flow`/`.arch`/`.fbox` — box kits cannot draw a backward edge |
-| Ordered message exchange, ≥3 participants               | mermaid `sequenceDiagram`                     | hand-drawn (arrow bookkeeping wastes the craft)                |
-| State machine >5 states with guards/terminals           | mermaid `stateDiagram-v2`                     | —                                                              |
-| State machine ≤5 states, transitions carry the meaning  | `diagram` skill                               | mermaid (generic)                                              |
-| Comparison, N options × M criteria, cells are prose     | markdown table                                | any diagram                                                    |
-| Comparison of structurally different options, ≤3        | `diagram` skill mirrored halves               | table (flattens the structural point)                          |
-| Hierarchy/taxonomy ≤3 levels                            | `diagram` skill tree — lines + text, no boxes | mermaid flowchart TD                                           |
-| Quantitative, ≥5 data points                            | inline SVG chart (discipline below)           | mermaid, chart libraries                                       |
-| ≤4 numbers                                              | `.chips` or a table row                       | a chart                                                        |
-| Independent items, no edges between them                | `.cards` grid                                 | any diagram — no edges = decorated list                        |
+| Concept                                                 | Treatment                                     | Never                                                                         |
+| ------------------------------------------------------- | --------------------------------------------- | ----------------------------------------------------------------------------- |
+| System topology, trust/ownership boundaries             | `diagram` skill centerpiece                   | mermaid — auto-layout destroys boundary semantics                             |
+| Deployable inventory, ≤7 nodes, relationships secondary | `.iso` kit + `.edge` connectors               | `diagram` skill (overkill)                                                    |
+| Linear pipeline, all edges forward, stages need prose   | `.arch` flat kit                              | —                                                                             |
+| Flow with a loop-back, gate, or failure branch          | `diagram` skill                               | `.flow`/`.arch`/`.fbox` — box kits cannot draw a backward edge                |
+| Ordered message exchange, ≥3 participants               | mermaid `sequenceDiagram`                     | hand-drawn — sole exception: avoiding the mermaid runtime (see figure budget) |
+| State machine >5 states with guards/terminals           | mermaid `stateDiagram-v2`                     | —                                                                             |
+| State machine ≤5 states, transitions carry the meaning  | `diagram` skill                               | mermaid (generic)                                                             |
+| Comparison, N options × M criteria, cells are prose     | markdown table                                | any diagram                                                                   |
+| Comparison of structurally different options, ≤3        | `diagram` skill mirrored halves               | table (flattens the structural point)                                         |
+| Hierarchy/taxonomy ≤3 levels                            | `diagram` skill tree — lines + text, no boxes | mermaid flowchart TD                                                          |
+| Quantitative, ≥5 data points                            | inline SVG chart (discipline below)           | mermaid, chart libraries                                                      |
+| ≤4 numbers                                              | `.chips` or a table row                       | a chart                                                                       |
+| Independent items, no edges between them                | `.cards` grid                                 | any diagram — no edges = decorated list                                       |
 
 A table beats a diagram when any of these holds: cells are full sentences; the
 relation is "X has property Y", not "X acts on Y"; ≥6 uniform rows; the
@@ -79,8 +79,9 @@ but fewer than 3 figures is under-illustrated. Never diagram
 two-nodes-one-arrow (a sentence), items without relationships (`.cards`), or a
 single before/after (`.callout`). Captions are one sentence with no "and"
 joining two subjects — a caption that needs "and" is two figures. Ask the
-`diagram` skill for canvases ≤1000 px wide: the column renders figures at
-~979 px, and wider canvases scale handwriting below legibility. Mermaid inlines
+`diagram` skill for canvases ≤1000 px wide (its hard ceiling is 1200 px with
+all fonts ≥18 px): the column renders figures at ~979 px, and wider canvases
+scale handwriting below legibility. Mermaid inlines
 ~3.4 MB once — if the page already carries 3+ inline SVG figures, draw the
 sequence/state diagram with the `diagram` skill instead.
 

@@ -100,8 +100,9 @@ Contrast rules (worst case is the light end of the figure glow, `#0f2a4d`):
 - **Canvas ≤ 1000 × 1400 px** for a page figure, **1000 × 620** for a deck
   slide — the page column renders figures at ~979 px, so authoring at display
   size means the diagram never scales below ~0.98. Hard ceiling 1200 px wide,
-  and only with every font raised proportionally (≥17 px) so nothing lands
-  below 14 px after scaling.
+  and only with every font raised proportionally (≥18 px — at 1200→979 px the
+  scale is 0.816, so 18 px lands at 14.7 px) so nothing falls below the 14 px
+  floor after scaling.
 - **Font floors**: annotations/legends 14 px, evidence/mono artifacts 13 px,
   labels 16–18, zone titles 20–24, hero title 28–32. Nothing below 13 px.
 - **Density**: at most 3 zones, ~12 labeled nodes, ~25 text elements per
