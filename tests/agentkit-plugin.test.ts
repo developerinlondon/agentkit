@@ -141,6 +141,7 @@ describe('agentkit plugin skills', () => {
       'documentation',
       'gitops-master',
       'issue-raiser',
+      'product-intelligence',
       'product-review',
       'project-planning',
       'resource-safe-execution',
