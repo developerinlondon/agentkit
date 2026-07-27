@@ -46,7 +46,10 @@ strongest component for each idea — don't produce walls of prose:
   tool, and never ASCII art. Wrap EVERY diagram in
   `<div class="figure">…<div class="figcaption"><strong>Name</strong> — what it shows</div></div>`
   with a caption describing the content (say "Publish flow — from agent to live
-  page", never the technology used to draw it).
+  page", never the technology used to draw it). CRITICAL for markdown files:
+  leave a BLANK LINE after `<div class="figure">` and before the closing
+  markup — CommonMark otherwise swallows a fence inside an HTML block and the
+  page silently shows literal backticks instead of a diagram.
   - **System/architecture topology** → the isometric kit (the standout look):
     `<div class="iso"><div class="iso-node hot"><div class="tile"><div class="side"></div><div class="top"><div class="glyph">SVG</div></div></div><div class="tag">name</div></div>…</div>`
     Variants `.hot` (green) / `.gold` for emphasis. Draw each glyph as a simple
@@ -59,10 +62,15 @@ strongest component for each idea — don't produce walls of prose:
     runtime is auto-inlined, themed to the navy palette; costs ~3.4 MB of the
     5 MB cap, leaving ~1.4 MB for content):
     ````
+    <div class="figure">
+
     ```mermaid
     sequenceDiagram
       agent->>worker: PUT page
     ```
+
+    <div class="figcaption"><strong>Publish sequence</strong> — write path</div>
+    </div>
     ````
   - **Charts (data)** → hand-built inline SVG following chart discipline: thin
     marks, one axis only (never dual-axis), a muted recessive grid, series
