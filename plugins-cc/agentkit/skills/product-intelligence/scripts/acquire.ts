@@ -45,6 +45,7 @@ export function advertoolsArgs(seed: string, outFile: string): string[] {
     url.href,
     outFile,
     '--follow-links',
+    '1', // argparse takes a 0/1 value here — a bare flag kills the parse
     '--custom-settings',
     'DEPTH_LIMIT=3',
     'CLOSESPIDER_PAGECOUNT=200',
@@ -68,15 +69,17 @@ function run(argv: string[], stdin?: Uint8Array): void {
 }
 
 async function acquireUrl(target: string, outDir: string): Promise<void> {
+  const extract = Bun.which('trafilatura') ? [...runnerPrefix(), 'trafilatura', '--json'] : null;
   const fetched = await safeFetch(target);
-  const slug = new URL(fetched.finalUrl).pathname.replace(/[^\w.-]+/g, '_') || '_root';
+  const path = new URL(fetched.finalUrl).pathname.replace(/[^\w.-]+/g, '_');
+  const slug = `${path || '_root'}-${Bun.hash(fetched.finalUrl).toString(16)}`;
   writeFileSync(join(outDir, `page${slug}.html`), fetched.body);
   stamp(outDir, 'safe-fetch', target, ['safe-fetch', target]);
-  if (!Bun.which('trafilatura')) {
+  if (!extract) {
     console.error('note: trafilatura not on PATH — raw page saved, no content extraction');
     return;
   }
-  const argv = [...runnerPrefix(), 'trafilatura', '--json'];
+  const argv = extract;
   const result = Bun.spawnSync(argv, { stdin: fetched.body, stdout: 'pipe', stderr: 'inherit' });
   if (result.exitCode !== 0) throw new Error(`trafilatura exited ${result.exitCode}`);
   writeFileSync(join(outDir, `content${slug}.json`), result.stdout);
@@ -90,8 +93,11 @@ async function acquireSite(target: string, outDir: string): Promise<void> {
   stamp(outDir, 'advertools', target, argv);
 }
 
-function acquireRepo(target: string, outDir: string): void {
+async function acquireRepo(target: string, outDir: string): Promise<void> {
   const argv = [...runnerPrefix(), ...repomixArgs(target, join(outDir, 'repo.json'))];
+  // owner/repo shorthand resolves to github.com; a full URL names its own
+  // host and gets the same SSRF check as every other lane.
+  if (target.startsWith('https://')) await assertHostAllowed(new URL(target).hostname);
   run(argv);
   stamp(outDir, 'repomix --remote', target, argv);
 }

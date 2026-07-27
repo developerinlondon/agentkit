@@ -73,9 +73,8 @@ export function expandIPv6(text: string): number[] | null {
 export function isBlockedIPv6(text: string): boolean {
   const h = expandIPv6(text);
   if (h === null) return true;
-  const isZero = h.every((x) => x === 0);
-  if (isZero) return true; // ::
-  if (h.slice(0, 7).every((x) => x === 0) && h[7] === 1) return true; // ::1
+  // ::/96 covers ::, ::1 and the deprecated IPv4-compatible range in one go.
+  if (h.slice(0, 6).every((x) => x === 0)) return true;
   if ((h[0] & 0xfe00) === 0xfc00) return true; // fc00::/7 unique-local
   if ((h[0] & 0xffc0) === 0xfe80) return true; // fe80::/10 link-local
   if ((h[0] & 0xff00) === 0xff00) return true; // ff00::/8 multicast
@@ -93,6 +92,8 @@ export function isBlockedAddress(address: string): boolean {
   return address.includes(':') ? isBlockedIPv6(address) : isBlockedIPv4(address);
 }
 
+// Test-only escape hatch: exact hostnames, no wildcards. Production callers
+// must never set it — an inherited value silently widens the SSRF boundary.
 function allowedByOverride(hostname: string): boolean {
   const raw = process.env.SAFE_FETCH_ALLOW_HOSTS ?? '';
   return raw.split(',').map((h) => h.trim()).filter(Boolean).includes(hostname);

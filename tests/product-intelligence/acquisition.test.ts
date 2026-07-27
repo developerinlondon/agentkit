@@ -62,6 +62,7 @@ describe('address classifier', () => {
     'ff02::1',
     '::ffff:1.2.3.4',
     '::ffff:10.0.0.1',
+    '::7f00:1',
     '64:ff9b::102:304',
     '2002::1',
     '2001:0:abcd::1',
@@ -176,11 +177,20 @@ describe('hardened argv builders', () => {
     }
   });
 
-  test('advertools crawl is bounded and jl-only', () => {
-    const argv = advertoolsArgs('https://example.com', 'crawl.jl');
-    expect(argv).toContain('--follow-links');
-    expect(argv).toContain('DEPTH_LIMIT=3');
-    expect(argv).toContain('CLOSESPIDER_PAGECOUNT=200');
+  test('advertools crawl is bounded, jl-only, and parseable by its argparse CLI', () => {
+    // Exact argv: --follow-links takes a 0/1 VALUE — a bare flag makes
+    // argparse eat --custom-settings and abort the crawl.
+    expect(advertoolsArgs('https://example.com', 'crawl.jl')).toEqual([
+      'advertools',
+      'crawl',
+      'https://example.com/',
+      'crawl.jl',
+      '--follow-links',
+      '1',
+      '--custom-settings',
+      'DEPTH_LIMIT=3',
+      'CLOSESPIDER_PAGECOUNT=200',
+    ]);
     expect(() => advertoolsArgs('ftp://example.com', 'crawl.jl')).toThrow('http(s)');
     expect(() => advertoolsArgs('https://example.com', 'crawl.csv')).toThrow('.jl');
   });
@@ -230,6 +240,28 @@ describe('acquire.ts CLI', () => {
     expect(entries[0].target).toBe('owner/repo');
     expect(entries[0].retrieved_at).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(readFileSync(join(outDir, 'invocations.log'), 'utf-8')).toContain('"repomix"');
+  });
+
+  test('site lane emits the exact bounded crawl invocation', () => {
+    process.env.SAFE_FETCH_ALLOW_HOSTS = 'example.com'; // keep the test off DNS
+    fakeExecutable('agentkit-run', `printf '%s\\n' "$*" > '${scratch}/runner-argv'`);
+    const outDir = join(scratch, 'out');
+    const result = runCli('site', 'https://example.com', '--out', outDir);
+    expect(result.code, result.err).toBe(0);
+    expect(readFileSync(join(scratch, 'runner-argv'), 'utf-8').trim()).toBe(
+      '--profile default -- advertools crawl https://example.com/ '
+        + `${join(outDir, 'crawl.jl')} --follow-links 1 --custom-settings DEPTH_LIMIT=3 CLOSESPIDER_PAGECOUNT=200`,
+    );
+  });
+
+  test('repo lane refuses a non-public host in URL form', () => {
+    fakeExecutable('agentkit-run', `touch '${scratch}/runner-ran'; exit 0`);
+    for (const bad of ['https://10.0.0.1/o/r', 'https://169.254.169.254/o/r', 'https://localhost/o/r']) {
+      const result = runCli('repo', bad, '--out', join(scratch, 'out'));
+      expect(result.code, bad).toBe(1);
+      expect(result.err).toMatch(/non-public|loopback/);
+    }
+    expect(() => readFileSync(join(scratch, 'runner-ran'))).toThrow();
   });
 
   test('repo lane refuses a local path before any tool runs', () => {

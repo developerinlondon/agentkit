@@ -92,8 +92,9 @@ bun skills/product-intelligence/scripts/acquire.ts gh   owner/repo --out <dir>
 - Every lane stamps `retrieved_at` per record into `acquisition.json`
   (matching the brief's `evidence.acquisition` shape) and logs the exact
   invocation to `invocations.log`.
-- On Linux the wrapper insists on the bounded runner (`agentkit-run`) and
-  fails closed without it.
+- On Linux the wrapper insists on the bounded runner (`agentkit-run`) for
+  the crawl, extract and pack tools and fails closed without it; the
+  lightweight `gh api` calls run direct.
 - Read documentation and code fences to learn a product's CLI surface —
   **never execute the target product.**
 - No credentials in the crawler environment. Respect robots directives.
