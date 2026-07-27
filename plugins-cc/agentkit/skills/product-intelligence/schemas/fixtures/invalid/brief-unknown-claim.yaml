@@ -1,0 +1,8 @@
+brief_version: "1.0"
+subject:
+  name: acme-notes
+evidence:
+  ledger: ../valid/ledger.yaml
+positioning:
+  target_customer: solo developers
+  claims: [C-999]

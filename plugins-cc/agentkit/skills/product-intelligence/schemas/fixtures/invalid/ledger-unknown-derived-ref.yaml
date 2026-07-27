@@ -1,0 +1,14 @@
+ledger_version: "1.0"
+generated_by: product-intelligence
+generated_at: "2026-07-27T10:00:00Z"
+claims:
+  - id: C-001
+    statement: The product targets solo developers.
+    class: inferred
+    confidence: moderate
+    derived_from: [C-099]
+    sources:
+      - locator: "site:/pricing"
+        quote: "Perfect for personal projects"
+        stance: context
+        as_of: "2026-07-25"

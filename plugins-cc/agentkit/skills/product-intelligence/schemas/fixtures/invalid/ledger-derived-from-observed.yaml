@@ -1,0 +1,23 @@
+ledger_version: "1.0"
+generated_by: product-intelligence
+generated_at: "2026-07-27T10:00:00Z"
+claims:
+  - id: C-001
+    statement: The pricing page lists a free tier.
+    class: observed
+    confidence: high
+    derived_from: [C-002]
+    sources:
+      - locator: "site:/pricing"
+        quote: "Free tier"
+        stance: supports
+        as_of: "2026-07-25"
+  - id: C-002
+    statement: The README mentions a free plan.
+    class: observed
+    confidence: high
+    sources:
+      - locator: "repo:README.md:3"
+        quote: "free plan"
+        stance: supports
+        as_of: "2026-07-25"

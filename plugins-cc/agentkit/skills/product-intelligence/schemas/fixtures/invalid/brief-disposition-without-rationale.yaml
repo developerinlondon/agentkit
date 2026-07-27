@@ -1,0 +1,9 @@
+brief_version: "1.0"
+subject:
+  name: acme-notes
+evidence:
+  ledger: ../valid/ledger.yaml
+site_inventory:
+  - locator: "site:/pricing"
+    page_type: pricing
+    disposition: remove

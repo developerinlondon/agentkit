@@ -1,0 +1,23 @@
+ledger_version: "1.0"
+generated_by: product-intelligence
+generated_at: "2026-07-27T10:00:00Z"
+claims:
+  - id: C-001
+    statement: The free tier allows three projects.
+    class: observed
+    confidence: high
+    contradicts: [C-002]
+    sources:
+      - locator: "site:/pricing"
+        quote: "up to 3 projects"
+        stance: supports
+        as_of: "2026-07-25"
+  - id: C-002
+    statement: The free tier allows five projects.
+    class: observed
+    confidence: high
+    sources:
+      - locator: "repo:README.md:12"
+        quote: "up to 5 projects"
+        stance: supports
+        as_of: "2026-07-25"
