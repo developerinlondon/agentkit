@@ -133,6 +133,26 @@ function splitSlides(md: string): string[] {
   return slides.map((s) => s.join("\n"));
 }
 
+// Mermaid fences via marked's renderer, not a regex: fence-aware (nesting,
+// splitSlides sees real fences) and escaped (mermaid decodes via textContent).
+marked.use({
+  renderer: {
+    code({ text, lang }: { text: string; lang?: string }) {
+      return lang === "mermaid" ? `<pre class="mermaid">${escapeHtml(text)}</pre>\n` : false;
+    },
+  },
+});
+
+async function mermaidRuntime(): Promise<string> {
+  const dist = join(import.meta.dir, "node_modules/mermaid/dist/mermaid.min.js");
+  if (!existsSync(dist)) fail(`mermaid runtime missing at ${dist} — run: cd ${import.meta.dir} && bun install`);
+  const js = await readFile(dist, "utf8");
+  // Decks render diagrams per-slide (hidden slides have zero width, which breaks
+  // mermaid's measurements) — the deck theme's show() calls mermaid.run on the
+  // active slide; docs render everything immediately.
+  return `\n<script>${js}</script>\n<script>mermaid.initialize({ startOnLoad: false, theme: "dark" }); if (!document.querySelector(".slide")) mermaid.run();</script>`;
+}
+
 async function render(): Promise<string> {
   if (template === "raw") return source;
   // Canonical themes live in the agentkit-pages repo; the skill bundles a copy
@@ -161,6 +181,7 @@ async function render(): Promise<string> {
   } else {
     content = isMd ? (marked.parse(source) as string) : source;
   }
+  if (content.includes('class="mermaid"')) content += await mermaidRuntime();
   // Function replacers: a plain string replacement expands $&, $`, $' found in
   // page content and silently corrupts the output.
   return theme
@@ -169,7 +190,12 @@ async function render(): Promise<string> {
 }
 
 const html = await render();
-if (Buffer.byteLength(html) > 5 * 1024 * 1024) fail("rendered page exceeds 5 MB");
+if (Buffer.byteLength(html) > 5 * 1024 * 1024) {
+  const hint = html.includes("mermaid.initialize")
+    ? " (the inlined mermaid runtime accounts for ~3.4 MB — diagram pages have ~1.4 MB left for content; split the page or drop diagrams)"
+    : "";
+  fail(`rendered page exceeds 5 MB${hint}`);
+}
 
 const res = await fetch(`${endpoint}/api/pages/${slug}`, {
   method: "PUT",

@@ -5,20 +5,17 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{TITLE}}</title>
 <style>
+  /* AgentKit Pages house theme — committed dark navy (no light variant). */
   :root {
-    --bg: #f7f9fb; --ink: #16202c; --muted: #5b6b7c; --accent: #0e7490;
-    --line: #d8e0e8; --card: #ffffff; --code-bg: #eef2f6;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #0b1220; --ink: #e2e9f0; --muted: #8fa1b3; --accent: #7dd3fc;
-      --line: #223144; --card: #101a2b; --code-bg: #0e1828;
-    }
+    --navy: #0a1c38; --navy-deep: #071224; --card: #102847; --code-bg: #0d2140;
+    --line: #1e3a5f; --ink: #dce7f5; --muted: #8fa8c7;
+    --accent: #34d3a6; --gold: #e8b444; --red: #e06c5f;
   }
   * { box-sizing: border-box; }
   html, body { height: 100%; }
   body {
-    background: var(--bg); color: var(--ink); margin: 0;
+    background: linear-gradient(180deg, var(--navy-deep) 0%, var(--navy) 60vh);
+    color: var(--ink); margin: 0;
     font-family: system-ui, -apple-system, "Segoe UI", sans-serif; line-height: 1.6;
   }
   .slide {
@@ -35,10 +32,31 @@
     font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.85em;
     background: var(--code-bg); border-radius: 4px; padding: 0.1em 0.35em;
   }
-  pre { background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px; padding: 1rem 1.2rem; overflow-x: auto; font-size: clamp(0.75rem, 1.4vw, 0.95rem); }
+  pre { background: var(--navy-deep); border: 1px solid var(--line); border-radius: 8px; padding: 1rem 1.2rem; overflow-x: auto; font-size: clamp(0.75rem, 1.4vw, 0.95rem); }
   pre code { background: none; padding: 0; }
   table { border-collapse: collapse; display: block; overflow-x: auto; }
   th, td { padding: 0.5rem 0.9rem 0.5rem 0; border-bottom: 1px solid var(--line); text-align: left; }
+  th { color: var(--muted); font-family: ui-monospace, Menlo, monospace; font-size: 0.72rem; letter-spacing: 0.1em; text-transform: uppercase; font-weight: 500; }
+  .kicker {
+    font-family: ui-monospace, Menlo, monospace; font-size: 0.75rem;
+    letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); margin-bottom: 0.6rem;
+  }
+  .cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.9rem; margin: 1rem 0; }
+  @media (max-width: 40rem) { .cards { grid-template-columns: 1fr; } }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 1rem 1.2rem; }
+  .card h3 { margin: 0 0 0.35rem; font-size: 1rem; }
+  .card h3 code { color: var(--accent); background: none; padding: 0; }
+  .card p { margin: 0; color: var(--muted); font-size: 0.92rem; max-width: none; }
+  .callout {
+    border: 1px solid var(--line); background: #0d2f3a; border-radius: 8px;
+    padding: 0.8rem 1.1rem; margin: 1rem 0; max-width: 60ch;
+  }
+  .callout strong { color: var(--accent); }
+  pre.mermaid {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: 1rem; overflow-x: auto; text-align: center;
+  }
+  pre.mermaid svg { max-width: 100%; height: auto; }
   .hud {
     position: fixed; bottom: 1rem; left: 0; right: 0; display: flex;
     justify-content: center; align-items: center; gap: 0.45rem; pointer-events: none;
@@ -87,6 +105,7 @@
     dots.forEach((d, k) => d.classList.toggle("on", k === i));
     count.textContent = (i + 1) + " / " + slides.length;
     history.replaceState(null, "", "#" + (i + 1));
+    if (window.mermaid) window.mermaid.run({ querySelector: ".slide.active pre.mermaid" });
   }
   addEventListener("keydown", (e) => {
     if (["ArrowRight", "PageDown", " "].includes(e.key)) { e.preventDefault(); show(i + 1); }
