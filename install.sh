@@ -91,6 +91,12 @@ install_skills() {
 			if command -v bun >/dev/null 2>&1; then
 				echo "[skills] Installing dependencies: $skill_name"
 				(cd "$target" && bun install --silent)
+				# Build-time artifacts (e.g. browser bundles) are gitignored and
+				# produced at install via the skill's own build script.
+				if grep -q '"build"' "$target/package.json"; then
+					echo "[skills] Building: $skill_name"
+					(cd "$target" && bun run build >/dev/null)
+				fi
 			else
 				echo "[skills] WARNING: $skill_name needs 'bun install' in $target (bun not found)"
 			fi

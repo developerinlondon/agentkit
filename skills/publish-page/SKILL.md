@@ -55,6 +55,11 @@ strongest component for each idea — don't produce walls of prose:
   leave a BLANK LINE after `<div class="figure">` and before the closing
   markup — CommonMark otherwise swallows a fence inside an HTML block and the
   page silently shows literal backticks instead of a diagram.
+  - **Hand-crafted architecture/explainer diagrams (highest quality)** → the
+    `diagram` skill: author Excalidraw JSON per its methodology, render to
+    self-contained SVG, inline the SVG inside a `.figure` with a semantic
+    caption. Zero page runtime. Prefer this for the centerpiece diagram of a
+    page; use the kits below for quick supporting visuals.
   - **System/architecture topology** → the isometric kit (the standout look):
     `<div class="iso"><div class="iso-node hot"><div class="tile"><div class="side"></div><div class="top"><div class="glyph">SVG</div></div></div><div class="tag">name</div></div>…</div>`
     Variants `.hot` (green) / `.gold` for emphasis. Draw each glyph as a simple
