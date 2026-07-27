@@ -93,6 +93,25 @@ git branch -vv | awk '/: gone]/ {print $1}' | xargs -r git branch -D
   branch in a squash-merge repo (the follow-up MR will conflict once the first one squashes).
 - At most one feature branch alive per repo at a time, mirroring the mr-police limit.
 
+If the branch had a worktree, **remove the worktree in the same breath as merging it** — a merged
+worktree is a stale checkout of code that no longer exists anywhere else, and they accumulate far
+more quietly than branches do. `git worktree remove` deletes only the checkout; the branch ref
+survives, so this is safe whenever the tree is clean:
+
+```bash
+git worktree list                       # audit BEFORE removing anything
+git -C <worktree> status --porcelain    # must be empty — uncommitted work dies with the checkout
+git worktree remove <worktree>
+git worktree prune
+```
+
+- **Never remove a worktree with a dirty status.** Commit, stash, or leave it and say so — the
+  branch ref will not save uncommitted or untracked files.
+- Audit the whole list, not just the one you just merged. A repo worked by several agents
+  accumulates worktrees from sessions that ended without cleaning up.
+- Worktrees under a harness-managed directory (`.claude/worktrees/`, a scratch dir belonging to
+  another session) are not yours to remove — another agent may be mid-turn inside one.
+
 ## Source
 
 Adapted from Mnimiy's "12-rule CLAUDE.md template"
