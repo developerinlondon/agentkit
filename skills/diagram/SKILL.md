@@ -44,6 +44,14 @@ concepts should reuse the same pattern.
 hierarchy beats a box unless the element is a focal point, an arrow target, or
 a true container.
 
+**The table is a floor, not a ceiling.** For the concept that matters most,
+invent the visual metaphor that IS that concept: a review gate drawn as an
+actual gate across the flow; backpressure as a pipe narrowing; a cache as a
+shadow copy sitting between planes; fan-out that visibly loses order.
+Two tests before you keep a metaphor: strip the labels — does the structure
+still say it? and would a newcomer _learn_ the mechanism from the picture
+alone? If either fails, the metaphor is decoration; redesign it.
+
 ## 3 — Compose at three zoom levels (large diagrams)
 
 1. a one-line overview strip (the whole story at a glance),
@@ -75,15 +83,49 @@ strokes with classic pastel fills (`#a5d8ff`, `#b2f2bb`, `#ffec99`).
 
 ## 5 — Render, LOOK, fix (mandatory loop)
 
+JSON cannot be judged as JSON. Render, view the PNG with the Read tool, fix,
+repeat — expect 2–4 rounds; one pass is never the final pass.
+
 ```bash
 bun <skill-dir>/render.ts --in diagram.excalidraw --out diagram.svg --png diagram.png
 ```
 
-Read the PNG. Judge it like a reviewer: overlaps, clipped text, cramped zones,
-a missing visual story. Fix the JSON and re-render until it is genuinely good —
-one render is never the final render. (One-time setup: `cd <skill-dir> && bun
-install && bun run build`; rendering needs a local Chromium — set
-`AGENTKIT_CHROMIUM` if it isn't auto-found.)
+Each round, in order:
+
+1. **Vision audit first** — compare against the plan from steps 1–3, before
+   hunting bugs: does the visual structure mirror the concepts? does each zone
+   use its intended pattern? does the eye travel the path you designed? do
+   hero elements dominate? are evidence artifacts readable where they belong?
+2. **Defect sweep** — clipped or overflowing text; unintended overlaps; arrows
+   cutting through shapes or landing in empty space; labels that don't clearly
+   belong to anything; ragged spacing between siblings; one zone cramped while
+   another floats in emptiness; text too small at render size; a lopsided
+   whole.
+3. **Fix in JSON** — widen containers for clipped text; shift `x`/`y` for
+   spacing; add waypoints to arrow `points` to route around shapes; pull
+   labels next to their subjects; resize to rebalance visual weight.
+
+**Stop only when** the render matches the planned design, nothing is clipped
+or ambiguous, arrows land exactly, spacing is deliberate — and you would show
+it to a staff engineer without a single caveat. "No critical bugs" is not the
+bar; "couldn't be composed better" is.
+
+(One-time setup: `cd <skill-dir> && bun install && bun run build`; rendering
+needs a local Chromium — set `AGENTKIT_CHROMIUM` if it isn't auto-found.)
+
+## Quality gate — every diagram answers yes to all of these
+
+- **Depth**: researched real names/formats? evidence artifacts present
+  (technical)? multi-zoom present (large)? teaches something concrete?
+- **Concept**: structure would still communicate with labels removed? shows
+  what prose could not? every major concept a different pattern? no uniform
+  card grid anywhere?
+- **Containers**: under ~30% of text boxed? trees/timelines built from lines +
+  text? size/weight/color doing the hierarchy work?
+- **Structure**: every relationship drawn? one clear eye-path? importance
+  visible through scale and surrounding space?
+- **Render**: PNG inspected this round? zero clipping/overlap? arrows exact?
+  spacing consistent? composition balanced?
 
 ## 6 — Ship the SVG
 

@@ -93,7 +93,7 @@ install_skills() {
 				(cd "$target" && bun install --silent)
 				# Build-time artifacts (e.g. browser bundles) are gitignored and
 				# produced at install via the skill's own build script.
-				if grep -q '"build"' "$target/package.json"; then
+				if grep -A3 '"scripts"' "$target/package.json" | grep -q '"build"'; then
 					echo "[skills] Building: $skill_name"
 					(cd "$target" && bun run build >/dev/null)
 				fi

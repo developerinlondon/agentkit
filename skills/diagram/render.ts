@@ -26,7 +26,12 @@ const input = arg("in") ?? fail("--in <file.excalidraw> is required");
 const output = arg("out") ?? input.replace(/\.excalidraw$/, "") + ".svg";
 if (!existsSync(input)) fail(`no such file: ${input}`);
 
-const scene = JSON.parse(await readFile(input, "utf8"));
+let scene: { type?: string; elements?: unknown[] };
+try {
+  scene = JSON.parse(await readFile(input, "utf8"));
+} catch (e) {
+  fail(`${input} is not valid JSON: ${(e as Error).message}`);
+}
 if (scene.type !== "excalidraw") fail(`expected type "excalidraw", got "${scene.type}"`);
 if (!Array.isArray(scene.elements) || scene.elements.length === 0) {
   fail("scene has no elements — nothing to render");
@@ -35,7 +40,11 @@ if (!Array.isArray(scene.elements) || scene.elements.length === 0) {
 const bundle = join(import.meta.dir, "renderer/bundle.js");
 if (!existsSync(bundle)) {
   console.error("diagram-render: building renderer bundle (first run)…");
-  execSync("bun run build", { cwd: import.meta.dir, stdio: "inherit" });
+  try {
+    execSync("bun run build", { cwd: import.meta.dir, stdio: "inherit" });
+  } catch {
+    fail(`renderer bundle build failed — run: cd ${import.meta.dir} && bun install && bun run build`);
+  }
 }
 
 // Chromium resolution order: explicit env, playwright's own cache, system installs.
@@ -59,6 +68,8 @@ const browser = await chromium
     fail(`no usable Chromium (${e.message.split("\n")[0]}) — set AGENTKIT_CHROMIUM or run: bunx playwright install chromium`)
   );
 
+// Failures inside the try are thrown (not fail()ed) so the finally can close
+// the browser — process.exit skips finally blocks.
 try {
   const page = await browser.newPage();
   const errors: string[] = [];
@@ -67,19 +78,28 @@ try {
   await page.addScriptTag({ path: bundle, type: "module" });
   await page
     .waitForFunction(() => typeof window.renderExcalidrawToSvg === "function", undefined, { timeout: 15000 })
-    .catch(() => fail(`renderer bundle failed to initialize${errors.length ? `: ${errors[0]}` : ""}`));
+    .catch(() => {
+      throw new Error(`renderer bundle failed to initialize${errors.length ? `: ${errors[0]}` : ""}`);
+    });
   const svg: string = await page.evaluate((s) => window.renderExcalidrawToSvg(s), scene);
-  if (!svg.startsWith("<svg")) fail("renderer returned no SVG");
-  await writeFile(output, svg);
+  if (!svg.startsWith("<svg")) throw new Error("renderer returned no SVG");
+  await writeFile(output, svg).catch((e: Error) => {
+    throw new Error(`cannot write ${output}: ${e.message}`);
+  });
   const png = arg("png");
   if (png) {
     // A PNG twin lets the authoring agent LOOK at the result (Read renders
     // images, not SVG) for the render-view-fix loop.
     await page.setContent(`<!doctype html><body style="margin:0;background:#fff">${svg}</body>`);
     const el = page.locator("svg").first();
-    await el.screenshot({ path: png });
+    await el.screenshot({ path: png }).catch((e: Error) => {
+      throw new Error(`cannot write ${png}: ${e.message}`);
+    });
   }
   console.log(output);
-} finally {
+} catch (e) {
   await browser.close();
+  fail((e as Error).message);
+} finally {
+  await browser.close().catch(() => {});
 }

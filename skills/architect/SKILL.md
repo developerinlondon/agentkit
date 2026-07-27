@@ -35,6 +35,27 @@ genuinely understanding a system — not a file listing with boxes around it.
    only the affected zones/sections, republish the same name, and note the
    delta at the top of the page.
 
+## The bar: impress a staff engineer
+
+An experienced architect looking at your centerpiece diagram should learn
+something and find nothing to correct. That means the diagram shows what
+seniors actually look for, not just boxes and arrows:
+
+- **Boundaries drawn as boundaries** — trust, ownership, network, and process
+  boundaries as visible zones, not implied by proximity.
+- **Edges that say something**: protocol + direction + what actually travels
+  (`PUT /api/pages/:slug · HTML ≤5MB`, not "sends data"). Sync vs async
+  distinguishable at a glance (solid vs dashed).
+- **State made explicit** — every store shown with what owns it and what only
+  reads it.
+- **The failure story** — what breaks when each critical edge dies, marked on
+  the diagram (error-role color), not left to the appendix.
+- **Numbers where they exist** — caps, timeouts, quotas, cardinalities pulled
+  from config/code, never invented.
+- **The why on the page** — one decisions-and-constraints section that names
+  the forces that shaped the design; a diagram that only shows "what" is half
+  a diagram.
+
 ## Rules
 
 - Accuracy outranks beauty: a wrong arrow is worse than a missing one. If the
@@ -42,3 +63,7 @@ genuinely understanding a system — not a file listing with boxes around it.
 - State your confidence and name what you did NOT verify.
 - Never invent architecture direction — document what exists; proposals go in
   a clearly separated "open questions" section, not the diagrams.
+- **Publishing internal systems requires the user's explicit go-ahead**: pages
+  are public-by-slug until the accounts phase, and architecture pages are by
+  nature internal material — confirm before the first publish of a system's
+  page (refreshes of an already-approved page are fine).
