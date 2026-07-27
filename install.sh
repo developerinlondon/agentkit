@@ -10,7 +10,7 @@ usage() {
 Usage: ./install.sh [options] [target-project-dir]
 
 Installs agentkit (skills + rules + plugins + hooks + tools + policies) for all
-supported AI coding tools: OpenCode, Claude Code, and Codex CLI.
+supported AI coding tools: OpenCode, Claude Code, Codex CLI, and Grok CLI.
 
 Options:
   --global             Install globally (all tools, all projects)
@@ -25,13 +25,19 @@ Options:
   target-project-dir   Project directory to install into (default: current dir)
 
 Global install locations:
-  OpenCode:    ~/.agents/skills/, ~/.config/opencode/plugins/, ~/.agents/rules/
-  Claude Code: ~/.claude/skills/, ~/.claude/hooks/, ~/.claude/tools/,
+  Shared root: ~/.agentkit/{skills,rules,instructions,hooks,tools}
+               (single copy — clients get per-entry symlinks, so non-agentkit
+               skills in ~/.claude/skills or ~/.grok/skills are left alone)
+  OpenCode:    ~/.agents/skills|rules|instructions → ~/.agentkit/…
+               ~/.config/opencode/plugins/ (TS plugins still copied)
+  Claude Code: ~/.claude/skills|hooks|tools → ~/.agentkit/… (per entry)
                ~/.claude/settings.json (hooks section merged)
                (--claude-plugin: agentkit plugin via marketplace instead)
+  Grok CLI:    ~/.grok/skills|rules → ~/.agentkit/… (per entry)
+               instructions also land as ~/.grok/rules/*.md for always-on load
   Codex CLI:   ~/.codex/rules/, ~/.codex/prompts/ (skills as /prompts)
-  Executables: ~/.local/bin/ (also mirrored to ~/.claude/tools/)
-  Prompts:     ~/.agents/instructions/*.md (wired into Codex/Claude/OpenCode)
+  Executables: ~/.local/bin/ (also mirrored under ~/.agentkit/tools/)
+  Prompts:     ~/.agentkit/instructions/*.md (wired into Codex/Claude/OpenCode/Grok)
 
 Project install locations:
   OpenCode:    .opencode/skills/, .opencode/plugins/, .opencode/rules/
@@ -47,6 +53,10 @@ Examples:
 USAGE
 	exit 1
 }
+
+# Single shared content root. Clients never get a second full tree — only
+# per-name symlinks into this directory (preserves OMC/Grok builtin skills).
+AGENTKIT_HOME="${AGENTKIT_HOME:-$HOME/.agentkit}"
 
 CLAUDE_PLUGIN=false
 SESSION_SCOPE=true
@@ -67,6 +77,42 @@ fi
 
 # ─── Shared: Skills ──────────────────────────────────────────────────────────
 
+# Point dest at src as a symlink. Replaces a previous real file/dir or wrong
+# link so re-install is idempotent. Never touches sibling entries in dest's
+# parent — that is how ~/.claude/skills keeps OMC skills next to agentkit ones.
+link_path() {
+	local src="$1"
+	local dest="$2"
+	mkdir -p "$(dirname "$dest")"
+	if [[ -L "$dest" ]]; then
+		if [[ "$(readlink "$dest")" == "$src" ]]; then
+			return 0
+		fi
+		rm -f "$dest"
+	elif [[ -e "$dest" ]]; then
+		rm -rf "$dest"
+	fi
+	ln -sfn "$src" "$dest"
+	echo "[link] $dest -> $src"
+}
+
+# Symlink every direct child of canon into each client dir (by basename).
+link_children() {
+	local canon="$1"
+	shift
+	[[ -d "$canon" ]] || return 0
+	local client name
+	for client in "$@"; do
+		[[ -n "$client" ]] || continue
+		mkdir -p "$client"
+		for entry in "$canon"/*; do
+			[[ -e "$entry" ]] || continue
+			name="$(basename "$entry")"
+			link_path "$canon/$name" "$client/$name"
+		done
+	done
+}
+
 install_skills() {
 	local dest="$1"
 	mkdir -p "$dest"
@@ -76,9 +122,13 @@ install_skills() {
 		skill_name="$(basename "$skill_dir")"
 		local target="$dest/$skill_name"
 
-		if [[ -d "$target" ]]; then
+		if [[ -d "$target" && ! -L "$target" ]]; then
 			echo "[skills] Updating: $skill_name"
 			rm -rf "$target"
+		elif [[ -L "$target" ]]; then
+			# Should not happen for the canonical tree; defend anyway.
+			rm -f "$target"
+			echo "[skills] Installing: $skill_name"
 		else
 			echo "[skills] Installing: $skill_name"
 		fi
@@ -113,10 +163,13 @@ install_rules() {
 		local name
 		name="$(basename "$rule_file")"
 
-		if [[ -f "$dest/$name" ]]; then
+		if [[ -f "$dest/$name" && ! -L "$dest/$name" ]]; then
 			echo "[rules] Updating: $name"
-		else
+		elif [[ ! -e "$dest/$name" ]]; then
 			echo "[rules] Installing: $name"
+		else
+			echo "[rules] Updating: $name"
+			rm -f "$dest/$name"
 		fi
 
 		cp "$rule_file" "$dest/$name"
@@ -362,8 +415,20 @@ install_opencode_prompt() {
 	echo "[opencode] Wired global prompt: $config_file"
 }
 
+# Grok loads always-on home rules from ~/.grok/rules/*.md (and AGENTS.md).
+# Point each instruction at rules/ so Grok does not depend on Claude-compat
+# loading ~/.claude/CLAUDE.md for agentkit prompts.
+install_grok_prompt() {
+	local prompt_file="$1"
+	local rules_dir="$HOME/.grok/rules"
+	local name
+	name="$(basename "$prompt_file")"
+	mkdir -p "$rules_dir"
+	link_path "$prompt_file" "$rules_dir/$name"
+}
+
 install_global_agent_prompt() {
-	local instructions_dir="$HOME/.agents/instructions"
+	local instructions_dir="${1:-$AGENTKIT_HOME/instructions}"
 	mkdir -p "$instructions_dir"
 
 	local source_file
@@ -378,6 +443,9 @@ install_global_agent_prompt() {
 		return
 	fi
 
+	# Shared discovery path used by OpenCode docs / older adapters.
+	link_children "$instructions_dir" "$HOME/.agents/instructions"
+
 	install_codex_prompts "$instructions_dir"
 
 	local prompt_file
@@ -385,6 +453,7 @@ install_global_agent_prompt() {
 		[[ -f "$prompt_file" ]] || continue
 		install_claude_prompt "$prompt_file"
 		install_opencode_prompt "$prompt_file"
+		install_grok_prompt "$prompt_file"
 	done
 }
 
@@ -431,36 +500,61 @@ install_opencode_plugins() {
 
 # ─── Claude Code: Bash Hook Scripts ──────────────────────────────────────────
 
+# Install hook scripts into the shared root (canon), then optionally symlink
+# each into a client hooks dir (e.g. ~/.claude/hooks) so settings.json paths
+# keep working without a second full copy.
 install_claude_hooks() {
 	local hooks_dir="$1"
 	local settings_file="$2"
+	local canon_dir="${3:-}"
 	mkdir -p "$hooks_dir"
 
-	# Copy hook scripts
+	local install_dir="$hooks_dir"
+	if [[ -n "$canon_dir" ]]; then
+		mkdir -p "$canon_dir"
+		install_dir="$canon_dir"
+	fi
+
+	# Copy hook scripts into the install (canonical) dir
 	for hook_file in "$REPO_DIR"/hooks/claude/*.sh; do
 		[[ -f "$hook_file" ]] || continue
 		local name
 		name="$(basename "$hook_file")"
 
-		if [[ -f "$hooks_dir/$name" ]]; then
+		if [[ -f "$install_dir/$name" && ! -L "$install_dir/$name" ]]; then
 			echo "[claude] Updating hook: $name"
 		else
 			echo "[claude] Installing hook: $name"
 		fi
 
-		cp "$hook_file" "$hooks_dir/$name"
-		chmod +x "$hooks_dir/$name"
+		# Drop a stale symlink before writing the real script into canon.
+		[[ -L "$install_dir/$name" ]] && rm -f "$install_dir/$name"
+		cp "$hook_file" "$install_dir/$name"
+		chmod +x "$install_dir/$name"
 	done
 
-	# Shared helpers (Claude + Grok dual payload parsing). Scripts source
-	# $hooks_dir/lib/hook-input.sh via dirname of the hook script.
+	# Shared helpers (Claude + Grok dual payload). Live next to scripts so
+	# `source "${BASH_SOURCE[0]%/*}/lib/hook-input.sh"` resolves in canon and
+	# in client dirs that symlink the hook scripts.
 	if [[ -d "$REPO_DIR/hooks/claude/lib" ]]; then
-		mkdir -p "$hooks_dir/lib"
-		cp -a "$REPO_DIR"/hooks/claude/lib/. "$hooks_dir/lib/"
+		mkdir -p "$install_dir/lib"
+		cp -a "$REPO_DIR"/hooks/claude/lib/. "$install_dir/lib/"
 		echo "[claude] Installed hook lib/ helpers"
 	fi
 
-	# Merge hooks into settings.json
+	if [[ -n "$canon_dir" && "$hooks_dir" != "$canon_dir" ]]; then
+		link_children "$canon_dir" "$hooks_dir"
+		# lib/ is a directory — link_children is per-name for top-level entries;
+		# ensure the client hooks dir also has lib/ (symlink tree or copy).
+		if [[ -d "$canon_dir/lib" ]]; then
+			mkdir -p "$hooks_dir/lib"
+			# Prefer linking individual files so lib stays in sync with canon.
+			link_children "$canon_dir/lib" "$hooks_dir/lib"
+		fi
+	fi
+
+	# Merge hooks into settings.json — commands still resolve under hooks_dir
+	# (symlinks to canon), matching historical $HOME/.claude/hooks paths.
 	merge_claude_settings "$settings_file" "$hooks_dir"
 }
 
@@ -762,6 +856,7 @@ install_config() {
 
 if [[ "$GLOBAL" == true ]]; then
 	echo "Installing agentkit globally (all tools)"
+	echo "Shared root: $AGENTKIT_HOME"
 	echo ""
 
 	# ── Config ──
@@ -769,21 +864,39 @@ if [[ "$GLOBAL" == true ]]; then
 	install_config
 	echo ""
 
-	# ── Global prompt ──
-	echo "--- Global agent prompt ---"
-	install_global_agent_prompt
+	# ── Shared content root (single copy) ──
+	SKILLS_CANON="$AGENTKIT_HOME/skills"
+	RULES_CANON="$AGENTKIT_HOME/rules"
+	HOOKS_CANON="$AGENTKIT_HOME/hooks"
+	TOOLS_CANON="$AGENTKIT_HOME/tools"
+	INSTRUCTIONS_CANON="$AGENTKIT_HOME/instructions"
+
+	echo "--- Skills (SKILL.md → $SKILLS_CANON) ---"
+	install_skills "$SKILLS_CANON"
 	echo ""
 
-	# ── Skills (shared) ──
-	SKILLS_DEST="$HOME/.agents/skills"
-	echo "--- Skills (SKILL.md) ---"
-	install_skills "$SKILLS_DEST"
+	echo "--- Rules → $RULES_CANON ---"
+	install_rules "$RULES_CANON"
 	echo ""
 
-	# ── Rules (shared) ──
-	RULES_DEST="$HOME/.agents/rules"
-	echo "--- Rules (auto-loaded by glob) ---"
-	install_rules "$RULES_DEST"
+	echo "--- Global agent prompt → $INSTRUCTIONS_CANON ---"
+	install_global_agent_prompt "$INSTRUCTIONS_CANON"
+	echo ""
+
+	# Client skill/rule adapters — per-name symlinks only (leave OMC / Grok
+	# builtins sitting next to them).
+	echo "--- Client skill links ---"
+	link_children "$SKILLS_CANON" \
+		"$HOME/.agents/skills" \
+		"$HOME/.claude/skills" \
+		"$HOME/.grok/skills"
+	echo ""
+
+	echo "--- Client rule links ---"
+	link_children "$RULES_CANON" \
+		"$HOME/.agents/rules" \
+		"$HOME/.claude/rules" \
+		"$HOME/.grok/rules"
 	echo ""
 
 	# ── OpenCode ──
@@ -803,17 +916,17 @@ if [[ "$GLOBAL" == true ]]; then
 		echo ""
 	else
 		[[ "$CLAUDE_PLUGIN" == true ]] && echo "[claude] Falling back to manual install."
-		CLAUDE_MODE="manual ($CLAUDE_HOOKS, hooks in $CLAUDE_SETTINGS)"
-		echo "--- Claude Code (bash hooks) ---"
-		install_claude_hooks "$CLAUDE_HOOKS" "$CLAUDE_SETTINGS"
-		echo ""
-		echo "--- Claude Code (skills) ---"
-		install_skills "$CLAUDE_SKILLS"
+		CLAUDE_MODE="manual (hooks via $CLAUDE_HOOKS → $HOOKS_CANON, settings $CLAUDE_SETTINGS)"
+		echo "--- Claude Code (bash hooks, shared root) ---"
+		install_claude_hooks "$CLAUDE_HOOKS" "$CLAUDE_SETTINGS" "$HOOKS_CANON"
 		echo ""
 	fi
 	echo "--- Standalone tools ---"
 	install_tools "$PATH_TOOLS"
-	install_tools "$CLAUDE_TOOLS"
+	install_tools "$TOOLS_CANON"
+	# Claude tools dir: per-tool symlinks into the shared tools root (not a
+	# second full copy). Keep ~/.local/bin as real files for PATH.
+	link_children "$TOOLS_CANON" "$CLAUDE_TOOLS"
 	echo ""
 
 	# ── Per-session resource scoping ──
@@ -839,15 +952,17 @@ if [[ "$GLOBAL" == true ]]; then
 	# ── Summary ──
 	echo "Done. Installed globally for all tools:"
 	echo ""
+	echo "  Shared root:     $AGENTKIT_HOME/{skills,rules,instructions,hooks,tools}"
 	echo "  Config:          ${XDG_CONFIG_HOME:-$HOME/.config}/agentkit/config.yaml"
-	echo "  Prompts:         $HOME/.agents/instructions/*.md"
-	echo "  Skills:          $SKILLS_DEST/ (OpenCode), $CLAUDE_SKILLS/ (Claude Code)"
-	echo "  Rules:           $RULES_DEST/"
+	echo "  Prompts:         $INSTRUCTIONS_CANON/*.md"
+	echo "  Skills links:    ~/.agents/skills, ~/.claude/skills, ~/.grok/skills"
+	echo "  Rules links:     ~/.agents/rules, ~/.claude/rules, ~/.grok/rules"
 	echo "  OpenCode:        $OPENCODE_PLUGINS/ (auto-loaded)"
 	echo "  Claude Code:     $CLAUDE_MODE"
+	echo "  Grok CLI:        skills+rules links; instructions in ~/.grok/rules/"
 	echo "  PATH tools:      $PATH_TOOLS/"
 	[[ "$SESSION_SCOPE" == true ]] && echo "  Session shims:   $SESSION_SHIMS/ (prepended to PATH in ~/.bashrc)"
-	echo "  Claude tools:    $CLAUDE_TOOLS/"
+	echo "  Claude tools:    $CLAUDE_TOOLS/ → $TOOLS_CANON/"
 	echo "  Codex CLI:       $CODEX_RULES/ (auto-loaded), $CODEX_PROMPTS/ (/name prompts)"
 
 # ─── Main: Project Install ───────────────────────────────────────────────────
