@@ -393,7 +393,7 @@ fi
 
 # Auto-merge queues the merge for a LATER head — the sha we check now is not
 # the sha that lands. Refuse the mode rather than pretend to gate it.
-if tok_match '^--(auto|auto-merge(=true)?|merge-when-pipeline-succeeds|when-pipeline-succeeds)$'; then
+if tok_match '^--(auto(=.*)?|auto-merge(=true)?|merge-when-pipeline-succeeds|when-pipeline-succeeds)$'; then
 	deny "BLOCKED: auto-merge cannot be review-gated.
 
 It merges a future head that no review has seen. Wait for the pipeline, then

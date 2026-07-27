@@ -825,6 +825,11 @@ describe('review-police: bypasses found in adversarial review', () => {
     record(passing);
     expect(runHook('glab mr merge 12 --auto')).toContain('auto-merge');
     expect(runHook('glab mr merge 12 --auto-merge')).toContain('auto-merge');
+    for (const flag of ['--auto=true', '--auto=TRUE', '--auto=1']) {
+      expect(runHook(`gh pr merge 12 ${flag} --match-head-commit ${HEAD}`)).toContain(
+        'auto-merge',
+      );
+    }
   });
 
   test('REST merges are gated, contiguous or split across variables', () => {

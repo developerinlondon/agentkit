@@ -214,9 +214,11 @@ strict policy.
 - `source_sha` is the exact reviewed source head, not a generated squash/merge
   commit. Integrated-result assurance requires a protected merge-ref/merge-queue
   CI check.
-- The hook observes forge state immediately before a standalone merge and
-  refuses compound/wrapped calls that could mutate it first. Only an atomic
-  forge-side expected-head condition removes the remaining external race.
+- The enforced `--match-head-commit` / `--sha` condition closes the source-head
+  race. Neither CLI exposes an equivalent target-head compare-and-swap: the
+  target branch can advance between local validation and merge. Protected
+  merge-ref/merge-queue CI and branch rules must revalidate that integrated
+  result; the local hook cannot certify it atomically.
 - The supervisor closes bounded child failures, not cancellation of the
   supervisor process itself. Local hooks remain defense in depth; protected
   forge checks and approvals are the enforcement boundary.
