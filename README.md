@@ -199,10 +199,11 @@ JSON so either harness can block. Matcher aliases alone are not enough.
 target commit, and validates a context-bound evidence index. The source branch cannot weaken the
 policy judging itself. A reviewed merge must be one standalone `gh pr merge` or `glab mr merge`
 command carrying that exact head through `--match-head-commit` or `--sha`. GitLab commands must
-also pass `--auto-merge=false` so current `glab` does not defer the action. Direct
-REST/GraphQL/MCP and compound or wrapped merges are denied because their landing context cannot be
-bound safely. Record schemas, bootstrap behavior, evidence obligations, trust limits, and consent
-boundaries:
+also pass `--auto-merge=false` so current `glab` does not defer the action. GitHub target-branch
+rules are checked and merge-queue targets are refused because current `gh` implicitly defers them.
+Direct REST/GraphQL/MCP and compound or wrapped merges are denied because their landing context
+cannot be bound safely. Record schemas, bootstrap behavior, evidence obligations, trust limits,
+and consent boundaries:
 
 **[docs/review-process.md](./docs/review-process.md)**
 

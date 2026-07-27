@@ -19,6 +19,7 @@ let forgeLog: string;
 let baseTarget: string;
 let targetSha: string;
 let githubBaseRefSha: string;
+let githubMergeQueue = false;
 const SOURCE_BRANCH = 'feat/thing';
 const HEAD = 'a'.repeat(40);
 let sourceSha = HEAD;
@@ -70,6 +71,10 @@ if [[ "$1" == "repo" && "$2" == "view" ]]; then
 fi
 if [[ "$1" == "api" && "$args" == *"/repository/branches/"* ]]; then
   echo '{"commit":{"id":"${targetSha}"}}'
+  exit 0
+fi
+if [[ "$1" == "api" && "$args" == *"/rules/branches/"* ]]; then
+  echo '${githubMergeQueue ? '[[{"type":"merge_queue"}]]' : '[[]]'}'
   exit 0
 fi
 if [[ "$1" == "api" && "$args" == *"repos/"*"/branches/"* ]]; then
@@ -260,6 +265,7 @@ beforeAll(() => {
   baseTarget = execSync('git rev-parse HEAD', { cwd: repo, encoding: 'utf-8' }).trim();
   targetSha = baseTarget;
   githubBaseRefSha = baseTarget;
+  githubMergeQueue = false;
   sourceSha = HEAD;
   writeFakeForge();
 });
@@ -270,6 +276,7 @@ beforeEach(() => {
   execSync(`git reset --hard ${baseTarget}`, { cwd: repo, stdio: 'pipe' });
   targetSha = baseTarget;
   githubBaseRefSha = baseTarget;
+  githubMergeQueue = false;
   sourceSha = HEAD;
   writeFileSync(forgeLog, '');
   writeFakeForge();
@@ -412,6 +419,16 @@ describe('review-police: intended semantics', () => {
       'auto-merge',
     );
     expect(runHook(`glab mr merge 12 --sha ${HEAD} --auto-merge=false --yes`)).toBe('');
+  });
+
+  test('refuses implicit GitHub merge-queue deferral', () => {
+    record(passing);
+    githubMergeQueue = true;
+    writeFakeForge();
+
+    expect(runHook(`gh pr merge 12 --match-head-commit=${HEAD} --squash`)).toContain(
+      'merge queue',
+    );
   });
 
   test('allows once the blocking finding is resolved', () => {

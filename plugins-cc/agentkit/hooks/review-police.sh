@@ -414,6 +414,7 @@ REPO_DIR="$PWD"
 forge_json() {
 	if [[ "$CLI" == "gh" ]]; then
 		local details repo_json repository repository_id host target_branch encoded_target target_json repo_name
+		local rules_json merge_queue
 		details=$(gh pr view "$MR_ID" ${REPO_FLAG:+--repo "$REPO_FLAG"} \
 			--json headRefName,headRefOid,baseRefName,baseRefOid 2>/dev/null) || return 1
 		if [[ -n "$REPO_FLAG" ]]; then
@@ -429,7 +430,17 @@ forge_json() {
 		[[ -n "$repository" && -n "$repository_id" && -n "$host" && -n "$repo_name" && -n "$target_branch" ]] || return 1
 		encoded_target=$(printf '%s' "$target_branch" | jq -sRr @uri)
 		target_json=$(gh api --hostname "$host" "repos/$repo_name/branches/$encoded_target" 2>/dev/null) || return 1
+		rules_json=$(gh api --hostname "$host" --paginate --slurp \
+			"repos/$repo_name/rules/branches/$encoded_target?per_page=100" 2>/dev/null) || return 1
+		merge_queue=$(jq -r '
+          if type == "array" and all(.[]; type == "array") then
+            any(.[][]; .type == "merge_queue")
+          else
+            error("malformed branch rules")
+          end
+        ' <<<"$rules_json") || return 1
 		jq -cn --argjson details "$details" --argjson target "$target_json" \
+			--argjson merge_queue "$merge_queue" \
 			--arg repository "$repository" --arg repository_id "$repository_id" '{
           forge: "github",
           repository: $repository,
@@ -437,7 +448,8 @@ forge_json() {
           source_branch: $details.headRefName,
           source_sha: $details.headRefOid,
           target_branch: $details.baseRefName,
-          target_sha: $target.commit.sha
+          target_sha: $target.commit.sha,
+          merge_queue: $merge_queue
         }'
 	else
 		local details target_branch target_project encoded_target target_json repository repository_id host
@@ -459,7 +471,8 @@ forge_json() {
           source_branch: $details.source_branch,
           source_sha: ($details.sha // $details.diff_refs.head_sha),
           target_branch: $details.target_branch,
-          target_sha: $target.commit.id
+          target_sha: $target.commit.id,
+          merge_queue: false
         }'
 	fi
 }
@@ -471,6 +484,7 @@ TARGET_SHA=""
 FORGE=""
 REPOSITORY=""
 REPOSITORY_ID=""
+MERGE_QUEUE=""
 SHA_PATTERN='^[0-9a-f]{40}([0-9a-f]{24})?$'
 if [[ -n "$MR_ID" ]]; then
 	RESOLVED=$(cd "$REPO_DIR" 2>/dev/null && forge_json || true)
@@ -481,10 +495,12 @@ if [[ -n "$MR_ID" ]]; then
 	FORGE=$(jq -r '.forge // empty' <<<"$RESOLVED" 2>/dev/null || true)
 	REPOSITORY=$(jq -r '.repository // empty' <<<"$RESOLVED" 2>/dev/null || true)
 	REPOSITORY_ID=$(jq -r '.repository_id // empty' <<<"$RESOLVED" 2>/dev/null || true)
+	MERGE_QUEUE=$(jq -r 'if .merge_queue == true then "true" elif .merge_queue == false then "false" else empty end' \
+		<<<"$RESOLVED" 2>/dev/null || true)
 fi
 
 if [[ -z "$BRANCH" || -z "$HEAD_SHA" || -z "$TARGET_BRANCH" || -z "$TARGET_SHA" ||
-	-z "$FORGE" || -z "$REPOSITORY" || -z "$REPOSITORY_ID" ||
+	-z "$FORGE" || -z "$REPOSITORY" || -z "$REPOSITORY_ID" || -z "$MERGE_QUEUE" ||
 	! "$HEAD_SHA" =~ $SHA_PATTERN ||
 	! "$TARGET_SHA" =~ $SHA_PATTERN ]]; then
 	deny "BLOCKED: cannot resolve what this merge would land, so it cannot be gated.
@@ -496,6 +512,15 @@ The gate must read the change's source/target branches and exact SHAs from the
 forge — the local checkout alone says nothing about the commit being merged.
 Run the merge from the repo directory with an explicit MR/PR number and an
 authenticated forge CLI."
+fi
+
+if [[ "$CLI" == "gh" && "$MERGE_QUEUE" == "true" ]]; then
+	deny "BLOCKED: this target requires GitHub's merge queue, so the CLI merge is deferred.
+
+The current gh client either enables auto-merge or adds the pull request to the
+queue instead of completing this checked invocation. Use protected merge-queue
+CI as the authoritative gate; this local evidence token cannot authorize a
+deferred merge."
 fi
 
 # The hook and merge are two separate processes. The source may advance after

@@ -166,11 +166,14 @@ to the forge with GitHub's `--match-head-commit` or GitLab's `--sha`
 precondition. That closes the check-to-merge race: if the branch advances after
 the hook checks it, the forge refuses the merge. Current `glab` also requires
 `--auto-merge=false`; otherwise a running pipeline makes the command queue a
-deferred merge by default. Direct REST/GraphQL and MCP merges are refused, as
-are shell wrappers, command substitutions, compound commands, multiple merge
-verbs, and commands that could update the source before merging it. This is
-deliberately fail-closed: a single PreToolUse decision cannot prove which head a
-later command in the same shell call will land.
+deferred merge by default. For GitHub, the gate reads all active target-branch
+rules and refuses a `merge_queue` rule: current `gh` implicitly enables
+auto-merge or enqueues the pull request instead of completing the checked
+invocation. Direct REST/GraphQL and MCP merges are refused, as are shell
+wrappers, command substitutions, compound commands, multiple merge verbs, and
+commands that could update the source before merging it. This is deliberately
+fail-closed: a single PreToolUse decision cannot prove which head a later or
+deferred command will land.
 
 Claude command-hook cancellation is non-blocking, so both registrations invoke
 `review-police` through `fail-closed-hook.sh`. The child has 45 seconds inside a

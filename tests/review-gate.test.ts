@@ -260,7 +260,7 @@ describe('review-gate strict evidence validation', () => {
     expect(result.status, output(result)).toBe(0);
   });
 
-  test('classifies every review-governance surface as critical under AgentKit policy', () => {
+  test('classifies every review-governance and distribution surface as critical under AgentKit policy', () => {
     writeFileSync(
       policyPath,
       readFileSync(join(import.meta.dir, '..', '.agentkit', 'review-policy.json'), 'utf-8'),
@@ -271,6 +271,9 @@ describe('review-gate strict evidence validation', () => {
     }).trim();
 
     for (const path of [
+      '.agentkit/product.yaml',
+      '.claude-plugin/marketplace.json',
+      'plugins-cc/agentkit/.claude-plugin/plugin.json',
       'skills/adversarial-review/SKILL.md',
       'skills/autonomous-workflow/SKILL.md',
       'skills/product-review/SKILL.md',
@@ -279,6 +282,10 @@ describe('review-gate strict evidence validation', () => {
       'tests/review-gate.test.ts',
       'tests/review-police.test.ts',
       'tests/review-disciplines.test.ts',
+      'tests/agentkit-plugin.test.ts',
+      'tests/hook-supervisor.test.ts',
+      'tests/install-claude-plugin.test.ts',
+      'tests/install-tools.test.ts',
     ]) {
       writePaths([path]);
       const body = criticalRecord();
