@@ -42,16 +42,34 @@ mono eyebrows) — never re-explain or re-style these basics.
 **Be illustrative by default.** Structure every doc page as sections and pick the
 strongest component for each idea — don't produce walls of prose:
 
-- **Diagrams: use mermaid fences** — they render as real diagrams (the runtime
-  is inlined automatically, only on pages that use it; it costs ~3.4 MB of the
-  5 MB page cap, leaving ~1.4 MB for content on diagram pages). Prefer mermaid
-  over ASCII art for flows, architectures, sequences:
-  ````
-  ```mermaid
-  flowchart LR
-    A[agent] -->|PUT| W[Worker] --> R2[(R2)]
-  ```
-  ````
+- **Diagrams: pick the treatment by what the diagram IS** — never default to one
+  tool, and never ASCII art. Wrap EVERY diagram in
+  `<div class="figure">…<div class="figcaption"><strong>Name</strong> — what it shows</div></div>`
+  with a caption describing the content (say "Publish flow — from agent to live
+  page", never the technology used to draw it).
+  - **System/architecture topology** → the isometric kit (the standout look):
+    `<div class="iso"><div class="iso-node hot"><div class="tile"><div class="side"></div><div class="top"><div class="glyph">SVG</div></div></div><div class="tag">name</div></div>…</div>`
+    Variants `.hot` (green) / `.gold` for emphasis. Draw each glyph as a simple
+    inline 24×24 SVG outline icon (stroke `#8fa8c7`, or `#34d3a6`/`#e8b444` on
+    emphasized nodes, stroke-width 1.5, fill none) matching the node's meaning —
+    a database cylinder, a globe, a cloud, a terminal chevron, a bot face.
+  - **Pipelines/flows with descriptions** → the premium flat kit:
+    `<div class="arch"><div class="arch-row"><div class="arch-node hot"><svg class="ic">…</svg><div class="nm">Name</div><div class="ds">detail</div></div></div><div class="arch-join">edge label</div>…</div>`
+  - **Sequences, state machines, dense graphs, gantt** → mermaid fences (the
+    runtime is auto-inlined, themed to the navy palette; costs ~3.4 MB of the
+    5 MB cap, leaving ~1.4 MB for content):
+    ````
+    ```mermaid
+    sequenceDiagram
+      agent->>worker: PUT page
+    ```
+    ````
+  - **Charts (data)** → hand-built inline SVG following chart discipline: thin
+    marks, one axis only (never dual-axis), a muted recessive grid, series
+    colors from the accent family, direct labels over legends when ≤ 4 series,
+    text in ink/muted tokens never in series colors. If a `dataviz` skill is
+    available in the harness, load it and follow it; these rules are the
+    baked-in fallback so charts come out right on any harness.
 - **Section headers**: `<div class="kicker">01 — topic</div>` before an `## h2`.
 - **Enumerable concepts** (features, components, principles): a 2-column grid —
   `<div class="cards"><div class="card"><h3><code>name</code></h3><p>…</p></div>…</div>`

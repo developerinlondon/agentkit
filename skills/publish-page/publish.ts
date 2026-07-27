@@ -150,7 +150,8 @@ async function mermaidRuntime(): Promise<string> {
   // Decks render diagrams per-slide (hidden slides have zero width, which breaks
   // mermaid's measurements) — the deck theme's show() calls mermaid.run on the
   // active slide; docs render everything immediately.
-  return `\n<script>${js}</script>\n<script>mermaid.initialize({ startOnLoad: false, theme: "dark" }); if (!document.querySelector(".slide")) mermaid.run();</script>`;
+  const init = `mermaid.initialize({ startOnLoad: false, theme: "base", themeVariables: { darkMode: true, background: "transparent", primaryColor: "#102847", primaryBorderColor: "#2e4f7e", primaryTextColor: "#dce7f5", secondaryColor: "#0d2140", tertiaryColor: "#0d2f3a", lineColor: "#5f7ca3", edgeLabelBackground: "#071224", nodeBorder: "#2e4f7e", mainBkg: "#102847", clusterBkg: "#0d2140", clusterBorder: "#1e3a5f", fontFamily: "ui-monospace, Menlo, monospace", fontSize: "14px", actorBkg: "#102847", actorBorder: "#2e4f7e", actorTextColor: "#dce7f5", signalColor: "#5f7ca3", signalTextColor: "#8fa8c7", noteBkgColor: "#0d2f3a", noteTextColor: "#dce7f5", noteBorderColor: "#1e3a5f" }, flowchart: { curve: "basis", nodeSpacing: 46, rankSpacing: 56, padding: 12 } }); if (!document.querySelector(".slide")) mermaid.run();`;
+  return `\n<script>${js}</script>\n<script>${init}</script>`;
 }
 
 async function render(): Promise<string> {
