@@ -31,7 +31,10 @@ async function servePage(env, key, headers) {
   return html(200, obj.body, headers);
 }
 
-async function handlePublish(request, env, slug) {
+// Shared write-path gate: bearer auth (site slugs need SITE_TOKEN, pages need
+// PUBLISH_TOKEN, both fail closed when unset) + slug validation + R2 key.
+// Returns a Response on rejection, else { isSite, key }.
+function authorizeWrite(request, env, slug) {
   const auth = request.headers.get("authorization") ?? "";
   const token = auth.replace(/^Bearer\s+/i, "");
   const isSite = Object.hasOwn(SITE_SLUGS, slug);
@@ -42,6 +45,12 @@ async function handlePublish(request, env, slug) {
   if (!isSite && !SLUG_RE.test(slug)) {
     return new Response("invalid slug\n", { status: 400 });
   }
+  return { isSite, key: isSite ? SITE_SLUGS[slug] : `pages/${slug}/index.html` };
+}
+
+async function handlePublish(request, env, slug) {
+  const gate = authorizeWrite(request, env, slug);
+  if (gate instanceof Response) return gate;
   const declared = Number(request.headers.get("content-length") ?? "0");
   if (declared > MAX_PAGE_BYTES) {
     return new Response("page must be 1 byte to 5 MB\n", { status: 413 });
@@ -50,8 +59,7 @@ async function handlePublish(request, env, slug) {
   if (body.byteLength === 0 || body.byteLength > MAX_PAGE_BYTES) {
     return new Response("page must be 1 byte to 5 MB\n", { status: 413 });
   }
-  const key = isSite ? SITE_SLUGS[slug] : `pages/${slug}/index.html`;
-  await env.PAGES.put(key, body, {
+  await env.PAGES.put(gate.key, body, {
     httpMetadata: { contentType: "text/html; charset=utf-8" },
   });
   const url = slug === "_site"
@@ -62,6 +70,15 @@ async function handlePublish(request, env, slug) {
   return Response.json({ ok: true, slug, url });
 }
 
+async function handleDelete(request, env, slug) {
+  const gate = authorizeWrite(request, env, slug);
+  if (gate instanceof Response) return gate;
+  const existing = await env.PAGES.head(gate.key);
+  if (!existing) return new Response("not found\n", { status: 404 });
+  await env.PAGES.delete(gate.key);
+  return Response.json({ ok: true, deleted: slug });
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -70,6 +87,9 @@ export default {
 
     if (request.method === "PUT" && path.startsWith("api/pages/")) {
       return handlePublish(request, env, path.slice("api/pages/".length));
+    }
+    if (request.method === "DELETE" && path.startsWith("api/pages/")) {
+      return handleDelete(request, env, path.slice("api/pages/".length));
     }
     if (request.method !== "GET" && request.method !== "HEAD") {
       return new Response("method not allowed\n", { status: 405 });
