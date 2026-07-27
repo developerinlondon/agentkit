@@ -21,19 +21,32 @@ genuinely understanding a system — not a file listing with boxes around it.
 3. **Find the load-bearing structure**: the 3–7 components whose removal would
    change the story, the flows between them, the state stores, and the
    trust/ownership boundaries. Everything else is detail inside a zone.
-4. **Produce**:
+4. **Figure plan before authoring**: emit a table of concept → concept type →
+   treatment → why-not-a-table, one row per intended visual, derived from the
+   publish-page routing table. Name exactly ONE centerpiece and 2–5 supporting
+   figures, and account for every h2 section — a section with no figure is a
+   stated choice, not an omission. Never route a flow containing a repair
+   loop, approval gate, or failure branch to the box kits: the load-bearing
+   part is the backward edge, which only a drawn figure can show. Present the
+   plan in the same message as the publish-approval request so one gate covers
+   both.
+5. **Produce**:
    - the centerpiece diagram(s) via the **diagram** skill (technical depth:
-     real names, real payloads, evidence artifacts),
+     real names, real payloads, evidence artifacts; respect its canvas and
+     density budgets — a diagram covering several separate headings is several
+     figures),
    - a page via **publish-page** (doc template): overview strip, the diagrams
      in `.figure` blocks with semantic captions, a "decisions & constraints"
      section (why it is shaped this way, what must not be broken), and a
      "sharp edges" section for the traps a newcomer hits,
    - use a stable `--name` (e.g. `<system>-architecture`) so refreshes update
      the SAME URL.
-5. **Refresh mode**: when asked to update (or triggered after merges), diff
-   what changed since the page's last git version in the pages repo, update
-   only the affected zones/sections, republish the same name, and note the
-   delta at the top of the page.
+6. **Refresh mode**: when asked to update (or triggered after merges), diff
+   what changed since the page's last git version in the pages repo, re-run
+   the figure plan against the diff (changed zones get re-authored figures; a
+   figure whose caption is no longer true is a blocker, not cosmetic lag),
+   update only the affected zones/sections, republish the same name, and note
+   the delta at the top of the page.
 
 ## The bar: impress a staff engineer
 

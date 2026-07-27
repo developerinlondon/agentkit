@@ -76,10 +76,39 @@ comprehensive diagram exceeds a single response's output budget and truncates):
 4. After the last zone: re-read the whole file — bindings valid both ends,
    spacing balanced, every referenced id exists.
 
-Palette: match the destination. For AgentKit Pages (navy figures): strokes
-`#dce7f5`, muted `#8fa8c7`, accents `#34d3a6` / `#e8b444`, fills transparent or
-`#102847`, background transparent. For READMEs/light surfaces: near-black
-strokes with classic pastel fills (`#a5d8ff`, `#b2f2bb`, `#ffec99`).
+Palette: match the destination. For AgentKit Pages author the **navy palette
+only** — baked SVGs sit on a navy island in BOTH page themes, there is no light
+variant to produce, and a light-palette diagram would be invisible on it:
+strokes `#dce7f5`, muted `#8fa8c7`, accents `#34d3a6` / `#e8b444`, fills
+transparent or `#102847`, background transparent. For READMEs/light surfaces:
+near-black strokes with classic pastel fills (`#a5d8ff`, `#b2f2bb`, `#ffec99`).
+
+Contrast rules (worst case is the light end of the figure glow, `#0f2a4d`):
+
+- Red `#e06c5f` is a stroke color, not a text color — 4.4:1 misses AA. Use it
+  at strokeWidth ≥2 on shapes/arrows, or on text only at 16 px+.
+- Decoration never shares the hue of the text it decorates: underlines and
+  strikethroughs under colored text use muted `#8fa8c7` or are dropped — gold
+  under gold reads as a smear. Prefer size and weight over decoration.
+- Text on a filled panel takes the neutral ink `#dce7f5`, never the fill's own
+  color family; reserve the accent for a single data value.
+- Two semantic colors adjacent at the same size need a legend (≥14 px), placed
+  inside the zone it explains.
+
+## Size & density budget
+
+- **Canvas ≤ 1000 × 1400 px** for a page figure, **1000 × 620** for a deck
+  slide — the page column renders figures at ~979 px, so authoring at display
+  size means the diagram never scales below ~0.98. Hard ceiling 1200 px wide,
+  and only with every font raised proportionally (≥17 px) so nothing lands
+  below 14 px after scaling.
+- **Font floors**: annotations/legends 14 px, evidence/mono artifacts 13 px,
+  labels 16–18, zone titles 20–24, hero title 28–32. Nothing below 13 px.
+- **Density**: at most 3 zones, ~12 labeled nodes, ~25 text elements per
+  diagram. Exceeding any of the three means **split, don't shrink** — one
+  argument per figure; a fourth zone is a second figure with its own caption.
+- Vertical space is free and horizontal space is not: when a layout is tight,
+  restack zones taller rather than widening the canvas.
 
 ## 5 — Render, LOOK, fix (mandatory loop)
 
@@ -101,7 +130,10 @@ Each round, in order:
    belong to anything; ragged spacing between siblings; one zone cramped while
    another floats in emptiness; text too small at render size; a lopsided
    whole.
-3. **Fix in JSON** — widen containers for clipped text; shift `x`/`y` for
+3. **Page-scale pass** — view the PNG downscaled to ~979 px wide (the size the
+   page reader actually gets) and confirm every label is still readable; judge
+   the diagram at reading size, not authoring size.
+4. **Fix in JSON** — widen containers for clipped text; shift `x`/`y` for
    spacing; add waypoints to arrow `points` to route around shapes; pull
    labels next to their subjects; resize to rebalance visual weight.
 
@@ -129,7 +161,12 @@ needs a local Chromium — set `AGENTKIT_CHROMIUM` if it isn't auto-found.)
 
 ## 6 — Ship the SVG
 
-The SVG is fully self-contained (fonts embedded as data: URIs). Inline it
-directly into a page (wrap in `<div class="figure">` with a semantic
-`figcaption` when publishing via publish-page), drop it into a repo's docs, or
-attach the PNG where images are needed. Caption by content, never by tool.
+The SVG is fully self-contained (fonts embedded as data: URIs). **Before
+inlining, rewrite the SVG root**: replace the renderer's `width`/`height`
+attributes with `width="100%" style="height:auto"`, keep the `viewBox`, and add
+`role="img"` plus an `aria-label` matching the figcaption — the page theme
+backstops sizing in CSS, but the lightbox and every published page rely on this
+convention. Inline it directly into a page (wrap in `<div class="figure">` with
+a semantic `figcaption` when publishing via publish-page), drop it into a
+repo's docs, or attach the PNG where images are needed. Caption by content,
+never by tool.
