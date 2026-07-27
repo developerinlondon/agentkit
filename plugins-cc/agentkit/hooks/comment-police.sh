@@ -68,13 +68,17 @@ load_config
 
 command -v jq >/dev/null 2>&1 || exit 0
 
-INPUT=$(cat)
-case "$(echo "$INPUT" | jq -r '.tool_name // empty')" in
-  Edit|Write|edit|write) ;;
-  *) exit 0 ;;
-esac
+# shellcheck source=lib/hook-input.sh
+# Pure bash dirname: external `dirname` is missing when PATH is empty (the
+# missing-jq fail-open probe), and a source failure under set -e would silence
+# the gate. BASH_SOURCE is absolute when the harness invokes the script by path.
+source "${BASH_SOURCE[0]%/*}/lib/hook-input.sh"
+agentkit_slurp_input
+if ! agentkit_is_file_write_tool; then
+  exit 0
+fi
 
-FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // .tool_input.filePath // empty')
+FILE_PATH=$(agentkit_file_path)
 [[ -z "$FILE_PATH" ]] && exit 0
 
 case "$FILE_PATH" in
@@ -88,7 +92,7 @@ for pattern in "${EXCLUDE_PATTERNS[@]+"${EXCLUDE_PATTERNS[@]}"}"; do
   [[ "$FILE_PATH" == *"$pattern"* ]] && exit 0
 done
 
-ADDED=$(echo "$INPUT" | jq -r '.tool_input.new_string // .tool_input.content // empty')
+ADDED=$(agentkit_edit_text)
 [[ -z "$ADDED" ]] && exit 0
 
 VIOLATIONS=()

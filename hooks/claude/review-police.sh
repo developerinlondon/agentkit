@@ -33,15 +33,21 @@ set -euo pipefail
 # environment alone: `jq` missing (exit 127 on the first parse) and HOME unset
 # (set -u on the audit path). Neither is exotic; both silently disarmed the
 # gate. Refuse loudly instead of dying quietly.
+# shellcheck source=lib/hook-input.sh
+# Pure bash dirname: external `dirname` is missing when PATH is empty (the
+# missing-jq fail-open probe), and a source failure under set -e would silence
+# the gate. BASH_SOURCE is absolute when the harness invokes the script by path.
+source "${BASH_SOURCE[0]%/*}/lib/hook-input.sh"
 if ! command -v jq >/dev/null 2>&1; then
-	printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"BLOCKED: review-police cannot run — jq is not installed, so the merge cannot be checked against its review record. Install jq."}}'
+	printf '%s\n' '{"decision":"deny","reason":"BLOCKED: review-police cannot run — jq is not installed, so the merge cannot be checked against its review record. Install jq.","hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"BLOCKED: review-police cannot run — jq is not installed, so the merge cannot be checked against its review record. Install jq."}}'
 	exit 0
 fi
 
-INPUT=$(cat)
-TOOL=$(echo "$INPUT" | jq -r '.tool_name // empty')
-RAW_COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty')
-SESSION=$(echo "$INPUT" | jq -r '.session_id // "unknown"')
+agentkit_slurp_input
+TOOL=$(agentkit_tool_name)
+TOOL_FAMILY=$(agentkit_tool_family "$TOOL")
+RAW_COMMAND=$(agentkit_command)
+SESSION=$(agentkit_session_id)
 
 # TOKENISE the way a shell does, then match on tokens joined by newlines.
 #
@@ -151,19 +157,13 @@ AUDIT="${HOME:-/tmp}/.agentkit/review-audit.log"
 deny() {
 	mkdir -p "$(dirname "$AUDIT")" 2>/dev/null || true
 	printf '%s\tDENY\tsession=%s\t%s\n' "$(date -Is)" "$SESSION" "${1//$'\n'/ }" >>"$AUDIT" 2>/dev/null || true
-	jq -n --arg r "$1" '{
-    hookSpecificOutput: {
-      hookEventName: "PreToolUse",
-      permissionDecision: "deny",
-      permissionDecisionReason: $r
-    }
-  }'
+	agentkit_deny_json "$1"
 	exit 0
 }
 
 # --- MCP merge tools: no Bash to inspect, so refuse outright ---------------
 # These bypass every command-shaped check. The CLI path is the reviewed path.
-if [[ -n "$TOOL" && "$TOOL" != "Bash" ]]; then
+if [[ -n "$TOOL" && "$TOOL_FAMILY" != "Bash" ]]; then
 	if echo "$TOOL" | grep -qiE 'merge_(pull_request|request)|pull_request_merge|mr_merge'; then
 		deny "BLOCKED: merging through an MCP tool bypasses the review gate.
 

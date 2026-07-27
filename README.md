@@ -155,6 +155,24 @@ cp rules/credential-bootstrap.md your-project/.opencode/rules/
 cp plugins/version-police.ts your-project/.opencode/plugins/
 ```
 
+### Grok CLI
+
+Grok loads agentkit **hooks** via Claude settings compatibility (`~/.claude/settings.json`
+when `[compat.claude] hooks = true`, the default). Soft guidance (skills/rules/instructions)
+is separate. Full install, soft-vs-hard table, and a deny probe:
+
+**[docs/grok.md](./docs/grok.md)**
+
+Police scripts accept both Claude snake_case and Grok camelCase payloads and dual-emit deny
+JSON so either harness can block. Matcher aliases alone are not enough.
+
+### Agent review / merge gate
+
+`review-police` blocks forge merges unless an independent review record covers the exact
+commit being merged. Record shape, who may write what, and the consent path:
+
+**[docs/review-process.md](./docs/review-process.md)**
+
 ### Tools
 
 Global installs place tools on `~/.local/bin/` and preserve a mirror in `~/.claude/tools/`.

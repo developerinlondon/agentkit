@@ -452,6 +452,14 @@ install_claude_hooks() {
 		chmod +x "$hooks_dir/$name"
 	done
 
+	# Shared helpers (Claude + Grok dual payload parsing). Scripts source
+	# $hooks_dir/lib/hook-input.sh via dirname of the hook script.
+	if [[ -d "$REPO_DIR/hooks/claude/lib" ]]; then
+		mkdir -p "$hooks_dir/lib"
+		cp -a "$REPO_DIR"/hooks/claude/lib/. "$hooks_dir/lib/"
+		echo "[claude] Installed hook lib/ helpers"
+	fi
+
 	# Merge hooks into settings.json
 	merge_claude_settings "$settings_file" "$hooks_dir"
 }

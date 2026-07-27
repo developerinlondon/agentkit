@@ -16,17 +16,21 @@ if [[ -n "${AGENTKIT_SKIP_HOOKS:-}" ]]; then
   esac
 fi
 
-INPUT=$(cat)
-TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty')
+# shellcheck source=lib/hook-input.sh
+# Pure bash dirname: external `dirname` is missing when PATH is empty (the
+# missing-jq fail-open probe), and a source failure under set -e would silence
+# the gate. BASH_SOURCE is absolute when the harness invokes the script by path.
+source "${BASH_SOURCE[0]%/*}/lib/hook-input.sh"
+agentkit_slurp_input
+TOOL_NAME=$(agentkit_tool_name)
 
-# Only trigger on Edit or Write tools
-case "$TOOL_NAME" in
-  Edit|Write|edit|write) ;;
-  *) exit 0 ;;
-esac
+# Only trigger on Edit or Write tools (incl. Grok search_replace / write)
+if ! agentkit_is_file_write_tool "$TOOL_NAME"; then
+  exit 0
+fi
 
 # Extract the file path from tool input
-FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // .tool_input.filePath // empty')
+FILE_PATH=$(agentkit_file_path)
 [[ -z "$FILE_PATH" ]] && exit 0
 
 # Only format known file types

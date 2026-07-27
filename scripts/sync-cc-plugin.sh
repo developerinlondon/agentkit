@@ -14,6 +14,14 @@ for hook in "$REPO_DIR"/hooks/claude/*.sh; do
 done
 echo "[sync] hooks/claude/*.sh -> plugins-cc/agentkit/hooks/"
 
+# Shared helpers (dual Claude/Grok payload parsing). Must live next to the
+# scripts so `source "$(dirname …)/lib/hook-input.sh"` resolves.
+if [[ -d "$REPO_DIR/hooks/claude/lib" ]]; then
+	mkdir -p "$PLUGIN_DIR/hooks/lib"
+	cp -a "$REPO_DIR"/hooks/claude/lib/. "$PLUGIN_DIR/hooks/lib/"
+	echo "[sync] hooks/claude/lib -> plugins-cc/agentkit/hooks/lib/"
+fi
+
 # Skills: full mirror — remove skills that no longer exist at top level.
 for plugin_skill in "$PLUGIN_DIR"/skills/*/; do
 	name="$(basename "$plugin_skill")"
