@@ -74,18 +74,23 @@ load_config() {
 }
 load_config
 
+# shellcheck source=lib/hook-input.sh
+# Pure bash dirname: external `dirname` is missing when PATH is empty (the
+# missing-jq fail-open probe), and a source failure under set -e would silence
+# the gate. BASH_SOURCE is absolute when the harness invokes the script by path.
+source "${BASH_SOURCE[0]%/*}/lib/hook-input.sh"
 # ── Input parsing ───────────────────────────────────────────────────────────
-INPUT=$(cat)
-TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty')
+agentkit_slurp_input
+TOOL_NAME=$(agentkit_tool_name)
+TOOL_FAMILY=$(agentkit_tool_family "$TOOL_NAME")
 
-# Only trigger on Edit or Write tools
-case "$TOOL_NAME" in
-  Edit|Write|edit|write) ;;
-  *) exit 0 ;;
-esac
+# Only trigger on Edit or Write tools (incl. Grok search_replace / write)
+if ! agentkit_is_file_write_tool "$TOOL_NAME"; then
+  exit 0
+fi
 
 # Extract the file path from tool input
-FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // .tool_input.filePath // empty')
+FILE_PATH=$(agentkit_file_path)
 [[ -z "$FILE_PATH" ]] && exit 0
 
 IS_CODE_FILE=false
@@ -353,8 +358,8 @@ check_export_count() {
 
 # ── Check 6: Monolith directory (Write only — Edit cannot create new files) ─
 check_monolith_directory() {
-  case "$TOOL_NAME" in
-    Write|write) ;;
+  case "$TOOL_FAMILY" in
+    Write) ;;
     *) return 0 ;;
   esac
   (( MAX_DIR_FILES > 0 )) || return 0

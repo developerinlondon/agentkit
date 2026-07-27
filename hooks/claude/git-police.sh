@@ -12,8 +12,13 @@ RE_YAML_ITEM='^[[:space:]]*-[[:space:]]+(.*)'
 PROTECTED_BRANCHES=("main" "master")
 AGENTKIT_CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/agentkit/config.yaml"
 
-INPUT=$(cat)
-COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty')
+# shellcheck source=lib/hook-input.sh
+# Pure bash dirname: external `dirname` is missing when PATH is empty (the
+# missing-jq fail-open probe), and a source failure under set -e would silence
+# the gate. BASH_SOURCE is absolute when the harness invokes the script by path.
+source "${BASH_SOURCE[0]%/*}/lib/hook-input.sh"
+agentkit_slurp_input
+COMMAND=$(agentkit_command)
 
 [[ -z "$COMMAND" ]] && exit 0
 
@@ -78,13 +83,7 @@ fi
 
 deny() {
 	local reason="$1"
-	jq -n --arg r "$reason" '{
-    hookSpecificOutput: {
-      hookEventName: "PreToolUse",
-      permissionDecision: "deny",
-      permissionDecisionReason: $r
-    }
-  }'
+	agentkit_deny_json "$reason"
 	exit 0
 }
 
@@ -95,12 +94,7 @@ deny() {
 # reaches Claude only on "deny", and stdout on exit 0 is discarded).
 advise() {
 	local msg="$1"
-	jq -n --arg m "$msg" '{
-    hookSpecificOutput: {
-      hookEventName: "PreToolUse",
-      additionalContext: $m
-    }
-  }'
+	agentkit_advise_json "$msg"
 	exit 0
 }
 
