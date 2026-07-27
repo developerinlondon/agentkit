@@ -2,21 +2,18 @@
 # See plugins-cc/agentkit/skills/product-review/SKILL.md for the contract.
 
 summary: >-
-  A Claude Code / OpenCode plugin that installs enforcement hooks (git, MR,
-  package, resource, review, formatting and comment discipline), a set of
-  agent skills, a memory-and-CPU-bounded command runner, and two MCP servers.
-  Installed once per machine; from then on it constrains how agents work in
-  every repo on that machine.
+  Cross-platform enforcement hooks (git, MR, package, resource, review,
+  formatting and comment discipline), agent skills, two MCP servers, and a
+  Linux-only memory-and-CPU-bounded command runner. The full installer supports
+  global and project-local use; the Claude Code plugin is a separate bundle.
 
 surfaces:
   - name: test-suite
     kind: library
-    # Wrapped in bounded-run because agentkit's own resource-police DENIES a
-    # bare `bun install` / `bun test`. A reviewer following this manifest is,
-    # by definition, on a machine where these hooks are live — declaring the
-    # naive form would block them at step one of the skill's own procedure.
-    build: bounded-run --profile default -- bun install
-    verify: bounded-run --profile default -- bun test
+    # This repo-owned adapter keeps the command verbatim on every host: Linux
+    # delegates to installed agentkit-run; other platforms execute directly.
+    build: scripts/product-command default -- bun install
+    verify: scripts/product-command default -- bun test
     expect: |
       The suite passes with 0 failures (a few skips are expected). Deliberately
       not a pinned count — this file exists to catch stale expectations, so it
@@ -38,23 +35,18 @@ surfaces:
       in `.agentkit/reviews/` is refused with a BLOCKED message rather than
       silently allowed.
 
-  - name: bounded-run
+  - name: platform-command
     kind: cli
-    # The INSTALLED path, not ./tools/bounded-run. resource-police trusts the
-    # runner by installed path rather than by name (anything can be called
-    # `bounded-run`, and trusting the name would let a spoof neuter every
-    # limit), so running it in place from a fresh clone is refused. Declaring
-    # the in-place path here was the first thing dogfooding this manifest
-    # caught.
-    run: bounded-run --profile default -- echo ok
+    run: scripts/product-command default -- echo ok
     expect: |
-      Prints `ok` having run the command inside a systemd scope with memory
-      and CPU limits. A workload that exceeds the profile is killed rather
-      than allowed to exhaust the host.
+      On Linux, prints `ok` having run the command inside a systemd scope with
+      memory and CPU limits. A workload that exceeds the profile is killed
+      rather than allowed to exhaust the host. On non-Linux, where that runner
+      is unsupported, the same verbatim command prints `ok` directly.
 
   - name: infra-tools-mcp
     kind: api
-    run: bun plugins-cc/agentkit/server/index.ts
+    run: scripts/product-command default -- bun plugins-cc/agentkit/server/index.ts
     expect: |
       Speaks JSON-RPC on stdin/stdout; `tools/list` returns ten read-only git,
       helm and tofu tools and nothing that mutates infrastructure.
@@ -64,7 +56,16 @@ requires:
   credentials: []
   notes:
     - Claude Code (or OpenCode) must be installed to exercise the `plugin`
-      surface; the test suite needs only bun.
+      surface. The exact test-suite commands need bun. On Linux,
+      `scripts/product-command` also requires the installed `agentkit-run`
+      entry point and fails closed if it is absent.
+    - >-
+      Local containment is Linux-only and requires cgroup v2, a systemd user
+      manager, and a provisioned agent-work.slice. On non-Linux hosts the
+      installer omits bounded-run and its Codex resource policy. OpenCode
+      delegation protection remains active. Claude hook protection requires
+      jq, awk, and cat; when one is unavailable the hook warns and intentionally
+      fails open.
     - >-
       This repo's own hooks are usually already active on a developer machine
       and will intercept naive verification. Two you WILL hit: running the

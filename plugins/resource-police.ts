@@ -4,6 +4,7 @@ interface Launch {
   token: string;
   executable: string;
   args: string[];
+  undecidable?: boolean;
 }
 
 interface Finding {
@@ -12,7 +13,10 @@ interface Finding {
   /** The runner is not the INSTALLED bounded-run. Distinct from `delegated`:
    *  the delegated message advertises an escape hatch that cannot clear this. */
   untrustedRunner?: boolean;
+  undecidable?: boolean;
 }
+
+const MAX_ANALYSIS_DEPTH = 4;
 
 function splitShellSegments(command: string): string[] {
   const segments: string[] = [];
@@ -62,6 +66,7 @@ function basename(command: string): string {
 function parseLaunch(segment: string): Launch | null {
   const tokens = segment.trim().split(/\s+/);
   let index = 0;
+  let wrapperDepth = 0;
   const assignment = /^[A-Za-z_][A-Za-z0-9_]*=/;
   while (tokens[index]) {
     while (assignment.test(tokens[index] ?? '')) index += 1;
@@ -70,6 +75,10 @@ function parseLaunch(segment: string): Launch | null {
       return { token: tokens[index], executable: wrapper, args: tokens.slice(index + 1) };
     }
     if (wrapper === 'env') {
+      wrapperDepth += 1;
+      if (wrapperDepth > MAX_ANALYSIS_DEPTH) {
+        return { token: '', executable: '', args: [], undecidable: true };
+      }
       index += 1;
       while ((tokens[index] ?? '').startsWith('-') || assignment.test(tokens[index] ?? '')) {
         index += 1;
@@ -77,6 +86,10 @@ function parseLaunch(segment: string): Launch | null {
       continue;
     }
     if (/^(command|nohup|time)$/.test(wrapper)) {
+      wrapperDepth += 1;
+      if (wrapperDepth > MAX_ANALYSIS_DEPTH) {
+        return { token: '', executable: '', args: [], undecidable: true };
+      }
       index += 1;
       while ((tokens[index] ?? '').startsWith('-')) index += 1;
       continue;
@@ -206,44 +219,68 @@ function unwrapEnvironment(launch: Launch): Launch {
   };
 }
 
-function wrappedLaunch(launch: Launch): Launch | null {
+function wrappedCommand(launch: Launch): string | null {
   const separator = launch.args.indexOf('--');
   if (separator < 0 || !launch.args[separator + 1]) return null;
-  return {
-    token: launch.args[separator + 1],
-    executable: basename(launch.args[separator + 1]),
-    args: launch.args.slice(separator + 2),
-  };
+  return launch.args.slice(separator + 1).join(' ');
 }
 
 function detectUnboundedCommand(
   command: string,
   depth = 0,
   delegatedOk = false,
+  containmentRequired = true,
+  contained = false,
 ): Finding | null {
-  if (depth > 3) return { segment: command, delegated: false };
+  if (depth > MAX_ANALYSIS_DEPTH) {
+    return { segment: command, delegated: false, undecidable: true };
+  }
   for (const segment of splitShellSegments(command)) {
     const launch = parseLaunch(segment);
     if (!launch) continue;
+    if (launch.undecidable) return { segment, delegated: false, undecidable: true };
     if (launch.executable === 'bounded-run' || launch.executable === 'agentkit-run') {
-      // NOT `delegated`: that message advertises AGENTKIT_ALLOW_DELEGATED=1,
-      // which this path never consults, so it sent people chasing an escape
-      // hatch that cannot clear it.
-      if (!isTrustedRunner(launch.token)) return { segment, delegated: false, untrustedRunner: true };
-      const nested = wrappedLaunch(launch);
-      if (nested && !delegatedOk && isDelegating(nested)) return { segment, delegated: true };
+      const nestedCommand = wrappedCommand(launch);
+      if (nestedCommand) {
+        const nestedLaunch = parseLaunch(nestedCommand);
+        if (nestedLaunch?.undecidable) {
+          return { segment, delegated: false, undecidable: true };
+        }
+        if (nestedLaunch && !delegatedOk && isDelegating(nestedLaunch)) {
+          return { segment, delegated: true };
+        }
+        const finding = detectUnboundedCommand(
+          nestedCommand,
+          depth + 1,
+          delegatedOk,
+          containmentRequired,
+          true,
+        );
+        if (finding) return finding;
+      }
+      if (containmentRequired && !isTrustedRunner(launch.token)) {
+        return { segment, delegated: false, untrustedRunner: true };
+      }
       continue;
     }
     if (isShell(launch.executable)) {
       const payload = shellCommandPayload(launch);
       if (payload !== null) {
-        const finding = detectUnboundedCommand(payload, depth + 1, delegatedOk);
+        const finding = detectUnboundedCommand(
+          payload,
+          depth + 1,
+          delegatedOk,
+          containmentRequired,
+          contained,
+        );
         if (finding) return finding;
         continue;
       }
     }
     if (!delegatedOk && isDelegating(launch)) return { segment, delegated: true };
-    if (isHeavy(launch)) return { segment, delegated: false };
+    if (containmentRequired && !contained && isHeavy(launch)) {
+      return { segment, delegated: false };
+    }
   }
   return null;
 }
@@ -264,6 +301,50 @@ function isTrustedRunner(token: string): boolean {
     || /\/plugins\/.*\/tools\/bounded-run$/.test(normalized);
 }
 
+function containmentRequired(platform: string): boolean {
+  return platform === 'linux';
+}
+
+export function enforceResourcePolicy(command: string, platform = process.platform): void {
+  const finding = detectUnboundedCommand(
+    command,
+    0,
+    isDelegatedOverride(command),
+    containmentRequired(platform),
+  );
+  if (!finding) return;
+  if (finding.undecidable) {
+    throw new Error(
+      `BLOCKED: command could not be analyzed safely: ${finding.segment}\n`
+        + `Wrapper or shell nesting exceeded the ${MAX_ANALYSIS_DEPTH}-level analysis bound.`,
+    );
+  }
+  if (finding.untrustedRunner) {
+    throw new Error(
+      `BLOCKED: that is not a recognised bounded-run: ${finding.segment}\n`
+        + 'Anything can be named `bounded-run`, so it is trusted by INSTALLED PATH,\n'
+        + 'not by name — otherwise a spoof could silently neuter every limit.\n'
+        + 'AGENTKIT_ALLOW_DELEGATED=1 does NOT clear this. Install the runner\n'
+        + '(~/.local/bin/bounded-run) and invoke it from there, or use the\n'
+        + "plugin's copy under the plugin root.",
+    );
+  }
+  if (finding.delegated) {
+    throw new Error(
+      `BLOCKED: delegated workload cannot be contained by bounded-run: ${finding.segment}\n` +
+        'Use a separately approved dedicated runner or verified engine-native limits.\n' +
+        'User-approved delegated workloads: prefix with AGENTKIT_ALLOW_DELEGATED=1.',
+    );
+  }
+  throw new Error(
+    `BLOCKED: resource-intensive command is not contained: ${finding.segment}\n` +
+      'Run it through the installed runner, for example:\n' +
+      '  bounded-run --profile compile -- bun run typecheck\n' +
+      '  ./.claude/tools/bounded-run --profile compile -- bun run typecheck\n' +
+      'Use profile browser for Playwright and browser builds.',
+  );
+}
+
 export default async function resourcePolice(_ctx: PluginInput) {
   return {
     'tool.execute.before': async (
@@ -273,32 +354,7 @@ export default async function resourcePolice(_ctx: PluginInput) {
       if (input.tool?.toLowerCase() !== 'bash') return;
       const command = output.args.command as string | undefined;
       if (!command) return;
-      const finding = detectUnboundedCommand(command, 0, isDelegatedOverride(command));
-      if (!finding) return;
-      if (finding.untrustedRunner) {
-        throw new Error(
-          `BLOCKED: that is not a recognised bounded-run: ${finding.segment}\n`
-            + 'Anything can be named `bounded-run`, so it is trusted by INSTALLED PATH,\n'
-            + 'not by name — otherwise a spoof could silently neuter every limit.\n'
-            + 'AGENTKIT_ALLOW_DELEGATED=1 does NOT clear this. Install the runner\n'
-            + '(~/.local/bin/bounded-run) and invoke it from there, or use the\n'
-            + "plugin's copy under the plugin root.",
-        );
-      }
-      if (finding.delegated) {
-        throw new Error(
-          `BLOCKED: delegated workload cannot be contained by bounded-run: ${finding.segment}\n` +
-            'Use a separately approved dedicated runner or verified engine-native limits.\n' +
-            'User-approved delegated workloads: prefix with AGENTKIT_ALLOW_DELEGATED=1.',
-        );
-      }
-      throw new Error(
-        `BLOCKED: resource-intensive command is not contained: ${finding.segment}\n` +
-          'Run it through the installed runner, for example:\n' +
-          '  bounded-run --profile compile -- bun run typecheck\n' +
-          '  ./.claude/tools/bounded-run --profile compile -- bun run typecheck\n' +
-          'Use profile browser for Playwright and browser builds.',
-      );
+      enforceResourcePolicy(command, process.platform);
     },
   };
 }

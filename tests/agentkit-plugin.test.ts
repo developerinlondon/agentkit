@@ -205,6 +205,8 @@ describe('marketplace lists the agentkit plugin', () => {
     expect(agentkit.version).toBe('0.2.0');
     expect(agentkit.description).toContain('bounded-run');
     expect(agentkit.description).toContain('agent-work.slice');
+    expect(agentkit.description).toContain('Linux bounded execution additionally requires');
+    expect(agentkit.description).not.toContain('Requires jq, bun, assay, cgroup v2');
   });
 });
 

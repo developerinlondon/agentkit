@@ -1,0 +1,201 @@
+# delegation-police.rules — Codex CLI exec policy
+# Delegated workloads escape local process containment on every platform.
+#
+# This policy evaluates direct command prefixes only. Codex prefix rules do not
+# parse shell payloads, skip arbitrary global options, or recursively inspect a
+# launched script. Claude and OpenCode resource-police provide that recursive
+# analysis. This file blocks direct forms the prefix language can represent and
+# explicitly allows their direct read-only diagnostic forms.
+
+# Always-delegating executables have no safe direct diagnostic mode.
+
+prefix_rule(
+    pattern = ["ansible"],
+    decision = "forbidden",
+    justification = "Ansible delegates work to managed hosts. Use a separately approved remote runner with verified limits.",
+)
+
+prefix_rule(
+    pattern = ["ansible-playbook"],
+    decision = "forbidden",
+    justification = "Ansible delegates work to managed hosts. Use a separately approved remote runner with verified limits.",
+)
+
+prefix_rule(
+    pattern = ["doas"],
+    decision = "forbidden",
+    justification = "Privilege wrappers can escape the invoking process boundary.",
+)
+
+prefix_rule(
+    pattern = ["mosh"],
+    decision = "forbidden",
+    justification = "Remote workloads are outside local process containment.",
+)
+
+prefix_rule(
+    pattern = ["pkexec"],
+    decision = "forbidden",
+    justification = "Privilege wrappers can escape the invoking process boundary.",
+)
+
+prefix_rule(
+    pattern = ["run0"],
+    decision = "forbidden",
+    justification = "run0 delegates to systemd-run outside the invoking process boundary.",
+)
+
+prefix_rule(
+    pattern = ["ssh"],
+    decision = "forbidden",
+    justification = "Remote workloads are outside local process containment.",
+)
+
+prefix_rule(
+    pattern = ["sudo"],
+    decision = "forbidden",
+    justification = "Privilege wrappers can escape the invoking process boundary.",
+)
+
+prefix_rule(
+    pattern = ["systemd-run"],
+    decision = "forbidden",
+    justification = "Direct systemd-run creates a sibling cgroup outside the invoking process boundary.",
+)
+
+# Container/build engines: deny direct mutating operations and allow direct
+# diagnostics. Global options placed before the subcommand are outside this
+# prefix layer and remain the responsibility of the recursive runtime hooks.
+
+prefix_rule(
+    pattern = ["buildah", ["add", "build", "bud", "commit", "config", "copy", "from", "mount", "pull", "push", "rename", "rm", "rmi", "run", "tag", "umount", "unmount"]],
+    decision = "forbidden",
+    justification = "Buildah can create delegated container workloads outside local process containment.",
+)
+
+prefix_rule(
+    pattern = ["buildah", ["containers", "images", "info", "inspect", "version"]],
+    decision = "allow",
+    justification = "Direct Buildah inspection is read-only.",
+)
+
+prefix_rule(
+    pattern = ["docker", ["attach", "build", "commit", "cp", "create", "exec", "export", "import", "kill", "load", "pause", "pull", "push", "rename", "restart", "rm", "rmi", "run", "save", "start", "stop", "tag", "unpause", "update", "wait"]],
+    decision = "forbidden",
+    justification = "Docker can delegate work to an engine outside local process containment.",
+)
+
+prefix_rule(
+    pattern = ["docker", ["builder", "buildx", "context", "network", "node", "plugin", "secret", "service", "stack", "swarm", "system", "trust", "volume"]],
+    decision = "forbidden",
+    justification = "Docker engine administration can mutate workloads outside local process containment.",
+)
+
+prefix_rule(
+    pattern = ["docker", "compose", ["build", "create", "down", "exec", "kill", "pause", "pull", "push", "restart", "rm", "run", "start", "stop", "unpause", "up"]],
+    decision = "forbidden",
+    justification = "Docker Compose can delegate workloads outside local process containment.",
+)
+
+prefix_rule(
+    pattern = ["docker", ["diff", "events", "history", "images", "info", "inspect", "logs", "port", "ps", "stats", "top", "version"]],
+    decision = "allow",
+    justification = "Direct Docker inspection is read-only.",
+)
+
+prefix_rule(
+    pattern = ["nerdctl", ["attach", "build", "commit", "cp", "create", "exec", "kill", "load", "pause", "pull", "push", "restart", "rm", "rmi", "run", "start", "stop", "tag", "unpause", "update"]],
+    decision = "forbidden",
+    justification = "nerdctl can delegate work to containerd outside local process containment.",
+)
+
+prefix_rule(
+    pattern = ["nerdctl", "compose", ["build", "create", "down", "exec", "kill", "pull", "restart", "rm", "run", "start", "stop", "up"]],
+    decision = "forbidden",
+    justification = "nerdctl Compose can delegate workloads outside local process containment.",
+)
+
+prefix_rule(
+    pattern = ["nerdctl", ["diff", "events", "history", "images", "info", "inspect", "logs", "port", "ps", "stats", "top", "version"]],
+    decision = "allow",
+    justification = "Direct nerdctl inspection is read-only.",
+)
+
+prefix_rule(
+    pattern = ["podman", ["attach", "build", "commit", "cp", "create", "exec", "export", "generate", "import", "kill", "load", "mount", "pause", "pull", "push", "rename", "restart", "rm", "rmi", "run", "start", "stop", "tag", "unmount", "unpause", "update"]],
+    decision = "forbidden",
+    justification = "Podman can delegate workloads outside local process containment.",
+)
+
+prefix_rule(
+    pattern = ["podman", ["container", "farm", "kube", "machine", "network", "pod", "secret", "system", "volume"]],
+    decision = "forbidden",
+    justification = "Podman administration can mutate workloads outside local process containment.",
+)
+
+prefix_rule(
+    pattern = ["podman", "compose", ["build", "create", "down", "exec", "kill", "pull", "restart", "rm", "run", "start", "stop", "up"]],
+    decision = "forbidden",
+    justification = "Podman Compose can delegate workloads outside local process containment.",
+)
+
+prefix_rule(
+    pattern = ["podman", ["diff", "events", "history", "images", "info", "inspect", "logs", "port", "ps", "stats", "top", "version"]],
+    decision = "allow",
+    justification = "Direct Podman inspection is read-only.",
+)
+
+# Service managers: service(8)'s `service NAME ACTION` shape cannot express an
+# arbitrary NAME in a prefix rule. systemctl direct forms are covered here;
+# recursive runtime hooks cover both forms and shell wrappers.
+
+prefix_rule(
+    pattern = ["machinectl", ["bind", "clone", "copy-from", "copy-to", "disable", "enable", "kill", "login", "mount", "poweroff", "reboot", "remove", "rename", "shell", "start", "stop", "terminate"]],
+    decision = "forbidden",
+    justification = "machinectl can create or control service-managed workloads outside local containment.",
+)
+
+prefix_rule(
+    pattern = ["machinectl", ["list", "show", "status"]],
+    decision = "allow",
+    justification = "Direct machinectl inspection is read-only.",
+)
+
+prefix_rule(
+    pattern = ["systemctl", ["cancel", "clean", "daemon-reexec", "daemon-reload", "disable", "edit", "emergency", "enable", "freeze", "halt", "hibernate", "hybrid-sleep", "import-environment", "isolate", "kexec", "kill", "link", "mask", "poweroff", "preset", "preset-all", "reboot", "reenable", "reload", "reload-or-restart", "rescue", "reset-failed", "restart", "revert", "set-default", "set-environment", "set-property", "start", "stop", "suspend", "suspend-then-hibernate", "thaw", "try-reload-or-restart", "try-restart", "unmask", "unset-environment"]],
+    decision = "forbidden",
+    justification = "systemctl can create or control service workloads outside local process containment.",
+)
+
+prefix_rule(
+    pattern = ["systemctl", ["--system", "--user"], ["cancel", "clean", "daemon-reexec", "daemon-reload", "disable", "edit", "enable", "freeze", "import-environment", "isolate", "kill", "link", "mask", "preset", "preset-all", "reenable", "reload", "reload-or-restart", "reset-failed", "restart", "revert", "set-default", "set-environment", "set-property", "start", "stop", "thaw", "try-reload-or-restart", "try-restart", "unmask", "unset-environment"]],
+    decision = "forbidden",
+    justification = "systemctl can create or control service workloads outside local process containment.",
+)
+
+prefix_rule(
+    pattern = ["systemctl", ["cat", "get-default", "is-active", "is-enabled", "is-failed", "list-dependencies", "list-jobs", "list-sockets", "list-timers", "list-unit-files", "list-units", "show", "status"]],
+    decision = "allow",
+    justification = "Direct systemctl inspection is read-only.",
+)
+
+prefix_rule(
+    pattern = ["systemctl", ["--system", "--user"], ["cat", "get-default", "is-active", "is-enabled", "is-failed", "list-dependencies", "list-jobs", "list-sockets", "list-timers", "list-unit-files", "list-units", "show", "status"]],
+    decision = "allow",
+    justification = "Direct systemctl inspection is read-only.",
+)
+
+# Kubernetes direct mutation/delegation forms. Namespace and context flags
+# placed before the subcommand cannot be skipped by a prefix rule.
+
+prefix_rule(
+    pattern = ["kubectl", ["annotate", "apply", "attach", "autoscale", "certificate", "cordon", "cp", "create", "debug", "delete", "drain", "edit", "exec", "expose", "label", "patch", "port-forward", "proxy", "replace", "rollout", "run", "scale", "set", "taint", "uncordon"]],
+    decision = "forbidden",
+    justification = "kubectl can mutate or delegate work outside local process containment.",
+)
+
+prefix_rule(
+    pattern = ["kubectl", ["api-resources", "api-versions", "auth", "cluster-info", "describe", "explain", "get", "logs", "top", "version"]],
+    decision = "allow",
+    justification = "Direct kubectl inspection is read-only.",
+)

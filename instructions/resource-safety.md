@@ -2,9 +2,17 @@
 
 # Resource-safe Execution
 
+On Linux:
+
 Never run resource-intensive developer commands directly on a shared or production-adjacent host.
 Use `bounded-run` for dependency changes, compilers, typechecks, builds, linters, test suites,
 browser automation, code generation, Cargo, Go, and pytest.
+
+On non-Linux hosts, the installer omits `bounded-run` because systemd cgroup containment is
+unavailable. Local heavy-command containment stands down. OpenCode protection remains active.
+Claude hook protection remains active when `jq`, `awk`, and `cat` are available; when one is
+missing, the hook warns and intentionally fails open. Use only a separately approved platform-native
+runner with verified limits for container, remote, or service-managed work.
 
 - Start unfamiliar tools and new toolchain versions with `bounded-run --profile canary -- ...`.
 - Use `compile` for established compilers and builds, `browser` for Playwright, and `default` for
@@ -17,7 +25,8 @@ browser automation, code generation, Cargo, Go, and pytest.
   execution, or container execution. The child work can escape its cgroup. Use a separately approved
   dedicated runner or verified native limits.
 - Treat shell hooks and Codex prefix policies as defense-in-depth detection, not a hostile-code
-  sandbox. Arbitrary scripts can deliberately delegate through APIs or sockets. The deterministic
+  sandbox. Codex rules cover direct prefixes only; they do not recursively parse shell payloads.
+  Arbitrary scripts can deliberately delegate through APIs or sockets. The deterministic
   connectivity boundary combines `bounded-run` and its aggregate slice with
   host service resource limits that reserve capacity for the agent host and ingress path.
 - Do not restart or reconfigure live services, Cloudflare tunnels, ingress, Kubernetes, networking,

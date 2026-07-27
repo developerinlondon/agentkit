@@ -57,6 +57,7 @@ export const unsupportedResourceCommands = [
   'bounded-run --profile compile -- systemd-run --user cargo test',
   "bounded-run --profile compile -- bash -lc 'systemd-run --user cargo test'",
   "bounded-run --profile compile -- env CI=1 sh -c 'bun test'",
+  'bounded-run --profile compile -- command nohup bounded-run --profile compile -- docker build .',
   "bash -c 'ssh build-host bun test'",
   "bash -xc 'systemd-run --user cargo test'",
   'ansible-playbook playbooks/server.yml --check --diff',

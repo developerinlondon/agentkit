@@ -75,6 +75,11 @@ if [[ "$CLAUDE_PLUGIN" == true && "$GLOBAL" != true ]]; then
 	exit 1
 fi
 
+# shellcheck source=lib/install-platform.sh
+source "$REPO_DIR/lib/install-platform.sh"
+PLATFORM="$(detect_platform)"
+validate_platform "$PLATFORM"
+
 # ─── Shared: Skills ──────────────────────────────────────────────────────────
 
 # Point dest at src as a symlink. Replaces a previous real file/dir or wrong
@@ -606,33 +611,6 @@ merge_claude_settings() {
 	fi
 }
 
-# ─── Standalone Tools (Python/Bash scripts) ──────────────────────────────────
-
-install_tools() {
-	local tools_dir="$1"
-	mkdir -p "$tools_dir"
-
-	for tool_file in "$REPO_DIR"/tools/*; do
-		[[ -f "$tool_file" ]] || continue
-		local name
-		name="$(basename "$tool_file")"
-
-		if [[ -f "$tools_dir/$name" ]]; then
-			echo "[tools] Updating: $name"
-		else
-			echo "[tools] Installing: $name"
-		fi
-
-		cp "$tool_file" "$tools_dir/$name"
-		chmod +x "$tools_dir/$name"
-	done
-
-	# Compat alias: bounded-run was previously named agentkit-run.
-	if [[ -f "$tools_dir/bounded-run" ]]; then
-		ln -sf bounded-run "$tools_dir/agentkit-run"
-	fi
-}
-
 # ─── Per-Session Resource Shims ──────────────────────────────────────────────
 
 readonly SESSION_RUNTIMES=(claude codex opencode grok)
@@ -750,27 +728,6 @@ install_shim_path() {
 	} >>"$rc_file"
 
 	echo "[shims] Added PATH entry to $rc_file"
-}
-
-# ─── Codex CLI: Starlark .rules Files ────────────────────────────────────────
-
-install_codex_policies() {
-	local rules_dir="$1"
-	mkdir -p "$rules_dir"
-
-	for rules_file in "$REPO_DIR"/policies/codex/*.rules; do
-		[[ -f "$rules_file" ]] || continue
-		local name
-		name="$(basename "$rules_file")"
-
-		if [[ -f "$rules_dir/$name" ]]; then
-			echo "[codex] Updating policy: $name"
-		else
-			echo "[codex] Installing policy: $name"
-		fi
-
-		cp "$rules_file" "$rules_dir/$name"
-	done
 }
 
 # ─── Codex CLI: Skills as Custom Prompts ─────────────────────────────────────
@@ -922,6 +879,7 @@ if [[ "$GLOBAL" == true ]]; then
 	# Claude tools dir: per-tool symlinks into the shared tools root (not a
 	# second full copy). Keep ~/.local/bin as real files for PATH.
 	link_children "$TOOLS_CANON" "$CLAUDE_TOOLS"
+	reconcile_tool_links "$CLAUDE_TOOLS"
 	echo ""
 
 	# ── Per-session resource scoping ──
