@@ -34,7 +34,7 @@ async function servePage(env, key, headers) {
 async function handlePublish(request, env, slug) {
   const auth = request.headers.get("authorization") ?? "";
   const token = auth.replace(/^Bearer\s+/i, "");
-  const isSite = slug in SITE_SLUGS;
+  const isSite = Object.hasOwn(SITE_SLUGS, slug);
   const expected = isSite ? env.SITE_TOKEN : env.PUBLISH_TOKEN;
   if (!expected || token !== expected) {
     return new Response("unauthorized\n", { status: 401 });
