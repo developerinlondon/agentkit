@@ -142,8 +142,9 @@ afternoon on a slow suite. Replace each with a constant and re-run.
   can exist until it does. This is the case that motivated the rule.
 - **Confirm the mutation applied and compiled** before believing any result. An
   invalid mutation reads exactly like "covered".
-- **Judge by the run's output markers, never its exit status** — see
-  **resource-safe-execution**. Runners report success on builds that never ran.
+- **Use the run's exit status and output markers together** — see
+  **resource-safe-execution**. A non-zero status fails; a zero status without the expected summary
+  does not prove the intended build or test ran.
 
 If replacing a load-bearing value with a constant leaves the suite green, the
 tests do not observe that value yet.
