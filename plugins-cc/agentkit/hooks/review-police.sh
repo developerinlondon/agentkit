@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # review-police.sh — Claude Code PreToolUse hook (matchers: Bash + MCP merges)
 #
-# Blocks a forge merge unless an independent review PASSED for exactly the
-# commit that merge would land. The agent cannot clear a blocking finding by
+# Blocks a forge merge unless review evidence PASSED for the forge-selected
+# source head and current target. The agent cannot clear a blocking finding by
 # reasoning about it; the path is fix-properly-then-re-review.
 #
 # Why: on 2026-07-19 a reviewer returned "HIGH — don't expose the menu item
@@ -15,17 +15,15 @@
 # to merge past, and leaves an out-of-repo audit trail when a record is used.
 # Only forge-side required approvals can actually prevent a merge.
 #
-# Review record, written by the REVIEWING agent:
+# Review record, written by the reviewing agent:
 #   .agentkit/reviews/<source-branch-slug>.json
-#     { "head_sha": "<full sha reviewed>",
-#       "verdict":  "pass" | "blocked",
-#       "findings": [ { "severity": "BLOCKER|HIGH|MEDIUM|LOW",
-#                       "summary": "...", "resolved": true|false } ],
-#       "user_consent": {            # ONLY the user may add this
-#          "granted": true, "quote": "<their words>", "at": "<ISO>" } }
+# If the exact target commit has .agentkit/review-policy.json, review-gate
+# requires the context-bound v2 evidence shape documented in
+# docs/review-process.md. Otherwise the bounded legacy head_sha/verdict/findings
+# shape remains available for bootstrap.
 #
-# The gate resolves the MR/PR's REAL source branch and head sha from the forge —
-# never the local checkout, which says nothing about what is being merged.
+# The gate resolves the change's real source and target from the forge. Strict
+# policy comes only from the target Git object, never the source checkout.
 set -euo pipefail
 
 # A hook that DIES emits no decision, and the harness reads silence as ALLOW —
@@ -267,33 +265,89 @@ REPO_FLAG=$(after -R)
 
 forge_json() {
 	if has gh || tok_match '/pulls/'; then
-		gh pr view "$MR_ID" ${REPO_FLAG:+--repo "$REPO_FLAG"} \
-			--json headRefName,headRefOid 2>/dev/null |
-			jq -r '"\(.headRefName)\t\(.headRefOid)"'
+		local details repo_json repository repository_id host target_branch encoded_target target_json repo_name
+		details=$(gh pr view "$MR_ID" ${REPO_FLAG:+--repo "$REPO_FLAG"} \
+			--json headRefName,headRefOid,baseRefName,baseRefOid 2>/dev/null) || return 1
+		if [[ -n "$REPO_FLAG" ]]; then
+			repo_json=$(gh repo view "$REPO_FLAG" --json id,url,nameWithOwner 2>/dev/null) || return 1
+		else
+			repo_json=$(gh repo view --json id,url,nameWithOwner 2>/dev/null) || return 1
+		fi
+		repository=$(jq -r '.url // empty' <<<"$repo_json")
+		host=$(jq -r '.url // empty | capture("^https?://(?<host>[^/]+)").host // empty' <<<"$repo_json")
+		repository_id=$(jq -r --arg host "$host" '"github:\($host):\(.id // empty)"' <<<"$repo_json")
+		repo_name=$(jq -r '.nameWithOwner // empty' <<<"$repo_json")
+		target_branch=$(jq -r '.baseRefName // empty' <<<"$details")
+		[[ -n "$repository" && -n "$repository_id" && -n "$host" && -n "$repo_name" && -n "$target_branch" ]] || return 1
+		encoded_target=$(printf '%s' "$target_branch" | jq -sRr @uri)
+		target_json=$(gh api --hostname "$host" "repos/$repo_name/branches/$encoded_target" 2>/dev/null) || return 1
+		jq -cn --argjson details "$details" --argjson target "$target_json" \
+			--arg repository "$repository" --arg repository_id "$repository_id" '{
+          forge: "github",
+          repository: $repository,
+          repository_id: $repository_id,
+          source_branch: $details.headRefName,
+          source_sha: $details.headRefOid,
+          target_branch: $details.baseRefName,
+          target_sha: $target.commit.sha
+        }'
 	else
-		glab mr view "$MR_ID" ${REPO_FLAG:+--repo "$REPO_FLAG"} --output json 2>/dev/null |
-			jq -r '"\(.source_branch)\t\(.sha // .diff_refs.head_sha)"'
+		local details target_branch target_project encoded_target target_json repository repository_id host
+		details=$(glab mr view "$MR_ID" ${REPO_FLAG:+--repo "$REPO_FLAG"} --output json 2>/dev/null) || return 1
+		target_branch=$(jq -r '.target_branch // empty' <<<"$details")
+		target_project=$(jq -r '.target_project_id // .project_id // empty' <<<"$details")
+		host=$(jq -r '.web_url // empty | capture("^https?://(?<host>[^/]+)").host // empty' <<<"$details")
+		repository=$(jq -r '.web_url // empty | sub("/-/merge_requests/[0-9]+$"; "")' <<<"$details")
+		[[ -n "$target_branch" && -n "$target_project" && -n "$host" && -n "$repository" ]] || return 1
+		encoded_target=$(printf '%s' "$target_branch" | jq -sRr @uri)
+		target_json=$(glab api --hostname "$host" \
+			"projects/$target_project/repository/branches/$encoded_target" 2>/dev/null) || return 1
+		repository_id="gitlab:$host:$target_project"
+		jq -cn --argjson details "$details" --argjson target "$target_json" \
+			--arg repository "$repository" --arg repository_id "$repository_id" '{
+          forge: "gitlab",
+          repository: $repository,
+          repository_id: $repository_id,
+          source_branch: $details.source_branch,
+          source_sha: ($details.sha // $details.diff_refs.head_sha),
+          target_branch: $details.target_branch,
+          target_sha: $target.commit.id
+        }'
 	fi
 }
 
 BRANCH=""
 HEAD_SHA=""
+TARGET_BRANCH=""
+TARGET_SHA=""
+FORGE=""
+REPOSITORY=""
+REPOSITORY_ID=""
+SHA_PATTERN='^[0-9a-f]{40}([0-9a-f]{24})?$'
 if [[ -n "$MR_ID" ]]; then
 	RESOLVED=$(cd "$REPO_DIR" 2>/dev/null && forge_json || true)
-	BRANCH=$(echo "$RESOLVED" | cut -f1)
-	HEAD_SHA=$(echo "$RESOLVED" | cut -f2)
+	BRANCH=$(jq -r '.source_branch // empty' <<<"$RESOLVED" 2>/dev/null || true)
+	HEAD_SHA=$(jq -r '.source_sha // empty' <<<"$RESOLVED" 2>/dev/null || true)
+	TARGET_BRANCH=$(jq -r '.target_branch // empty' <<<"$RESOLVED" 2>/dev/null || true)
+	TARGET_SHA=$(jq -r '.target_sha // empty' <<<"$RESOLVED" 2>/dev/null || true)
+	FORGE=$(jq -r '.forge // empty' <<<"$RESOLVED" 2>/dev/null || true)
+	REPOSITORY=$(jq -r '.repository // empty' <<<"$RESOLVED" 2>/dev/null || true)
+	REPOSITORY_ID=$(jq -r '.repository_id // empty' <<<"$RESOLVED" 2>/dev/null || true)
 fi
 
-if [[ -z "$BRANCH" || -z "$HEAD_SHA" || "$BRANCH" == "null" || "$HEAD_SHA" == "null" ]]; then
+if [[ -z "$BRANCH" || -z "$HEAD_SHA" || -z "$TARGET_BRANCH" || -z "$TARGET_SHA" ||
+	-z "$FORGE" || -z "$REPOSITORY" || -z "$REPOSITORY_ID" ||
+	! "$HEAD_SHA" =~ $SHA_PATTERN ||
+	! "$TARGET_SHA" =~ $SHA_PATTERN ]]; then
 	deny "BLOCKED: cannot resolve what this merge would land, so it cannot be gated.
 
   command dir: $REPO_DIR
   mr/pr id:    ${MR_ID:-<none found>}
 
-The gate must read the merge request's SOURCE BRANCH and HEAD SHA from the
-forge — the local checkout says nothing about the commit being merged. Run the
-merge from the repo directory with an explicit MR/PR number, with the forge CLI
-authenticated."
+The gate must read the change's source/target branches and exact SHAs from the
+forge — the local checkout alone says nothing about the commit being merged.
+Run the merge from the repo directory with an explicit MR/PR number and an
+authenticated forge CLI."
 fi
 
 SLUG=$(echo "$BRANCH" | sed 's#/#__#g')
@@ -310,6 +364,132 @@ Run the review (code-reviewer subagent) against THAT branch, have it write its
 verdict to .agentkit/reviews/$SLUG.json (head_sha, verdict, findings), then
 merge. Reviews gate merges — they never run alongside them."
 fi
+
+# --- Strict evidence policy -------------------------------------------------
+# Policy is read from the exact TARGET commit. Reading the source checkout here
+# would let a change weaken the rules that judge that same change. A target with
+# no policy is the explicit bootstrap boundary and retains the legacy v1 record.
+ensure_commit() {
+	local sha="$1"
+	local forge_ref="$2"
+	if git -C "$REPO_DIR" cat-file -e "$sha^{commit}" 2>/dev/null; then
+		return 0
+	fi
+	git -C "$REPO_DIR" fetch --quiet origin "$forge_ref" 2>/dev/null || true
+	if git -C "$REPO_DIR" cat-file -e "$sha^{commit}" 2>/dev/null; then
+		return 0
+	fi
+	git -C "$REPO_DIR" fetch --quiet origin "$sha" 2>/dev/null || true
+	git -C "$REPO_DIR" cat-file -e "$sha^{commit}" 2>/dev/null
+}
+
+TARGET_REF="refs/heads/$TARGET_BRANCH"
+if ! ensure_commit "$TARGET_SHA" "$TARGET_REF"; then
+	deny "BLOCKED: the forge target commit cannot be read locally, so target policy cannot be resolved.
+
+  target branch: $TARGET_BRANCH
+  target sha:    $TARGET_SHA
+
+The gate will not interpret an unavailable target policy as an absent policy."
+fi
+
+POLICY_PATH='.agentkit/review-policy.json'
+if ! POLICY_ENTRY=$(git -C "$REPO_DIR" ls-tree "$TARGET_SHA" -- "$POLICY_PATH" 2>/dev/null); then
+	deny 'BLOCKED: the exact target commit cannot be inspected for review policy.'
+fi
+if [[ -n "$POLICY_ENTRY" ]]; then
+	read -r POLICY_MODE POLICY_TYPE POLICY_BLOB POLICY_NAME <<<"$POLICY_ENTRY"
+	if [[ "$POLICY_TYPE" != "blob" ||
+		( "$POLICY_MODE" != "100644" && "$POLICY_MODE" != "100755" ) ||
+		"$POLICY_NAME" != "$POLICY_PATH" ]]; then
+		deny 'BLOCKED: target policy must be one regular file at .agentkit/review-policy.json.'
+	fi
+	POLICY_TMP=$(mktemp "${TMPDIR:-/tmp}/agentkit-review-policy.XXXXXX") || \
+		deny 'BLOCKED: cannot allocate a temporary file for target policy validation.'
+	PATHS_TMP=$(mktemp "${TMPDIR:-/tmp}/agentkit-review-paths.XXXXXX") || {
+		rm -f "$POLICY_TMP"
+		deny 'BLOCKED: cannot allocate a temporary file for changed-path validation.'
+	}
+	cleanup_review_gate_files() {
+		rm -f "$POLICY_TMP" "$PATHS_TMP"
+	}
+	trap cleanup_review_gate_files EXIT
+
+	if ! git -C "$REPO_DIR" show "$TARGET_SHA:$POLICY_PATH" >"$POLICY_TMP" 2>/dev/null; then
+		deny 'BLOCKED: target policy exists but its exact bytes could not be read.'
+	fi
+	if ! jq -e . "$POLICY_TMP" >/dev/null 2>&1; then
+		deny 'BLOCKED: target policy is malformed JSON and strict review cannot run.'
+	fi
+
+	SOURCE_REF="refs/merge-requests/$MR_ID/head"
+	[[ "$FORGE" == "github" ]] && SOURCE_REF="refs/pull/$MR_ID/head"
+	if ! ensure_commit "$HEAD_SHA" "$SOURCE_REF"; then
+		deny "BLOCKED: the exact source commit cannot be read locally, so changed paths cannot be enumerated.
+
+  source branch: $BRANCH
+  source sha:    $HEAD_SHA"
+	fi
+
+	MERGE_BASE=$(git -C "$REPO_DIR" merge-base "$TARGET_SHA" "$HEAD_SHA" 2>/dev/null || true)
+	if [[ -z "$MERGE_BASE" ]]; then
+		deny 'BLOCKED: no merge base can be computed for the exact source and target commits.'
+	fi
+	if ! git -C "$REPO_DIR" diff --name-only -z --no-renames "$MERGE_BASE" "$HEAD_SHA" 2>/dev/null |
+		jq -Rs 'split("\u0000") | map(select(length > 0)) | unique' >"$PATHS_TMP"; then
+		deny 'BLOCKED: changed paths could not be mechanically enumerated from the exact commits.'
+	fi
+
+	HOOK_DIR="${BASH_SOURCE[0]%/*}"
+	REVIEW_GATE=""
+	for candidate in "$HOOK_DIR/../tools/review-gate" "$HOOK_DIR/../../tools/review-gate"; do
+		if [[ -x "$candidate" ]]; then
+			REVIEW_GATE="$candidate"
+			break
+		fi
+	done
+	if [[ -z "$REVIEW_GATE" ]]; then
+		deny 'BLOCKED: strict target policy is active but the packaged review-gate validator is unavailable.'
+	fi
+
+	if GATE_OUTPUT=$("$REVIEW_GATE" \
+		--record "$RECORD" \
+		--policy "$POLICY_TMP" \
+		--changed-paths "$PATHS_TMP" \
+		--forge "$FORGE" \
+		--repository "$REPOSITORY" \
+		--repository-id "$REPOSITORY_ID" \
+		--change-id "$MR_ID" \
+		--source-branch "$BRANCH" \
+		--target-branch "$TARGET_BRANCH" \
+		--source-sha "$HEAD_SHA" \
+		--target-sha "$TARGET_SHA" 2>&1); then
+		case "$GATE_OUTPUT" in
+		PASS:*) ;;
+		CONSENT_OVERRIDE:*)
+			CONSENT_QUOTE=$(jq -r '.user_consent.quote // empty' "$RECORD")
+			mkdir -p "$(dirname "$AUDIT")" 2>/dev/null || true
+			printf '%s\tCONSENT-OVERRIDE\tsession=%s\tbranch=%s\tsha=%s\tquote=%s\n' \
+				"$(date -Is)" "$SESSION" "$BRANCH" "$HEAD_SHA" "${CONSENT_QUOTE//$'\n'/ }" \
+				>>"$AUDIT" 2>/dev/null || true
+			exit 0
+			;;
+		*) deny "BLOCKED: review-gate returned an unusable success response: ${GATE_OUTPUT:-<empty>}" ;;
+		esac
+	else
+		deny "${GATE_OUTPUT:-BLOCKED: review-gate failed without a reason.}"
+	fi
+
+	mkdir -p "$(dirname "$AUDIT")" 2>/dev/null || true
+	printf '%s\tPASS-STRICT\tsession=%s\tbranch=%s\tsha=%s\ttarget=%s\n' \
+		"$(date -Is)" "$SESSION" "$BRANCH" "$HEAD_SHA" "$TARGET_SHA" \
+		>>"$AUDIT" 2>/dev/null || true
+	exit 0
+fi
+
+# No policy at the exact target commit: bounded bootstrap compatibility for
+# repositories that have not activated strict v2 yet. A source-added policy
+# begins governing only after it lands on the protected target.
 
 REVIEWED_SHA=$(jq -r '.head_sha // empty' "$RECORD" 2>/dev/null || true)
 if [[ "$REVIEWED_SHA" != "$HEAD_SHA" ]]; then

@@ -4,8 +4,9 @@
 summary: >-
   Cross-platform enforcement hooks (git, MR, package, resource, review,
   formatting and comment discipline), agent skills, two MCP servers, and a
-  Linux-only memory-and-CPU-bounded command runner. The full installer supports
-  global and project-local use; the Claude Code plugin is a separate bundle.
+  portable evidence validator plus a Linux-only memory-and-CPU-bounded command
+  runner. The full installer supports global and project-local use; the Claude
+  Code plugin is a separate bundle.
 
 surfaces:
   - name: test-suite
@@ -33,7 +34,19 @@ surfaces:
       A new Claude Code session prints an `[agentkit] armed:` line naming the
       police hooks. Attempting a forge merge without a passing review record
       in `.agentkit/reviews/` is refused with a BLOCKED message rather than
-      silently allowed.
+      silently allowed. When the exact target commit has
+      `.agentkit/review-policy.json`, the hook ignores source-policy weakening,
+      derives changed paths from the exact commits, and requires strict v2
+      evidence through the bundled `review-gate` validator.
+
+  - name: review-gate
+    kind: cli
+    run: tools/review-gate --help
+    expect: |
+      Exits successfully and prints the strict validator usage, including
+      policy, changed-path, immutable repository ID, source SHA, and target SHA
+      arguments. The validator performs structural and semantic consistency
+      checks; it does not claim reviewer identity or evidence truth.
 
   - name: platform-command
     kind: cli

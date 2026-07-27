@@ -137,6 +137,7 @@ describe('agentkit plugin skills', () => {
   test('ships the agentkit skills, each with a SKILL.md', () => {
     const expectedSkills = [
       'autonomous-workflow',
+      'adversarial-review',
       'code-quality',
       'documentation',
       'gitops-master',
@@ -182,12 +183,14 @@ describe('agentkit plugin skills', () => {
 });
 
 describe('agentkit plugin tools', () => {
-  test('bundles the bounded runner and keeps it executable', () => {
-    const bundledRunner = join(pluginDir, 'tools', 'bounded-run');
-    expect(readFileSync(bundledRunner, 'utf-8')).toBe(
-      readFileSync(join(repoRoot, 'tools', 'bounded-run'), 'utf-8'),
-    );
-    expect(statSync(bundledRunner).mode & 0o111).not.toBe(0);
+  test('bundles the portable tools and keeps them executable', () => {
+    for (const tool of ['bounded-run', 'review-gate']) {
+      const bundled = join(pluginDir, 'tools', tool);
+      expect(readFileSync(bundled, 'utf-8')).toBe(
+        readFileSync(join(repoRoot, 'tools', tool), 'utf-8'),
+      );
+      expect(statSync(bundled).mode & 0o111).not.toBe(0);
+    }
   });
 });
 

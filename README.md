@@ -12,10 +12,12 @@ Reusable AI agent skills, rules, plugins, hooks, and tools for OpenCode, Claude 
 | --------------------------- | ---------------------------------------------------------------------------------------- |
 | **gitops-master**           | GitOps operations for ArgoCD + Kargo: diagnose, verify, promote, setup                   |
 | **autonomous-workflow**     | Proposal-first development, commit hygiene, decision authority                           |
+| **adversarial-review**      | Trace-first falsification of plans and diffs with replayable evidence                    |
 | **code-quality**            | Warnings-as-errors, no underscore prefixes, test coverage                                |
 | **documentation**           | Surface-aware diagrams (Mermaid / ASCII), structured plan format, formatting rules       |
 | **issue-raiser**            | GitLab issue creation with root cause analysis and git-history-based assignees           |
 | **project-planning**        | Structured project planning: break down ideas into architecture, file structure, roadmap |
+| **product-review**          | Build, run, and use declared product surfaces as a separate review lane                  |
 | **resource-safe-execution** | On Linux, runs heavy developer commands inside deterministic systemd resource limits     |
 
 ### Rules (auto-loaded by file glob match)
@@ -43,17 +45,17 @@ Reusable AI agent skills, rules, plugins, hooks, and tools for OpenCode, Claude 
 
 ### Hooks (Claude Code -- PreToolUse / PostToolUse)
 
-| Hook                   | Type              | Description                                                                                                                                                                                                                                                                                                                                                   |
-| ---------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **git-police.sh**      | PreToolUse        | Blocks force push, --no-verify, Co-authored-by trailers, commits to protected branches, stale pushes (feature branch behind the default branch)                                                                                                                                                                                                               |
-| **kubectl-police.sh**  | PreToolUse        | Blocks kubectl create/apply on Kargo CRDs                                                                                                                                                                                                                                                                                                                     |
-| **format-police.sh**   | PostToolUse       | Auto-formats files after edit/write using dprint                                                                                                                                                                                                                                                                                                              |
-| **coding-police.sh**   | PostToolUse       | Enforces DRY code, modular files (<1000 lines), short functions, single responsibility, and capped directory file counts                                                                                                                                                                                                                                      |
-| **pkg-police.sh**      | PreToolUse        | Enforces bun as package manager — blocks npm, npx, yarn, pnpm commands                                                                                                                                                                                                                                                                                        |
-| **resource-police.sh** | PreToolUse        | With `jq`, `awk`, and `cat`, requires `bounded-run` for heavy commands on Linux and blocks delegated or undecidable commands on every platform; warns and fails open when a parser dependency is missing                                                                                                                                                      |
-| **chime.sh**           | Notification/Stop | Audible nudge when Claude needs you: springy boing on permission prompts/questions, soft ping when a turn finishes. Mute: `touch ~/.claude/.chime-off` or `CLAUDE_CHIME=0`                                                                                                                                                                                    |
-| **mr-police.sh**       | PreToolUse        | Blocks opening a new MR while you already have an open MR you authored on the repo — stops unmerged MRs from stacking up                                                                                                                                                                                                                                      |
-| **review-police.sh**   | PreToolUse        | Blocks CLI/REST/MCP merges unless a review record passes for the MR's real source branch and head sha (resolved from the forge). Unresolved BLOCKER/HIGH block; overrides need the user's written consent, logged to `~/.agentkit/review-audit.log`. NOT security — the record is agent-writable; forge-side required approvals are the only real enforcement |
+| Hook                   | Type              | Description                                                                                                                                                                                                                                                                                                                                                                     |
+| ---------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **git-police.sh**      | PreToolUse        | Blocks force push, --no-verify, Co-authored-by trailers, commits to protected branches, stale pushes (feature branch behind the default branch)                                                                                                                                                                                                                                 |
+| **kubectl-police.sh**  | PreToolUse        | Blocks kubectl create/apply on Kargo CRDs                                                                                                                                                                                                                                                                                                                                       |
+| **format-police.sh**   | PostToolUse       | Auto-formats files after edit/write using dprint                                                                                                                                                                                                                                                                                                                                |
+| **coding-police.sh**   | PostToolUse       | Enforces DRY code, modular files (<1000 lines), short functions, single responsibility, and capped directory file counts                                                                                                                                                                                                                                                        |
+| **pkg-police.sh**      | PreToolUse        | Enforces bun as package manager — blocks npm, npx, yarn, pnpm commands                                                                                                                                                                                                                                                                                                          |
+| **resource-police.sh** | PreToolUse        | With `jq`, `awk`, and `cat`, requires `bounded-run` for heavy commands on Linux and blocks delegated or undecidable commands on every platform; warns and fails open when a parser dependency is missing                                                                                                                                                                        |
+| **chime.sh**           | Notification/Stop | Audible nudge when Claude needs you: springy boing on permission prompts/questions, soft ping when a turn finishes. Mute: `touch ~/.claude/.chime-off` or `CLAUDE_CHIME=0`                                                                                                                                                                                                      |
+| **mr-police.sh**       | PreToolUse        | Blocks opening a new MR while you already have an open MR you authored on the repo — stops unmerged MRs from stacking up                                                                                                                                                                                                                                                        |
+| **review-police.sh**   | PreToolUse        | Blocks CLI/REST/MCP merges unless evidence covers the forge's exact source and target. Strict policy is loaded from the target commit, risk is derived from commit-bound changed paths, and critical records cannot use local consent. Legacy v1 remains only when target policy is absent. NOT security — records are agent-writable; forge protections are the trust boundary |
 
 ### Policies (Codex CLI -- exec policy)
 
@@ -85,8 +87,9 @@ and OpenCode `resource-police` remain the recursive command-analysis paths.
 Hooks, skills, and tools ship as Claude Code plugins (ADR #45 — the generic units — MCP tools,
 skills, hook scripts — are the source of truth; plugins are convenience wrappers). Add the
 marketplace once, then install. The **agentkit** plugin is the recommended Claude bundle: a single
-`claude plugin install agentkit` gives you the enforcement hooks, the skills, the Linux-only bounded runner,
-and **both** MCP toolchains (assay + infra-tools). Resource execution additionally requires a
+`claude plugin install agentkit` gives you the enforcement hooks, the skills, the portable
+`review-gate`, the Linux-only bounded runner, and **both** MCP toolchains (assay + infra-tools).
+Resource execution additionally requires a
 configured systemd user manager and the host-provisioned `agent-work.slice`. The
 granular **assay** and **infra-tools** plugins remain for à-la-carte installs.
 
@@ -101,11 +104,11 @@ claude plugin install assay
 claude plugin install infra-tools
 ```
 
-| Plugin          | Provides                                                                                                                                                                                                                                                                                                 | Source                                                                                        |
-| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| **agentkit**    | Claude bundle: enforcement police hooks, skills, Linux-only `tools/bounded-run`, and both MCP toolchains. Hooks need `jq`, `awk`, and `cat`; MCPs need `bun` and `assay`. Linux bounded execution additionally needs cgroup v2, a systemd user manager, and a provisioned `agent-work.slice`.            | local `plugins-cc/agentkit/`                                                                  |
-| **assay**       | Gated Lua infra toolkit (`assay_run` + `assay_context`) — Kubernetes, ArgoCD, Vault, Prometheus, GitLab, AWS, … through one read-only/approval-gated tool. Requires the `assay` binary on PATH.                                                                                                          | vendored from [developerinlondon/assay](https://github.com/developerinlondon/assay) `plugin/` |
-| **infra-tools** | Read-only helm / tofu / git tools (`helm_template`/`helm_list`/`helm_get_values`, `tofu_plan`/`tofu_show`/`tofu_state_list`, `git_log`/`git_diff`/`git_status`/`git_clone_ro`) as a typed MCP server — render charts, preview plans, read git history. Never applies or mutates. Requires `bun` on PATH. | local `plugins-cc/infra-tools/`                                                               |
+| Plugin          | Provides                                                                                                                                                                                                                                                                                                                           | Source                                                                                        |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| **agentkit**    | Claude bundle: enforcement police hooks, skills, portable `tools/review-gate`, Linux-only `tools/bounded-run`, and both MCP toolchains. Hooks need `jq`, `git`, `awk`, and `cat`; MCPs need `bun` and `assay`. Linux bounded execution additionally needs cgroup v2, a systemd user manager, and a provisioned `agent-work.slice`. | local `plugins-cc/agentkit/`                                                                  |
+| **assay**       | Gated Lua infra toolkit (`assay_run` + `assay_context`) — Kubernetes, ArgoCD, Vault, Prometheus, GitLab, AWS, … through one read-only/approval-gated tool. Requires the `assay` binary on PATH.                                                                                                                                    | vendored from [developerinlondon/assay](https://github.com/developerinlondon/assay) `plugin/` |
+| **infra-tools** | Read-only helm / tofu / git tools (`helm_template`/`helm_list`/`helm_get_values`, `tofu_plan`/`tofu_show`/`tofu_state_list`, `git_log`/`git_diff`/`git_status`/`git_clone_ro`) as a typed MCP server — render charts, preview plans, read git history. Never applies or mutates. Requires `bun` on PATH.                           | local `plugins-cc/infra-tools/`                                                               |
 
 **Not in the plugin: the always-on rules and instructions.** Claude Code plugins cannot inject
 always-on global context, so the glob-loaded `rules/` and the `instructions/*.md` global prompts
@@ -192,8 +195,10 @@ JSON so either harness can block. Matcher aliases alone are not enough.
 
 ### Agent review / merge gate
 
-`review-police` blocks forge merges unless an independent review record covers the exact
-commit being merged. Record shape, who may write what, and the consent path:
+`review-police` resolves the forge's exact source head and current target, loads policy from that
+target commit, and validates a context-bound evidence index. The source branch cannot weaken the
+policy judging itself. Record schemas, bootstrap behavior, evidence obligations, trust limits, and
+consent boundaries:
 
 **[docs/review-process.md](./docs/review-process.md)**
 
@@ -205,6 +210,7 @@ On Linux, global installs place the bounded runner on `~/.local/bin/` and preser
 | Tool                   | Description                                                                          |
 | ---------------------- | ------------------------------------------------------------------------------------ |
 | **bounded-run**        | Linux-only direct-argv workload runner for the bounded `agent-work.slice` service    |
+| **review-gate**        | Portable strict review-policy and evidence-record validator used by `review-police`  |
 | **fix-ascii-boxes.py** | Fixes ASCII box-drawing alignment in markdown files, handles nested boxes inside-out |
 
 `bounded-run` fails closed unless the aggregate slice matches its expected limits (default

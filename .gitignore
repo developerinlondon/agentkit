@@ -5,12 +5,12 @@ bun.lock
 # Review records are intentionally LOCAL. Committing one moves HEAD, which
 # stales the record against the branch it reviews — the gate would then deny
 # its own merge and invite regenerating records to suit, the exact loop the
-# gate exists to stop. The durable artifact is ~/.agentkit/review-audit.log,
-# outside the repo.
+# gate exists to stop. The durable evidence belongs in a redacted PR/MR comment
+# or controlled forge artifact; ~/.agentkit/review-audit.log is only the local
+# record of gate decisions.
 .agentkit/reviews/
 
 # ...but NOT the whole directory. `.agentkit/product.yaml` is the opposite kind
-# of artifact: it must be COMMITTED, because it is the contract a product
-# reviewer reads in a fresh clone. Ignoring it wholesale meant it was silently
-# untracked and every reviewer refused for want of a file that was there all
-# along.
+# of artifact: product.yaml and review-policy.json must be COMMITTED, because
+# reviewers and the gate read those contracts from exact repository revisions.
+# Ignoring the directory wholesale would silently disable both contracts.

@@ -30,16 +30,16 @@ environment must provide, and what is known-unverifiable.
 > `product.example.yaml`) describing the user-facing surfaces, or tell me
 > the build/run/verify commands and I will review against those.
 
-Then **record the absence as a finding** in the review record, severity MEDIUM,
-summary "no product manifest — product surfaces unverified". Do NOT return a
-silent pass: that turns an unreviewed product into one that looks reviewed.
+Then **record the absence** in the product lane as verdict
+`unable_to_verify`, coverage `none`, plus a MEDIUM finding with summary "no
+product manifest — product surfaces unverified". Do NOT return a silent pass:
+that turns an unreviewed product into one that looks reviewed.
 
-Be precise about what this buys. Only unresolved BLOCKER/HIGH findings block a
-merge, so a MEDIUM makes the omission **visible, not impossible** — skipping the
-manifest is still the cheapest way to skip product review. That is a deliberate
-trade: raising it to HIGH would gate every client repo that has no manifest yet,
-including ones we cannot run at all. Visible-and-merged beats silent, and beats
-blocking work we were never able to verify anyway.
+Be precise about what this buys. Target-owned review policy decides whether
+product review is required for the selected tier. An optional standard lane can
+keep `unable_to_verify` visible without blocking. A critical tier that requires
+product review rejects coverage `none`; missing environment or manifest cannot
+be relabelled `not_applicable` to pass.
 
 Never invent the commands yourself. Inferring a build from the file tree is
 exactly the guess that produces a confident, wrong report.
@@ -49,6 +49,7 @@ exactly the guess that produces a confident, wrong report.
 | artifact                         | location                                          | committed?        |
 | -------------------------------- | ------------------------------------------------- | ----------------- |
 | `.agentkit/product.yaml`         | repo root (nearest one walking up, for monorepos) | **yes**           |
+| `.agentkit/review-policy.json`   | repo root                                         | **yes**           |
 | `.agentkit/reviews/*.json`       | repo-local                                        | no — gitignored   |
 | `~/.config/agentkit/config.yaml` | machine/user                                      | n/a — policy only |
 
@@ -66,12 +67,12 @@ authorise another repo's merge.
 build" applied to a repo that never declared one turns _refuse and ask_ back
 into _guess confidently_, which is the failure this lane exists to remove.
 
-Status, stated plainly rather than aspirationally: **product review is currently
-opt-in and mechanically unenforced.** No hook requires a manifest, no config key
-turns it on, and nothing blocks a merge for its absence. Policy keys in
-`~/.config/agentkit/config.yaml` (whether it is required, which severities
-block) are the intended home if that changes — they do not exist today. Never
-describe this lane as enforced.
+Status, stated plainly: product review is mechanically required only when the
+exact target commit has `.agentkit/review-policy.json` and the derived tier sets
+`require_product_review: true`. Without target policy, the legacy merge gate does
+not inspect this lane. With strict policy, the source branch cannot weaken the
+requirement that judges itself. Never describe optional or legacy product review
+as enforced.
 
 ## Running it
 
@@ -85,6 +86,15 @@ describe this lane as enforced.
 4. **Follow the setup as written**, from a cold start, exactly as declared. Do
    not fill in a missing step from your own knowledge of the repo — a step you
    supply silently is a step the user will be missing. That gap IS the finding.
+
+Report product verdict separately from coverage:
+
+- verdict: `pass`, `blocked`, `unable_to_verify`, or `not_applicable`;
+- coverage: `none`, `not_applicable`, `partial`, or `complete`.
+
+`partial` is not a verdict. `not_applicable` means the surface genuinely does
+not apply; unavailable credentials, hardware, or runtime are
+`unable_to_verify`.
 
 ## Environments where you cannot run it
 

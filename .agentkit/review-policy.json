@@ -1,0 +1,130 @@
+{
+  "schema_version": 1,
+  "risk": {
+    "default_tier": "standard",
+    "zones": [
+      {
+        "id": "agent-enforcement",
+        "tier": "critical",
+        "path_regexes": [
+          "^(hooks/.*|policies/.*|tools/review-gate|install\\.sh|lib/install-platform\\.sh|scripts/sync-cc-plugin\\.sh|plugins/(git-police|kubectl-police|resource-police|mr-police|pkg-police|comment-police)\\.ts|plugins-cc/agentkit/(hooks/.*|tools/review-gate)|\\.agentkit/review-policy\\.json)$"
+        ]
+      },
+      {
+        "id": "review-governance",
+        "tier": "critical",
+        "path_regexes": [
+          "^skills/(adversarial-review|autonomous-workflow|product-review)/.*$",
+          "^plugins-cc/agentkit/skills/(adversarial-review|autonomous-workflow|product-review)/.*$",
+          "^instructions/coding-discipline\\.md$",
+          "^docs/review-process\\.md$",
+          "^tests/(review-gate|review-police|review-disciplines)\\.test\\.ts$"
+        ]
+      }
+    ]
+  },
+  "checks": {
+    "tests": {
+      "command": "scripts/product-command default -- bun test"
+    }
+  },
+  "tiers": {
+    "trivial": {
+      "required_checks": [
+        "tests"
+      ],
+      "analyses": {
+        "claims_audit": {
+          "allow_not_applicable": false
+        }
+      },
+      "allowed_product_coverage": [
+        "none",
+        "not_applicable",
+        "partial",
+        "complete"
+      ],
+      "require_verified_claims": false,
+      "allow_unverified_claims": false,
+      "allow_local_consent": true,
+      "require_product_review": false,
+      "require_evidence_ref": false
+    },
+    "standard": {
+      "required_checks": [
+        "tests"
+      ],
+      "analyses": {
+        "claims_audit": {
+          "allow_not_applicable": false
+        },
+        "falsification": {
+          "allow_not_applicable": false
+        },
+        "failure_trace": {
+          "allow_not_applicable": true
+        },
+        "analogy_differences": {
+          "allow_not_applicable": true
+        },
+        "pattern_sweep": {
+          "allow_not_applicable": true
+        },
+        "new_assumptions": {
+          "allow_not_applicable": false
+        },
+        "artifact_lifetime": {
+          "allow_not_applicable": true
+        }
+      },
+      "allowed_product_coverage": [
+        "none",
+        "not_applicable",
+        "partial",
+        "complete"
+      ],
+      "require_verified_claims": false,
+      "allow_unverified_claims": false,
+      "allow_local_consent": true,
+      "require_product_review": false,
+      "require_evidence_ref": true
+    },
+    "critical": {
+      "required_checks": [
+        "tests"
+      ],
+      "analyses": {
+        "claims_audit": {
+          "allow_not_applicable": false
+        },
+        "falsification": {
+          "allow_not_applicable": false
+        },
+        "failure_trace": {
+          "allow_not_applicable": true
+        },
+        "analogy_differences": {
+          "allow_not_applicable": true
+        },
+        "pattern_sweep": {
+          "allow_not_applicable": true
+        },
+        "new_assumptions": {
+          "allow_not_applicable": false
+        },
+        "artifact_lifetime": {
+          "allow_not_applicable": true
+        }
+      },
+      "allowed_product_coverage": [
+        "partial",
+        "complete"
+      ],
+      "require_verified_claims": true,
+      "allow_unverified_claims": false,
+      "allow_local_consent": false,
+      "require_product_review": true,
+      "require_evidence_ref": true
+    }
+  }
+}

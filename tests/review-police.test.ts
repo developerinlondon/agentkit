@@ -14,8 +14,30 @@ const HOOK = join(import.meta.dir, '..', 'hooks', 'claude', 'review-police.sh');
 let repo: string;
 let bin: string;
 let home: string;
+let forgeLog: string;
+let baseTarget: string;
+let targetSha: string;
+let githubBaseRefSha: string;
 const SOURCE_BRANCH = 'feat/thing';
 const HEAD = 'a'.repeat(40);
+let sourceSha = HEAD;
+const REPOSITORY = 'https://github.example/owner/repo';
+const REPOSITORY_ID = 'gitlab:github.example:1';
+
+type JsonObject = Record<string, unknown>;
+
+interface StrictReviewFixture {
+  schema_version: number;
+  verdict: string;
+  context: JsonObject;
+  risk: JsonObject;
+  lanes: Record<'diff' | 'product', JsonObject>;
+  findings: JsonObject[];
+  claims: JsonObject[];
+  checks: JsonObject[];
+  analyses: JsonObject[];
+  evidence_ref: string;
+}
 
 function runHook(command: string, opts: { tool?: string; cwd?: string } = {}): string {
   const input = JSON.stringify({
@@ -35,12 +57,34 @@ function runHook(command: string, opts: { tool?: string; cwd?: string } = {}): s
 /** Fake forge CLI: MR 12 -> feat/thing@HEAD, MR 999 -> other/branch. */
 function writeFakeForge(): void {
   const script = `#!/usr/bin/env bash
+args="$*"
+printf '%s\\t%s\\n' "\${0##*/}" "$*" >>"${forgeLog}"
+if [[ "$1" == "repo" && "$2" == "view" ]]; then
+  echo '{"id":"R_fixture","nameWithOwner":"owner/repo","url":"${REPOSITORY}"}'
+  exit 0
+fi
+if [[ "$1" == "api" && "$args" == *"/repository/branches/"* ]]; then
+  echo '{"commit":{"id":"${targetSha}"}}'
+  exit 0
+fi
+if [[ "$1" == "api" && "$args" == *"repos/"*"/branches/"* ]]; then
+  echo '{"commit":{"sha":"${targetSha}"}}'
+  exit 0
+fi
+if [[ "$1" == "api" && "$args" == *"/merge_requests/"*"/diffs"* ]]; then
+  echo '[{"new_path":"README.md","old_path":"README.md"}]'
+  exit 0
+fi
+if [[ "$1" == "api" && "$args" == *"/pulls/"*"/files"* ]]; then
+  echo '[[{"filename":"README.md"}]]'
+  exit 0
+fi
 id=""
 for a in "$@"; do [[ "$a" =~ ^[0-9]+$ ]] && id="$a" && break; done
 if [[ "$id" == "999" ]]; then
-  echo '{"source_branch":"other/branch","sha":"${'b'.repeat(40)}","headRefName":"other/branch","headRefOid":"${'b'.repeat(40)}"}'
+  echo '{"source_branch":"other/branch","sha":"${'b'.repeat(40)}","headRefName":"other/branch","headRefOid":"${'b'.repeat(40)}","target_branch":"main","target_project_id":1,"project_id":1,"web_url":"${REPOSITORY}/-/merge_requests/999","diff_refs":{"base_sha":"${targetSha}","head_sha":"${'b'.repeat(40)}"},"baseRefName":"main","baseRefOid":"${githubBaseRefSha}","url":"${REPOSITORY}/pull/999"}'
 else
-  echo '{"source_branch":"${SOURCE_BRANCH}","sha":"${HEAD}","headRefName":"${SOURCE_BRANCH}","headRefOid":"${HEAD}"}'
+  echo '{"source_branch":"${SOURCE_BRANCH}","sha":"${sourceSha}","headRefName":"${SOURCE_BRANCH}","headRefOid":"${sourceSha}","target_branch":"main","target_project_id":1,"project_id":1,"web_url":"${REPOSITORY}/-/merge_requests/12","diff_refs":{"base_sha":"${targetSha}","head_sha":"${sourceSha}"},"baseRefName":"main","baseRefOid":"${githubBaseRefSha}","url":"${REPOSITORY}/pull/12"}'
 fi
 `;
   for (const name of ['glab', 'gh']) {
@@ -58,20 +102,169 @@ function record(body: unknown, slug = 'feat__thing'): void {
 const passing = { head_sha: HEAD, verdict: 'pass', findings: [] };
 const MERGE = 'glab mr merge 12 --squash --yes';
 
+const strictAnalysisKinds = [
+  'claims_audit',
+  'falsification',
+  'failure_trace',
+  'analogy_differences',
+  'pattern_sweep',
+  'new_assumptions',
+  'artifact_lifetime',
+];
+
+function strictTier(critical = false, allowLocalConsent = false): object {
+  return {
+    required_checks: critical ? ['tests'] : [],
+    analyses: Object.fromEntries(
+      (critical ? strictAnalysisKinds : ['claims_audit']).map((kind) => [
+        kind,
+        {
+          allow_not_applicable:
+            critical && !['claims_audit', 'falsification', 'new_assumptions'].includes(kind),
+        },
+      ]),
+    ),
+    allowed_product_coverage: critical
+      ? ['partial', 'complete']
+      : ['none', 'not_applicable', 'partial', 'complete'],
+    require_verified_claims: critical,
+    allow_unverified_claims: false,
+    allow_local_consent: allowLocalConsent,
+    require_product_review: critical,
+    require_evidence_ref: critical,
+  };
+}
+
+const strictPolicy = {
+  schema_version: 1,
+  risk: {
+    default_tier: 'standard',
+    zones: [
+      {
+        id: 'review-enforcement',
+        tier: 'critical',
+        path_regexes: ['^README\\.md$'],
+      },
+    ],
+  },
+  checks: {
+    tests: { command: 'scripts/product-command default -- bun test' },
+  },
+  tiers: {
+    trivial: strictTier(false, true),
+    standard: strictTier(false, true),
+    critical: strictTier(true),
+  },
+};
+
+function enableTargetPolicy(body: unknown = strictPolicy): void {
+  mkdirSync(join(repo, '.agentkit'), { recursive: true });
+  const rendered = typeof body === 'string' ? body : JSON.stringify(body);
+  writeFileSync(join(repo, '.agentkit', 'review-policy.json'), rendered);
+  execSync('git add .agentkit/review-policy.json', { cwd: repo, stdio: 'pipe' });
+  execSync('git commit -qm "test: strict target policy"', { cwd: repo, stdio: 'pipe' });
+  targetSha = execSync('git rev-parse HEAD', { cwd: repo, encoding: 'utf-8' }).trim();
+  writeFakeForge();
+}
+
+function commitSourceChange(policyBody?: unknown): void {
+  writeFileSync(join(repo, 'README.md'), `source change ${Date.now()}\n`);
+  if (policyBody !== undefined) {
+    writeFileSync(join(repo, '.agentkit', 'review-policy.json'), JSON.stringify(policyBody));
+  }
+  execSync('git add README.md .agentkit/review-policy.json', { cwd: repo, stdio: 'pipe' });
+  execSync('git commit -qm "test: source change"', { cwd: repo, stdio: 'pipe' });
+  sourceSha = execSync('git rev-parse HEAD', { cwd: repo, encoding: 'utf-8' }).trim();
+  writeFakeForge();
+}
+
+function targetPolicyDigest(): string {
+  return execSync(`git rev-parse ${targetSha}:.agentkit/review-policy.json`, {
+    cwd: repo,
+    encoding: 'utf-8',
+  }).trim();
+}
+
+function strictRecord(): StrictReviewFixture {
+  return {
+    schema_version: 2,
+    verdict: 'pass',
+    context: {
+      forge: 'gitlab',
+      repository: REPOSITORY,
+      repository_id: REPOSITORY_ID,
+      change_id: 12,
+      source_branch: SOURCE_BRANCH,
+      target_branch: 'main',
+      source_sha: sourceSha,
+      target_sha: targetSha,
+      policy_digest: targetPolicyDigest(),
+    },
+    risk: { tier: 'critical', rationale: 'README.md matches the trusted critical zone' },
+    lanes: {
+      diff: { verdict: 'pass', summary: 'Diff reviewed' },
+      product: { verdict: 'pass', coverage: 'partial', summary: 'Product exercised' },
+    },
+    findings: [],
+    claims: [
+      {
+        lane: 'diff',
+        claim: 'The strict hook fixture is bound to the target-owned policy',
+        status: 'verified',
+        evidence: 'Target-policy integration fixture',
+      },
+    ],
+    checks: [
+      {
+        id: 'tests',
+        command: 'scripts/product-command default -- bun test',
+        status: 'pass',
+        exit_code: 0,
+        output_summary: 'Fixture checks passed',
+      },
+    ],
+    analyses: strictAnalysisKinds.map((kind) =>
+      ['failure_trace', 'analogy_differences', 'pattern_sweep', 'artifact_lifetime'].includes(kind)
+        ? { kind, status: 'not_applicable', reason: `${kind} does not apply to the fixture` }
+        : { kind, status: 'verified', summary: `${kind} checked`, evidence: 'PR comment' },
+    ),
+    evidence_ref: `${REPOSITORY}/-/merge_requests/12#note_1`,
+  };
+}
+
 beforeAll(() => {
   const root = mkdtempSync(join(tmpdir(), 'agentkit-review-'));
   repo = join(root, 'repo');
   bin = join(root, 'bin');
   home = join(root, 'home');
+  forgeLog = join(root, 'forge.log');
   mkdirSync(repo);
   mkdirSync(bin);
   mkdirSync(home);
   execSync('git init -q -b main', { cwd: repo, stdio: 'pipe' });
+  execSync('git config user.email agentkit-tests@example.invalid', { cwd: repo, stdio: 'pipe' });
+  execSync('git config user.name "AgentKit Tests"', { cwd: repo, stdio: 'pipe' });
+  execSync(`git remote add origin ${REPOSITORY}`, { cwd: repo, stdio: 'pipe' });
+  writeFileSync(join(repo, 'README.md'), 'fixture\n');
+  execSync('git add README.md', { cwd: repo, stdio: 'pipe' });
+  execSync('git commit -qm "test: base target"', { cwd: repo, stdio: 'pipe' });
+  baseTarget = execSync('git rev-parse HEAD', { cwd: repo, encoding: 'utf-8' }).trim();
+  targetSha = baseTarget;
+  githubBaseRefSha = baseTarget;
+  sourceSha = HEAD;
   writeFakeForge();
 });
 
 afterAll(() => rmSync(join(repo, '..'), { force: true, recursive: true }));
-beforeEach(() => rmSync(join(repo, '.agentkit'), { force: true, recursive: true }));
+beforeEach(() => {
+  rmSync(join(repo, '.agentkit'), { force: true, recursive: true });
+  execSync(`git reset --hard ${baseTarget}`, { cwd: repo, stdio: 'pipe' });
+  targetSha = baseTarget;
+  githubBaseRefSha = baseTarget;
+  sourceSha = HEAD;
+  writeFileSync(forgeLog, '');
+  writeFakeForge();
+});
 
 describe('every police hook parses', () => {
   // A hook with a shell syntax error prints nothing and exits non-zero, which
@@ -207,6 +400,108 @@ describe('review-police: intended semantics', () => {
       user_consent: { granted: true, quote: 'ship it anyway', at: '2026-07-19T00:00:00Z' },
     });
     expect(runHook(MERGE)).toBe('');
+  });
+});
+
+describe('review-police: forge host binding', () => {
+  test('pins GitHub target APIs to the host resolved from the target repository', () => {
+    record(passing);
+    expect(runHook('gh pr merge 12 --repo github.example/owner/repo')).toBe('');
+
+    expect(readFileSync(forgeLog, 'utf-8')).toContain(
+      'gh\tapi --hostname github.example repos/owner/repo/branches/main',
+    );
+  });
+
+  test('pins GitLab target APIs to the host resolved from the merge request', () => {
+    record(passing);
+    expect(runHook('glab mr merge 12 --repo github.example/owner/repo')).toBe('');
+
+    expect(readFileSync(forgeLog, 'utf-8')).toContain(
+      'glab\tapi --hostname github.example projects/1/repository/branches/main',
+    );
+  });
+});
+
+describe('review-police: target-owned strict policy', () => {
+  test('allows complete v2 evidence under the exact target policy', () => {
+    enableTargetPolicy();
+    commitSourceChange();
+    record(strictRecord());
+    expect(runHook(MERGE)).toBe('');
+  });
+
+  test('does not let the source checkout weaken the policy judging itself', () => {
+    enableTargetPolicy();
+    const weakPolicy = {
+      ...strictPolicy,
+      risk: { ...strictPolicy.risk, zones: [] },
+      tiers: {
+        ...strictPolicy.tiers,
+        standard: strictTier(false, true),
+      },
+    };
+    commitSourceChange(weakPolicy);
+
+    const body = strictRecord();
+    body.risk = { tier: 'standard', rationale: 'The source policy calls this standard' };
+    body.lanes.product = {
+      verdict: 'not_applicable',
+      coverage: 'not_applicable',
+      summary: 'Not required by the source policy',
+    };
+    record(body);
+
+    const out = runHook(MERGE);
+    expect(out).toContain('"deny"');
+    expect(out).toContain('minimum risk tier is critical');
+  });
+
+  test('fails closed when an existing target policy is malformed', () => {
+    enableTargetPolicy('{"schema_version":1,"tiers":');
+    record(passing);
+    const out = runHook(MERGE);
+    expect(out).toContain('"deny"');
+    expect(out).toContain('policy');
+  });
+
+  test('uses legacy v1 only when policy is absent from the target commit', () => {
+    mkdirSync(join(repo, '.agentkit'), { recursive: true });
+    writeFileSync(join(repo, '.agentkit', 'review-policy.json'), JSON.stringify(strictPolicy));
+    record(passing);
+
+    expect(runHook(MERGE)).toBe('');
+  });
+
+  test('fails closed when the target commit cannot be read', () => {
+    targetSha = 'c'.repeat(40);
+    writeFakeForge();
+    record(passing);
+
+    const out = runHook(MERGE);
+    expect(out).toContain('"deny"');
+    expect(out).toContain('target commit');
+  });
+
+  test('uses the current GitHub branch tip rather than a stale PR baseRefOid', () => {
+    githubBaseRefSha = 'd'.repeat(40);
+    writeFakeForge();
+    record(passing);
+
+    expect(runHook('gh pr merge 12 --squash')).toBe('');
+  });
+
+  test('uses its packaged validator instead of a PATH-shadowed executable', () => {
+    enableTargetPolicy();
+    commitSourceChange();
+    const shadow = join(bin, 'review-gate');
+    writeFileSync(shadow, '#!/usr/bin/env bash\nexit 0\n');
+    chmodSync(shadow, 0o755);
+    record({ ...strictRecord(), schema_version: 99 });
+
+    const out = runHook(MERGE);
+    expect(out).toContain('"deny"');
+    expect(out).toContain('record schema');
   });
 });
 
@@ -383,6 +678,7 @@ describe('review-police: bypasses found in adversarial review', () => {
     // Detection caught this variant but extraction dropped the id, so it
     // denied an honest merge with "cannot resolve".
     expect(runHook('glab mr --repo group/proj merge 12')).toBe('');
+    expect(runHook('gh pr --repo owner/repo merge 12')).toBe('');
   });
 
   test('H1: -R / --repo flag variants are still gated', () => {

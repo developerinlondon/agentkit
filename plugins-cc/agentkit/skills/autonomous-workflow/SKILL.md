@@ -43,7 +43,7 @@ Exceptions: bug fixes in already-approved work, read-only research, formatting.
 
 Review is a gate, not a parallel task and not advice. `review-police.sh`
 blocks the CLI, REST and MCP merge paths without a passing record for the exact
-commit being merged.
+source head selected by the forge.
 
 Be honest about its limits: the record lives in the repo and you can write it,
 so the hook cannot _prevent_ a determined bypass — it makes the honest path
@@ -55,18 +55,22 @@ gate as something it is not.
 1. **Review completes before the merge starts.** Never dispatch a reviewer and
    merge while it works — a verdict that lands after the code is on main
    protects nobody.
-2. **The reviewer writes its verdict** to `.agentkit/reviews/<branch-slug>.json`
-   with `head_sha`, `verdict`, and `findings[{severity, summary, resolved}]`.
-   A review of an older commit is not a review of what you are merging.
+2. **The reviewer writes its evidence index** to
+   `.agentkit/reviews/<branch-slug>.json`. When the exact target commit contains
+   `.agentkit/review-policy.json`, this is a strict v2 record bound to forge,
+   canonical repository URL and immutable ID, change ID, source/target branches
+   and SHAs, and the target-policy blob. A review of an older source or target
+   context is not a review of what you are merging. Only policy absent from the
+   exact target commit permits the legacy `head_sha` v1 shape.
 
-   That file is a machine-local GATE TOKEN, not an archive: it is gitignored,
-   it is only ever read by the hook on one machine, and after the merge it is
-   an orphan nobody can see. So **also post the verdict and findings as a
-   comment on the MR/PR** (`glab mr note` / `gh pr comment`). That copy is the
-   durable one — visible to whoever picks the work up, timestamped, and it
-   survives the merge. It must NOT be committed to the repo: a commit moves
-   HEAD, which stales the record against the branch it reviews, and the gate
-   would then deny its own merge.
+   That file is a machine-local GATE TOKEN and evidence index, not an archive:
+   it is gitignored, read by one local hook, and orphaned after merge. So **also
+   post a redacted evidence packet as a comment on the MR/PR** (`glab mr note`
+   / `gh pr comment`) and put its reference in `evidence_ref`. Include claims,
+   checks, analyses, attempted falsifications, findings, and uncertainty. The
+   durable copy is visible and timestamped, but it still does not prove reviewer
+   identity or truth. Never commit the local record: a commit changes the source
+   SHA and makes the record stale against itself.
 
    Findings that outlive the branch — accepted limits, deferred fixes — belong
    in an ISSUE, not only in a review record. If the only trace of a known
@@ -93,8 +97,45 @@ gate as something it is not.
 6. **Do not hand findings to the user to approve.** They are not a queue for
    work you would rather not do. Escalate only when a finding genuinely cannot
    be fixed — an upstream or platform limitation — and say why. If they then
-   approve in writing, record their exact words in `user_consent`. Fabricating
-   that is forging their approval.
+   approve in writing, target policy may allow their exact words in
+   `user_consent` for a valid blocked trivial/standard record. Critical records
+   never accept local consent; use authenticated forge authority. Fabricating
+   consent is forging their approval.
+
+### Evidence-aware strict mode
+
+Classify by blast radius, not diff size. Authentication/session, credentials,
+access control, retry/reconnect, caching, rate limits, migrations, money,
+irreversible operations, and review/policy enforcement are critical by default.
+Tier can rise during work and never falls.
+
+- **Plan:** use one planner only when ambiguity or decomposition is real. Resolve
+  decisions before delegation and partition workers by non-overlapping concern.
+  Review every plan before implementation: refinement may share history, but
+  final refutation uses a fresh adversarial context.
+- **Maker:** default to one capable worker. Return the diff plus a claims list;
+  every behavioral or quantitative claim is computed/probed or explicitly
+  `unverified`.
+- **Adversary:** use the `adversarial-review` skill on every non-trivial change.
+  Trace from primary artifacts before reading maker narrative. A finding counts
+  only with a concrete failing input or replayable trace.
+- **Product lane:** when target policy requires product coverage, run
+  `product-review` separately. Diff correctness does not certify installation or
+  operation.
+- **Evidence:** explicitly disposition failure trace, analogy differences,
+  mechanically enumerated pattern sweep, new assumptions, and artifact lifetime.
+  `not_applicable` needs a reason and only satisfies policy where allowed.
+- **Gate:** run deterministic checks and validate the strict record. The stored
+  verdict must equal the result derived from lanes, findings, checks, claims, and
+  analyses.
+- **External:** critical work still requires authenticated human or
+  different-family review plus protected deterministic checks. The local record
+  cannot manufacture either property.
+
+Cap fix-review at two full cycles per genuine defect class. If the same defect
+still cannot be closed or guidance genuinely conflicts, stop and give the owner
+the verbatim diff, findings, traces, and reviewer outputs. Critical work fails
+closed when the judge/external check is unavailable.
 
 Corollary, learned the hard way: never expose a user-facing control whose other
 half is not built. Ship both halves or neither — an inert-looking toggle is
