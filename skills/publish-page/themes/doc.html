@@ -5,21 +5,18 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{TITLE}}</title>
 <style>
+  /* AgentKit Pages house theme — committed dark navy (no light variant). */
   :root {
-    --bg: #f7f9fb; --ink: #16202c; --muted: #5b6b7c; --accent: #0e7490;
-    --accent-soft: #e0f0f4; --line: #d8e0e8; --card: #ffffff; --code-bg: #eef2f6;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #0b1220; --ink: #e2e9f0; --muted: #8fa1b3; --accent: #7dd3fc;
-      --accent-soft: #12263a; --line: #223144; --card: #101a2b; --code-bg: #0e1828;
-    }
+    --navy: #0a1c38; --navy-deep: #071224; --card: #102847; --code-bg: #0d2140;
+    --line: #1e3a5f; --ink: #dce7f5; --muted: #8fa8c7;
+    --accent: #34d3a6; --accent-soft: #0d2f3a; --gold: #e8b444; --red: #e06c5f;
   }
   * { box-sizing: border-box; }
   body {
-    background: var(--bg); color: var(--ink); margin: 0;
+    background: linear-gradient(180deg, var(--navy-deep) 0%, var(--navy) 220px);
+    color: var(--ink); margin: 0;
     font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-    line-height: 1.65; padding: 3rem 1.25rem 5rem;
+    line-height: 1.65; padding: 3rem 1.25rem 5rem; min-height: 100vh;
   }
   main { max-width: 46rem; margin: 0 auto; }
   h1 { font-size: 2rem; line-height: 1.15; letter-spacing: -0.02em; text-wrap: balance; margin: 0 0 0.8rem; }
@@ -33,13 +30,12 @@
     background: var(--code-bg); border-radius: 4px; padding: 0.1em 0.35em;
   }
   pre {
-    background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px;
+    background: var(--navy-deep); border: 1px solid var(--line); border-radius: 8px;
     padding: 1rem 1.2rem; overflow-x: auto; font-size: 0.82rem; line-height: 1.5;
   }
   pre code { background: none; padding: 0; }
   blockquote { border-left: 3px solid var(--accent); margin: 1rem 0; padding: 0.2rem 0 0.2rem 1rem; color: var(--muted); }
-  .table-wrap, table { max-width: 100%; }
-  table { border-collapse: collapse; font-size: 0.9rem; display: block; overflow-x: auto; }
+  table { border-collapse: collapse; font-size: 0.9rem; display: block; overflow-x: auto; max-width: 100%; }
   th {
     text-align: left; font-family: ui-monospace, Menlo, monospace; font-size: 0.7rem;
     letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted);
@@ -55,6 +51,61 @@
   }
   footer a { color: var(--muted); }
   :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* Component library — content may use these classes directly (see SKILL.md):
+     .kicker .chips/.chip .cards/.card .callout .flow/.frow/.fbox(.gate.ok.deny) .arrow .mermaid */
+  .kicker {
+    font-family: ui-monospace, Menlo, monospace; font-size: 0.72rem;
+    letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent);
+    margin: 2.2rem 0 0.3rem;
+  }
+  .kicker + h2 { margin-top: 0; border-top: none; padding-top: 0; }
+  .chips { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0.8rem 0; }
+  .chip {
+    font-family: ui-monospace, Menlo, monospace; font-size: 0.72rem;
+    border: 1px solid var(--line); border-radius: 999px; padding: 0.15rem 0.65rem;
+    color: var(--muted); background: var(--code-bg);
+  }
+  .chip strong { color: var(--ink); font-weight: 600; }
+  .cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.9rem; margin: 1.2rem 0; }
+  @media (max-width: 40rem) { .cards { grid-template-columns: 1fr; } }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: 1rem 1.2rem;
+  }
+  .card h3 { margin: 0 0 0.35rem; font-size: 0.95rem; }
+  .card h3 code { color: var(--accent); background: none; padding: 0; }
+  .card p { margin: 0; color: var(--muted); font-size: 0.9rem; max-width: none; }
+  .callout {
+    border: 1px solid var(--line); background: var(--accent-soft);
+    border-radius: 8px; padding: 0.8rem 1.1rem; font-size: 0.92rem;
+    margin: 1rem 0; max-width: none;
+  }
+  .callout strong { color: var(--accent); }
+  .flow { display: flex; flex-direction: column; margin: 1.2rem 0; }
+  .frow { display: flex; align-items: stretch; gap: 0.6rem; flex-wrap: wrap; }
+  .fbox {
+    background: var(--card); border: 1px solid var(--line); border-radius: 8px;
+    padding: 0.6rem 0.95rem; font-size: 0.85rem; flex: 1 1 10rem;
+  }
+  .fbox .t {
+    font-family: ui-monospace, Menlo, monospace; font-size: 0.7rem;
+    letter-spacing: 0.1em; text-transform: uppercase; display: block;
+    margin-bottom: 0.15rem; color: var(--accent);
+  }
+  .fbox.gate { border-color: var(--gold); } .fbox.gate .t { color: var(--gold); }
+  .fbox.ok { border-color: var(--accent); } .fbox.ok .t { color: var(--accent); }
+  .fbox.deny { border-color: var(--red); } .fbox.deny .t { color: var(--red); }
+  .fbox .d { color: var(--muted); font-size: 0.8rem; }
+  .arrow {
+    text-align: center; color: var(--muted); font-family: ui-monospace, Menlo, monospace;
+    font-size: 0.8rem; padding: 0.25rem 0;
+  }
+  pre.mermaid {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: 1rem; overflow-x: auto; text-align: center;
+  }
+  pre.mermaid svg { max-width: 100%; height: auto; }
 </style>
 </head>
 <body>

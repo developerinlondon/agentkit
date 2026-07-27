@@ -32,6 +32,40 @@ bun <skill-dir>/publish.ts --name <name> --delete    # remove a page you publish
 5. **Give the user the URL** it prints (`https://pages.agentkit.sbs/<slug>`).
    That URL is live immediately.
 
+## Page design — the house style is built in
+
+Pages should look designed, not dumped. The doc/deck themes carry the house
+identity automatically (**dark navy** ground `#071224→#0a1c38`, ink `#dce7f5`,
+green accent `#34d3a6`, gold `#e8b444`, panels `#102847`, lines `#1e3a5f`,
+mono eyebrows) — never re-explain or re-style these basics.
+
+**Be illustrative by default.** Structure every doc page as sections and pick the
+strongest component for each idea — don't produce walls of prose:
+
+- **Diagrams: use mermaid fences** — they render as real diagrams (the runtime
+  is inlined automatically, only on pages that use it). Prefer mermaid over
+  ASCII art for flows, architectures, sequences:
+  ````
+  ```mermaid
+  flowchart LR
+    A[agent] -->|PUT| W[Worker] --> R2[(R2)]
+  ```
+  ````
+- **Section headers**: `<div class="kicker">01 — topic</div>` before an `## h2`.
+- **Enumerable concepts** (features, components, principles): a 2-column grid —
+  `<div class="cards"><div class="card"><h3><code>name</code></h3><p>…</p></div>…</div>`
+- **Key decisions / warnings**: `<div class="callout"><strong>Label.</strong> text</div>`
+- **Metadata rows**: `<div class="chips"><span class="chip"><strong>Status</strong> live</span>…</div>`
+- **Pipeline/stage boxes** (when mermaid is overkill):
+  `<div class="flow"><div class="frow"><div class="fbox gate"><span class="t">stage</span><span class="d">detail</span></div>…</div><div class="arrow">▼</div>…</div>`
+  — `.fbox` variants: `.gate` (gold), `.ok` (green), `.deny` (red).
+- **Facts with columns**: markdown tables (themed automatically).
+
+All of these work inside markdown files — markdown passes raw HTML through.
+Decks: one idea per slide, kicker + h2 + a few bullets or one diagram/card grid;
+put heavy diagrams on their own slide. Raw pages: full freedom, but reuse the
+navy tokens above so pages feel like one product.
+
 ## Requirements and behavior
 
 - Publish token: `~/.config/agentkit/pages-token` (mint at agentkit.sbs).

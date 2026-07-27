@@ -133,6 +133,22 @@ function splitSlides(md: string): string[] {
   return slides.map((s) => s.join("\n"));
 }
 
+// ```mermaid fences become <pre class="mermaid"> blocks that the inlined
+// runtime renders in the browser — same mechanism Claude artifacts use.
+function liftMermaidFences(md: string): string {
+  return md.replace(/```mermaid\n([\s\S]*?)\n```/g, (_, code) => `<pre class="mermaid">\n${code}\n</pre>`);
+}
+
+async function mermaidRuntime(): Promise<string> {
+  const dist = join(import.meta.dir, "node_modules/mermaid/dist/mermaid.min.js");
+  if (!existsSync(dist)) fail(`mermaid runtime missing at ${dist} — run: cd ${import.meta.dir} && bun install`);
+  const js = await readFile(dist, "utf8");
+  // Decks render diagrams per-slide (hidden slides have zero width, which breaks
+  // mermaid's measurements) — the deck theme's show() calls mermaid.run on the
+  // active slide; docs render everything immediately.
+  return `\n<script>${js}</script>\n<script>mermaid.initialize({ startOnLoad: false, theme: "dark" }); if (!document.querySelector(".slide")) mermaid.run();</script>`;
+}
+
 async function render(): Promise<string> {
   if (template === "raw") return source;
   // Canonical themes live in the agentkit-pages repo; the skill bundles a copy
@@ -148,19 +164,21 @@ async function render(): Promise<string> {
       console.error(`warning: bundled theme drifted from canonical ${repoTheme} — re-sync skills/publish-page/themes/`);
     }
   }
+  const prepared = isMd ? liftMermaidFences(source) : source;
   let content: string;
   if (template === "deck") {
     const parts = isMd
-      ? splitSlides(source).map((s) => marked.parse(s) as string)
-      : source.split(/<hr\b[^>]*>/i);
+      ? splitSlides(prepared).map((s) => marked.parse(s) as string)
+      : prepared.split(/<hr\b[^>]*>/i);
     content = parts
       .map((s) => s.trim())
       .filter(Boolean)
       .map((s) => `<section class="slide">\n${s}\n</section>`)
       .join("\n");
   } else {
-    content = isMd ? (marked.parse(source) as string) : source;
+    content = isMd ? (marked.parse(prepared) as string) : prepared;
   }
+  if (content.includes('class="mermaid"')) content += await mermaidRuntime();
   // Function replacers: a plain string replacement expands $&, $`, $' found in
   // page content and silently corrupts the output.
   return theme

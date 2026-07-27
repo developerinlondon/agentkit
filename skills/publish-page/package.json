@@ -2,7 +2,8 @@
   "name": "publish-page-skill",
   "private": true,
   "dependencies": {
-    "marked": "^18.0.7"
+    "marked": "^18.0.7",
+    "mermaid": "^11.16.0"
   },
   "devDependencies": {
     "@types/bun": "^1.2.19"
