@@ -55,6 +55,22 @@ describe('fail-closed hook supervisor', () => {
     }
   });
 
+  test('does not wait on a detached descendant that inherited the output pipe', () => {
+    const started = performance.now();
+    const result = run(
+      child(
+        `cat >/dev/null
+python3 -c 'import os,time; os.setsid(); time.sleep(5)' &
+sleep 5`,
+      ),
+    );
+    const elapsed = performance.now() - started;
+
+    expect(result.status, result.stderr || result.error?.message).toBe(0);
+    expect(result.stdout).toContain('"permissionDecision":"deny"');
+    expect(elapsed).toBeLessThan(3_500);
+  });
+
   test('keeps the child deadline below both registered host deadlines', () => {
     const source = JSON.parse(readFileSync(join(ROOT, 'hooks', 'claude', 'settings.json'), 'utf-8'));
     const plugin = JSON.parse(

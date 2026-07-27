@@ -574,15 +574,23 @@ describe('review-police: bypasses found in adversarial review', () => {
 
   test('an assembled forge executable still reaches the standalone-command denial', () => {
     record(passing);
-    const out = runHook('A=g; B=lab; "$A$B" mr merge 12 --yes');
-    expect(out).toContain('"deny"');
-    expect(out).toContain('standalone forge CLI command');
+    for (const cmd of [
+      'A=g; B=lab; "$A$B" mr merge 12 --yes',
+      `part=mr; glab "$part" merge 12 --sha ${HEAD} --auto-merge=false`,
+      `group=mr; verb=merge; glab "$group" "$verb" 12 --sha ${HEAD} --auto-merge=false`,
+    ]) {
+      const out = runHook(cmd);
+      expect(out, cmd).toContain('"deny"');
+      expect(out, cmd).toContain('standalone forge CLI command');
+    }
   });
 
   test('the supervisor preserves denials for runtime-built merge forms', () => {
     record(passing);
     for (const cmd of [
       'cli=glab; "$cli" mr merge 12 --yes',
+      `part=mr; glab "$part" merge 12 --sha ${HEAD} --auto-merge=false`,
+      `group=mr; verb=merge; glab "$group" "$verb" 12 --sha ${HEAD} --auto-merge=false`,
       'base=https://api.github.com/repos/o/r/pulls/12; action=merge; curl -X PUT "$base/$action"',
       '/usr/bin/git push -o merge_request.merge_when_pipeline_succeeds origin feat/thing',
       'glab mr merge 12 --auto-merge',

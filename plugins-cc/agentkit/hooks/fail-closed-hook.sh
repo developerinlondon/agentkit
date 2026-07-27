@@ -48,24 +48,37 @@ try:
 except Exception:
     deny()
 
+def terminate_process():
+    # communicate() waits for EOF on every inherited pipe, not merely for the
+    # direct child. A descendant can start a new session, survive killpg(), and
+    # keep stdout open beyond the Claude host deadline. Close our pipe endpoints
+    # and bound both TERM and KILL waits; a timeout must always reach deny().
+    for stream in (process.stdin, process.stdout):
+        try:
+            if stream is not None:
+                stream.close()
+        except Exception:
+            pass
+    for sig in (signal.SIGTERM, signal.SIGKILL):
+        try:
+            os.killpg(process.pid, sig)
+        except Exception:
+            pass
+        try:
+            process.wait(timeout=1)
+            return
+        except subprocess.TimeoutExpired:
+            continue
+        except Exception:
+            return
+
 try:
     output, _ = process.communicate(payload, timeout=deadline)
 except subprocess.TimeoutExpired:
-    try:
-        os.killpg(process.pid, signal.SIGTERM)
-        process.communicate(timeout=2)
-    except Exception:
-        try:
-            os.killpg(process.pid, signal.SIGKILL)
-        except Exception:
-            pass
-        process.communicate()
+    terminate_process()
     deny()
 except Exception:
-    try:
-        os.killpg(process.pid, signal.SIGKILL)
-    except Exception:
-        pass
+    terminate_process()
     deny()
 
 if process.returncode != 0:

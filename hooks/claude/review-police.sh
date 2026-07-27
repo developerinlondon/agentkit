@@ -209,6 +209,14 @@ direct_api_merge=0
 if has mr && has merge; then is_merge=1; fi
 if has mr && has accept; then is_merge=1; fi
 if has pr && has merge; then is_merge=1; fi
+# A variable can replace the group token too (`part=mr; glab "$part" merge`).
+# Any dynamically assembled command that exposes the merge verb either as a
+# literal token or an exact variable assignment is not safely classifiable as
+# ordinary work. Route it to the strict parser; that parser rejects
+# interpolation rather than letting this path fall silent.
+if echo "$RAW_COMMAND" | grep -q '\$'; then
+	if has merge || tok_match '^[[:alpha:]_][[:alnum:]_]*=merge$'; then is_merge=1; fi
+fi
 # The merge path IS the attempt, whatever calls it: any caller allowlist leaves
 # python, node, ruby and every wrapper script outside it. Reading such a URL
 # therefore denies too — a false deny is the cheaper failure here.
