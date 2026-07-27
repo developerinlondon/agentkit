@@ -31,6 +31,29 @@ describe('resource-safe-execution assets', () => {
     expect(instruction).toContain('host service resource limits');
   });
 
+  test('documents Linux-only local containment without weakening universal delegation safety', () => {
+    const skill = readFileSync(join(skillDir, 'SKILL.md'), 'utf-8');
+    const instruction = readFileSync(
+      join(repoRoot, 'instructions', 'resource-safety.md'),
+      'utf-8',
+    );
+    const product = readFileSync(join(repoRoot, '.agentkit', 'product.yaml'), 'utf-8');
+    const compactInstruction = instruction.replace(/\s+/g, ' ');
+    const compactProduct = product.replace(/\s+/g, ' ');
+
+    expect(skill).toContain('Linux-only');
+    expect(skill).toContain('On non-Linux hosts');
+    expect(instruction).toContain('On non-Linux hosts');
+    expect(compactInstruction).toContain('Delegated-workload protections remain active');
+    expect(product).toContain('build: agentkit-run --profile default -- bun install');
+    expect(product).toContain('verify: agentkit-run --profile default -- bun test');
+    expect(product).toContain(
+      'run: agentkit-run --profile default -- bun plugins-cc/agentkit/server/index.ts',
+    );
+    expect(product).toContain('Linux-only');
+    expect(compactProduct).toContain('delegation protections remain active');
+  });
+
   test('Claude plugin mirrors stay byte-identical to their source assets', () => {
     const pluginRoot = join(repoRoot, 'plugins-cc', 'agentkit');
     for (const [source, mirror] of [

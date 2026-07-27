@@ -1,4 +1,6 @@
 #!/bin/bash -p
+# agentkit:platforms linux
+# Requires systemd user scopes and cgroup v2.
 set -euo pipefail
 
 readonly EX_USAGE=64

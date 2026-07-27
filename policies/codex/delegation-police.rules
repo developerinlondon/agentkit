@@ -1,0 +1,38 @@
+# delegation-police.rules — Codex CLI exec policy
+# Delegated workloads escape local process containment on every platform.
+
+prefix_rule(
+    pattern = ["docker"],
+    decision = "forbidden",
+    justification = "Container workloads delegate to an engine outside local process containment. Use a separately approved dedicated runner or verified engine-native limits.",
+)
+
+prefix_rule(
+    pattern = ["podman"],
+    decision = "forbidden",
+    justification = "Container workloads may delegate outside local process containment. Use a separately approved dedicated runner or verified engine-native limits.",
+)
+
+prefix_rule(
+    pattern = ["systemd-run"],
+    decision = "forbidden",
+    justification = "Direct systemd-run creates a sibling cgroup outside the invoking process boundary.",
+)
+
+prefix_rule(
+    pattern = ["run0"],
+    decision = "forbidden",
+    justification = "run0 delegates to systemd-run outside the invoking process boundary.",
+)
+
+prefix_rule(
+    pattern = ["ssh"],
+    decision = "forbidden",
+    justification = "Remote workloads are outside local process containment.",
+)
+
+prefix_rule(
+    pattern = ["sudo"],
+    decision = "forbidden",
+    justification = "Privilege wrappers may delegate outside the invoking process boundary.",
+)

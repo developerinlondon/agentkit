@@ -2,9 +2,16 @@
 
 # Resource-safe Execution
 
+On Linux:
+
 Never run resource-intensive developer commands directly on a shared or production-adjacent host.
 Use `bounded-run` for dependency changes, compilers, typechecks, builds, linters, test suites,
 browser automation, code generation, Cargo, Go, and pytest.
+
+On non-Linux hosts, the installer omits `bounded-run` because systemd cgroup containment is
+unavailable. Local heavy-command containment stands down. Delegated-workload protections remain
+active: use only a separately approved platform-native runner with verified limits for container,
+remote, or service-managed work.
 
 - Start unfamiliar tools and new toolchain versions with `bounded-run --profile canary -- ...`.
 - Use `compile` for established compilers and builds, `browser` for Playwright, and `default` for

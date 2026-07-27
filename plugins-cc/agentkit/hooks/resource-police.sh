@@ -21,6 +21,7 @@ RE_SHELL='^(bash|dash|fish|sh|zsh)$'
 RE_SYSTEMCTL_READONLY='^(cat|get-default|is-active|is-enabled|is-failed|list-|show|status)'
 RE_UV_HEAVY='^(add|sync)$'
 RE_YARN_HEAVY='^(add|install|up|upgrade|test)$'
+readonly MAX_ANALYSIS_DEPTH=4
 
 
 # Absolute paths are deliberate: a hook that inspects a command must not
@@ -59,7 +60,9 @@ if [[ -z "$AWK_BIN" || -z "$CAT_BIN" || -z "$JQ_BIN" ]]; then
 	exit 0
 fi
 
-# Stand down where bounding is IMPOSSIBLE, not merely unconfigured.
+# Stand down from LOCAL containment where bounding is impossible, but keep
+# parsing commands: delegated work and undecidable nesting remain blocked on
+# every platform because neither becomes safe when cgroups are unavailable.
 #
 # bounded-run contains work in a systemd scope backed by cgroup v2, and dies
 # with 'cgroup v2 is unavailable' without it. macOS has neither cgroups nor
@@ -70,16 +73,31 @@ fi
 # Announced once per session rather than per command: a warning on every Bash
 # call is the kind of noise that trains people to ignore hooks, but silently
 # disabling a guard is how it stays broken for months.
-if [[ ! -r /sys/fs/cgroup/cgroup.controllers ]]; then
+detect_platform() {
+	if [[ -n "${AGENTKIT_PLATFORM:-}" ]]; then
+		printf '%s' "$AGENTKIT_PLATFORM"
+		return
+	fi
+	case "$(uname -s 2>/dev/null || true)" in
+	Linux) printf 'linux' ;;
+	Darwin) printf 'darwin' ;;
+	*) printf 'unknown' ;;
+	esac
+}
+
+PLATFORM="$(detect_platform)"
+CONTAINMENT_REQUIRED=0
+if [[ "$PLATFORM" == linux && -r /sys/fs/cgroup/cgroup.controllers ]]; then
+	CONTAINMENT_REQUIRED=1
+else
 	# Keyed on PPID — the client process, stable across every hook invocation
 	# in one session. $$ is this hook's own pid and changes each time, which
 	# would make "once" mean "always".
 	notice="${TMPDIR:-/tmp}/.agentkit-resource-police-inactive.$PPID"
 	if [[ ! -e "$notice" ]]; then
 		: >"$notice" 2>/dev/null || true
-		printf 'resource-police: INACTIVE on this host — cgroup v2 is unavailable, so bounded-run cannot contain anything. Heavy commands are not being bounded.\n' >&2
+		printf 'resource-police: local containment INACTIVE on %s — bounded-run is unavailable. Delegated and undecidable commands remain blocked.\n' "$PLATFORM" >&2
 	fi
-	exit 0
 fi
 
 # shellcheck source=lib/hook-input.sh
@@ -116,6 +134,8 @@ deny() {
 		reason="BLOCKED: that is not a recognised bounded-run: $segment. Anything can be named \`bounded-run\`, so it is trusted by INSTALLED PATH, not by name — otherwise a spoof could silently neuter every limit. AGENTKIT_ALLOW_DELEGATED=1 does NOT clear this. Install the runner (\`~/.local/bin/bounded-run\`) and invoke it from there, or use the plugin's copy under \$CLAUDE_PLUGIN_ROOT/tools/. In a fresh clone of agentkit itself, install it first rather than running ./tools/bounded-run in place."
 	elif [[ "$kind" == delegated ]]; then
 		reason="BLOCKED: delegated workload cannot be contained by bounded-run: $segment. Use a separately approved dedicated runner or verified engine-native limits. User-approved delegated workloads: prefix with AGENTKIT_ALLOW_DELEGATED=1."
+	elif [[ "$kind" == undecidable ]]; then
+		reason="BLOCKED: command could not be analyzed safely: $segment. Wrapper or shell nesting exceeded the $MAX_ANALYSIS_DEPTH-level analysis bound."
 	else
 		reason="BLOCKED: resource-intensive command is not contained: $segment. Run it through $runner_hint, for example: $runner_hint --profile compile -- bun run typecheck. Use profile browser for Playwright and browser builds."
 	fi
@@ -176,6 +196,8 @@ parse_launch() {
 	local segment="$1"
 	local token
 	local index=0
+	local wrapper_depth=0
+	PARSE_UNDECIDABLE=0
 	read -r -a TOKENS <<<"$segment"
 	while [[ -n "${TOKENS[$index]:-}" ]]; do
 		while [[ "${TOKENS[$index]:-}" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; do
@@ -191,6 +213,11 @@ parse_launch() {
 			return 0
 			;;
 		env)
+			wrapper_depth=$((wrapper_depth + 1))
+			if ((wrapper_depth > MAX_ANALYSIS_DEPTH)); then
+				PARSE_UNDECIDABLE=1
+				return 0
+			fi
 			index=$((index + 1))
 			while [[ "${TOKENS[$index]:-}" == -* \
 				|| "${TOKENS[$index]:-}" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; do
@@ -198,6 +225,11 @@ parse_launch() {
 			done
 			;;
 		command | nohup | time)
+			wrapper_depth=$((wrapper_depth + 1))
+			if ((wrapper_depth > MAX_ANALYSIS_DEPTH)); then
+				PARSE_UNDECIDABLE=1
+				return 0
+			fi
 			index=$((index + 1))
 			while [[ "${TOKENS[$index]:-}" == -* ]]; do index=$((index + 1)); done
 			;;
@@ -337,13 +369,12 @@ unwrap_environment() {
 	ARGS=("${ARGS[@]:$((index + 1))}")
 }
 
-parse_wrapped_launch() {
+parse_wrapped_command() {
 	local index
+	WRAPPED_COMMAND=''
 	for index in "${!ARGS[@]}"; do
 		if [[ "${ARGS[$index]}" == -- && -n "${ARGS[$((index + 1))]:-}" ]]; then
-			EXECUTABLE="${ARGS[$((index + 1))]##*/}"
-			EXECUTABLE_TOKEN="${ARGS[$((index + 1))]}"
-			ARGS=("${ARGS[@]:$((index + 2))}")
+			WRAPPED_COMMAND="${ARGS[*]:$((index + 1))}"
 			return 0
 		fi
 	done
@@ -353,13 +384,16 @@ parse_wrapped_launch() {
 analyze_command() {
 	local command="$1"
 	local depth="$2"
+	local contained="${3:-0}"
 	local segments segment
-	((depth <= 3)) || deny "shell nesting exceeds analysis depth: $command"
+	((depth <= MAX_ANALYSIS_DEPTH)) \
+		|| deny "shell or wrapper nesting exceeds analysis depth: $command" undecidable
 	segments=$(printf '%s\n' "$command" | split_segments) \
-		|| deny 'command could not be parsed safely'
+		|| deny 'command could not be parsed safely' undecidable
 	while IFS= read -r segment; do
 		[[ -n "$segment" ]] || continue
 		parse_launch "$segment"
+		if [[ "$PARSE_UNDECIDABLE" == 1 ]]; then deny "$segment" undecidable; fi
 		if [[ "$EXECUTABLE" == bounded-run || "$EXECUTABLE" == agentkit-run ]]; then
 			# NOT `delegated`: that message advertises AGENTKIT_ALLOW_DELEGATED=1,
 			# which this branch never consults, so it sent people chasing an
@@ -367,27 +401,34 @@ analyze_command() {
 			# path is not a recognised runner — anything can be named
 			# `bounded-run`, and trusting it by name alone would let a spoof
 			# neuter every limit.
-			if ! is_trusted_runner; then deny "$segment" untrusted_runner; fi
-			if parse_wrapped_launch; then
-				unwrap_environment
-				if is_delegating && [[ "$DELEGATED_OK" != 1 ]]; then
-					deny "$segment" delegated
-				fi
+			local trusted_runner=0
+			is_trusted_runner && trusted_runner=1
+			if parse_wrapped_command; then
+				local nested_command="$WRAPPED_COMMAND"
+				parse_launch "$nested_command"
+				if [[ "$PARSE_UNDECIDABLE" == 1 ]]; then deny "$segment" undecidable; fi
+				if is_delegating && [[ "$DELEGATED_OK" != 1 ]]; then deny "$segment" delegated; fi
+				analyze_command "$nested_command" $((depth + 1)) 1
+			fi
+			if [[ "$CONTAINMENT_REQUIRED" == 1 && "$trusted_runner" != 1 ]]; then
+				deny "$segment" untrusted_runner
 			fi
 			continue
 		fi
 		if [[ "$EXECUTABLE" =~ $RE_SHELL ]] && shell_command_payload; then
-			analyze_command "$PAYLOAD" $((depth + 1))
+			analyze_command "$PAYLOAD" $((depth + 1)) "$contained"
 			continue
 		fi
 		if is_delegating && [[ "$DELEGATED_OK" != 1 ]]; then
 			deny "$segment" delegated
 		fi
-		if is_heavy; then deny "$segment"; fi
+		if [[ "$CONTAINMENT_REQUIRED" == 1 && "$contained" != 1 ]] && is_heavy; then
+			deny "$segment"
+		fi
 	done <<<"$segments"
 }
 
-declare EXECUTABLE EXECUTABLE_TOKEN PAYLOAD
+declare EXECUTABLE EXECUTABLE_TOKEN PARSE_UNDECIDABLE PAYLOAD WRAPPED_COMMAND
 declare -a TOKENS ARGS
 analyze_command "$COMMAND" 0
 

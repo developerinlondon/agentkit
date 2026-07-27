@@ -1,4 +1,5 @@
 # resource-police.rules — Codex CLI exec policy
+# agentkit:platforms linux
 # Heavy commands must start with bounded-run so systemd owns and limits the process tree.
 
 prefix_rule(
@@ -79,42 +80,6 @@ prefix_rule(
     pattern = ["go", ["build", "test"]],
     decision = "forbidden",
     justification = "Run Go compiler and test workloads with bounded-run.",
-)
-
-prefix_rule(
-    pattern = ["docker"],
-    decision = "forbidden",
-    justification = "Container builds delegate to an engine outside bounded-run. Use a separately approved dedicated runner or verified engine-native limits.",
-)
-
-prefix_rule(
-    pattern = ["podman"],
-    decision = "forbidden",
-    justification = "Container builds may delegate outside bounded-run. Use a separately approved dedicated runner or verified engine-native limits.",
-)
-
-prefix_rule(
-    pattern = ["systemd-run"],
-    decision = "forbidden",
-    justification = "Direct systemd-run can create a sibling cgroup outside the mandatory bounded-run boundary.",
-)
-
-prefix_rule(
-    pattern = ["run0"],
-    decision = "forbidden",
-    justification = "run0 delegates to systemd-run outside the mandatory bounded-run boundary.",
-)
-
-prefix_rule(
-    pattern = ["ssh"],
-    decision = "forbidden",
-    justification = "Remote workloads are outside the local bounded-run resource boundary.",
-)
-
-prefix_rule(
-    pattern = ["sudo"],
-    decision = "forbidden",
-    justification = "Privilege wrappers are not allowed inside the bounded-run containment workflow.",
 )
 
 prefix_rule(
