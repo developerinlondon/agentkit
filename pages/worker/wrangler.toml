@@ -1,0 +1,11 @@
+name = "agentkit-pages"
+main = "src/worker.js"
+compatibility_date = "2026-07-01"
+
+# Hostnames are attached as Workers Custom Domains (agentkit.sbs, www,
+# pages.agentkit.sbs) via the CF API — the deploy token cannot edit zone
+# routes, and custom domains also provision DNS + certs.
+
+[[r2_buckets]]
+binding = "PAGES"
+bucket_name = "agentkit-pages"

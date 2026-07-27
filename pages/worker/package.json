@@ -1,0 +1,7 @@
+{
+  "name": "agentkit-pages-worker",
+  "private": true,
+  "devDependencies": {
+    "wrangler": "^4.27.0"
+  }
+}
