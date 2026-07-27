@@ -31,10 +31,11 @@ surfaces:
       claude plugin marketplace add developerinlondon/agentkit
       claude plugin install agentkit
     expect: |
-      A new Claude Code session prints an `[agentkit] armed:` line naming the
-      police hooks. Attempting a forge merge without a passing review record
-      in `.agentkit/reviews/` is refused with a BLOCKED message rather than
-      silently allowed. When the exact target commit has
+      `claude plugin list --json` shows the plugin enabled with no loader
+      errors, and Claude auto-discovers the police hooks from
+      `hooks/hooks.json`. Attempting a forge merge without a passing review
+      record in `.agentkit/reviews/` is refused with a BLOCKED message rather
+      than silently allowed. When the exact target commit has
       `.agentkit/review-policy.json`, the hook ignores source-policy weakening,
       derives changed paths from the exact commits, and requires strict v2
       evidence through the bundled `review-gate` validator. A timeout, crash,

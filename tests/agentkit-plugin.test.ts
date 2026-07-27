@@ -37,11 +37,14 @@ function commandBasenames(entries: { command: string }[]): string[] {
 }
 
 describe('agentkit plugin manifest', () => {
-  test('plugin.json declares name agentkit and wires hooks, skills, and mcpServers', () => {
+  test('plugin.json declares agentkit without duplicating its standard hooks path', () => {
     const plugin = readJson('.claude-plugin', 'plugin.json');
     expect(plugin.name).toBe('agentkit');
     expect(plugin.version).toBe('0.3.0');
-    expect(plugin.hooks).toBe('./hooks/hooks.json');
+    // Claude automatically loads hooks/hooks.json. Declaring that same path in
+    // the manifest makes a fresh install appear enabled while hook loading
+    // fails with "Duplicate hooks file detected".
+    expect(plugin.hooks).toBeUndefined();
     expect(plugin.skills).toBe('./skills/');
     expect(plugin.mcpServers).toBe('./.mcp.json');
   });

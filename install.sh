@@ -767,8 +767,29 @@ install_claude_plugin() {
 	claude plugin marketplace add "$REPO_DIR" 2>/dev/null \
 		|| claude plugin marketplace update agentkit
 
-	echo "[claude] Installing plugin: agentkit@agentkit"
-	claude plugin install agentkit@agentkit
+	if ! command -v jq &>/dev/null; then
+		echo "[claude] ERROR: jq is required to inspect the installed plugin state." >&2
+		return 1
+	fi
+
+	local installed_plugins
+	if ! installed_plugins="$(claude plugin list --json)"; then
+		echo "[claude] ERROR: could not inspect installed Claude plugins." >&2
+		return 1
+	fi
+	if ! printf '%s' "$installed_plugins" | jq -e 'type == "array"' >/dev/null 2>&1; then
+		echo "[claude] ERROR: claude plugin list returned malformed JSON." >&2
+		return 1
+	fi
+
+	if printf '%s' "$installed_plugins" |
+		jq -e '.[] | select(.id == "agentkit@agentkit" and .scope == "user")' >/dev/null; then
+		echo "[claude] Updating plugin: agentkit@agentkit"
+		claude plugin update agentkit@agentkit
+	else
+		echo "[claude] Installing plugin: agentkit@agentkit"
+		claude plugin install agentkit@agentkit
+	fi
 
 	# A leftover manual install would run every hook twice (settings.json +
 	# the plugin's hooks.json) — warn loudly, never edit user settings.
@@ -785,7 +806,7 @@ install_claude_plugin() {
 		fi
 	done
 
-	echo "[claude] Plugin installed — restart Claude Code to load it."
+	echo "[claude] Plugin ready — restart Claude Code to load it."
 }
 
 # ─── User Config (~/.config/agentkit/) ───────────────────────────────────────
