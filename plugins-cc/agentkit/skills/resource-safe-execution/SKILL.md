@@ -73,14 +73,13 @@ daemon or user-systemd socket after launch. Preserve the host-level service limi
 capacity that protect the agent host, ingress, and tunnels even if a child evades the workload
 slice.
 
-## Judge by output markers, not exit status
+## Judge by exit status and output markers
 
-`bounded-run` returns exit 0 even on a hard build failure, and a harness completion notice
-repeats that exit code — so a run that never compiled anything reads as success. Judge every
-build and test run by its own output markers (`test result:`, `N pass`, a compiler summary
-line) and treat a missing summary line as failure, not as a silent pass. Treat EMPTY output
-the same way — a run that printed nothing did not pass, it did not run (a lock collision or a
-killed process looks identical to zero failures).
+`bounded-run` propagates the wrapped workload's exit status. Treat a non-zero exit status as
+failure. For builds and test suites, also confirm the expected tool summary (`test result:`,
+`N pass`, or a compiler summary line) before reporting success. A zero status with no expected
+summary, or empty output, does not prove that the intended workload ran. Preserve both signals and
+investigate whenever the exit status and tool output disagree.
 
 ## Preserve connectivity
 

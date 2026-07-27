@@ -91,12 +91,19 @@ git branch -vv | awk '/: gone]/ {print $1}' | xargs -r git branch -D
 
 - Always cut new branches from the freshly pulled default branch — never from another feature
   branch in a squash-merge repo (the follow-up MR will conflict once the first one squashes).
-- At most one feature branch alive per repo at a time, mirroring the mr-police limit.
+- Keep one open agent-authored MR per repo by default, mirroring the mr-police limit. Explicitly
+  coordinated concurrent branches may use separate worktrees, but converge before opening another
+  authored MR.
+
+Use the primary checkout for sequential work. Create a temporary, task-owned worktree only when a
+tool needs checkout isolation or explicitly coordinated work must proceed concurrently. Put it in a
+scratch location outside the repository, and do not keep a permanent worktrees directory. Each task
+owns its checkout; never remove or reuse another active task's worktree.
 
 If the branch had a worktree, **remove the worktree in the same breath as merging it** — a merged
-worktree is a stale checkout of code that no longer exists anywhere else, and they accumulate far
-more quietly than branches do. `git worktree remove` deletes only the checkout; the branch ref
-survives, so this is safe whenever the tree is clean:
+worktree otherwise remains a stale checkout of the pre-squash branch commit even after equivalent
+changes land on the default branch. `git worktree remove` deletes only the checkout; the branch ref
+survives until branch cleanup, so removal is safe whenever the tree is clean:
 
 ```bash
 git worktree list                       # audit BEFORE removing anything
