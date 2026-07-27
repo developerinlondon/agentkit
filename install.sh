@@ -764,8 +764,12 @@ install_claude_plugin() {
 	fi
 
 	echo "[claude] Registering marketplace: $REPO_DIR"
-	claude plugin marketplace add "$REPO_DIR" 2>/dev/null \
-		|| claude plugin marketplace update agentkit
+	if ! claude plugin marketplace add "$REPO_DIR" 2>/dev/null; then
+		if ! claude plugin marketplace update agentkit; then
+			echo "[claude] ERROR: failed to register the agentkit marketplace." >&2
+			return 1
+		fi
+	fi
 
 	if ! command -v jq &>/dev/null; then
 		echo "[claude] ERROR: jq is required to inspect the installed plugin state." >&2
@@ -785,10 +789,31 @@ install_claude_plugin() {
 	if printf '%s' "$installed_plugins" |
 		jq -e '.[] | select(.id == "agentkit@agentkit" and .scope == "user")' >/dev/null; then
 		echo "[claude] Updating plugin: agentkit@agentkit"
-		claude plugin update agentkit@agentkit
+		if ! claude plugin update agentkit@agentkit; then
+			echo "[claude] ERROR: failed to update agentkit@agentkit." >&2
+			return 1
+		fi
 	else
 		echo "[claude] Installing plugin: agentkit@agentkit"
-		claude plugin install agentkit@agentkit
+		if ! claude plugin install agentkit@agentkit; then
+			echo "[claude] ERROR: failed to install agentkit@agentkit." >&2
+			return 1
+		fi
+	fi
+
+	local ready_plugins
+	if ! ready_plugins="$(claude plugin list --json)"; then
+		echo "[claude] ERROR: could not verify the installed Claude plugin." >&2
+		return 1
+	fi
+	if ! printf '%s' "$ready_plugins" | jq -e 'type == "array"' >/dev/null 2>&1; then
+		echo "[claude] ERROR: post-install plugin state was malformed." >&2
+		return 1
+	fi
+	if ! printf '%s' "$ready_plugins" |
+		jq -e '.[] | select(.id == "agentkit@agentkit" and .scope == "user" and .enabled == true)' >/dev/null; then
+		echo "[claude] ERROR: agentkit@agentkit is not enabled after installation or update." >&2
+		return 1
 	fi
 
 	# A leftover manual install would run every hook twice (settings.json +

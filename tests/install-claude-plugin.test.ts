@@ -11,11 +11,18 @@ const functionEnd = installSource.indexOf('\n# ─── User Config', functionS
 const installFunction = installSource.slice(functionStart, functionEnd);
 const homes: string[] = [];
 
-function runPluginInstall(installed: boolean, marketplaceExists = false) {
+function runPluginInstall(
+  installed: boolean,
+  marketplaceExists = false,
+  operationExit = 0,
+  postInstallState = '[{"id":"agentkit@agentkit","scope":"user","enabled":true}]',
+  marketplaceUpdateExit = 0,
+) {
   const home = mkdtempSync(join(tmpdir(), 'agentkit-plugin-install-'));
   homes.push(home);
   const bin = join(home, 'bin');
   const log = join(home, 'claude.log');
+  const listCount = join(home, 'list-count');
   mkdirSync(bin);
   writeFileSync(
     join(bin, 'claude'),
@@ -24,8 +31,26 @@ printf '%s\\n' "$*" >> "$CLAUDE_CALL_LOG"
 if [ "$1 $2 $3" = "plugin marketplace add" ]; then
   exit "${marketplaceExists ? 1 : 0}"
 fi
+if [ "$1 $2 $3" = "plugin marketplace update" ]; then
+  exit "$CLAUDE_MARKETPLACE_UPDATE_EXIT"
+fi
 if [ "$1 $2 $3" = "plugin list --json" ]; then
-  printf '%s\\n' "$CLAUDE_PLUGIN_LIST_JSON"
+  count=0
+  if [ -f "$CLAUDE_LIST_COUNT" ]; then
+    count="$(cat "$CLAUDE_LIST_COUNT")"
+  fi
+  count=$((count + 1))
+  printf '%s\\n' "$count" > "$CLAUDE_LIST_COUNT"
+  if [ "$count" -eq 1 ]; then
+    printf '%s\\n' "$CLAUDE_PLUGIN_LIST_JSON"
+  else
+    printf '%s\\n' "$CLAUDE_POST_INSTALL_JSON"
+  fi
+  exit 0
+fi
+if [ "$1 $2 $3" = "plugin install agentkit@agentkit" ] ||
+   [ "$1 $2 $3" = "plugin update agentkit@agentkit" ]; then
+  exit "$CLAUDE_OPERATION_EXIT"
 fi
 `,
   );
@@ -33,15 +58,24 @@ fi
 
   const result = spawnSync(
     'bash',
-    ['-c', `set -euo pipefail\nREPO_DIR="$1"\n${installFunction}\ninstall_claude_plugin`, 'bash', repoRoot],
+    [
+      '-c',
+      `set -euo pipefail\nREPO_DIR="$1"\n${installFunction}\nif install_claude_plugin; then exit 0; else exit $?; fi`,
+      'bash',
+      repoRoot,
+    ],
     {
       encoding: 'utf-8',
       env: {
         ...process.env,
         CLAUDE_CALL_LOG: log,
+        CLAUDE_LIST_COUNT: listCount,
+        CLAUDE_MARKETPLACE_UPDATE_EXIT: String(marketplaceUpdateExit),
+        CLAUDE_OPERATION_EXIT: String(operationExit),
         CLAUDE_PLUGIN_LIST_JSON: installed
           ? '[{"id":"agentkit@agentkit","scope":"user"}]'
           : '[]',
+        CLAUDE_POST_INSTALL_JSON: postInstallState,
         HOME: home,
         PATH: `${bin}:${process.env.PATH}`,
       },
@@ -71,5 +105,38 @@ describe('Claude plugin install lifecycle', () => {
     expect(calls).toContain('plugin list --json');
     expect(calls).toContain('plugin update agentkit@agentkit');
     expect(calls).not.toContain('plugin install agentkit@agentkit');
+  });
+
+  test('does not report readiness when a fresh install fails inside the caller condition', () => {
+    const { result } = runPluginInstall(false, false, 42);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('failed to install agentkit@agentkit');
+    expect(result.stdout).not.toContain('Plugin ready');
+  });
+
+  test('does not continue when marketplace registration and refresh both fail', () => {
+    const { result } = runPluginInstall(false, true, 0, undefined, 44);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('failed to register the agentkit marketplace');
+    expect(result.stdout).not.toContain('Plugin ready');
+  });
+
+  test('does not report readiness when an existing plugin update fails inside the caller condition', () => {
+    const { result } = runPluginInstall(true, true, 43);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('failed to update agentkit@agentkit');
+    expect(result.stdout).not.toContain('Plugin ready');
+  });
+
+  test('requires the post-operation plugin state to be user-scoped and enabled', () => {
+    const { result } = runPluginInstall(
+      false,
+      false,
+      0,
+      '[{"id":"agentkit@agentkit","scope":"user","enabled":false}]',
+    );
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('not enabled after installation');
+    expect(result.stdout).not.toContain('Plugin ready');
   });
 });
