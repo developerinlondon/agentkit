@@ -72,6 +72,34 @@ describe("shared ~/.agentkit root + client symlinks", () => {
         readlinkSync(join(home, ".claude", "hooks", "git-police.sh")),
       ).toBe(join(home, ".agentkit", "hooks", "git-police.sh"));
 
+      // Dual-payload helper: real file in canon; client lib is a directory
+      // symlink (not nested file self-links — that loop made every police
+      // fail open after shared-root install).
+      const canonLibDir = join(home, ".agentkit", "hooks", "lib");
+      const canonLib = join(canonLibDir, "hook-input.sh");
+      const clientLibDir = join(home, ".claude", "hooks", "lib");
+      const clientLib = join(clientLibDir, "hook-input.sh");
+      expect(existsSync(canonLib)).toBe(true);
+      expect(lstatSync(canonLib).isSymbolicLink()).toBe(false);
+      expect(lstatSync(clientLibDir).isSymbolicLink()).toBe(true);
+      expect(readlinkSync(clientLibDir)).toBe(canonLibDir);
+      expect(existsSync(clientLib)).toBe(true);
+      expect(readFileSync(clientLib, "utf-8")).toContain("agentkit_command");
+      const probe = spawnSync(
+        "bash",
+        [join(home, ".claude", "hooks", "git-police.sh")],
+        {
+          input: JSON.stringify({
+            toolName: "run_terminal_command",
+            toolInput: { command: "git push --force origin main" },
+          }),
+          encoding: "utf-8",
+          env: { ...process.env, HOME: home },
+        },
+      );
+      expect(probe.status, probe.stderr + "\n" + probe.stdout).toBe(0);
+      expect(probe.stdout).toContain('"decision": "deny"');
+
       // Shared root is advertised in the summary.
       expect(result.stdout).toContain(`Shared root:     ${join(home, ".agentkit")}`);
       expect(readdirSync(canon).length).toBeGreaterThan(5);
