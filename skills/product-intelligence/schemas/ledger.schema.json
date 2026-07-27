@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentkit.sbs/schemas/product-intelligence/ledger.schema.json",
+  "title": "Product-intelligence evidence ledger",
+  "description": "Flat, auditable record of every material claim in a product brief. Each claim is one atomic proposition carrying its source, evidence class, and confidence. Contradictions are recorded, never reconciled.",
+  "type": "object",
+  "required": ["ledger_version", "generated_by", "generated_at", "claims"],
+  "additionalProperties": false,
+  "properties": {
+    "ledger_version": {
+      "description": "Semver of the ledger schema this document targets. Backward-compatible across minors.",
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+(\\.[0-9]+)?$"
+    },
+    "generated_by": {
+      "description": "Tool/skill identifier that produced this ledger.",
+      "type": "string",
+      "minLength": 1
+    },
+    "generated_at": {
+      "description": "ISO-8601 date (or date-time) the ledger was produced.",
+      "type": "string",
+      "format": "date-time"
+    },
+    "claims": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/claim" }
+    }
+  },
+  "$defs": {
+    "claim": {
+      "type": "object",
+      "required": ["id", "statement", "class", "confidence"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "Stable, referenceable handle. A claim may be restated in prose anywhere without duplicating the entry.",
+          "type": "string",
+          "pattern": "^C-[0-9]{3,}$"
+        },
+        "statement": {
+          "description": "Exactly one atomic proposition. A statement needing 'and' is two claims.",
+          "type": "string",
+          "minLength": 1
+        },
+        "class": {
+          "description": "What kind of statement this is. Independent of confidence and never merged with it.",
+          "enum": ["observed", "inferred", "proposed", "unverified"]
+        },
+        "confidence": {
+          "description": "How solid the basis is. Independent of class.",
+          "enum": ["high", "moderate", "low"]
+        },
+        "sources": {
+          "description": "Where the claim comes from. Required for observed/inferred; empty is only valid for proposed/unverified.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/source" }
+        },
+        "derived_from": {
+          "description": "Claim ids this claim is inferred from. Populated only when class is 'inferred'.",
+          "type": "array",
+          "items": { "type": "string", "pattern": "^C-[0-9]{3,}$" }
+        },
+        "contradicts": {
+          "description": "Claim ids this claim stands in unresolved contradiction with. A populated value is a valid terminal state — rendered in the brief, never silently resolved.",
+          "type": "array",
+          "items": { "type": "string", "pattern": "^C-[0-9]{3,}$" }
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "required": ["locator", "quote", "stance", "as_of"],
+      "additionalProperties": false,
+      "properties": {
+        "locator": {
+          "description": "Structural pointer that survives edits: 'site:/pricing#plans', 'repo:README.md:40-52', 'doc:brief.pdf#p3'.",
+          "type": "string",
+          "minLength": 1
+        },
+        "quote": {
+          "description": "Verbatim excerpt from the source. The quote is what makes a fabricated citation catchable without opening the source.",
+          "type": "string",
+          "minLength": 1
+        },
+        "stance": {
+          "description": "How this source relates to the claim.",
+          "enum": ["supports", "refutes", "context"]
+        },
+        "as_of": {
+          "description": "ISO-8601 date the source was retrieved or published.",
+          "type": "string",
+          "format": "date"
+        }
+      }
+    }
+  }
+}
