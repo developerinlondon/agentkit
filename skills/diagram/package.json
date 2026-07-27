@@ -1,0 +1,16 @@
+{
+  "name": "diagram-skill",
+  "private": true,
+  "dependencies": {
+    "@excalidraw/excalidraw": "0.18.1",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "playwright-core": "1.62.0",
+    "@types/bun": "^1.2.19"
+  },
+  "scripts": {
+    "build": "bun build renderer/entry.ts --bundle --outfile renderer/bundle.js --target browser --define process.env.NODE_ENV='\"production\"'"
+  }
+}
