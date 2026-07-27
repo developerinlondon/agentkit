@@ -37,7 +37,9 @@ surfaces:
       silently allowed. When the exact target commit has
       `.agentkit/review-policy.json`, the hook ignores source-policy weakening,
       derives changed paths from the exact commits, and requires strict v2
-      evidence through the bundled `review-gate` validator.
+      evidence through the bundled `review-gate` validator. A timeout, crash,
+      or malformed response from that policy hook is converted to an explicit
+      deny before the host hook deadline.
 
   - name: review-gate
     kind: cli
@@ -76,9 +78,10 @@ requires:
       Local containment is Linux-only and requires cgroup v2, a systemd user
       manager, and a provisioned agent-work.slice. On non-Linux hosts the
       installer omits bounded-run and its Codex resource policy. OpenCode
-      delegation protection remains active. Claude hook protection requires
-      jq, awk, and cat; when one is unavailable the hook warns and intentionally
-      fails open.
+      delegation protection remains active. Claude hooks require jq, awk, cat,
+      and python3. The review gate fails closed when its jq/python3 evaluation
+      cannot run; some older non-review hooks still fail open when an optional
+      dependency is unavailable.
     - >-
       This repo's own hooks are usually already active on a developer machine
       and will intercept naive verification. Two you WILL hit: running the

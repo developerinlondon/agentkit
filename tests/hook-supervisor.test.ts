@@ -1,0 +1,73 @@
+import { afterEach, describe, expect, test } from 'bun:test';
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { spawnSync } from 'node:child_process';
+
+const ROOT = join(import.meta.dir, '..');
+const SUPERVISOR = join(ROOT, 'hooks', 'claude', 'fail-closed-hook.sh');
+const roots: string[] = [];
+
+function child(body: string): string {
+  const root = mkdtempSync(join(tmpdir(), 'agentkit-hook-supervisor-'));
+  roots.push(root);
+  const path = join(root, 'child.sh');
+  writeFileSync(path, `#!/usr/bin/env bash\n${body}\n`);
+  chmodSync(path, 0o755);
+  return path;
+}
+
+function run(path: string, deadline = '1') {
+  return spawnSync('bash', [SUPERVISOR, deadline, path], {
+    input: '{"tool_name":"Bash","tool_input":{"command":"gh pr merge 12"}}',
+    encoding: 'utf-8',
+    timeout: 4_000,
+  });
+}
+
+afterEach(() => {
+  for (const root of roots.splice(0)) rmSync(root, { force: true, recursive: true });
+});
+
+describe('fail-closed hook supervisor', () => {
+  test('relays a fast silent pass and a valid denial unchanged', () => {
+    const pass = run(child('cat >/dev/null'));
+    expect(pass.status).toBe(0);
+    expect(pass.stdout).toBe('');
+
+    const denial = '{"decision":"deny","reason":"fixture"}';
+    const denied = run(child(`cat >/dev/null; printf '%s\\n' '${denial}'`));
+    expect(denied.status).toBe(0);
+    expect(denied.stdout.trim()).toBe(denial);
+  });
+
+  test('turns timeout, crash, and malformed output into explicit denials', () => {
+    const cases = [
+      child('cat >/dev/null; sleep 5'),
+      child('cat >/dev/null; exit 7'),
+      child('cat >/dev/null; echo not-json'),
+    ];
+    for (const path of cases) {
+      const result = run(path);
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain('"permissionDecision":"deny"');
+      expect(result.stdout).toContain('fail-closed hook supervisor');
+    }
+  });
+
+  test('keeps the child deadline below both registered host deadlines', () => {
+    const source = JSON.parse(readFileSync(join(ROOT, 'hooks', 'claude', 'settings.json'), 'utf-8'));
+    const plugin = JSON.parse(
+      readFileSync(join(ROOT, 'plugins-cc', 'agentkit', 'hooks', 'hooks.json'), 'utf-8'),
+    );
+    for (const settings of [source, plugin]) {
+      const entries = settings.hooks.PreToolUse.flatMap((group: any) => group.hooks);
+      const reviewEntries = entries.filter((entry: any) => entry.command.includes('review-police.sh'));
+      expect(reviewEntries).toHaveLength(2);
+      for (const entry of reviewEntries) {
+        expect(entry.command).toContain('fail-closed-hook.sh 45');
+        expect(entry.timeout).toBe(60);
+      }
+    }
+  });
+});

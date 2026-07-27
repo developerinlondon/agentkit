@@ -41,9 +41,10 @@ Exceptions: bug fixes in already-approved work, read-only research, formatting.
 
 ## Review Gates The Merge
 
-Review is a gate, not a parallel task and not advice. `review-police.sh`
-blocks the CLI, REST and MCP merge paths without a passing record for the exact
-source head selected by the forge.
+Review is a gate, not a parallel task and not advice. `review-police.sh` allows
+one standalone `gh pr merge` or `glab mr merge` only with a passing record for
+the exact source head selected by the forge. It refuses direct REST/GraphQL/MCP
+and compound or wrapped merges because they cannot be bound safely.
 
 Be honest about its limits: the record lives in the repo and you can write it,
 so the hook cannot _prevent_ a determined bypass — it makes the honest path
@@ -55,6 +56,9 @@ gate as something it is not.
 1. **Review completes before the merge starts.** Never dispatch a reviewer and
    merge while it works — a verdict that lands after the code is on main
    protects nobody.
+   Run the approved merge as its own literal forge CLI command. Do not combine
+   it with a push, another merge, command substitution, or any other shell
+   action: PreToolUse sees the compound call only once, before any part runs.
 2. **The reviewer writes its evidence index** to
    `.agentkit/reviews/<branch-slug>.json`. When the exact target commit contains
    `.agentkit/review-policy.json`, this is a strict v2 record bound to forge,

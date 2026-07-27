@@ -177,6 +177,17 @@ fi
 # of tokenising: the word `push` inside a commit message is one token of prose,
 # never the command word.
 has() { printf '%s' "$COMMAND" | grep -qxF -- "$1"; }
+# Match a command name by basename too: an absolute `.../glab` reaches the same
+# forge as `glab` and must not evade a name-only detector.
+has_basename() {
+	printf '%s' "$COMMAND" | awk -v wanted="$1" '
+		{
+			n = split($0, parts, "/")
+			if (parts[n] == wanted) found = 1
+		}
+		END { exit(found ? 0 : 1) }
+	'
+}
 # Any token matching a regex (URLs keep their value through tokenisation).
 tok_match() { printf '%s' "$COMMAND" | grep -qiE -- "$1"; }
 # The token following the first occurrence of a given token.
@@ -190,21 +201,32 @@ after() { printf '%s' "$COMMAND" | awk -v k="$1" 'p { print; exit } $0 == k { p 
 # `grep -q … && is_merge=1` returns non-zero when the pattern misses, and under
 # `set -e` that exits the hook silently — i.e. FAILS OPEN, allowing the merge.
 is_merge=0
-if has glab && has mr && has merge; then is_merge=1; fi
-if has gh && has pr && has merge; then is_merge=1; fi
+direct_api_merge=0
+if has_basename glab && has mr && has merge; then is_merge=1; fi
+if has_basename glab && has mr && has accept; then is_merge=1; fi
+if has_basename gh && has pr && has merge; then is_merge=1; fi
 # The merge path IS the attempt, whatever calls it: any caller allowlist leaves
 # python, node, ruby and every wrapper script outside it. Reading such a URL
 # therefore denies too — a false deny is the cheaper failure here.
-if tok_match 'merge_requests?(/|%2f)[0-9]+(/|%2f)merge|/pulls/[0-9]+/merge'; then is_merge=1; fi
+if tok_match 'merge_requests?(/|%2f)[0-9]+(/|%2f)merge|/pulls/[0-9]+/merge'; then
+	is_merge=1
+	direct_api_merge=1
+fi
 # GraphQL reaches the same act by name rather than by path, so no URL shape
 # appears at all. These are the merge mutations either forge exposes.
-if tok_match 'mergeRequestAccept|mergePullRequest'; then is_merge=1; fi
+if tok_match 'mergeRequestAccept|mergePullRequest'; then
+	is_merge=1
+	direct_api_merge=1
+fi
 # Split-variable form: the URL is assembled at runtime. What separates that from
 # prose is not an interpolation — `$(…)`, backticks, `$1` and a string built
 # inside an interpreter all lack one — but ADJACENCY: an assembled path has
 # something joined to /merge, while English puts a space before it.
 if echo "$RAW_COMMAND" | grep -qiE 'merge_requests?|/pulls?/' &&
-	echo "$RAW_COMMAND" | grep -qE '[^[:space:]]/merge\b'; then is_merge=1; fi
+	echo "$RAW_COMMAND" | grep -qE '[^[:space:]]/merge\b'; then
+	is_merge=1
+	direct_api_merge=1
+fi
 # Gate on an actual `git push` — `-o` is ubiquitous (grep -o, curl -o, cc -o),
 # so matching it bare denied commands that merely MENTIONED the pattern,
 # including grepping for the rule this hook enforces. As tokens: the option's
@@ -233,6 +255,96 @@ gate can check the commit that actually lands."
 fi
 [[ $is_merge -eq 1 ]] || exit 0
 
+# A REST/GraphQL endpoint carries its own repository identity, which may differ
+# from the current checkout. Resolving only its numeric change id through the
+# checkout would let an approved local change authorise a same-numbered change
+# elsewhere. Refuse the unbindable form; the typed forge CLI supplies repository
+# context that forge_json can resolve and compare with the evidence record.
+if [[ $direct_api_merge -eq 1 ]]; then
+	deny "BLOCKED: a direct REST merge or GraphQL merge mutation cannot be bound to the reviewed repository context.
+
+Use 'gh pr merge' or 'glab mr merge' with an explicit repository when needed so
+the gate can resolve and verify the exact change before it lands."
+fi
+
+# PreToolUse observes the whole Bash tool call only once. If that call can run
+# anything around the merge, the checked head may no longer be the head that
+# lands (`git push B && glab mr merge 12`), or a second change may merge after
+# the first record is accepted. Permit only one literal, top-level forge CLI
+# invocation. This parser is also the single source of CLI, change ID, and
+# repository selector; re-scanning the flattened token set would reintroduce
+# disagreement over which change the actual CLI targets.
+parse_standalone_forge_merge() {
+	printf '%s' "$RAW_COMMAND" | python3 -c '
+import json, shlex, sys
+
+raw = sys.stdin.read()
+if "\n" in raw or "$" in raw or chr(96) in raw:
+    raise SystemExit(1)
+
+try:
+    lex = shlex.shlex(raw, posix=True, punctuation_chars="();<>|&" + chr(96))
+    lex.whitespace_split = True
+    lex.commenters = "#"
+    tokens = list(lex)
+except ValueError:
+    raise SystemExit(1)
+
+if len(tokens) < 4:
+    raise SystemExit(1)
+if any(token and all(char in "();<>|&" + chr(96) for char in token) for token in tokens):
+    raise SystemExit(1)
+if any(any(char in token for char in "*?[]{}") for token in tokens):
+    raise SystemExit(1)
+
+tool = tokens[0]
+expected_group = "pr" if tool == "gh" else "mr" if tool == "glab" else ""
+if tokens[:3] != [tool, expected_group, "merge"] or not tokens[3].isdigit():
+    raise SystemExit(1)
+if tokens.count("merge") != 1:
+    raise SystemExit(1)
+
+repo = ""
+selectors = 0
+i = 4
+while i < len(tokens):
+    token = tokens[i]
+    if token in {"-R", "--repo"}:
+        i += 1
+        if i >= len(tokens) or not tokens[i] or tokens[i].startswith("-"):
+            raise SystemExit(1)
+        selectors += 1
+        repo = tokens[i]
+    elif token.startswith("--repo="):
+        value = token[len("--repo="):]
+        if not value:
+            raise SystemExit(1)
+        selectors += 1
+        repo = value
+    elif token.startswith("-R") or token.startswith("--repo") or token.startswith("--host"):
+        raise SystemExit(1)
+    i += 1
+
+if selectors > 1:
+    raise SystemExit(1)
+print(json.dumps({"cli": tool, "change_id": int(tokens[3]), "repository": repo}))
+' 2>/dev/null
+}
+if ! CLI_CONTEXT=$(parse_standalone_forge_merge); then
+	deny "BLOCKED: a reviewed merge must be one standalone forge CLI command.
+
+Do not wrap or combine it with pushes, command substitutions, other merges, or
+other shell commands. Use the literal form 'gh pr merge <id>' or 'glab mr merge
+<id>', with any flags after the numeric ID, so the head checked by the gate is
+the head that lands."
+fi
+CLI=$(jq -r '.cli // empty' <<<"$CLI_CONTEXT" 2>/dev/null || true)
+MR_ID=$(jq -r '.change_id // empty' <<<"$CLI_CONTEXT" 2>/dev/null || true)
+REPO_FLAG=$(jq -r '.repository // empty' <<<"$CLI_CONTEXT" 2>/dev/null || true)
+if [[ ( "$CLI" != "gh" && "$CLI" != "glab" ) || ! "$MR_ID" =~ ^[0-9]+$ ]]; then
+	deny 'BLOCKED: the standalone merge command could not be bound to one literal change ID.'
+fi
+
 # Auto-merge queues the merge for a LATER head — the sha we check now is not
 # the sha that lands. Refuse the mode rather than pretend to gate it.
 if tok_match '^--(auto|merge-when-pipeline-succeeds|when-pipeline-succeeds)$'; then
@@ -245,26 +357,10 @@ fi
 # --- Resolve WHAT is being merged, from the forge ---------------------------
 # Fail CLOSED: if the target cannot be resolved, the gate denies. An
 # unresolvable merge is exactly when a mistake is most likely.
-REPO_DIR=$(after cd)
-[[ -z "$REPO_DIR" ]] && REPO_DIR="$PWD"
-
-# The FIRST NUMERIC token after `merge` — not the immediately-next one. Flags
-# before `merge` are separate tokens and so take care of themselves, but a flag
-# AFTER it (`gh pr merge --squash 999`) still sits between the verb and the id.
-# Extraction losing the id denies honest merges with a misleading reason.
-MR_ID=$(printf '%s' "$COMMAND" | awk '
-	p && /^[0-9]+$/ { print; exit }
-	$0 == "merge" { p = 1 }
-' || true)
-if [[ -z "$MR_ID" ]]; then
-	MR_ID=$(printf '%s' "$COMMAND" | grep -oiE 'merge_requests?/[0-9]+|/pulls/[0-9]+' | grep -oE '[0-9]+' | head -1 || true)
-fi
-REPO_FLAG=$(after -R)
-[[ -z "$REPO_FLAG" ]] && REPO_FLAG=$(after --repo)
-[[ -z "$REPO_FLAG" ]] && REPO_FLAG=$(printf '%s' "$COMMAND" | sed -nE 's/^--repo=(.+)$/\1/p' | head -1 || true)
+REPO_DIR="$PWD"
 
 forge_json() {
-	if has gh || tok_match '/pulls/'; then
+	if [[ "$CLI" == "gh" ]]; then
 		local details repo_json repository repository_id host target_branch encoded_target target_json repo_name
 		details=$(gh pr view "$MR_ID" ${REPO_FLAG:+--repo "$REPO_FLAG"} \
 			--json headRefName,headRefOid,baseRefName,baseRefOid 2>/dev/null) || return 1

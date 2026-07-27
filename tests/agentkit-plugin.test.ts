@@ -40,7 +40,7 @@ describe('agentkit plugin manifest', () => {
   test('plugin.json declares name agentkit and wires hooks, skills, and mcpServers', () => {
     const plugin = readJson('.claude-plugin', 'plugin.json');
     expect(plugin.name).toBe('agentkit');
-    expect(plugin.version).toBe('0.2.0');
+    expect(plugin.version).toBe('0.3.0');
     expect(plugin.hooks).toBe('./hooks/hooks.json');
     expect(plugin.skills).toBe('./skills/');
     expect(plugin.mcpServers).toBe('./.mcp.json');
@@ -114,6 +114,8 @@ describe('agentkit plugin hooks', () => {
       expect(readFileSync(join(pluginDir, 'hooks', script), 'utf-8')).toBe(
         readFileSync(join(sourceHooks, script), 'utf-8'),
       );
+      expect(statSync(join(pluginDir, 'hooks', script)).mode & 0o111, `${script} is executable`)
+        .not.toBe(0);
     }
   });
 });
@@ -205,7 +207,8 @@ describe('marketplace lists the agentkit plugin', () => {
 
     const agentkit = marketplace.plugins.find((p: { name: string }) => p.name === 'agentkit');
     expect(agentkit.source).toBe('./plugins-cc/agentkit');
-    expect(agentkit.version).toBe('0.2.0');
+    expect(agentkit.version).toBe(readJson('.claude-plugin', 'plugin.json').version);
+    expect(agentkit.version).toBe('0.3.0');
     expect(agentkit.description).toContain('bounded-run');
     expect(agentkit.description).toContain('agent-work.slice');
     expect(agentkit.description).toContain('Linux bounded execution additionally requires');

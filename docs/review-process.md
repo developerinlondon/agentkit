@@ -16,7 +16,7 @@ flowchart LR
   B --> D[review-gate]
   C --> D
   E[local v2 evidence index] --> D
-  D -->|valid pass| F[CLI merge may run]
+  D -->|valid pass| F[one standalone forge CLI merge may run]
   D -->|invalid or blocked| G[explicit deny]
 ```
 
@@ -160,6 +160,18 @@ records may use the existing explicit-consent claim only when target policy
 allows it; the hook logs that path. Missing or malformed evidence is invalid and
 cannot be consented away.
 
+The evidence token can authorize only one literal, top-level `gh pr merge` or
+`glab mr merge` invocation. Direct REST/GraphQL and MCP merges are refused, as
+are shell wrappers, command substitutions, compound commands, multiple merge
+verbs, and commands that could update the source before merging it. This is
+deliberately fail-closed: a single PreToolUse decision cannot prove which head a
+later command in the same shell call will land.
+
+Claude command-hook cancellation is non-blocking, so both registrations invoke
+`review-police` through `fail-closed-hook.sh`. The child has 45 seconds inside a
+60-second host deadline. A child timeout, crash, or malformed non-empty output
+becomes a valid deny response before Claude reaches its fail-open timeout.
+
 ## Reviewer workflow
 
 Use the `adversarial-review` skill for plan and implementation refutation. Feed
@@ -197,8 +209,12 @@ strict policy.
 - `source_sha` is the exact reviewed source head, not a generated squash/merge
   commit. Integrated-result assurance requires a protected merge-ref/merge-queue
   CI check.
-- The hook observes forge state before the merge command; only an atomic
-  forge-side expected-head condition removes the final race.
+- The hook observes forge state immediately before a standalone merge and
+  refuses compound/wrapped calls that could mutate it first. Only an atomic
+  forge-side expected-head condition removes the remaining external race.
+- The supervisor closes bounded child failures, not cancellation of the
+  supervisor process itself. Local hooks remain defense in depth; protected
+  forge checks and approvals are the enforcement boundary.
 - Claude Code and Grok currently invoke this hook. The validator is portable,
   but Codex and OpenCode runtime registration is separate work; do not claim
   local interception there yet.

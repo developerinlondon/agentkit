@@ -36,8 +36,8 @@
           },
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/review-police.sh",
-            "timeout": 15,
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/fail-closed-hook.sh 45 ${CLAUDE_PLUGIN_ROOT}/hooks/review-police.sh",
+            "timeout": 60,
             "statusMessage": "review-police: verifying the review gate..."
           }
         ]
@@ -47,8 +47,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/review-police.sh",
-            "timeout": 15,
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/fail-closed-hook.sh 45 ${CLAUDE_PLUGIN_ROOT}/hooks/review-police.sh",
+            "timeout": 60,
             "statusMessage": "review-police: gating non-Bash merge tools..."
           }
         ]

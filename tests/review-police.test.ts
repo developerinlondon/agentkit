@@ -597,6 +597,54 @@ describe('review-police: bypasses found in adversarial review', () => {
     }
   });
 
+  test('a passing local record cannot authorise an explicit REST target', () => {
+    record(passing);
+    // REST endpoints carry their own repository identity. Resolving change 12
+    // from the current checkout would let an approved local record authorise a
+    // different repository that happens to use the same change number.
+    for (const cmd of [
+      'gh api --method PUT repos/other/repo/pulls/12/merge',
+      'glab api --method PUT projects/999/merge_requests/12/merge',
+    ]) {
+      const out = runHook(cmd);
+      expect(out, cmd).toContain('"deny"');
+      expect(out, cmd).toContain('direct REST merge');
+    }
+  });
+
+  test('only one standalone literal forge merge can consume a passing record', () => {
+    record(passing);
+    const nextHead = 'b'.repeat(40);
+    for (const cmd of [
+      'glab mr merge 12 --yes; glab mr merge 999 --yes',
+      `git push origin ${nextHead}:refs/heads/feat/thing && glab mr merge 12 --yes`,
+      'bash -c "glab mr merge 12 --yes"',
+      'glab mr merge 12 --yes\nglab mr merge 999 --yes',
+      'glab mr merge 12 --repo "$(git push origin HEAD:feat/thing && echo owner/repo)"',
+      'gh pr merge 12 $MERGE_ARGS',
+      'gh pr merge 12 --repo owner/reviewed --repo owner/unreviewed',
+      '/usr/local/bin/gh pr merge 12 --squash',
+      'glab mr accept 12 --yes',
+    ]) {
+      const out = runHook(cmd);
+      expect(out, cmd).toContain('"deny"');
+      expect(out, cmd).toContain('standalone forge CLI command');
+    }
+  });
+
+  test('a path-qualified forge CLI does not evade merge detection', () => {
+    record(passing);
+    expect(runHook('/usr/local/bin/glab mr merge 999 --yes')).toContain('"deny"');
+    expect(runHook('/usr/local/bin/gh pr merge 999 --squash')).toContain('"deny"');
+  });
+
+  test('a numeric flag value cannot be mistaken for the change id', () => {
+    record({ head_sha: 'b'.repeat(40), verdict: 'pass', findings: [] }, 'other__branch');
+    const out = runHook('gh pr merge --body 999 12 --squash');
+    expect(out).toContain('"deny"');
+    expect(out).toContain('standalone forge CLI command');
+  });
+
   test('URL shapes that vary the path do not evade', () => {
     record(passing);
     // Each of these reaches the same endpoint by a slightly different spelling.
@@ -673,12 +721,10 @@ describe('review-police: bypasses found in adversarial review', () => {
     expect(runHook('curl -X POST https://gitlab.com/api/v4/projects/1/merge_requests -d x')).toBe('');
   });
 
-  test('a flag with its own argument does not lose the MR id', () => {
+  test('repository selectors after the literal change id remain bindable', () => {
     record(passing);
-    // Detection caught this variant but extraction dropped the id, so it
-    // denied an honest merge with "cannot resolve".
-    expect(runHook('glab mr --repo group/proj merge 12')).toBe('');
-    expect(runHook('gh pr --repo owner/repo merge 12')).toBe('');
+    expect(runHook('glab mr merge 12 --repo group/proj')).toBe('');
+    expect(runHook('gh pr merge 12 --repo owner/repo')).toBe('');
   });
 
   test('H1: -R / --repo flag variants are still gated', () => {
@@ -701,9 +747,9 @@ describe('review-police: bypasses found in adversarial review', () => {
     expect(runHook('cd /tmp && glab mr merge 12', { cwd: '/tmp' })).toContain('"deny"');
   });
 
-  test('H2b: a merge with no MR id cannot be gated, so it is denied', () => {
+  test('H2b: a merge with no MR id is not a canonical command, so it is denied', () => {
     record(passing);
-    expect(runHook('glab mr merge')).toContain('cannot resolve');
+    expect(runHook('glab mr merge')).toContain('standalone forge CLI command');
   });
 
   test('M2: auto-merge is refused — it lands a head no review has seen', () => {
@@ -796,16 +842,12 @@ describe('review-police: bypasses found in adversarial review', () => {
     }
   });
 
-  test('a flag AFTER merge does not lose the MR id', () => {
+  test('the literal change id precedes merge flags', () => {
     record(passing);
-    // Fails closed rather than open, but it denies an honest merge with a
-    // reason that misdiagnoses the cause.
-    expect(runHook('gh pr merge --squash 12')).toBe('');
-    expect(runHook('glab mr merge --yes 12')).toBe('');
-    // The allow-cases alone cannot catch a broken extraction: an unresolvable
-    // id makes the fake forge fall back to MR 12's branch, so they pass either
-    // way. These pin that the id READ is the id GIVEN — a different MR must
-    // still be denied when a flag sits between the verb and the number.
+    expect(runHook('gh pr merge 12 --squash')).toBe('');
+    expect(runHook('glab mr merge 12 --yes')).toBe('');
+    expect(runHook('gh pr merge --squash 12')).toContain('standalone forge CLI command');
+    expect(runHook('glab mr merge --yes 12')).toContain('standalone forge CLI command');
     expect(runHook('gh pr merge --squash 999')).toContain('"deny"');
     expect(runHook('glab mr merge --yes 999')).toContain('"deny"');
   });

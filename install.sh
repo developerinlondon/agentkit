@@ -583,7 +583,7 @@ merge_claude_settings() {
 	hooks_json=$(jq --arg dir "$hooks_dir" '
     {hooks: (.hooks | with_entries(
       .value |= map(.hooks |= map(
-        .command |= sub("^\\$HOME/\\.claude/hooks"; $dir)
+        .command |= gsub("\\$HOME/\\.claude/hooks"; $dir)
       ))
     ))}
   ' "$canonical")
