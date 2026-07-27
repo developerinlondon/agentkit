@@ -2,7 +2,7 @@
 import { marked } from "marked";
 import { createHmac, randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
-import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -62,8 +62,7 @@ const slugKeyPath = join(homedir(), ".config/agentkit/pages-slug-key");
 async function slugKey(): Promise<string> {
   if (existsSync(slugKeyPath)) return (await readFile(slugKeyPath, "utf8")).trim();
   const key = randomBytes(32).toString("hex");
-  await writeFile(slugKeyPath, key);
-  await chmod(slugKeyPath, 0o600);
+  await writeFile(slugKeyPath, key, { mode: 0o600 });
   console.error(`note: generated new slug key at ${slugKeyPath} — copy it to other machines for same-name URL determinism`);
   return key;
 }
