@@ -30,15 +30,21 @@ bun <skill-dir>/publish.ts --slug <slug> --file <content-file> [--template doc|d
 
 ## Requirements and behavior
 
-- Publish token: `~/.config/agentkit/pages-token` (mint at agentkit.sbs; on eda
-  it is already provisioned, canonical copy in OpenBao
-  `secrets/platform/agentkit/pages`).
+- Publish token: `~/.config/agentkit/pages-token` (mint at agentkit.sbs).
 - Themes are bundled with the skill; if a clone of `gitlab.com/agentkit/agentkit-pages`
   exists at `~/code/agentkit-pages` (override: `AGENTKIT_PAGES_REPO`), the publish
   also commits `src/` + `dist/` there for canonical history — otherwise it
   serves-only and says so. Endpoint override: `AGENTKIT_PAGES_ENDPOINT`.
 - Pages are **public by slug** (unguessable is NOT private) — never publish
   secrets, tokens, or personal data. Accounts/private pages are a coming phase.
+  "Without asking" covers slug/template/mechanics only: when the user asked to
+  publish, publish. When YOU are proposing the page and its content derives from
+  private material (client data, internal repos, credentials-adjacent config),
+  confirm with the user before publishing.
+- Slug collisions overwrite silently, and on machines without the pages repo
+  clone there is no git history to recover from — pick distinctive slugs, and
+  reuse a slug only when deliberately updating that page. `--no-git` skips the
+  canonical commit explicitly (same effect as a missing clone).
 - Pages must be self-contained: inline all CSS/JS, `data:` URIs for images. The
   serving CSP blocks every external request. Max 5 MB.
 - Errors are loud; fix and re-run. Do not fall back to pasting the content into

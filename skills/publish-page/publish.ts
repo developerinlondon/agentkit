@@ -78,6 +78,12 @@ async function render(): Promise<string> {
   const themePath = existsSync(repoTheme) ? repoTheme : bundledTheme;
   if (!existsSync(themePath)) fail(`theme not found: ${repoTheme} or ${bundledTheme}`);
   const theme = await readFile(themePath, "utf8");
+  if (themePath === repoTheme && existsSync(bundledTheme)) {
+    const bundled = await readFile(bundledTheme, "utf8");
+    if (bundled !== theme) {
+      console.error(`warning: bundled theme drifted from canonical ${repoTheme} — re-sync skills/publish-page/themes/`);
+    }
+  }
   let content: string;
   if (template === "deck") {
     const parts = isMd
