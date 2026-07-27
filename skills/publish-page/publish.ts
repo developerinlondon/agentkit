@@ -1,7 +1,8 @@
 #!/usr/bin/env bun
 import { marked } from "marked";
+import { createHmac } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -25,13 +26,22 @@ function escapeHtml(s: string): string {
   );
 }
 
-const slug = arg("slug") ?? fail("--slug is required");
-const file = arg("file") ?? fail("--file is required");
+const explicitSlug = arg("slug");
+const name = arg("name");
+const isDelete = process.argv.includes("--delete");
+const file = arg("file");
 const template = arg("template") ?? "doc";
 let noGit = process.argv.includes("--no-git");
-if (!SLUG_RE.test(slug)) fail(`invalid slug "${slug}" (lowercase a-z0-9-, max 4 segments)`);
+if (!explicitSlug && !name) fail("--name (cryptic URL, default) or --slug (readable URL) is required");
+if (explicitSlug && !SLUG_RE.test(explicitSlug)) {
+  fail(`invalid slug "${explicitSlug}" (lowercase a-z0-9-, max 4 segments)`);
+}
+if (name && !/^[a-z0-9][a-z0-9-]{0,63}$/.test(name)) {
+  fail(`invalid name "${name}" (lowercase a-z0-9-)`);
+}
 if (!["doc", "deck", "raw"].includes(template)) fail(`unknown template "${template}"`);
-if (!existsSync(file)) fail(`no such file: ${file}`);
+if (!isDelete && !file) fail("--file is required");
+if (!isDelete && !existsSync(file!)) fail(`no such file: ${file}`);
 
 const endpoint = process.env.AGENTKIT_PAGES_ENDPOINT ?? "https://pages.agentkit.sbs";
 const endpointHost = new URL(endpoint).hostname;
@@ -43,12 +53,56 @@ const tokenPath = join(homedir(), ".config/agentkit/pages-token");
 if (!existsSync(tokenPath)) fail(`publish token missing at ${tokenPath}`);
 const token = (await readFile(tokenPath, "utf8")).trim();
 
-const source = await readFile(file, "utf8");
-const isMd = /\.(md|markdown|mdown)$/i.test(file);
+// Cryptic-but-deterministic slug: HMAC(token, name). Only token holders can
+// derive it, and every machine with the token derives the same slug from the
+// same logical name — update and delete need no stored mapping.
+const slug = explicitSlug
+  ?? createHmac("sha256", token).update(name!).digest("hex").slice(0, 20);
+const pageLabel = name ?? slug;
+
+const git = (...args: string[]) =>
+  Bun.spawnSync(["git", "-C", repo, ...args], { stdout: "pipe", stderr: "pipe" });
+const repoAvailable = () => existsSync(join(repo, ".git"));
+
+function commitScoped(message: string, paths: string[]) {
+  const staged = git("diff", "--cached", "--quiet", "--", ...paths);
+  if (staged.exitCode === 0) return;
+  // Pathspec-scoped commit: the clone is long-lived and shared — a bare
+  // commit would sweep anything else staged into this publish.
+  const commit = git("commit", "-m", message, "--", ...paths);
+  if (commit.exitCode === 0) {
+    const push = git("push");
+    if (push.exitCode !== 0) {
+      console.error(`warning: git push failed — commit is local only:\n${push.stderr.toString()}`);
+    }
+  } else {
+    console.error(`warning: git commit failed:\n${commit.stderr.toString()}`);
+  }
+}
+
+if (isDelete) {
+  const res = await fetch(`${endpoint}/api/pages/${slug}`, {
+    method: "DELETE",
+    headers: { authorization: `Bearer ${token}` },
+  });
+  if (res.status === 404) fail(`no page at ${slug} — nothing deleted`);
+  if (!res.ok) fail(`delete failed: HTTP ${res.status} ${await res.text()}`);
+  if (repoAvailable()) {
+    await rm(join(repo, "src", slug), { recursive: true, force: true });
+    await rm(join(repo, "dist", slug), { recursive: true, force: true });
+    git("add", "-A", "--", `src/${slug}`, `dist/${slug}`);
+    commitScoped(`pages: delete ${pageLabel}`, [`src/${slug}`, `dist/${slug}`]);
+  }
+  console.log(`deleted: ${endpoint}/${slug}`);
+  process.exit(0);
+}
+
+const source = await readFile(file!, "utf8");
+const isMd = /\.(md|markdown|mdown)$/i.test(file!);
 const title = arg("title")
   ?? source.match(/^#\s+(.+)$/m)?.[1]
   ?? source.match(/<title>([^<]+)<\/title>/)?.[1]
-  ?? slug;
+  ?? pageLabel;
 
 // Split markdown into slides on `---` lines, ignoring YAML frontmatter and
 // `---` inside fenced code blocks — a naive regex split cuts fences in half.
@@ -115,7 +169,7 @@ const res = await fetch(`${endpoint}/api/pages/${slug}`, {
 if (!res.ok) fail(`publish failed: HTTP ${res.status} ${await res.text()}`);
 const { url } = (await res.json()) as { url: string };
 
-if (!noGit && !existsSync(join(repo, ".git"))) {
+if (!noGit && !repoAvailable()) {
   console.error(`note: pages repo not found at ${repo} — published without canonical git commit`);
   noGit = true;
 }
@@ -127,24 +181,11 @@ if (!noGit) {
   await writeFile(join(srcDir, isMd ? "content.md" : "content.html"), source);
   await writeFile(
     join(srcDir, "meta.yaml"),
-    `title: ${JSON.stringify(title)}\ntemplate: ${template}\nslug: ${slug}\n`,
+    `title: ${JSON.stringify(title)}\nname: ${JSON.stringify(pageLabel)}\ntemplate: ${template}\nslug: ${slug}\n`,
   );
   await writeFile(join(distDir, "index.html"), html);
-  const git = (...args: string[]) =>
-    Bun.spawnSync(["git", "-C", repo, ...args], { stdout: "pipe", stderr: "pipe" });
   git("add", `src/${slug}`, `dist/${slug}`);
-  const staged = git("diff", "--cached", "--quiet", "--", `src/${slug}`, `dist/${slug}`);
-  if (staged.exitCode !== 0) {
-    // Pathspec-scoped commit: the clone is long-lived and shared — a bare
-    // commit would sweep anything else staged into this publish.
-    const commit = git("commit", "-m", `pages: publish ${slug}`, "--", `src/${slug}`, `dist/${slug}`);
-    if (commit.exitCode === 0) {
-      const push = git("push");
-      if (push.exitCode !== 0) console.error(`warning: git push failed — commit is local only:\n${push.stderr.toString()}`);
-    } else {
-      console.error(`warning: git commit failed:\n${commit.stderr.toString()}`);
-    }
-  }
+  commitScoped(`pages: publish ${pageLabel}`, [`src/${slug}`, `dist/${slug}`]);
 }
 
 console.log(url);

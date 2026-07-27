@@ -12,17 +12,21 @@ an artifact: decide, publish, hand back the URL.
 
 1. **Write the content** to a temp file (scratchpad). Markdown for docs/decks;
    complete self-contained HTML for bespoke pages (dashboards, visualizations).
-2. **Pick the slug yourself**: short, descriptive, lowercase `a-z0-9-`, up to 4
-   `/` segments, e.g. `reports/fcar-q3`, `designs/auth-flow`, `decks/roadmap`.
-   Republishing the same slug updates the same URL — reuse the slug when
-   iterating on the same page.
+2. **Pick a logical name yourself**: short, descriptive, lowercase `a-z0-9-`,
+   e.g. `fcar-q3-report`, `auth-flow-design`. The URL is derived as
+   HMAC(token, name) — cryptic hex nobody can guess, but deterministic: the same
+   name republished from any machine with the token updates the SAME URL, and
+   `--delete --name <name>` finds it again. No mapping to store.
+   Use `--slug <path>` INSTEAD only when the user explicitly wants a
+   human-readable URL (up to 4 `/` segments).
 3. **Pick the template yourself**: `doc` (default, report/article), `deck`
    (slides — split on `---` lines in markdown), `raw` (complete HTML published
    as-is).
 4. **Run** (one-time per machine: `cd <skill-dir> && bun install`):
 
 ```bash
-bun <skill-dir>/publish.ts --slug <slug> --file <content-file> [--template doc|deck|raw] [--title "Title"]
+bun <skill-dir>/publish.ts --name <name> --file <content-file> [--template doc|deck|raw] [--title "Title"]
+bun <skill-dir>/publish.ts --name <name> --delete    # remove a page you published
 ```
 
 5. **Give the user the URL** it prints (`https://pages.agentkit.sbs/<slug>`).
@@ -41,10 +45,12 @@ bun <skill-dir>/publish.ts --slug <slug> --file <content-file> [--template doc|d
   publish, publish. When YOU are proposing the page and its content derives from
   private material (client data, internal repos, credentials-adjacent config),
   confirm with the user before publishing.
-- Slug collisions overwrite silently, and on machines without the pages repo
-  clone there is no git history to recover from — pick distinctive slugs, and
-  reuse a slug only when deliberately updating that page. `--no-git` skips the
-  canonical commit explicitly (same effect as a missing clone).
+- Same name (or slug) republished overwrites silently, and on machines without
+  the pages repo clone there is no git history to recover from — pick
+  distinctive names, reuse one only when deliberately updating that page.
+  `--no-git` skips the canonical commit explicitly (same effect as a missing
+  clone). Rotating the publish token changes every HMAC-derived URL on next
+  republish (old URLs keep serving until deleted).
 - Pages must be self-contained: inline all CSS/JS, `data:` URIs for images. The
   serving CSP blocks every external request. Max 5 MB.
 - Errors are loud; fix and re-run. Do not fall back to pasting the content into
