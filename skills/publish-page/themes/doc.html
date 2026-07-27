@@ -106,6 +106,79 @@
     padding: 1rem; overflow-x: auto; text-align: center;
   }
   pre.mermaid svg { max-width: 100%; height: auto; }
+
+  /* Diagram kit — .figure/.figcaption wrap every diagram; .iso = isometric
+     architecture; .arch = premium flat flow (see SKILL.md) */
+  .figure {
+    background: radial-gradient(ellipse at 30% 0%, #0f2a4d 0%, var(--navy-deep) 70%);
+    border: 1px solid var(--line); border-radius: 14px; padding: 1.6rem 1.4rem 1rem;
+    margin: 1.2rem 0; overflow-x: auto; max-width: none;
+  }
+  .figcaption {
+    font-family: ui-monospace, Menlo, monospace; font-size: 0.74rem;
+    letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted);
+    text-align: center; margin-top: 0.9rem; padding-top: 0.9rem;
+    border-top: 1px solid var(--line);
+  }
+  .figcaption strong { color: var(--accent); font-weight: 600; }
+  .figure pre.mermaid { background: none; border: 0; margin: 0; }
+  .iso {
+    display: grid; grid-template-columns: repeat(3, minmax(7.5rem, 1fr));
+    gap: 0.6rem 1.2rem; justify-items: center; padding: 1.6rem 0 0.4rem;
+  }
+  .iso-node { display: flex; flex-direction: column; align-items: center; gap: 1.4rem; }
+  .iso-node .tile {
+    width: 6.4rem; aspect-ratio: 1; position: relative;
+    transform: rotateX(55deg) rotateZ(-45deg); transform-style: preserve-3d;
+  }
+  .iso-node .top {
+    position: absolute; inset: 0; border-radius: 14px;
+    background: linear-gradient(135deg, #173562 0%, #0e2547 60%, #0c2140 100%);
+    border: 1px solid #2e4f7e; box-shadow: inset 0 0 24px rgba(52, 211, 166, 0.07);
+    transform: translateZ(16px);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .iso-node .side {
+    position: absolute; inset: 0; border-radius: 14px;
+    background: #061021; box-shadow: 0 0 0 1px #0d1e38;
+  }
+  .iso-node.hot .top { border-color: var(--accent); box-shadow: inset 0 0 26px rgba(52, 211, 166, 0.2); }
+  .iso-node.gold .top { border-color: var(--gold); box-shadow: inset 0 0 26px rgba(232, 180, 68, 0.16); }
+  .iso-node .glyph {
+    width: 46%; height: 46%;
+    transform: rotateZ(45deg) rotateX(-40deg);
+    filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.5));
+  }
+  .iso-node .glyph svg { width: 100%; height: 100%; }
+  .iso-node .tag {
+    font-family: ui-monospace, Menlo, monospace; font-size: 0.72rem;
+    letter-spacing: 0.08em; color: var(--ink);
+    background: rgba(7, 18, 36, 0.85); border: 1px solid var(--line);
+    border-radius: 6px; padding: 0.15rem 0.6rem; white-space: nowrap;
+  }
+  .arch { display: flex; flex-direction: column; margin: 0.5rem 0; }
+  .arch-row { display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; }
+  .arch-node {
+    background: linear-gradient(160deg, #14305a, #0d2140);
+    border: 1px solid #2e4f7e; border-radius: 12px;
+    padding: 0.8rem 1.1rem 0.7rem; min-width: 9.5rem;
+    box-shadow: 0 10px 22px -12px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(220, 231, 245, 0.07);
+  }
+  .arch-node.hot { border-color: rgba(52, 211, 166, 0.65); }
+  .arch-node.gold { border-color: rgba(232, 180, 68, 0.6); }
+  .arch-node .ic { width: 26px; height: 26px; margin-bottom: 0.35rem; }
+  .arch-node .nm { font-weight: 600; font-size: 0.92rem; letter-spacing: -0.01em; }
+  .arch-node .ds { color: var(--muted); font-size: 0.76rem; font-family: ui-monospace, Menlo, monospace; }
+  .arch-join {
+    display: flex; justify-content: center; align-items: center; height: 2.4rem;
+    color: var(--accent); font-family: ui-monospace, Menlo, monospace; font-size: 0.72rem;
+    letter-spacing: 0.1em; gap: 0.5rem;
+  }
+  .arch-join::before, .arch-join::after {
+    content: ""; width: 2px; height: 100%;
+    background: linear-gradient(180deg, transparent, var(--accent), transparent);
+    box-shadow: 0 0 6px rgba(52, 211, 166, 0.5);
+  }
 </style>
 </head>
 <body>
