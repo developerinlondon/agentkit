@@ -14,9 +14,10 @@ On Linux, use `bounded-run` for every resource-intensive command. Never fall bac
 command when preflight or containment fails.
 
 On non-Linux hosts, the installer omits `bounded-run` because its systemd and cgroup boundary cannot
-run there. Local heavy-command containment therefore stands down. Delegated-workload protections
-remain active: do not route work through container engines, remote execution, or service managers
-unless the user approved a platform-native runner with verified limits.
+run there. Local heavy-command containment therefore stands down. OpenCode delegation protection
+remains active. Claude hook protection requires `jq`, `awk`, and `cat`; when one is missing, the hook
+warns and intentionally fails open. Do not route work through container engines, remote execution,
+or service managers unless the user approved a platform-native runner with verified limits.
 
 ## Choose a profile
 
@@ -73,10 +74,10 @@ or sibling service outside the transient cgroup. Use a separately approved dedic
 verified engine-native limits for delegated workloads.
 
 PreToolUse hooks and Codex prefix rules catch common accidental bypasses, but they are
-defense-in-depth rather than a sandbox for hostile scripts. A script can deliberately contact a
-daemon or user-systemd socket after launch. Preserve the host-level service limits and reserved
-capacity that protect the agent host, ingress, and tunnels even if a child evades the workload
-slice.
+defense-in-depth rather than a sandbox for hostile scripts. Codex rules cover direct prefixes only;
+they do not recursively parse shell payloads or scripts. A script can deliberately contact a daemon
+or user-systemd socket after launch. Preserve the host-level service limits and reserved capacity
+that protect the agent host, ingress, and tunnels even if a child evades the workload slice.
 
 ## Judge by exit status and output markers
 

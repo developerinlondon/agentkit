@@ -3,6 +3,18 @@
 # Heavy commands must start with bounded-run so systemd owns and limits the process tree.
 
 prefix_rule(
+    pattern = [["bounded-run", "agentkit-run"], "--profile", ["canary", "default", "compile", "browser"], "--", ["agentkit-run", "ansible", "ansible-playbook", "bounded-run", "buildah", "doas", "docker", "env", "kubectl", "machinectl", "mosh", "nerdctl", "pkexec", "podman", "run0", "service", "ssh", "su", "sudo", "systemctl", "systemd-run"]],
+    decision = "forbidden",
+    justification = "bounded-run refuses nested, privileged, remote, container, and service-managed payloads because they escape or obscure its cgroup boundary.",
+)
+
+prefix_rule(
+    pattern = [["bounded-run", "agentkit-run"], "--", ["agentkit-run", "ansible", "ansible-playbook", "bounded-run", "buildah", "doas", "docker", "env", "kubectl", "machinectl", "mosh", "nerdctl", "pkexec", "podman", "run0", "service", "ssh", "su", "sudo", "systemctl", "systemd-run"]],
+    decision = "forbidden",
+    justification = "bounded-run refuses nested, privileged, remote, container, and service-managed payloads because they escape or obscure its cgroup boundary.",
+)
+
+prefix_rule(
     pattern = ["bounded-run"],
     decision = "allow",
     justification = "bounded-run applies the mandatory cgroup, timeout, and process-tree boundary.",

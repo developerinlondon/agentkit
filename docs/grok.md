@@ -27,7 +27,9 @@ What that does for Grok specifically:
 1. **Claude hooks** land in `~/.claude/hooks/` (including `lib/hook-input.sh`) and
    are merged into `~/.claude/settings.json`. Grok loads those hooks by default
    (`[compat.claude] hooks = true`).
-2. **Tools** land on `PATH` as `bounded-run` / `agentkit-run`.
+2. On Linux, **tools** land on `PATH` as `bounded-run` / `agentkit-run`. The
+   installer omits them on non-Linux hosts, where their systemd cgroup boundary
+   cannot run.
 3. **Instructions / skills / rules** for Grok depend on the installer revision:
    - Current `main` + shared-root install (see PR that introduces
      `~/.agentkit/`): per-name symlinks under `~/.grok/skills` and
@@ -92,13 +94,16 @@ Deny responses dual-emit:
 
 ## Resource bounding on Grok
 
-`resource-police` requires `bounded-run` the same way as on Claude. Grok does not
-rewrite the agent’s shell command; the model (and soft rules) must use
-`bounded-run --profile … -- <cmd>`. The hook only **denies** unbounded heavy
-commands.
+On Linux, `resource-police` requires `bounded-run` the same way as on Claude.
+Grok does not rewrite the agent’s shell command; the model (and soft rules) must
+use `bounded-run --profile … -- <cmd>`. The hook only **denies** unbounded heavy
+commands. Linux host requirements are cgroup v2, `agent-work.slice`, and matching
+`/etc/agentkit/resource-guard.conf`.
 
-Host requirements: cgroup v2, `agent-work.slice`, matching
-`/etc/agentkit/resource-guard.conf`. See `skills/resource-safe-execution/`.
+On non-Linux hosts, local heavy-command containment stands down. Delegation
+analysis remains active when the Claude-compatible hook can load `jq`, `awk`,
+and `cat`; if one is missing, the hook warns and intentionally fails open. See
+`skills/resource-safe-execution/`.
 
 ## Related
 

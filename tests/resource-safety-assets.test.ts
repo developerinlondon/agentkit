@@ -31,7 +31,7 @@ describe('resource-safe-execution assets', () => {
     expect(instruction).toContain('host service resource limits');
   });
 
-  test('documents Linux-only local containment without weakening universal delegation safety', () => {
+  test('documents Linux-only containment and the dependency-qualified portable policy', () => {
     const skill = readFileSync(join(skillDir, 'SKILL.md'), 'utf-8');
     const instruction = readFileSync(
       join(repoRoot, 'instructions', 'resource-safety.md'),
@@ -44,14 +44,26 @@ describe('resource-safe-execution assets', () => {
     expect(skill).toContain('Linux-only');
     expect(skill).toContain('On non-Linux hosts');
     expect(instruction).toContain('On non-Linux hosts');
-    expect(compactInstruction).toContain('Delegated-workload protections remain active');
-    expect(product).toContain('build: agentkit-run --profile default -- bun install');
-    expect(product).toContain('verify: agentkit-run --profile default -- bun test');
+    expect(compactInstruction).toContain('OpenCode protection remains active');
+    expect(compactInstruction).toContain('Claude hook protection remains active when');
+    expect(product).toContain('build: scripts/product-command default -- bun install');
+    expect(product).toContain('verify: scripts/product-command default -- bun test');
     expect(product).toContain(
-      'run: agentkit-run --profile default -- bun plugins-cc/agentkit/server/index.ts',
+      'run: scripts/product-command default -- bun plugins-cc/agentkit/server/index.ts',
     );
     expect(product).toContain('Linux-only');
-    expect(compactProduct).toContain('delegation protections remain active');
+    expect(compactProduct).toContain('OpenCode delegation protection remains active');
+    expect(compactProduct).toContain('Claude hook protection requires');
+  });
+
+  test('documents Grok resource behavior per platform and parser availability', () => {
+    const grok = readFileSync(join(repoRoot, 'docs', 'grok.md'), 'utf-8').replace(/\s+/g, ' ');
+
+    expect(grok).toContain('On Linux, `resource-police` requires `bounded-run`');
+    expect(grok).toContain('On non-Linux hosts');
+    expect(grok).toContain('`jq`, `awk`, and `cat`');
+    expect(grok).toContain('warns and intentionally fails open');
+    expect(grok).toContain('Linux host requirements');
   });
 
   test('Claude plugin mirrors stay byte-identical to their source assets', () => {

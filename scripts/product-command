@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+product_platform() {
+	case "$(/usr/bin/uname -s 2>/dev/null || true)" in
+	Linux) printf 'linux' ;;
+	Darwin) printf 'darwin' ;;
+	*) printf 'unknown' ;;
+	esac
+}
+
+run_product_command() {
+	local platform="${1:-}"
+	local profile="${2:-}"
+	if [[ $# -lt 4 || "${3:-}" != -- ]]; then
+		printf 'usage: product-command PROFILE -- COMMAND [ARG ...]\n' >&2
+		return 64
+	fi
+	shift 3
+
+	case "$profile" in
+	canary | default | compile | browser) ;;
+	*)
+		printf 'product-command: unknown profile: %s\n' "$profile" >&2
+		return 64
+		;;
+	esac
+
+	if [[ "$platform" == linux ]]; then
+		if ! command -v agentkit-run >/dev/null 2>&1; then
+			printf 'product-command: agentkit-run is required on Linux; install AgentKit before review.\n' >&2
+			return 69
+		fi
+		exec agentkit-run --profile "$profile" -- "$@"
+	fi
+
+	exec "$@"
+}
+
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+	run_product_command "$(product_platform)" "$@"
+fi

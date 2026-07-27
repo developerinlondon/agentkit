@@ -10,7 +10,7 @@
     {
       "name": "agentkit",
       "source": "./plugins-cc/agentkit",
-      "description": "Claude Code bundle with enforcement hooks, skills, tools/bounded-run, and the assay + infra-tools MCP toolchains. Requires jq, bun, assay, cgroup v2, a systemd user manager, and a provisioned agent-work.slice.",
+      "description": "Claude Code bundle with enforcement hooks, skills, tools/bounded-run, and the assay + infra-tools MCP toolchains. Hooks require jq, awk, and cat; MCPs require bun and assay. Linux bounded execution additionally requires cgroup v2, a systemd user manager, and a provisioned agent-work.slice.",
       "version": "0.2.0"
     },
     {

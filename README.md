@@ -50,21 +50,26 @@ Reusable AI agent skills, rules, plugins, hooks, and tools for OpenCode, Claude 
 | **format-police.sh**   | PostToolUse       | Auto-formats files after edit/write using dprint                                                                                                                                                                                                                                                                                                              |
 | **coding-police.sh**   | PostToolUse       | Enforces DRY code, modular files (<1000 lines), short functions, single responsibility, and capped directory file counts                                                                                                                                                                                                                                      |
 | **pkg-police.sh**      | PreToolUse        | Enforces bun as package manager — blocks npm, npx, yarn, pnpm commands                                                                                                                                                                                                                                                                                        |
-| **resource-police.sh** | PreToolUse        | Requires `bounded-run` for heavy commands on Linux; blocks delegated and undecidable commands on every platform                                                                                                                                                                                                                                               |
+| **resource-police.sh** | PreToolUse        | With `jq`, `awk`, and `cat`, requires `bounded-run` for heavy commands on Linux and blocks delegated or undecidable commands on every platform; warns and fails open when a parser dependency is missing                                                                                                                                                      |
 | **chime.sh**           | Notification/Stop | Audible nudge when Claude needs you: springy boing on permission prompts/questions, soft ping when a turn finishes. Mute: `touch ~/.claude/.chime-off` or `CLAUDE_CHIME=0`                                                                                                                                                                                    |
 | **mr-police.sh**       | PreToolUse        | Blocks opening a new MR while you already have an open MR you authored on the repo — stops unmerged MRs from stacking up                                                                                                                                                                                                                                      |
 | **review-police.sh**   | PreToolUse        | Blocks CLI/REST/MCP merges unless a review record passes for the MR's real source branch and head sha (resolved from the forge). Unresolved BLOCKER/HIGH block; overrides need the user's written consent, logged to `~/.agentkit/review-audit.log`. NOT security — the record is agent-writable; forge-side required approvals are the only real enforcement |
 
 ### Policies (Codex CLI -- exec policy)
 
-| Policy                      | Description                                                                                |
-| --------------------------- | ------------------------------------------------------------------------------------------ |
-| **git-police.rules**        | Blocks force push, --no-verify, direct push to protected branches                          |
-| **kubectl-police.rules**    | Blocks kubectl create/apply on Kargo CRDs                                                  |
-| **coding-police.rules**     | Coding standards guidance + prompts on heredoc/tee writes that may produce oversized files |
-| **pkg-police.rules**        | Enforces bun as package manager — blocks npm, npx, yarn, pnpm commands                     |
-| **delegation-police.rules** | Blocks service, container, privilege, and remote delegation on every platform              |
-| **resource-police.rules**   | On Linux, blocks direct heavy commands that do not start with the bounded runner           |
+| Policy                      | Description                                                                                                  |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| **git-police.rules**        | Blocks force push, --no-verify, direct push to protected branches                                            |
+| **kubectl-police.rules**    | Blocks kubectl create/apply on Kargo CRDs                                                                    |
+| **coding-police.rules**     | Coding standards guidance + prompts on heredoc/tee writes that may produce oversized files                   |
+| **pkg-police.rules**        | Enforces bun as package manager — blocks npm, npx, yarn, pnpm commands                                       |
+| **delegation-police.rules** | Blocks direct mutating container, service-manager, privilege, and remote prefixes; allows direct diagnostics |
+| **resource-police.rules**   | On Linux, blocks direct heavy commands that do not start with the bounded runner                             |
+
+Codex exec policy evaluates literal argv prefixes. It does not recursively parse shell payloads,
+skip arbitrary options before a subcommand, or model `service NAME ACTION` with an arbitrary service
+name. `delegation-police.rules` covers the direct forms the policy language can represent; Claude
+and OpenCode `resource-police` remain the recursive command-analysis paths.
 
 ### Instructions (global agent prompts wired into Claude / Codex / OpenCode)
 
@@ -98,7 +103,7 @@ claude plugin install infra-tools
 
 | Plugin          | Provides                                                                                                                                                                                                                                                                                                 | Source                                                                                        |
 | --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| **agentkit**    | Claude bundle: enforcement police hooks, skills, Linux-only `tools/bounded-run`, and both MCP toolchains. Needs `jq`, `bun`, and `assay`; bounded execution additionally needs cgroup v2, a systemd user manager, and a provisioned `agent-work.slice`.                                                  | local `plugins-cc/agentkit/`                                                                  |
+| **agentkit**    | Claude bundle: enforcement police hooks, skills, Linux-only `tools/bounded-run`, and both MCP toolchains. Hooks need `jq`, `awk`, and `cat`; MCPs need `bun` and `assay`. Linux bounded execution additionally needs cgroup v2, a systemd user manager, and a provisioned `agent-work.slice`.            | local `plugins-cc/agentkit/`                                                                  |
 | **assay**       | Gated Lua infra toolkit (`assay_run` + `assay_context`) — Kubernetes, ArgoCD, Vault, Prometheus, GitLab, AWS, … through one read-only/approval-gated tool. Requires the `assay` binary on PATH.                                                                                                          | vendored from [developerinlondon/assay](https://github.com/developerinlondon/assay) `plugin/` |
 | **infra-tools** | Read-only helm / tofu / git tools (`helm_template`/`helm_list`/`helm_get_values`, `tofu_plan`/`tofu_show`/`tofu_state_list`, `git_log`/`git_diff`/`git_status`/`git_clone_ro`) as a typed MCP server — render charts, preview plans, read git history. Never applies or mutates. Requires `bun` on PATH. | local `plugins-cc/infra-tools/`                                                               |
 
@@ -133,12 +138,12 @@ git clone git@github.com:developerinlondon/agentkit.git
 `~/.agentkit/{skills,rules,instructions,hooks,tools}`. Each client then gets **per-name**
 symlinks into that root (never a second full copy):
 
-| Client | Adapter |
-| --- | --- |
-| OpenCode | `~/.agents/skills\|rules\|instructions` → `~/.agentkit/…` |
-| Claude Code | `~/.claude/skills\|hooks\|tools` → `~/.agentkit/…` (settings still point at `~/.claude/hooks`) |
-| Grok CLI | `~/.grok/skills\|rules` → `~/.agentkit/…`; instructions also as `~/.grok/rules/*.md` (always-on) |
-| Codex CLI | policies/prompts still copied into `~/.codex/` (Starlark + `/prompt` shape differs) |
+| Client      | Adapter                                                                                          |
+| ----------- | ------------------------------------------------------------------------------------------------ |
+| OpenCode    | `~/.agents/skills\|rules\|instructions` → `~/.agentkit/…`                                        |
+| Claude Code | `~/.claude/skills\|hooks\|tools` → `~/.agentkit/…` (settings still point at `~/.claude/hooks`)   |
+| Grok CLI    | `~/.grok/skills\|rules` → `~/.agentkit/…`; instructions also as `~/.grok/rules/*.md` (always-on) |
+| Codex CLI   | policies/prompts still copied into `~/.codex/` (Starlark + `/prompt` shape differs)              |
 
 Per-name links mean non-agentkit siblings stay put — OMC skills under `~/.claude/skills/`,
 Grok builtins under `~/.grok/skills/`, etc. OpenCode plugins still install as real files under
@@ -153,7 +158,8 @@ The installer detects `linux`, `darwin`, or `unknown`; `AGENTKIT_PLATFORM` may o
 with one of those exact values for controlled packaging and tests. Artifacts carrying an
 `agentkit:platform` directive are skipped when unsupported, and stale managed copies are removed.
 On non-Linux hosts this omits `bounded-run`, its `agentkit-run` alias, and the Codex heavy-command
-policy. Claude and OpenCode still block delegated and undecidable commands.
+policy. OpenCode still blocks delegated and undecidable commands. The Claude hook does so when
+`jq`, `awk`, and `cat` are available; otherwise it warns and intentionally fails open.
 
 ### Option 3: Install into a specific project
 
@@ -220,8 +226,9 @@ targets because they can delegate work outside the transient cgroup.
 On Linux, project-only installs expose the runner as `./.claude/tools/bounded-run`. The Claude
 plugin bundles it at `$CLAUDE_PLUGIN_ROOT/tools/bounded-run`, and its hook reports that resolved
 path when denying an unbounded command. Global installs expose `bounded-run` through
-`~/.local/bin`. Non-Linux hooks keep universal delegation analysis active without requiring the
-runner.
+`~/.local/bin`. On non-Linux, OpenCode keeps delegation analysis active without the runner. The
+Claude hook does so when `jq`, `awk`, and `cat` are available and otherwise warns before failing
+open.
 
 ## Configuration
 

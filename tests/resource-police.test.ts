@@ -54,47 +54,51 @@ function runHook(command: string, platform?: string): string {
   }).stdout ?? '';
 }
 
-describe('OpenCode resource-police', () => {
+describe('OpenCode Linux resource policy', () => {
   for (const command of blockedResourceCommands) {
-    test(`blocks unbounded command: ${command}`, async () => {
-      const hooks = await resourcePolice(mockCtx);
-      const { input, output } = makeInput(command);
-      expect(hooks['tool.execute.before']!(input, output)).rejects.toThrow('bounded-run');
+    test(`blocks unbounded command: ${command}`, () => {
+      expect(() => enforceResourcePolicy(command, 'linux')).toThrow('bounded-run');
     });
   }
 
   for (const command of unsupportedResourceCommands) {
-    test(`blocks delegated command: ${command}`, async () => {
-      const hooks = await resourcePolice(mockCtx);
-      const { input, output } = makeInput(command);
-      expect(hooks['tool.execute.before']!(input, output)).rejects.toThrow(
+    test(`blocks delegated command: ${command}`, () => {
+      expect(() => enforceResourcePolicy(command, 'linux')).toThrow(
         'cannot be contained by bounded-run',
       );
     });
   }
 
   for (const command of untrustedRunnerCommands) {
-    test(`refuses an unrecognised runner: ${command}`, async () => {
+    test(`refuses an unrecognised runner: ${command}`, () => {
       // This guard had ZERO coverage in the OpenCode implementation: moving
       // the fixture into its own array took it out of the loop above, and
       // deleting the guard outright still left every test passing. Two
       // parallel implementations of one policy need the same cases run
       // against BOTH, or one silently stops enforcing.
-      const hooks = await resourcePolice(mockCtx);
-      const { input, output } = makeInput(command);
-      expect(hooks['tool.execute.before']!(input, output)).rejects.toThrow(
-        'not a recognised bounded-run',
-      );
+      expect(() => enforceResourcePolicy(command, 'linux')).toThrow('not a recognised bounded-run');
     });
   }
 
-  test('allows wrapped, lightweight, and inspection commands', async () => {
-    const hooks = await resourcePolice(mockCtx);
-
+  test('allows wrapped, lightweight, and inspection commands', () => {
     for (const command of allowedResourceCommands) {
-      const { input, output } = makeInput(command);
-      expect(hooks['tool.execute.before']!(input, output)).resolves.toBeUndefined();
+      expect(() => enforceResourcePolicy(command, 'linux')).not.toThrow();
     }
+  });
+
+  test('runtime hook follows the host platform while keeping delegation universal', async () => {
+    const hooks = await resourcePolice(mockCtx);
+    const heavy = makeInput('bun test');
+    const delegated = makeInput('docker build .');
+
+    if (process.platform === 'linux') {
+      expect(hooks['tool.execute.before']!(heavy.input, heavy.output)).rejects.toThrow('bounded-run');
+    } else {
+      expect(hooks['tool.execute.before']!(heavy.input, heavy.output)).resolves.toBeUndefined();
+    }
+    expect(hooks['tool.execute.before']!(delegated.input, delegated.output)).rejects.toThrow(
+      'cannot be contained by bounded-run',
+    );
   });
 
   test('ignores non-shell tools', async () => {
@@ -193,6 +197,7 @@ describe('Codex resource policies', () => {
   test('separates universal delegation rules from Linux-only containment rules', () => {
     const contents = readFileSync(policy, 'utf-8');
     const delegation = readFileSync(delegationPolicy, 'utf-8');
+    const compactDelegation = delegation.replace(/\s+/g, ' ');
     expect(contents).toContain('# agentkit:platforms linux');
     expect(contents).not.toContain('decision = "prompt"');
     expect(delegation).not.toContain('decision = "prompt"');
@@ -202,10 +207,29 @@ describe('Codex resource policies', () => {
     for (const command of ['bun', 'bunx', 'tsc', 'playwright', 'cargo', 'go']) {
       expect(contents).toContain(`pattern = ["${command}"`);
     }
-    for (const command of ['docker', 'podman', 'systemd-run', 'run0', 'ssh', 'sudo']) {
+    for (const command of [
+      'ansible',
+      'ansible-playbook',
+      'buildah',
+      'doas',
+      'docker',
+      'machinectl',
+      'mosh',
+      'nerdctl',
+      'pkexec',
+      'podman',
+      'run0',
+      'ssh',
+      'sudo',
+      'systemctl',
+      'systemd-run',
+      'kubectl',
+    ]) {
       expect(contents).not.toContain(`pattern = ["${command}"`);
       expect(delegation).toContain(`pattern = ["${command}"`);
     }
+    expect(compactDelegation).toContain('direct command prefixes only');
+    expect(compactDelegation).toContain('parse shell payloads');
     expect(contents.match(/decision = "forbidden"/g)?.length ?? 0).toBeGreaterThanOrEqual(8);
     expect(contents).toContain('pattern = ["tsc"]');
     expect(contents).toContain('pattern = [["npm", "pnpm"]');
@@ -240,11 +264,37 @@ describe('Codex resource policies', () => {
       expect(JSON.parse(result.stdout).decision, command.join(' ')).toBe(expected);
     }
 
-    for (const command of [
+    const deniedDelegation = [
+      ['ansible', 'all', '-m', 'ping'],
+      ['ansible-playbook', 'site.yml'],
+      ['buildah', 'bud', '.'],
+      ['doas', 'make', 'test'],
       ['docker', 'run', '--rm', 'builder'],
+      ['machinectl', 'shell', 'builder'],
+      ['mosh', 'build-host'],
+      ['nerdctl', 'build', '.'],
+      ['pkexec', 'make', 'test'],
+      ['podman', 'exec', 'builder', 'bun', 'test'],
+      ['run0', 'make', 'test'],
       ['ssh', 'build-host', 'bun', 'test'],
+      ['sudo', 'make', 'test'],
+      ['systemctl', 'restart', 'build-worker'],
+      ['systemctl', '--user', 'restart', 'build-worker'],
       ['systemd-run', '--user', 'cargo', 'test'],
-    ]) {
+      ['kubectl', 'delete', 'pod', 'builder'],
+    ];
+    const allowedDiagnostics = [
+      ['buildah', 'images'],
+      ['docker', 'ps'],
+      ['machinectl', 'status', 'builder'],
+      ['nerdctl', 'inspect', 'builder'],
+      ['podman', 'logs', 'builder'],
+      ['systemctl', 'status', 'build-worker'],
+      ['systemctl', '--user', 'is-active', 'build-worker'],
+      ['kubectl', 'get', 'pods'],
+    ];
+
+    for (const command of deniedDelegation) {
       const result = spawnSync(
         'codex',
         ['execpolicy', 'check', '--rules', delegationPolicy, ...command],
@@ -253,5 +303,72 @@ describe('Codex resource policies', () => {
       expect(result.status, result.stderr).toBe(0);
       expect(JSON.parse(result.stdout).decision, command.join(' ')).toBe('forbidden');
     }
+
+    for (const command of allowedDiagnostics) {
+      const result = spawnSync(
+        'codex',
+        ['execpolicy', 'check', '--rules', delegationPolicy, ...command],
+        { encoding: 'utf-8' },
+      );
+      expect(result.status, result.stderr).toBe(0);
+      expect(JSON.parse(result.stdout).decision, command.join(' ')).toBe('allow');
+    }
+
+    const runnerWrappedDelegation = [
+      ['bounded-run', '--profile', 'compile', '--', 'docker', 'build', '.'],
+      ['agentkit-run', '--profile', 'default', '--', 'systemd-run', '--user', 'cargo', 'test'],
+      ['bounded-run', '--profile', 'canary', '--', 'ssh', 'build-host', 'true'],
+      ['agentkit-run', '--profile', 'browser', '--', 'kubectl', 'exec', 'pod/builder', '--', 'sh'],
+      ['bounded-run', '--', 'docker', 'build', '.'],
+      ['agentkit-run', '--', 'ssh', 'build-host', 'true'],
+    ];
+    for (const command of runnerWrappedDelegation) {
+      const result = spawnSync(
+        'codex',
+        [
+          'execpolicy',
+          'check',
+          '--rules',
+          policy,
+          '--rules',
+          delegationPolicy,
+          ...command,
+        ],
+        { encoding: 'utf-8' },
+      );
+      expect(result.status, result.stderr).toBe(0);
+      expect(JSON.parse(result.stdout).decision, command.join(' ')).toBe('forbidden');
+    }
+
+    for (const command of [
+      ['bounded-run', '--profile', 'default', '--', 'bun', 'test'],
+      ['agentkit-run', '--profile', 'canary', '--', 'git', 'status'],
+      ['bounded-run', '--', 'bun', 'test'],
+      ['agentkit-run', '--', 'git', 'status'],
+    ]) {
+      const result = spawnSync(
+        'codex',
+        [
+          'execpolicy',
+          'check',
+          '--rules',
+          policy,
+          '--rules',
+          delegationPolicy,
+          ...command,
+        ],
+        { encoding: 'utf-8' },
+      );
+      expect(result.status, result.stderr).toBe(0);
+      expect(JSON.parse(result.stdout).decision, command.join(' ')).toBe('allow');
+    }
+
+    const wrapped = spawnSync(
+      'codex',
+      ['execpolicy', 'check', '--rules', delegationPolicy, 'bash', '-lc', 'docker build .'],
+      { encoding: 'utf-8' },
+    );
+    expect(wrapped.status, wrapped.stderr).toBe(0);
+    expect(JSON.parse(wrapped.stdout).decision).toBeUndefined();
   });
 });
