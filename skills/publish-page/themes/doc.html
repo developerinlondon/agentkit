@@ -160,21 +160,22 @@
   /* Baked-palette diagram SVGs keep a navy island in light mode (their strokes
      are authored for a dark ground). Mermaid and HTML diagrams adapt via vars. */
   html[data-theme="light"] .figure > svg:not(.edges),
-  html[data-theme="light"] .figure > p > svg:only-child:not(.edges) {
+  html[data-theme="light"] .figure > p > svg:not(.edges) {
     background: var(--diagram-bg); border-radius: 10px; padding: 0.6rem;
   }
   @media print {
-    .figure > svg:not(.edges), .figure > p > svg:only-child:not(.edges) {
+    .figure > svg:not(.edges), .figure > p > svg:not(.edges) {
       -webkit-print-color-adjust: exact; print-color-adjust: exact;
     }
   }
   /* Scale-to-fit backstop: baked SVGs keep their viewBox but must never rely on
-     authored width attributes fitting the column. The :not(.edges) guard is
-     load-bearing — the edges-overlay rule ties on specificity (0,2,1) and this
-     rule comes later, so without the guard it would win and break the overlay.
-     :only-child keeps inline icons in figure prose out of the rule. */
+     authored width attributes fitting the column. :not(.edges) is defensive —
+     even without it the edges-overlay rule out-specifies this one. An inline
+     icon inside figure prose would match the p arm: known non-goal (no content
+     uses that pattern; the durable fix is an opt-in class from publish.ts,
+     CSS cannot express "this p has no text"). */
   .figure > svg:not(.edges),
-  .figure > p > svg:only-child:not(.edges) {
+  .figure > p > svg:not(.edges) {
     display: block; width: 100%; height: auto; margin-inline: auto;
   }
   .figure p { max-width: none; }
@@ -440,7 +441,7 @@
     const clone = fig.cloneNode(true);
     clone.classList.remove("fig-expandable");
     clone.querySelector(".fig-expand-trigger")?.remove();
-    clone.querySelectorAll(':scope > svg[viewBox]:not(.edges), :scope > p > svg[viewBox]:only-child:not(.edges)').forEach((s) => {
+    clone.querySelectorAll(':scope > svg[viewBox]:not(.edges), :scope > p > svg[viewBox]:not(.edges)').forEach((s) => {
       const vb = s.viewBox && s.viewBox.baseVal;
       if (vb && vb.width) {
         s.removeAttribute("width");
