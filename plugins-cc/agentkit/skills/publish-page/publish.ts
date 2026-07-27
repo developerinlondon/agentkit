@@ -48,7 +48,19 @@ const endpointHost = new URL(endpoint).hostname;
 if (!endpoint.startsWith("https://") && !["127.0.0.1", "localhost"].includes(endpointHost)) {
   fail(`endpoint must be https (got ${endpoint}) — the bearer token would travel in cleartext`);
 }
-const repo = process.env.AGENTKIT_PAGES_REPO ?? join(homedir(), "code/agentkit-pages");
+const repoCandidates = process.env.AGENTKIT_PAGES_REPO
+  ? [process.env.AGENTKIT_PAGES_REPO]
+  : [join(homedir(), "code/agentkit-pages"), join(homedir(), "code/agentkit/agentkit-pages")];
+const foundRepo = repoCandidates.find((p) => existsSync(join(p, ".git")));
+const repo = foundRepo ?? repoCandidates[0];
+if (!foundRepo) {
+  // Publishing without the clone silently uses bundled themes (which can lag
+  // canonical) and skips the canonical git commit — both have bitten before.
+  console.error(
+    `warning: no agentkit-pages clone (looked at: ${repoCandidates.join(", ")}) — `
+      + `publishing with BUNDLED themes (may lag canonical) and WITHOUT a canonical git commit`,
+  );
+}
 const tokenPath = join(homedir(), ".config/agentkit/pages-token");
 if (!existsSync(tokenPath)) fail(`publish token missing at ${tokenPath}`);
 const token = (await readFile(tokenPath, "utf8")).trim();
@@ -224,10 +236,7 @@ const res = await fetch(`${endpoint}/api/pages/${slug}`, {
 if (!res.ok) fail(`publish failed: HTTP ${res.status} ${await res.text()}`);
 const { url } = (await res.json()) as { url: string };
 
-if (!noGit && !repoAvailable()) {
-  console.error(`note: pages repo not found at ${repo} — published without canonical git commit`);
-  noGit = true;
-}
+if (!noGit && !foundRepo) noGit = true;
 if (!noGit) {
   const srcDir = join(repo, "src", slug);
   const distDir = join(repo, "dist", slug);

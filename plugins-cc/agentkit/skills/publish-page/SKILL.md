@@ -29,7 +29,11 @@ bun <skill-dir>/publish.ts --name <name> --file <content-file> [--template doc|d
 bun <skill-dir>/publish.ts --name <name> --delete    # remove a page you published
 ```
 
-5. **Give the user the URL** it prints (`https://pages.agentkit.sbs/<slug>`).
+5. **Verify before reporting**: load the printed URL in headless Chromium at
+   ~1280 px wide, screenshot BOTH themes (flip via the toggle), and Read every
+   figure. A clipped, illegible, or wrong-theme figure means fix and re-publish.
+   Never report the URL of an unviewed page.
+6. **Give the user the URL** it prints (`https://pages.agentkit.sbs/<slug>`).
    That URL is live immediately.
 
 ## Page design — the house style is built in
@@ -45,10 +49,43 @@ every card and diagram node. Add `data-tip="text"` to any node for a hover
 tooltip.
 
 **Be illustrative by default.** Structure every doc page as sections and pick the
-strongest component for each idea — don't produce walls of prose:
+strongest component for each idea — don't produce walls of prose.
 
-- **Diagrams: pick the treatment by what the diagram IS** — never default to one
-  tool, and never ASCII art. Wrap EVERY diagram in
+**Route every visual by what the concept IS**, never by the tool you used last:
+
+| Concept                                                 | Treatment                                     | Never                                                                         |
+| ------------------------------------------------------- | --------------------------------------------- | ----------------------------------------------------------------------------- |
+| System topology, trust/ownership boundaries             | `diagram` skill centerpiece                   | mermaid — auto-layout destroys boundary semantics                             |
+| Deployable inventory, ≤7 nodes, relationships secondary | `.iso` kit + `.edge` connectors               | `diagram` skill (overkill)                                                    |
+| Linear pipeline, all edges forward, stages need prose   | `.arch` flat kit                              | —                                                                             |
+| Flow with a loop-back, gate, or failure branch          | `diagram` skill                               | `.flow`/`.arch`/`.fbox` — box kits cannot draw a backward edge                |
+| Ordered message exchange, ≥3 participants               | mermaid `sequenceDiagram`                     | hand-drawn — sole exception: avoiding the mermaid runtime (see figure budget) |
+| State machine >5 states with guards/terminals           | mermaid `stateDiagram-v2`                     | —                                                                             |
+| State machine ≤5 states, transitions carry the meaning  | `diagram` skill                               | mermaid (generic)                                                             |
+| Comparison, N options × M criteria, cells are prose     | markdown table                                | any diagram                                                                   |
+| Comparison of structurally different options, ≤3        | `diagram` skill mirrored halves               | table (flattens the structural point)                                         |
+| Hierarchy/taxonomy ≤3 levels                            | `diagram` skill tree — lines + text, no boxes | mermaid flowchart TD                                                          |
+| Quantitative, ≥5 data points                            | inline SVG chart (discipline below)           | mermaid, chart libraries                                                      |
+| ≤4 numbers                                              | `.chips` or a table row                       | a chart                                                                       |
+| Independent items, no edges between them                | `.cards` grid                                 | any diagram — no edges = decorated list                                       |
+
+A table beats a diagram when any of these holds: cells are full sentences; the
+relation is "X has property Y", not "X acts on Y"; ≥6 uniform rows; the
+reader's task is lookup, not path-following; item order is arbitrary.
+
+**Figure budget.** Exactly one centerpiece diagram — the figure that answers the
+page title's question — plus 2–5 supporting figures; a doc with ≥6 h2 sections
+but fewer than 3 figures is under-illustrated. Never diagram
+two-nodes-one-arrow (a sentence), items without relationships (`.cards`), or a
+single before/after (`.callout`). Captions are one sentence with no "and"
+joining two subjects — a caption that needs "and" is two figures. Ask the
+`diagram` skill for canvases ≤1000 px wide (its hard ceiling is 1200 px with
+all fonts ≥18 px): the column renders figures at ~979 px, and wider canvases
+scale handwriting below legibility. Mermaid inlines
+~3.4 MB once — if the page already carries 3+ inline SVG figures, draw the
+sequence/state diagram with the `diagram` skill instead.
+
+- **Diagram markup** — never ASCII art. Wrap EVERY diagram in
   `<div class="figure">…<div class="figcaption"><strong>Name</strong> — what it shows</div></div>`
   with a caption describing the content (say "Publish flow — from agent to live
   page", never the technology used to draw it). CRITICAL for markdown files:

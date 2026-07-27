@@ -18,6 +18,9 @@
     --accent: #34d3a6; --accent-soft: #0d2f3a; --gold: #e8b444; --red: #e06c5f;
     --fig-glow: #0f2a4d; --node-hi: #173562; --node-lo: #0c2140; --node-border: #2e4f7e;
     --tile-side: #061021;
+    /* Ground for baked-palette diagram SVGs (excalidraw); stays navy in both
+       themes so light-stroked art survives light mode. */
+    --diagram-bg: #071224;
   }
   html[data-theme="light"] {
     --navy: #f2f6fa; --navy-deep: #e6edf5; --card: #ffffff; --code-bg: #e9eff6;
@@ -153,6 +156,61 @@
     letter-spacing: 0.6px; text-transform: uppercase;
   }
   .figure svg.edges .edge-label-bg { fill: var(--navy-deep); stroke: var(--line); stroke-width: 1; rx: 4; opacity: 0.95; }
+
+  /* Baked-palette diagram SVGs keep a navy island in light mode (their strokes
+     are authored for a dark ground). Mermaid and HTML diagrams adapt via vars. */
+  html[data-theme="light"] .figure > svg:not(.edges),
+  html[data-theme="light"] .figure > p > svg:not(.edges) {
+    background: var(--diagram-bg); border-radius: 10px; padding: 0.6rem;
+  }
+  @media print {
+    .figure > svg:not(.edges), .figure > p > svg:not(.edges) {
+      -webkit-print-color-adjust: exact; print-color-adjust: exact;
+    }
+  }
+  /* Scale-to-fit backstop: baked SVGs keep their viewBox but must never rely on
+     authored width attributes fitting the column. :not(.edges) is defensive —
+     even without it the edges-overlay rule out-specifies this one. An inline
+     icon inside figure prose would match the p arm: known non-goal (no content
+     uses that pattern; the durable fix is an opt-in class from publish.ts,
+     CSS cannot express "this p has no text"). */
+  .figure > svg:not(.edges),
+  .figure > p > svg:not(.edges) {
+    display: block; width: 100%; height: auto; margin-inline: auto;
+  }
+  .figure p { max-width: none; }
+  @media (min-width: 72rem) { .figure { margin-inline: -9rem; } }
+
+  /* Click-to-expand lightbox — every .figure expands to natural size. */
+  .figure.fig-expandable { cursor: zoom-in; }
+  .fig-expand-trigger {
+    position: absolute; top: 0.55rem; right: 0.7rem;
+    font-family: ui-monospace, Menlo, monospace; font-size: 0.62rem;
+    letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--muted); background: var(--navy-deep);
+    border: 1px solid var(--line); border-radius: 6px; padding: 0.12rem 0.5rem;
+    opacity: 0; transition: opacity 0.15s; cursor: zoom-in; z-index: 2;
+  }
+  .figure.fig-expandable:hover .fig-expand-trigger,
+  .fig-expand-trigger:focus-visible { opacity: 1; }
+  .fig-lightbox {
+    position: fixed; inset: 0; z-index: 70; padding: 4vh 4vw;
+    background: color-mix(in srgb, var(--navy-deep) 85%, transparent);
+    backdrop-filter: blur(6px);
+  }
+  .fig-lightbox[hidden] { display: none; }
+  .fig-lightbox-body { width: 100%; height: 100%; overflow: auto; }
+  .fig-lightbox .figure { width: max-content; max-width: none; margin: 0 auto; cursor: default; }
+  .fig-lightbox .figure p { max-width: none; }
+  .fig-lightbox-close {
+    position: fixed; top: 1rem; right: 1rem;
+    width: 2.3rem; height: 2.3rem; border-radius: 50%;
+    background: var(--card); border: 1px solid var(--line); color: var(--ink);
+    cursor: pointer; font-size: 0.95rem; line-height: 1; padding: 0;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .fig-lightbox-close:hover { border-color: var(--accent); }
+  @media print { .fig-lightbox { display: none; } }
   .iso {
     display: grid; grid-template-columns: repeat(3, minmax(7.5rem, 1fr));
     gap: 0.6rem 1.2rem; justify-items: center; padding: 1.6rem 0 0.4rem;
@@ -342,6 +400,101 @@
   addEventListener("load", drawEdges);
   addEventListener("agentkit-theme", () => setTimeout(drawEdges, 350));
   addEventListener("resize", () => { clearTimeout(window.__et); window.__et = setTimeout(drawEdges, 150); });
+
+  // Accessible figure lightbox: preserve focus and restore natural SVG size.
+  const lb = document.createElement("div");
+  lb.className = "fig-lightbox";
+  lb.hidden = true;
+  lb.setAttribute("role", "dialog");
+  lb.setAttribute("aria-modal", "true");
+  lb.setAttribute("aria-label", "Expanded figure");
+  lb.innerHTML = '<div class="fig-lightbox-body"></div><button class="fig-lightbox-close" type="button" aria-label="Close expanded figure">✕</button>';
+  document.body.appendChild(lb);
+  const lbBody = lb.querySelector(".fig-lightbox-body");
+  const lbClose = lb.querySelector(".fig-lightbox-close");
+  let restoreFocus = null;
+  let restoreOverflow = "";
+  let inertSnapshot = [];
+  function isolateBackground() {
+    inertSnapshot = [...document.body.children]
+      .filter((element) => element !== lb)
+      .map((element) => ({ element, value: element.getAttribute("inert") }));
+    inertSnapshot.forEach(({ element }) => element.setAttribute("inert", ""));
+  }
+  function restoreBackground() {
+    inertSnapshot.forEach(({ element, value }) => {
+      if (value === null) element.removeAttribute("inert");
+      else element.setAttribute("inert", value);
+    });
+    inertSnapshot = [];
+  }
+  function closeLightbox() {
+    if (lb.hidden) return;
+    lb.hidden = true;
+    document.body.style.overflow = restoreOverflow;
+    restoreBackground();
+    lbBody.replaceChildren();
+    restoreFocus?.focus();
+    restoreFocus = null;
+  }
+  function openLightbox(fig, trigger) {
+    const clone = fig.cloneNode(true);
+    clone.classList.remove("fig-expandable");
+    clone.querySelector(".fig-expand-trigger")?.remove();
+    clone.querySelectorAll(':scope > svg[viewBox]:not(.edges), :scope > p > svg[viewBox]:not(.edges)').forEach((s) => {
+      const vb = s.viewBox && s.viewBox.baseVal;
+      if (vb && vb.width) {
+        s.removeAttribute("width");
+        s.style.width = Math.round(vb.width) + "px";
+        s.style.maxWidth = "none";
+      }
+    });
+    restoreFocus = trigger;
+    restoreOverflow = document.body.style.overflow;
+    lbBody.replaceChildren(clone);
+    isolateBackground();
+    lb.hidden = false;
+    document.body.style.overflow = "hidden";
+    lbClose.focus();
+    drawEdges();
+  }
+  document.querySelectorAll(".figure").forEach((fig) => {
+    fig.classList.add("fig-expandable");
+    const trigger = document.createElement("button");
+    trigger.className = "fig-expand-trigger";
+    trigger.type = "button";
+    trigger.setAttribute("aria-label", "Expand figure");
+    trigger.textContent = "⤢ expand";
+    trigger.addEventListener("click", () => openLightbox(fig, trigger));
+    fig.appendChild(trigger);
+    fig.addEventListener("click", (e) => {
+      if (e.target.closest("a, button")) return;
+      if (window.getSelection()?.toString()) return;
+      openLightbox(fig, trigger);
+    });
+  });
+  lb.addEventListener("click", (e) => {
+    if (e.target.closest(".fig-lightbox-close") || !e.target.closest(".figure")) closeLightbox();
+  });
+  addEventListener("keydown", (e) => {
+    if (lb.hidden) return;
+    if (e.key === "Escape") {
+      e.preventDefault();
+      closeLightbox();
+      return;
+    }
+    if (e.key !== "Tab") return;
+    const focusable = [...lb.querySelectorAll('a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])')];
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  });
 </script>
 </body>
 </html>

@@ -65,19 +65,20 @@ Fonts: `fontFamily: 1` = hand-drawn (headers, labels — the excalidraw feel),
 
 Navy pages (background transparent, sits on the `.figure` glow):
 
-| Role                        | stroke           | fill                                                  |
-| --------------------------- | ---------------- | ----------------------------------------------------- |
-| default / neutral           | `#dce7f5`        | `transparent` or `#102847`                            |
-| start / trigger             | `#e8b444`        | `#2a2410`                                             |
-| end / success / active path | `#34d3a6`        | `#0d2f3a`                                             |
-| decision (diamond)          | `#e8b444`        | `transparent`                                         |
-| agent / AI                  | `#b197fc`        | `#1d1636`                                             |
-| inactive / future           | `#8fa8c7` dashed | `transparent`                                         |
-| error / removal             | `#e06c5f`        | `#2a1512`                                             |
-| evidence panel              | `#1e3a5f`        | `#071224` (mono text `#34d3a6` data, `#dce7f5` code)  |
+| Role                        | stroke           | fill                                                 |
+| --------------------------- | ---------------- | ---------------------------------------------------- |
+| default / neutral           | `#dce7f5`        | `transparent` or `#102847`                           |
+| start / trigger             | `#e8b444`        | `#2a2410`                                            |
+| end / success / active path | `#34d3a6`        | `#0d2f3a`                                            |
+| decision (diamond)          | `#e8b444`        | `transparent`                                        |
+| agent / AI                  | `#b197fc`        | `#1d1636`                                            |
+| inactive / future           | `#8fa8c7` dashed | `transparent`                                        |
+| error / removal             | `#e06c5f`        | `#2a1512`                                            |
+| evidence panel              | `#1e3a5f`        | `#071224` (mono text `#34d3a6` data, `#dce7f5` code) |
 
 Text hierarchy without boxes (navy): titles `#dce7f5` 20-28px, subtitles
-`#34d3a6` 16px, detail/annotation `#8fa8c7` 12-14px.
+`#34d3a6` 16px, detail/annotation `#8fa8c7` 14px (mono evidence may drop to
+13px; nothing below 13px anywhere, legends included).
 
 Light surfaces (READMEs, docs): near-black `#1e1e1e` strokes; fills `#a5d8ff`
 (neutral), `#fed7aa` (start), `#b2f2bb` (success), `#ffec99` (decision),
@@ -87,4 +88,7 @@ code text. Text hierarchy: titles `#1e40af`, subtitles `#3b82f6`, detail
 `#64748b`.
 
 Rules: darker stroke over lighter fill, always; a concept without a role uses
-neutral, never a fresh color.
+neutral, never a fresh color. Red `#e06c5f` is a stroke/shape color — as text
+only at 16px+. Text inside any filled panel uses the neutral ink, never the
+fill's own color family. Underline/strikethrough decoration never shares the
+hue of the text it decorates — use muted `#8fa8c7` or drop the decoration.
