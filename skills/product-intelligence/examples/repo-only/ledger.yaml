@@ -23,7 +23,7 @@ claims:
   - id: C-003
     statement: The project is pre-1.0 and its interface may still change.
     class: inferred
-    confidence: moderate
+    confidence: high
     derived_from: [C-002]
     sources:
       - locator: "repo:CHANGELOG.md:3-6"

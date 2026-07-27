@@ -36,6 +36,8 @@ bun skills/product-intelligence/scripts/validate.ts .agentkit/intelligence/<slug
 
 A brief validates together with the ledger it cites — dangling claim ids,
 asymmetric contradictions and unsourced observations all fail loudly.
+Worked examples of the full artifact set — website-only, repo-only and
+mixed evidence — live in `examples/`.
 
 ## Workflow
 

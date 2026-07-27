@@ -37,4 +37,4 @@ cannot_verify:
   - what: adoption, download counts or anyone using it in production
     why: only the repository was acquired; no site or registry stats
   - what: behavior on Windows
-    why: CI matrix in the packed repo covers Linux and macOS only
+    why: no acquired source states platform support in either direction

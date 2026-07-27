@@ -34,3 +34,21 @@ claims:
     statement: Brewlog has a mobile app.
     class: unverified
     confidence: low
+  - id: C-005
+    statement: Journal entries record grind, dose, yield and shot time as structured fields.
+    class: observed
+    confidence: high
+    sources:
+      - locator: "site:/features"
+        quote: "Log grind, dose, yield and time for every shot"
+        stance: supports
+        as_of: "2026-07-27"
+  - id: C-006
+    statement: Brewlog integrates with bluetooth coffee scales.
+    class: observed
+    confidence: low
+    sources:
+      - locator: "site:/features"
+        quote: "Works with your favorite scales*"
+        stance: supports
+        as_of: "2026-07-27"

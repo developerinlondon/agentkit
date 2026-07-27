@@ -74,7 +74,7 @@
       "additionalProperties": false,
       "properties": {
         "locator": {
-          "description": "Structural pointer that survives edits: 'site:/pricing#plans', 'repo:README.md:40-52', 'doc:brief.pdf#p3'.",
+          "description": "Structural pointer that survives edits: 'site:/pricing#plans', 'repo:README.md:40-52', 'gh:releases/v1.2.0', 'doc:brief.pdf#p3'.",
           "type": "string",
           "minLength": 1
         },

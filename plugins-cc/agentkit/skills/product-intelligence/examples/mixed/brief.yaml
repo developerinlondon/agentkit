@@ -26,7 +26,7 @@ positioning:
   category: git-native note-taking app
   key_benefit: notes are versioned and greppable like source
   alternative: hosted note SaaS
-  differentiation: works offline against a repository the user already owns
+  differentiation: notes live in a repository the user already owns
   claims: [C-003, C-004]
 value_map:
   - attribute: stores notes as plain markdown in git
@@ -57,7 +57,7 @@ site_inventory:
   - locator: "site:/docs/migrate-from-competitorx"
     page_type: docs
     disposition: create
-    rationale: no migration path is documented for the most-cited alternative
+    rationale: no migration path is documented for any named alternative
     claims: [C-006]
 cannot_verify:
   - what: SOC 2 certification claim

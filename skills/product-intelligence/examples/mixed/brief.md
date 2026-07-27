@@ -6,8 +6,8 @@ acme-notes is a note-taking app for solo developers whose notes live as
 plain markdown files inside a git repository the user already owns
 [C-003]. Where hosted note SaaS keeps your thinking on someone else's
 server, acme-notes versions it next to the code it explains — greppable,
-diffable, and readable with any editor. The product is active, with v1.4.0
-released 2026-07-02 [C-005].
+diffable, and readable with any editor. The most recent release, v1.4.0,
+shipped 2026-07-02 [C-005].
 
 ## The Problem
 
@@ -24,8 +24,7 @@ history with the change it explains).
 ## What Makes This Different
 
 No lock-in is the moat that can be proven: clone the repo and the notes
-are yours with any editor [C-003]. No fabricated technical moats beyond
-that — the rest is scope discipline.
+are yours, readable with any editor [C-003].
 
 ## Who This Serves
 

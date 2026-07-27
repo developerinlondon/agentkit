@@ -21,8 +21,8 @@ Read-only analyze pass over `brief.yaml` + `ledger.yaml`, 2026-07-27.
 
 ## Risks
 
-- [C-004] (solo-developer audience) is inferred from marketing copy plus
-  the free-tier cap — a single vendor-controlled surface family. A user
-  interview or issue-tracker signal would move it.
+- [C-004] (solo-developer audience) is inferred from the free-tier cap and
+  the marketing framing — all vendor-controlled sources, site and README
+  alike. A user interview or issue-tracker signal would move it.
 - [C-007] (SOC 2) is `unverified` and load-bearing for any
   compliance-sensitive adoption decision; treat as absent until proven.

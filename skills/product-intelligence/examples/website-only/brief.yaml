@@ -17,14 +17,14 @@ positioning:
   target_customer: home coffee enthusiasts
   need: remembering what changed between shots
   category: brewing journal
-  key_benefit: every shot's grind, dose and outcome in one searchable log
+  key_benefit: every shot's grind, dose, yield and time in one log
   alternative: notes apps and paper logs
   differentiation: espresso-specific fields instead of free text
-  claims: [C-003]
+  claims: [C-003, C-005]
 value_map:
   - attribute: free plan capped at one journal
     value: try the full workflow before paying
-    proof: create a journal on the free tier without a card
+    proof: sign up for the free plan and start a journal
     claims: [C-001]
 site_inventory:
   - locator: "site:/"
@@ -37,8 +37,13 @@ site_inventory:
     disposition: keep
     rationale: plans and caps are explicit
     claims: [C-001, C-002]
+  - locator: "site:/features"
+    page_type: product
+    disposition: keep
+    rationale: the field structure is the differentiator and is stated concretely
+    claims: [C-005]
 cannot_verify:
   - what: anything about the codebase, release cadence or maturity
     why: no repository is public; only the website was acquired
-  - what: the mobile app the footer hints at
-    why: no store link or screenshot is reachable from the crawled pages
+  - what: whether a mobile app exists
+    why: no store link, screenshot or app page is reachable from the crawled pages
