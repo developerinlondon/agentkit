@@ -1,0 +1,250 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentkit.sbs/schemas/product-intelligence/brief.schema.json",
+  "title": "Product brief",
+  "description": "Evidence-backed statement of what a product is, who it serves, and what its surfaces say. The brief carries the story; the companion evidence ledger carries the proof. Every material assertion cites ledger claim ids. Every field is optional except brief_version, subject and evidence — but the fewer sections filled in, the less the brief says, and downstream consumers report that plainly rather than implying coverage.",
+  "type": "object",
+  "required": ["brief_version", "subject", "evidence"],
+  "additionalProperties": false,
+  "properties": {
+    "brief_version": {
+      "description": "Semver of the brief schema this document targets. Backward-compatible across minors.",
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+(\\.[0-9]+)?$"
+    },
+    "subject": {
+      "type": "object",
+      "required": ["name"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "description": "Product name as its makers use it.",
+          "type": "string",
+          "minLength": 1
+        },
+        "homepage": {
+          "description": "Canonical marketing/site URL.",
+          "type": "string",
+          "minLength": 1
+        },
+        "repo": {
+          "description": "Source repository locator, e.g. 'github.com/org/name'.",
+          "type": "string",
+          "minLength": 1
+        },
+        "one_liner": {
+          "description": "What the product is in one sentence, from a user's point of view — not the architecture.",
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "required": ["ledger"],
+      "additionalProperties": false,
+      "properties": {
+        "ledger": {
+          "description": "Path to the evidence ledger, relative to this file. Claim ids cited throughout the brief resolve there.",
+          "type": "string",
+          "minLength": 1
+        },
+        "acquired_at": {
+          "description": "ISO-8601 date the underlying evidence was gathered.",
+          "type": "string",
+          "format": "date"
+        },
+        "acquisition": {
+          "description": "What was fetched and with which tool, so a reader can re-run the acquisition.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/acquisition" }
+        }
+      }
+    },
+    "positioning": {
+      "description": "Moore positioning statement, one slot per field: for <target_customer> who <need>, <subject.name> is a <category> that <key_benefit>; unlike <alternative>, it <differentiation>.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "target_customer": { "type": "string", "minLength": 1 },
+        "need": { "type": "string", "minLength": 1 },
+        "category": { "type": "string", "minLength": 1 },
+        "key_benefit": { "type": "string", "minLength": 1 },
+        "alternative": { "type": "string", "minLength": 1 },
+        "differentiation": { "type": "string", "minLength": 1 },
+        "claims": { "$ref": "#/$defs/claim_refs" }
+      }
+    },
+    "value_map": {
+      "description": "Dunford attribute→value→proof rows. An attribute nobody can name a value for, or a value nobody can prove, is flagged by the analyze pass — leave the field out rather than padding it.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["attribute", "value"],
+        "additionalProperties": false,
+        "properties": {
+          "attribute": {
+            "description": "A capability the product actually has.",
+            "type": "string",
+            "minLength": 1
+          },
+          "value": {
+            "description": "What that capability enables for the customer.",
+            "type": "string",
+            "minLength": 1
+          },
+          "proof": {
+            "description": "How a skeptic would check the value holds, in prose.",
+            "type": "string",
+            "minLength": 1
+          },
+          "claims": { "$ref": "#/$defs/claim_refs" }
+        }
+      }
+    },
+    "job_stories": {
+      "description": "JTBD job stories: when <situation>, I want <motivation>, so I can <outcome>.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["situation", "motivation", "outcome"],
+        "additionalProperties": false,
+        "properties": {
+          "situation": { "type": "string", "minLength": 1 },
+          "motivation": { "type": "string", "minLength": 1 },
+          "outcome": { "type": "string", "minLength": 1 },
+          "claims": { "$ref": "#/$defs/claim_refs" }
+        }
+      }
+    },
+    "workflows": {
+      "description": "Customer workflows the product participates in, mapped to Ulwick's universal job steps. Steps the product does not touch are simply absent — gaps are the analyze pass's job to call out.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "steps"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "steps": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["step", "description"],
+              "additionalProperties": false,
+              "properties": {
+                "step": {
+                  "enum": [
+                    "define",
+                    "locate",
+                    "prepare",
+                    "confirm",
+                    "execute",
+                    "monitor",
+                    "modify",
+                    "conclude"
+                  ]
+                },
+                "description": {
+                  "description": "What happens at this step and where the product shows up in it.",
+                  "type": "string",
+                  "minLength": 1
+                },
+                "claims": { "$ref": "#/$defs/claim_refs" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "site_inventory": {
+      "description": "Content audit of the product's public surfaces: one row per page, what kind of page it is, and what should happen to it. disposition 'create' marks a page that does not exist yet.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["locator", "page_type"],
+        "additionalProperties": false,
+        "properties": {
+          "locator": {
+            "description": "Structural pointer matching ledger source locators, e.g. 'site:/pricing'.",
+            "type": "string",
+            "minLength": 1
+          },
+          "page_type": {
+            "enum": [
+              "home",
+              "about",
+              "pricing",
+              "product",
+              "docs",
+              "blog",
+              "faq",
+              "contact",
+              "checkout",
+              "collection",
+              "item",
+              "profile",
+              "qa",
+              "search",
+              "legal",
+              "changelog",
+              "landing",
+              "other"
+            ]
+          },
+          "title": { "type": "string", "minLength": 1 },
+          "disposition": {
+            "enum": ["keep", "revise", "consolidate", "remove", "create"]
+          },
+          "rationale": {
+            "description": "Why the disposition. Required whenever a disposition is stated — an unexplained verdict is not auditable.",
+            "type": "string",
+            "minLength": 1
+          },
+          "claims": { "$ref": "#/$defs/claim_refs" }
+        }
+      }
+    },
+    "cannot_verify": {
+      "description": "What could not be established and why. Stated plainly so absence of a section reads as 'unknown', never as 'does not exist'.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["what", "why"],
+        "additionalProperties": false,
+        "properties": {
+          "what": { "type": "string", "minLength": 1 },
+          "why": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "claim_refs": {
+      "description": "Ledger claim ids backing this section.",
+      "type": "array",
+      "items": { "type": "string", "pattern": "^C-[0-9]{3,}$" }
+    },
+    "acquisition": {
+      "type": "object",
+      "required": ["tool", "target", "retrieved_at"],
+      "additionalProperties": false,
+      "properties": {
+        "tool": {
+          "description": "Acquisition command or wrapper name, e.g. 'trafilatura', 'repomix --remote', 'gh api'.",
+          "type": "string",
+          "minLength": 1
+        },
+        "target": {
+          "description": "URL or repo the tool was pointed at.",
+          "type": "string",
+          "minLength": 1
+        },
+        "retrieved_at": {
+          "type": "string",
+          "format": "date"
+        }
+      }
+    }
+  }
+}
