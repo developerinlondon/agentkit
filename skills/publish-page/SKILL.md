@@ -1,57 +1,45 @@
 ---
 name: publish-page
-description: Publish agent output (reports, docs, slide decks, dashboards) as a web page at pages.agentkit.sbs — use whenever rich HTML output beats chat text, when the user asks to publish/share a page, or when producing a report/deck worth keeping at a stable URL.
+description: Publish content as a live web page with a stable URL (AgentKit Pages, self-hosted artifacts). Use AUTOMATICALLY whenever the user asks to publish/share/host a page, make an artifact/report/dashboard/slide deck/design doc viewable in a browser, or when rich formatted output would clearly beat chat text. Also triggers on "make a page", "put this on a page", "publish this", "as a deck/slides", "share a link". Renders markdown or HTML through themes and returns the live URL.
 ---
 
 # publish-page
 
-Publish a page to AgentKit Pages. Pages are **public** in the current phase —
-never publish secrets or private data.
+You publish pages **end-to-end without asking the user for details**. Like creating
+an artifact: decide, publish, hand back the URL.
 
-## Usage
+## Automated workflow
 
-One-time setup (bun does not auto-install when a package.json is present):
+1. **Write the content** to a temp file (scratchpad). Markdown for docs/decks;
+   complete self-contained HTML for bespoke pages (dashboards, visualizations).
+2. **Pick the slug yourself**: short, descriptive, lowercase `a-z0-9-`, up to 4
+   `/` segments, e.g. `reports/fcar-q3`, `designs/auth-flow`, `decks/roadmap`.
+   Republishing the same slug updates the same URL — reuse the slug when
+   iterating on the same page.
+3. **Pick the template yourself**: `doc` (default, report/article), `deck`
+   (slides — split on `---` lines in markdown), `raw` (complete HTML published
+   as-is).
+4. **Run** (one-time per machine: `cd <skill-dir> && bun install`):
 
 ```bash
-cd <skill-dir> && bun install
+bun <skill-dir>/publish.ts --slug <slug> --file <content-file> [--template doc|deck|raw] [--title "Title"]
 ```
 
-```bash
-bun <skill-dir>/publish.ts --slug <slug> --file <content-file> \
-  [--template doc|deck|raw] [--title "Page title"] [--no-git]
-```
+5. **Give the user the URL** it prints (`https://pages.agentkit.sbs/<slug>`).
+   That URL is live immediately.
 
-- `--slug` — URL path, lowercase `a-z0-9-` with up to 4 `/` segments (e.g. `reports/q3-audit`).
-  Republishing the same slug updates the same URL.
-- `--file` — content: markdown (`.md`) or HTML fragment/full page (`.html`).
-- `--template`
-  - `doc` (default) — report/article chrome.
-  - `deck` — slide deck; split slides on `---` lines (markdown) or `<hr>` (HTML).
-    Arrow keys / swipe / dots navigate; print gives one slide per page.
-  - `raw` — file is a complete self-contained HTML page, published as-is.
-- `--no-git` — skip the canonical commit (serving write only; use when the pages
-  repo is unavailable).
+## Requirements and behavior
 
-Prints the live URL on success. Errors are loud; fix and re-run.
-
-## What it does
-
-1. Renders content through the theme (from the agentkit-pages repo clone).
-2. `PUT`s the rendered HTML to the Worker — the URL is live immediately.
-3. Commits `src/<slug>/` + `dist/<slug>/` to the agentkit-pages repo (canonical
-   history) and pushes. The pages repo is a content datastore: direct commits to
-   its default branch are by design.
-
-## Config
-
-| Setting | Source | Default |
-| --- | --- | --- |
-| Endpoint | `AGENTKIT_PAGES_ENDPOINT` | `https://pages.agentkit.sbs` |
-| Token | `~/.config/agentkit/pages-token` | required |
-| Pages repo clone | `AGENTKIT_PAGES_REPO` | `~/code/agentkit-pages` |
-
-## Rules for page content
-
-- Self-contained only: inline all CSS/JS, `data:` URIs for images. No CDN links.
-- The serving CSP allows inline style/script and blocks all external requests.
-- Max 5 MB per page.
+- Publish token: `~/.config/agentkit/pages-token` (mint at agentkit.sbs; on eda
+  it is already provisioned, canonical copy in OpenBao
+  `secrets/platform/agentkit/pages`).
+- Themes are bundled with the skill; if a clone of `gitlab.com/agentkit/agentkit-pages`
+  exists at `~/code/agentkit-pages` (override: `AGENTKIT_PAGES_REPO`), the publish
+  also commits `src/` + `dist/` there for canonical history — otherwise it
+  serves-only and says so. Endpoint override: `AGENTKIT_PAGES_ENDPOINT`.
+- Pages are **public by slug** (unguessable is NOT private) — never publish
+  secrets, tokens, or personal data. Accounts/private pages are a coming phase.
+- Pages must be self-contained: inline all CSS/JS, `data:` URIs for images. The
+  serving CSP blocks every external request. Max 5 MB.
+- Errors are loud; fix and re-run. Do not fall back to pasting the content into
+  chat without saying the publish failed.

@@ -28,7 +28,7 @@ function escapeHtml(s: string): string {
 const slug = arg("slug") ?? fail("--slug is required");
 const file = arg("file") ?? fail("--file is required");
 const template = arg("template") ?? "doc";
-const noGit = process.argv.includes("--no-git");
+let noGit = process.argv.includes("--no-git");
 if (!SLUG_RE.test(slug)) fail(`invalid slug "${slug}" (lowercase a-z0-9-, max 4 segments)`);
 if (!["doc", "deck", "raw"].includes(template)) fail(`unknown template "${template}"`);
 if (!existsSync(file)) fail(`no such file: ${file}`);
@@ -71,8 +71,12 @@ function splitSlides(md: string): string[] {
 
 async function render(): Promise<string> {
   if (template === "raw") return source;
-  const themePath = join(repo, "themes", `${template}.html`);
-  if (!existsSync(themePath)) fail(`theme not found: ${themePath} (clone agentkit-pages?)`);
+  // Canonical themes live in the agentkit-pages repo; the skill bundles a copy
+  // so publishing works on machines without the repo clone.
+  const repoTheme = join(repo, "themes", `${template}.html`);
+  const bundledTheme = join(import.meta.dir, "themes", `${template}.html`);
+  const themePath = existsSync(repoTheme) ? repoTheme : bundledTheme;
+  if (!existsSync(themePath)) fail(`theme not found: ${repoTheme} or ${bundledTheme}`);
   const theme = await readFile(themePath, "utf8");
   let content: string;
   if (template === "deck") {
@@ -105,8 +109,11 @@ const res = await fetch(`${endpoint}/api/pages/${slug}`, {
 if (!res.ok) fail(`publish failed: HTTP ${res.status} ${await res.text()}`);
 const { url } = (await res.json()) as { url: string };
 
+if (!noGit && !existsSync(join(repo, ".git"))) {
+  console.error(`note: pages repo not found at ${repo} — published without canonical git commit`);
+  noGit = true;
+}
 if (!noGit) {
-  if (!existsSync(join(repo, ".git"))) fail(`pages repo not found at ${repo} (published, but not committed)`);
   const srcDir = join(repo, "src", slug);
   const distDir = join(repo, "dist", slug);
   await mkdir(srcDir, { recursive: true });
