@@ -150,7 +150,25 @@ async function mermaidRuntime(): Promise<string> {
   // Decks render diagrams per-slide (hidden slides have zero width, which breaks
   // mermaid's measurements) — the deck theme's show() calls mermaid.run on the
   // active slide; docs render everything immediately.
-  const init = `mermaid.initialize({ startOnLoad: false, theme: "base", themeVariables: { darkMode: true, background: "transparent", primaryColor: "#102847", primaryBorderColor: "#2e4f7e", primaryTextColor: "#dce7f5", secondaryColor: "#0d2140", tertiaryColor: "#0d2f3a", lineColor: "#5f7ca3", edgeLabelBackground: "#071224", nodeBorder: "#2e4f7e", mainBkg: "#102847", clusterBkg: "#0d2140", clusterBorder: "#1e3a5f", fontFamily: "ui-monospace, Menlo, monospace", fontSize: "14px", actorBkg: "#102847", actorBorder: "#2e4f7e", actorTextColor: "#dce7f5", signalColor: "#5f7ca3", signalTextColor: "#8fa8c7", noteBkgColor: "#0d2f3a", noteTextColor: "#dce7f5", noteBorderColor: "#1e3a5f" }, flowchart: { curve: "basis", nodeSpacing: 46, rankSpacing: 56, padding: 12 } }); if (!document.querySelector(".slide")) mermaid.run();`;
+  const init = `(() => {
+  const NAVY = { darkMode: true, background: "transparent", primaryColor: "#102847", primaryBorderColor: "#2e4f7e", primaryTextColor: "#dce7f5", secondaryColor: "#0d2140", tertiaryColor: "#0d2f3a", lineColor: "#5f7ca3", edgeLabelBackground: "#071224", nodeBorder: "#2e4f7e", mainBkg: "#102847", clusterBkg: "#0d2140", clusterBorder: "#1e3a5f", fontFamily: "ui-monospace, Menlo, monospace", fontSize: "14px", actorBkg: "#102847", actorBorder: "#2e4f7e", actorTextColor: "#dce7f5", signalColor: "#5f7ca3", signalTextColor: "#8fa8c7", noteBkgColor: "#0d2f3a", noteTextColor: "#dce7f5", noteBorderColor: "#1e3a5f" };
+  const LIGHT = { darkMode: false, background: "transparent", primaryColor: "#ffffff", primaryBorderColor: "#b9c9da", primaryTextColor: "#16202c", secondaryColor: "#eef4fa", tertiaryColor: "#ddf1ea", lineColor: "#5b6b7c", edgeLabelBackground: "#e6edf5", nodeBorder: "#b9c9da", mainBkg: "#ffffff", clusterBkg: "#eef4fa", clusterBorder: "#cfdae6", fontFamily: "ui-monospace, Menlo, monospace", fontSize: "14px", actorBkg: "#ffffff", actorBorder: "#b9c9da", actorTextColor: "#16202c", signalColor: "#5b6b7c", signalTextColor: "#5b6b7c", noteBkgColor: "#ddf1ea", noteTextColor: "#16202c", noteBorderColor: "#cfdae6" };
+  const srcs = new Map();
+  function renderAll() {
+    const light = document.documentElement.dataset.theme === "light";
+    mermaid.initialize({ startOnLoad: false, theme: "base", themeVariables: light ? LIGHT : NAVY, flowchart: { curve: "basis", nodeSpacing: 46, rankSpacing: 56, padding: 12 } });
+    document.querySelectorAll("pre.mermaid").forEach((el) => {
+      if (!srcs.has(el)) srcs.set(el, el.textContent);
+      el.removeAttribute("data-processed");
+      el.replaceChildren();
+      el.textContent = srcs.get(el);
+    });
+    if (document.querySelector(".slide")) mermaid.run({ querySelector: ".slide.active pre.mermaid" });
+    else mermaid.run();
+  }
+  renderAll();
+  addEventListener("agentkit-theme", renderAll);
+})();`;
   return `\n<script>${js}</script>\n<script>${init}</script>`;
 }
 

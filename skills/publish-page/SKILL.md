@@ -37,7 +37,12 @@ bun <skill-dir>/publish.ts --name <name> --delete    # remove a page you publish
 Pages should look designed, not dumped. The doc/deck themes carry the house
 identity automatically (**dark navy** ground `#071224→#0a1c38`, ink `#dce7f5`,
 green accent `#34d3a6`, gold `#e8b444`, panels `#102847`, lines `#1e3a5f`,
-mono eyebrows) — never re-explain or re-style these basics.
+mono eyebrows) — never re-explain or re-style these basics. Also automatic, no
+agent action needed: a **dark/light theme toggle** (persisted; mermaid
+re-renders on flip), a **TOC dot rail** with smooth scrolling on docs with ≥3
+`h2` sections, prev/next **nav buttons** on decks, and **hover lift/glow** on
+every card and diagram node. Add `data-tip="text"` to any node for a hover
+tooltip.
 
 **Be illustrative by default.** Structure every doc page as sections and pick the
 strongest component for each idea — don't produce walls of prose:
@@ -56,6 +61,12 @@ strongest component for each idea — don't produce walls of prose:
     inline 24×24 SVG outline icon (stroke `#8fa8c7`, or `#34d3a6`/`#e8b444` on
     emphasized nodes, stroke-width 1.5, fill none) matching the node's meaning —
     a database cylinder, a globe, a cloud, a terminal chevron, a bot face.
+  - **Drawn connectors (draw.io-style)**: give nodes `id="n1"` etc. and declare
+    edges anywhere inside the same `.figure`:
+    `<span class="edge" data-from="n1" data-to="n2" data-label="PUT"></span>`
+    — the theme draws glowing curved arrows with labels between the node
+    centers automatically, and redraws them on resize and theme flip. Works
+    over `.iso` tiles and `.arch` nodes alike.
   - **Pipelines/flows with descriptions** → the premium flat kit:
     `<div class="arch"><div class="arch-row"><div class="arch-node hot"><svg class="ic">…</svg><div class="nm">Name</div><div class="ds">detail</div></div></div><div class="arch-join">edge label</div>…</div>`
   - **Sequences, state machines, dense graphs, gantt** → mermaid fences (the
