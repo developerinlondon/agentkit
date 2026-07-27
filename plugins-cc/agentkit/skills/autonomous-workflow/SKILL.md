@@ -83,67 +83,14 @@ gate as something it is not.
    **every, always, never, all, verified, probed, cannot** — and check each
    against reality with `git grep`, a probe, or the code itself.
 
-   Three shapes this takes, all observed in a single day: a change description
-   asserted a compatibility requirement over "every" existing client, and one
-   grep showed the population was empty; a comment cited probe evidence for a
-   branch, but the probe predated the change that would exercise it, so it
-   evidenced a different case; a table added to stop drift carried a row
-   contradicted by code in the same file.
+   Common failure shapes include a change description asserting compatibility
+   with clients that do not exist, a comment citing a probe that exercised a
+   different branch, or a rule table contradicted by code in the same file.
 
    Report any claim that outruns its evidence, **even when the code is
    correct**. Wrong prose is not cosmetic — it teaches the next reader a wrong
    model, and the next change is made against that model.
-6. **Log process gaps to the reflection log.** Immediately after writing the
-   verdict, append one JSON object per gap to `~/.agentkit/reflections.jsonl`
-   (machine-global, append-only — these are lessons about how the agent works,
-   not about a codebase):
-
-   **Read the log before appending.** `grep '"class":"<class>"'` for the same
-   class; if one matches, set `repeat_of` to that entry's `id`. Skip this and
-   `repeat_of` is null forever — and a repeat is the only thing separating a
-   mistake from a pattern, which is precisely what the batching step keys on.
-
-   ```text
-   {"id":"2026-07-20T14:32:07Z","harness":"claude","repo":"<repo>","class":"unverified-claim","gap":"asserted a compatibility requirement over all clients without grepping for one","finding":"HIGH: claim contradicted by git grep","repeat_of":null}
-   ```
-
-   One object per line, no pretty-printing — many sessions append here and the
-   file must stay line-addressable. `id` is an ISO-8601 timestamp to the second:
-   unique across concurrent sessions and stable to reference, which a date is
-   not. `repeat_of` carries an earlier entry's `id`, else `null`. `harness` is
-   one of `claude`, `codex`, `opencode`, `other` — not bookkeeping, it is what
-   shows whether different harnesses fail in different ways.
-
-   `class` is a fixed vocabulary, so repeats are greppable rather than a
-   judgement about whether two sentences mean the same thing: `unverified-claim`,
-   `untested-value`, `unobserved-external-behaviour`, `duplicated-authority`,
-   `stale-doc`, `other`. Free prose in `gap` cannot be matched reliably — a
-   tired reviewer greps one wording and misses its twin, which is the failure
-   this step exists to prevent. Add to the vocabulary deliberately, in an MR;
-   do not invent a class inline. Write entries compactly, with no spaces after
-   the colons, so the grep above matches.
-
-   **When a gap fits two classes, take the EARLIEST link in the chain** — the
-   step that, had it happened, would have stopped the rest. A rule table
-   contradicted by its own file is `unverified-claim` (nobody checked it against
-   the code), not `stale-doc` (what it became) or `duplicated-authority` (what it
-   was about). Consistency matters more than picking the best label, because the
-   entire value is that repeats collide.
-
-   **`other` is a debt, not an escape hatch.** It exists so a novel gap is
-   recorded rather than dropped — but name the would-be class in `gap`, and the
-   second time an `other` recurs, propose the new class in an MR. An `other`
-   that recurs unnamed has quietly restored free prose.
-
-   **Entry-worthy is one binary test: would the fix be a line in the SOP, or a
-   line in the code?** SOP ⇒ entry (the author asserted something without
-   checking; the process had no step that would have caught it). Code ⇒
-   ordinary bug, no entry. A bug caught by review is the system working; a
-   process gap is the system missing.
-
-   The signal must come from the **reviewer**, not the author — an author
-   under-reports their own errors by construction.
-7. **Do not hand findings to the user to approve.** They are not a queue for
+6. **Do not hand findings to the user to approve.** They are not a queue for
    work you would rather not do. Escalate only when a finding genuinely cannot
    be fixed — an upstream or platform limitation — and say why. If they then
    approve in writing, record their exact words in `user_consent`. Fabricating
@@ -170,18 +117,17 @@ internally correct code that cannot be used is still broken.
 ## Observe External Behaviour Before Building On It
 
 Before building on another system's behaviour, OBSERVE it: run a probe, capture
-a real payload, or quote the doc with its URL. Record the payload **verbatim,
-next to the code that depends on it**, marked observed vs inferred (see
-"Observed vs inferred" in product-review).
+a real payload, or quote the doc with its URL. Preserve the relevant evidence
+next to the code that depends on it, with secrets, tokens and personal data redacted,
+and mark it observed vs inferred (see "Observed vs inferred" in product-review).
 
 Assumptions about wire protocols, event names, error shapes and field
 nullability are the ones that bite — and tests written from an assumption
 cannot catch it, they encode it.
 
-Illustration: a feature wired to an event name the vendor's API does not emit on
-that transport shipped green, because the tests synthesised the imaginary event.
-A five-minute probe found it, and each further probe in that session also
-contradicted an assumption.
+Tests that synthesise an assumed provider event prove only that the code handles
+the invented fixture. Probe the real transport before treating that event as a
+supported contract.
 
 ## Mutation-Check Load-Bearing Values
 
@@ -190,6 +136,7 @@ the feature touches. A re-run per value is the one rule here that can eat an
 afternoon on a slow suite. Replace each with a constant and re-run.
 
 - **A green suite means that value is not covered.**
+- **Restore the original value after each run** before making any further change.
 - **If nothing can observe the value — the test double cannot report anything
   else — building that seam is part of this change, not a follow-up.** No test
   can exist until it does. This is the case that motivated the rule.
@@ -198,9 +145,8 @@ afternoon on a slow suite. Replace each with a constant and re-run.
 - **Judge by the run's output markers, never its exit status** — see
   **resource-safe-execution**. Runners report success on builds that never ran.
 
-Illustration: the one number a feature turned on passed all 158 of its tests
-when replaced with a constant zero — the double could not report a non-zero, so
-no test could observe it.
+If replacing a load-bearing value with a constant leaves the suite green, the
+tests do not observe that value yet.
 
 ## Commit Hygiene
 
@@ -232,17 +178,4 @@ pattern, a gotcha, a convention, a lesson learned -- PROPOSE updating the releva
 
 When a reviewer disproves something you asserted, correct the stored note then —
 not at session end, not on a timer. Prune as readily as you append: a confident
-stale note is worse than none, because it is trusted. A note recording one cause
-for a class of build failure kept sending its own author back to that cause for
-hours after the real one — a different, unrelated misconfiguration — had been
-identified.
-
-### Batching the reflection log
-
-Reviewers append process gaps to `~/.agentkit/reflections.jsonl` (see gate step
-6). As the **author**, read it and batch entries into a proposed change to these
-disciplines when there is real signal: a non-null `repeat_of`, or several entries
-pointing the same way. One entry is an anecdote.
-
-**Never auto-apply.** An SOP change goes through review like any other change —
-that is the whole reason the log is a queue and not a config file.
+stale note is worse than none, because later work may trust it.

@@ -1,0 +1,347 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{TITLE}}</title>
+<script>
+  (() => {
+    const saved = localStorage.getItem("agentkit-theme");
+    if (saved === "light" || saved === "dark") document.documentElement.dataset.theme = saved;
+  })();
+</script>
+<style>
+  /* AgentKit Pages house theme — dark navy default, light via toggle. */
+  :root {
+    --navy: #0a1c38; --navy-deep: #071224; --card: #102847; --code-bg: #0d2140;
+    --line: #1e3a5f; --ink: #dce7f5; --muted: #8fa8c7;
+    --accent: #34d3a6; --accent-soft: #0d2f3a; --gold: #e8b444; --red: #e06c5f;
+    --fig-glow: #0f2a4d; --node-hi: #173562; --node-lo: #0c2140; --node-border: #2e4f7e;
+    --tile-side: #061021;
+  }
+  html[data-theme="light"] {
+    --navy: #f2f6fa; --navy-deep: #e6edf5; --card: #ffffff; --code-bg: #e9eff6;
+    --line: #cfdae6; --ink: #16202c; --muted: #5b6b7c;
+    --accent: #0c8f6c; --accent-soft: #ddf1ea; --gold: #a97b10; --red: #bb4335;
+    --fig-glow: #dde8f3; --node-hi: #ffffff; --node-lo: #eef4fa; --node-border: #b9c9da;
+    --tile-side: #c4d2e0;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: linear-gradient(180deg, var(--navy-deep) 0%, var(--navy) 220px);
+    color: var(--ink); margin: 0;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    line-height: 1.65; padding: 3rem 1.25rem 5rem; min-height: 100vh;
+    transition: background 0.3s, color 0.3s;
+  }
+  main { max-width: 46rem; margin: 0 auto; }
+  h1 { font-size: 2rem; line-height: 1.15; letter-spacing: -0.02em; text-wrap: balance; margin: 0 0 0.8rem; }
+  h2 { font-size: 1.3rem; letter-spacing: -0.01em; margin: 2.4rem 0 0.8rem; padding-top: 1.2rem; border-top: 1px solid var(--line); text-wrap: balance; }
+  h3 { font-size: 1.05rem; margin: 1.4rem 0 0.5rem; }
+  p, li { max-width: 65ch; }
+  li { margin-bottom: 0.3rem; }
+  a { color: var(--accent); }
+  code {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.85em;
+    background: var(--code-bg); border-radius: 4px; padding: 0.1em 0.35em;
+  }
+  pre {
+    background: var(--navy-deep); border: 1px solid var(--line); border-radius: 8px;
+    padding: 1rem 1.2rem; overflow-x: auto; font-size: 0.82rem; line-height: 1.5;
+  }
+  pre code { background: none; padding: 0; }
+  blockquote { border-left: 3px solid var(--accent); margin: 1rem 0; padding: 0.2rem 0 0.2rem 1rem; color: var(--muted); }
+  table { border-collapse: collapse; font-size: 0.9rem; display: block; overflow-x: auto; max-width: 100%; }
+  th {
+    text-align: left; font-family: ui-monospace, Menlo, monospace; font-size: 0.7rem;
+    letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted);
+    font-weight: 500; padding: 0.5rem 0.9rem 0.5rem 0; border-bottom: 1px solid var(--line);
+  }
+  td { padding: 0.55rem 0.9rem 0.55rem 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+  img { max-width: 100%; }
+  hr { border: 0; border-top: 1px solid var(--line); margin: 2rem 0; }
+  footer {
+    margin-top: 4rem; padding-top: 1rem; border-top: 1px solid var(--line);
+    font-family: ui-monospace, Menlo, monospace; font-size: 0.7rem;
+    letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted);
+  }
+  footer a { color: var(--muted); }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* Component library (see SKILL.md): .kicker .chips/.chip .cards/.card .callout
+     .flow/.frow/.fbox(.gate.ok.deny) .arrow .mermaid */
+  .kicker {
+    font-family: ui-monospace, Menlo, monospace; font-size: 0.72rem;
+    letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent);
+    margin: 2.2rem 0 0.3rem;
+  }
+  .kicker + h2 { margin-top: 0; border-top: none; padding-top: 0; }
+  .chips { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0.8rem 0; }
+  .chip {
+    font-family: ui-monospace, Menlo, monospace; font-size: 0.72rem;
+    border: 1px solid var(--line); border-radius: 999px; padding: 0.15rem 0.65rem;
+    color: var(--muted); background: var(--code-bg);
+  }
+  .chip strong { color: var(--ink); font-weight: 600; }
+  .cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.9rem; margin: 1.2rem 0; }
+  @media (max-width: 40rem) { .cards { grid-template-columns: 1fr; } }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: 1rem 1.2rem; transition: transform 0.18s, border-color 0.18s, box-shadow 0.18s;
+  }
+  .card:hover { transform: translateY(-2px); border-color: var(--accent); box-shadow: 0 8px 24px -14px rgba(0,0,0,0.6); }
+  .card h3 { margin: 0 0 0.35rem; font-size: 0.95rem; }
+  .card h3 code { color: var(--accent); background: none; padding: 0; }
+  .card p { margin: 0; color: var(--muted); font-size: 0.9rem; max-width: none; }
+  .callout {
+    border: 1px solid var(--line); background: var(--accent-soft);
+    border-radius: 8px; padding: 0.8rem 1.1rem; font-size: 0.92rem;
+    margin: 1rem 0; max-width: none;
+  }
+  .callout strong { color: var(--accent); }
+  .flow { display: flex; flex-direction: column; margin: 1.2rem 0; }
+  .frow { display: flex; align-items: stretch; gap: 0.6rem; flex-wrap: wrap; }
+  .fbox {
+    background: var(--card); border: 1px solid var(--line); border-radius: 8px;
+    padding: 0.6rem 0.95rem; font-size: 0.85rem; flex: 1 1 10rem;
+    transition: transform 0.18s, box-shadow 0.18s;
+  }
+  .fbox:hover { transform: translateY(-2px); box-shadow: 0 8px 20px -12px rgba(0,0,0,0.6); }
+  .fbox .t {
+    font-family: ui-monospace, Menlo, monospace; font-size: 0.7rem;
+    letter-spacing: 0.1em; text-transform: uppercase; display: block;
+    margin-bottom: 0.15rem; color: var(--accent);
+  }
+  .fbox.gate { border-color: var(--gold); } .fbox.gate .t { color: var(--gold); }
+  .fbox.ok { border-color: var(--accent); } .fbox.ok .t { color: var(--accent); }
+  .fbox.deny { border-color: var(--red); } .fbox.deny .t { color: var(--red); }
+  .fbox .d { color: var(--muted); font-size: 0.8rem; }
+  .arrow {
+    text-align: center; color: var(--muted); font-family: ui-monospace, Menlo, monospace;
+    font-size: 0.8rem; padding: 0.25rem 0;
+  }
+  pre.mermaid {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: 1rem; overflow-x: auto; text-align: center;
+  }
+  pre.mermaid svg { max-width: 100%; height: auto; }
+  .mermaid .node:hover, .mermaid .actor:hover { filter: brightness(1.25); cursor: default; }
+
+  /* Diagram kit — .figure/.figcaption wrap every diagram; .iso isometric;
+     .arch premium flat; .edge declares a drawn connector (see SKILL.md) */
+  .figure {
+    background: radial-gradient(ellipse at 30% 0%, var(--fig-glow) 0%, var(--navy-deep) 70%);
+    border: 1px solid var(--line); border-radius: 14px; padding: 1.6rem 1.4rem 1rem;
+    margin: 1.2rem 0; overflow-x: auto; max-width: none; position: relative;
+  }
+  .figcaption {
+    font-family: ui-monospace, Menlo, monospace; font-size: 0.74rem;
+    letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted);
+    text-align: center; margin-top: 0.9rem; padding-top: 0.9rem;
+    border-top: 1px solid var(--line);
+  }
+  .figcaption strong { color: var(--accent); font-weight: 600; }
+  .figure pre.mermaid { background: none; border: 0; margin: 0; }
+  .figure svg.edges {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    pointer-events: none; overflow: visible;
+  }
+  .figure svg.edges path { stroke: var(--accent); stroke-width: 1.6; fill: none; opacity: 0.75; }
+  .figure svg.edges text {
+    fill: var(--muted); font-family: ui-monospace, Menlo, monospace; font-size: 10.5px;
+    letter-spacing: 0.6px; text-transform: uppercase;
+  }
+  .figure svg.edges .edge-label-bg { fill: var(--navy-deep); stroke: var(--line); stroke-width: 1; rx: 4; opacity: 0.95; }
+  .iso {
+    display: grid; grid-template-columns: repeat(3, minmax(7.5rem, 1fr));
+    gap: 0.6rem 1.2rem; justify-items: center; padding: 1.6rem 0 0.4rem;
+    position: relative; z-index: 1;
+  }
+  .iso-node { display: flex; flex-direction: column; align-items: center; gap: 1.4rem; }
+  .iso-node .tile {
+    width: 6.4rem; aspect-ratio: 1; position: relative;
+    transform: rotateX(55deg) rotateZ(-45deg); transform-style: preserve-3d;
+    transition: transform 0.2s;
+  }
+  .iso-node:hover .tile { transform: rotateX(55deg) rotateZ(-45deg) translateZ(10px); }
+  .iso-node .top {
+    position: absolute; inset: 0; border-radius: 14px;
+    background: linear-gradient(135deg, var(--node-hi) 0%, var(--node-lo) 100%);
+    border: 1px solid var(--node-border); box-shadow: inset 0 0 24px rgba(52, 211, 166, 0.07);
+    transform: translateZ(16px);
+    display: flex; align-items: center; justify-content: center;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  .iso-node:hover .top { border-color: var(--accent); box-shadow: inset 0 0 30px rgba(52, 211, 166, 0.25); }
+  .iso-node .side {
+    position: absolute; inset: 0; border-radius: 14px;
+    background: var(--tile-side); box-shadow: 0 0 0 1px var(--line);
+  }
+  .iso-node.hot .top { border-color: var(--accent); box-shadow: inset 0 0 26px rgba(52, 211, 166, 0.2); }
+  .iso-node.gold .top { border-color: var(--gold); box-shadow: inset 0 0 26px rgba(232, 180, 68, 0.16); }
+  .iso-node .glyph {
+    width: 46%; height: 46%;
+    transform: rotateZ(45deg) rotateX(-40deg);
+    filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.5));
+  }
+  .iso-node .glyph svg { width: 100%; height: 100%; }
+  .iso-node .tag {
+    font-family: ui-monospace, Menlo, monospace; font-size: 0.72rem;
+    letter-spacing: 0.08em; color: var(--ink);
+    background: var(--navy-deep); border: 1px solid var(--line);
+    border-radius: 6px; padding: 0.15rem 0.6rem; white-space: nowrap;
+  }
+  .arch { display: flex; flex-direction: column; margin: 0.5rem 0; position: relative; z-index: 1; }
+  .arch-row { display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; }
+  .arch-node {
+    background: linear-gradient(160deg, var(--node-hi), var(--node-lo));
+    border: 1px solid var(--node-border); border-radius: 12px;
+    padding: 0.8rem 1.1rem 0.7rem; min-width: 9.5rem;
+    box-shadow: 0 10px 22px -12px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(220, 231, 245, 0.07);
+    transition: transform 0.18s, border-color 0.18s, box-shadow 0.18s;
+  }
+  .arch-node:hover { transform: translateY(-3px); border-color: var(--accent); box-shadow: 0 16px 30px -14px rgba(0,0,0,0.65); }
+  .arch-node.hot { border-color: rgba(52, 211, 166, 0.65); }
+  .arch-node.gold { border-color: rgba(232, 180, 68, 0.6); }
+  .arch-node .ic { width: 26px; height: 26px; margin-bottom: 0.35rem; }
+  .arch-node .nm { font-weight: 600; font-size: 0.92rem; letter-spacing: -0.01em; }
+  .arch-node .ds { color: var(--muted); font-size: 0.76rem; font-family: ui-monospace, Menlo, monospace; }
+  .arch-join {
+    display: flex; justify-content: center; align-items: center; height: 2.4rem;
+    color: var(--accent); font-family: ui-monospace, Menlo, monospace; font-size: 0.72rem;
+    letter-spacing: 0.1em; gap: 0.5rem;
+  }
+  .arch-join::before, .arch-join::after {
+    content: ""; width: 2px; height: 100%;
+    background: linear-gradient(180deg, transparent, var(--accent), transparent);
+    box-shadow: 0 0 6px rgba(52, 211, 166, 0.5);
+  }
+  [data-tip] { position: relative; }
+  [data-tip]:hover::after {
+    content: attr(data-tip); position: absolute; left: 50%; bottom: calc(100% + 8px);
+    transform: translateX(-50%); white-space: nowrap; z-index: 10;
+    background: var(--navy-deep); color: var(--ink); border: 1px solid var(--accent);
+    border-radius: 6px; padding: 0.3rem 0.7rem; font-size: 0.75rem;
+    font-family: ui-monospace, Menlo, monospace; pointer-events: none;
+    box-shadow: 0 6px 18px -8px rgba(0,0,0,0.7);
+  }
+
+  /* chrome: theme toggle + toc rail */
+  .theme-toggle {
+    position: fixed; top: 1rem; right: 1rem; z-index: 50;
+    width: 2.3rem; height: 2.3rem; border-radius: 50%;
+    background: var(--card); border: 1px solid var(--line); color: var(--ink);
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    transition: border-color 0.2s, transform 0.2s; padding: 0;
+  }
+  .theme-toggle:hover { border-color: var(--accent); transform: rotate(15deg); }
+  .theme-toggle svg { width: 1.1rem; height: 1.1rem; stroke: var(--ink); fill: none; stroke-width: 1.6; }
+  html[data-theme="light"] .theme-toggle .moon { display: none; }
+  html:not([data-theme="light"]) .theme-toggle .sun { display: none; }
+  .toc-rail {
+    position: fixed; right: 1.05rem; top: 50%; transform: translateY(-50%);
+    display: flex; flex-direction: column; gap: 0.55rem; z-index: 40;
+  }
+  @media (max-width: 72rem) { .toc-rail { display: none; } }
+  .toc-rail a {
+    width: 9px; height: 9px; border-radius: 50%; background: var(--line);
+    transition: background 0.2s, transform 0.2s; position: relative;
+  }
+  .toc-rail a:hover, .toc-rail a.on { background: var(--accent); transform: scale(1.25); }
+  .toc-rail a:hover::after {
+    content: attr(data-label); position: absolute; right: 1.3rem; top: 50%;
+    transform: translateY(-50%); white-space: nowrap;
+    background: var(--navy-deep); color: var(--ink); border: 1px solid var(--line);
+    border-radius: 6px; padding: 0.2rem 0.6rem; font-size: 0.72rem;
+    font-family: ui-monospace, Menlo, monospace;
+  }
+  @media print { .theme-toggle, .toc-rail { display: none; } }
+</style>
+</head>
+<body>
+<button class="theme-toggle" aria-label="Toggle light/dark theme">
+  <svg class="moon" viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+  <svg class="sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.6 4.6l1.8 1.8M17.6 17.6l1.8 1.8M19.4 4.6l-1.8 1.8M6.4 17.6l-1.8 1.8"/></svg>
+</button>
+<nav class="toc-rail" id="tocRail" aria-label="Sections"></nav>
+<main>
+{{CONTENT}}
+<footer>published with <a href="https://agentkit.sbs">agentkit pages</a></footer>
+</main>
+<script>
+  document.querySelector(".theme-toggle").addEventListener("click", () => {
+    const html = document.documentElement;
+    const next = html.dataset.theme === "light" ? "dark" : "light";
+    html.dataset.theme = next;
+    localStorage.setItem("agentkit-theme", next);
+    dispatchEvent(new CustomEvent("agentkit-theme", { detail: next }));
+  });
+
+  const heads = [...document.querySelectorAll("main h2")];
+  if (heads.length >= 3) {
+    const rail = document.getElementById("tocRail");
+    heads.forEach((h, i) => {
+      if (!h.id) h.id = "s" + (i + 1);
+      const a = document.createElement("a");
+      a.href = "#" + h.id;
+      a.setAttribute("data-label", h.textContent.trim());
+      rail.appendChild(a);
+    });
+    const links = [...rail.children];
+    const io = new IntersectionObserver((es) => {
+      es.forEach((e) => {
+        if (!e.isIntersecting) return;
+        const i = heads.indexOf(e.target);
+        links.forEach((l, k) => l.classList.toggle("on", k === i));
+      });
+    }, { rootMargin: "-15% 0px -70% 0px" });
+    heads.forEach((h) => io.observe(h));
+  }
+
+  function drawEdges() {
+    document.querySelectorAll(".figure").forEach((fig) => {
+      const edges = [...fig.querySelectorAll(".edge")];
+      fig.querySelector("svg.edges")?.remove();
+      if (!edges.length) return;
+      const ns = "http://www.w3.org/2000/svg";
+      const svg = document.createElementNS(ns, "svg");
+      svg.setAttribute("class", "edges");
+      const fr = fig.getBoundingClientRect();
+      const defs = document.createElementNS(ns, "defs");
+      defs.innerHTML = '<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker>';
+      svg.appendChild(defs);
+      edges.forEach((e) => {
+        const a = fig.querySelector("#" + CSS.escape(e.dataset.from));
+        const b = fig.querySelector("#" + CSS.escape(e.dataset.to));
+        if (!a || !b) return;
+        const ra = a.getBoundingClientRect(), rb = b.getBoundingClientRect();
+        const x1 = ra.left + ra.width / 2 - fr.left, y1 = ra.top + ra.height / 2 - fr.top;
+        const x2 = rb.left + rb.width / 2 - fr.left, y2 = rb.top + rb.height / 2 - fr.top;
+        const dx = x2 - x1, dy = y2 - y1, len = Math.hypot(dx, dy);
+        const t1 = (Math.max(ra.width, ra.height) / 2 + 6) / len, t2 = (Math.max(rb.width, rb.height) / 2 + 10) / len;
+        const ax = x1 + dx * t1, ay = y1 + dy * t1, bx = x2 - dx * t2, by = y2 - dy * t2;
+        const mx = (ax + bx) / 2, my = (ay + by) / 2;
+        const cx = mx - dy * 0.12, cy = my + dx * 0.12;
+        const p = document.createElementNS(ns, "path");
+        p.setAttribute("d", `M${ax},${ay} Q${cx},${cy} ${bx},${by}`);
+        p.setAttribute("marker-end", "url(#ah)");
+        p.setAttribute("style", "color: var(--accent)");
+        svg.appendChild(p);
+        if (e.dataset.label) {
+          const tx = document.createElementNS(ns, "text");
+          tx.setAttribute("x", cx); tx.setAttribute("y", cy - 5);
+          tx.setAttribute("text-anchor", "middle");
+          tx.textContent = e.dataset.label;
+          svg.appendChild(tx);
+        }
+      });
+      fig.prepend(svg);
+    });
+  }
+  addEventListener("load", drawEdges);
+  addEventListener("agentkit-theme", () => setTimeout(drawEdges, 350));
+  addEventListener("resize", () => { clearTimeout(window.__et); window.__et = setTimeout(drawEdges, 150); });
+</script>
+</body>
+</html>
