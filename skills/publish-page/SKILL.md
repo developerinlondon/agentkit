@@ -43,8 +43,9 @@ mono eyebrows) — never re-explain or re-style these basics.
 strongest component for each idea — don't produce walls of prose:
 
 - **Diagrams: use mermaid fences** — they render as real diagrams (the runtime
-  is inlined automatically, only on pages that use it). Prefer mermaid over
-  ASCII art for flows, architectures, sequences:
+  is inlined automatically, only on pages that use it; it costs ~3.4 MB of the
+  5 MB page cap, leaving ~1.4 MB for content on diagram pages). Prefer mermaid
+  over ASCII art for flows, architectures, sequences:
   ````
   ```mermaid
   flowchart LR

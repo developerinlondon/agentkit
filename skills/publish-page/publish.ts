@@ -133,11 +133,15 @@ function splitSlides(md: string): string[] {
   return slides.map((s) => s.join("\n"));
 }
 
-// ```mermaid fences become <pre class="mermaid"> blocks that the inlined
-// runtime renders in the browser — same mechanism Claude artifacts use.
-function liftMermaidFences(md: string): string {
-  return md.replace(/```mermaid\n([\s\S]*?)\n```/g, (_, code) => `<pre class="mermaid">\n${code}\n</pre>`);
-}
+// Mermaid fences via marked's renderer, not a regex: fence-aware (nesting,
+// splitSlides sees real fences) and escaped (mermaid decodes via textContent).
+marked.use({
+  renderer: {
+    code({ text, lang }: { text: string; lang?: string }) {
+      return lang === "mermaid" ? `<pre class="mermaid">${escapeHtml(text)}</pre>\n` : false;
+    },
+  },
+});
 
 async function mermaidRuntime(): Promise<string> {
   const dist = join(import.meta.dir, "node_modules/mermaid/dist/mermaid.min.js");
@@ -164,19 +168,18 @@ async function render(): Promise<string> {
       console.error(`warning: bundled theme drifted from canonical ${repoTheme} — re-sync skills/publish-page/themes/`);
     }
   }
-  const prepared = isMd ? liftMermaidFences(source) : source;
   let content: string;
   if (template === "deck") {
     const parts = isMd
-      ? splitSlides(prepared).map((s) => marked.parse(s) as string)
-      : prepared.split(/<hr\b[^>]*>/i);
+      ? splitSlides(source).map((s) => marked.parse(s) as string)
+      : source.split(/<hr\b[^>]*>/i);
     content = parts
       .map((s) => s.trim())
       .filter(Boolean)
       .map((s) => `<section class="slide">\n${s}\n</section>`)
       .join("\n");
   } else {
-    content = isMd ? (marked.parse(prepared) as string) : prepared;
+    content = isMd ? (marked.parse(source) as string) : source;
   }
   if (content.includes('class="mermaid"')) content += await mermaidRuntime();
   // Function replacers: a plain string replacement expands $&, $`, $' found in
@@ -187,7 +190,12 @@ async function render(): Promise<string> {
 }
 
 const html = await render();
-if (Buffer.byteLength(html) > 5 * 1024 * 1024) fail("rendered page exceeds 5 MB");
+if (Buffer.byteLength(html) > 5 * 1024 * 1024) {
+  const hint = html.includes("mermaid.initialize")
+    ? " (the inlined mermaid runtime accounts for ~3.4 MB — diagram pages have ~1.4 MB left for content; split the page or drop diagrams)"
+    : "";
+  fail(`rendered page exceeds 5 MB${hint}`);
+}
 
 const res = await fetch(`${endpoint}/api/pages/${slug}`, {
   method: "PUT",
