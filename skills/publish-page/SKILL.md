@@ -14,9 +14,9 @@ an artifact: decide, publish, hand back the URL.
    complete self-contained HTML for bespoke pages (dashboards, visualizations).
 2. **Pick a logical name yourself**: short, descriptive, lowercase `a-z0-9-`,
    e.g. `fcar-q3-report`, `auth-flow-design`. The URL is derived as
-   HMAC(token, name) — cryptic hex nobody can guess, but deterministic: the same
-   name republished from any machine with the token updates the SAME URL, and
-   `--delete --name <name>` finds it again. No mapping to store.
+   HMAC(slug key, name) — cryptic hex nobody can guess, but deterministic: the
+   same name republished updates the SAME URL, and `--delete --name <name>`
+   finds it again. No mapping to store.
    Use `--slug <path>` INSTEAD only when the user explicitly wants a
    human-readable URL (up to 4 `/` segments).
 3. **Pick the template yourself**: `doc` (default, report/article), `deck`
@@ -49,8 +49,13 @@ bun <skill-dir>/publish.ts --name <name> --delete    # remove a page you publish
   the pages repo clone there is no git history to recover from — pick
   distinctive names, reuse one only when deliberately updating that page.
   `--no-git` skips the canonical commit explicitly (same effect as a missing
-  clone). Rotating the publish token changes every HMAC-derived URL on next
-  republish (old URLs keep serving until deleted).
+  clone).
+- Slug key: `~/.config/agentkit/pages-slug-key`, auto-generated on first use,
+  deliberately separate from the auth token so credential rotation never
+  changes a URL. Copy the SAME key to other machines (alongside the token) or
+  the same name derives different URLs per machine. Losing the key strands
+  HMAC-derived pages from `--name` reach — recover slugs from the pages repo
+  `meta.yaml` and manage them via `--slug`.
 - Pages must be self-contained: inline all CSS/JS, `data:` URIs for images. The
   serving CSP blocks every external request. Max 5 MB.
 - Errors are loud; fix and re-run. Do not fall back to pasting the content into

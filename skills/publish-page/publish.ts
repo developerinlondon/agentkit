@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
 import { marked } from "marked";
-import { createHmac } from "node:crypto";
+import { createHmac, randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -53,11 +53,22 @@ const tokenPath = join(homedir(), ".config/agentkit/pages-token");
 if (!existsSync(tokenPath)) fail(`publish token missing at ${tokenPath}`);
 const token = (await readFile(tokenPath, "utf8")).trim();
 
-// Cryptic-but-deterministic slug: HMAC(token, name). Only token holders can
-// derive it, and every machine with the token derives the same slug from the
-// same logical name — update and delete need no stored mapping.
+// Cryptic-but-deterministic slug: HMAC(slug key, name). The slug key is a
+// dedicated secret — NOT the auth token — so rotating credentials never
+// changes or orphans a URL, and a leaked slug key grants no write access.
+// Generated once per install; copy the same key to other machines for
+// cross-machine determinism.
+const slugKeyPath = join(homedir(), ".config/agentkit/pages-slug-key");
+async function slugKey(): Promise<string> {
+  if (existsSync(slugKeyPath)) return (await readFile(slugKeyPath, "utf8")).trim();
+  const key = randomBytes(32).toString("hex");
+  await writeFile(slugKeyPath, key);
+  await chmod(slugKeyPath, 0o600);
+  console.error(`note: generated new slug key at ${slugKeyPath} — copy it to other machines for same-name URL determinism`);
+  return key;
+}
 const slug = explicitSlug
-  ?? createHmac("sha256", token).update(name!).digest("hex").slice(0, 20);
+  ?? createHmac("sha256", await slugKey()).update(name!).digest("hex").slice(0, 20);
 const pageLabel = name ?? slug;
 
 const git = (...args: string[]) =>
@@ -87,7 +98,7 @@ if (isDelete) {
   });
   if (res.status === 404) fail(`no page at ${slug} — nothing deleted`);
   if (!res.ok) fail(`delete failed: HTTP ${res.status} ${await res.text()}`);
-  if (repoAvailable()) {
+  if (!noGit && repoAvailable()) {
     await rm(join(repo, "src", slug), { recursive: true, force: true });
     await rm(join(repo, "dist", slug), { recursive: true, force: true });
     git("add", "-A", "--", `src/${slug}`, `dist/${slug}`);
