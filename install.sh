@@ -533,10 +533,12 @@ install_claude_hooks() {
 		chmod +x "$install_dir/$name"
 	done
 
-	# Shared helpers (Claude + Grok dual payload). Live next to scripts so
-	# `source "${BASH_SOURCE[0]%/*}/lib/hook-input.sh"` resolves in canon and
-	# in client dirs that symlink the hook scripts.
+	# Shared helpers (Claude + Grok dual payload). Real files live in the
+	# install (canon) dir. Client dirs get lib/ via the top-level
+	# link_children below as a *directory* symlink — never re-link files
+	# inside lib/, or path resolution turns into self-symlinks.
 	if [[ -d "$REPO_DIR/hooks/claude/lib" ]]; then
+		rm -rf "$install_dir/lib"
 		mkdir -p "$install_dir/lib"
 		cp -a "$REPO_DIR"/hooks/claude/lib/. "$install_dir/lib/"
 		echo "[claude] Installed hook lib/ helpers"
@@ -544,13 +546,6 @@ install_claude_hooks() {
 
 	if [[ -n "$canon_dir" && "$hooks_dir" != "$canon_dir" ]]; then
 		link_children "$canon_dir" "$hooks_dir"
-		# lib/ is a directory — link_children is per-name for top-level entries;
-		# ensure the client hooks dir also has lib/ (symlink tree or copy).
-		if [[ -d "$canon_dir/lib" ]]; then
-			mkdir -p "$hooks_dir/lib"
-			# Prefer linking individual files so lib stays in sync with canon.
-			link_children "$canon_dir/lib" "$hooks_dir/lib"
-		fi
 	fi
 
 	# Merge hooks into settings.json — commands still resolve under hooks_dir
