@@ -84,6 +84,17 @@ install_skills() {
 		fi
 
 		cp -r "$skill_dir" "$target"
+
+		# Skills that ship runtime dependencies (a package.json) need an install
+		# step: bun does NOT auto-install when a package.json is present.
+		if [[ -f "$target/package.json" ]]; then
+			if command -v bun >/dev/null 2>&1; then
+				echo "[skills] Installing dependencies: $skill_name"
+				(cd "$target" && bun install --silent)
+			else
+				echo "[skills] WARNING: $skill_name needs 'bun install' in $target (bun not found)"
+			fi
+		fi
 	done
 }
 

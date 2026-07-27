@@ -10,6 +10,12 @@ never publish secrets or private data.
 
 ## Usage
 
+One-time setup (bun does not auto-install when a package.json is present):
+
+```bash
+cd <skill-dir> && bun install
+```
+
 ```bash
 bun <skill-dir>/publish.ts --slug <slug> --file <content-file> \
   [--template doc|deck|raw] [--title "Page title"] [--no-git]
