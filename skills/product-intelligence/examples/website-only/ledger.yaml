@@ -44,7 +44,7 @@ claims:
         stance: supports
         as_of: "2026-07-27"
   - id: C-006
-    statement: Brewlog integrates with bluetooth coffee scales.
+    statement: Brewlog claims compatibility with coffee scales, without naming which.
     class: observed
     confidence: low
     sources:
