@@ -10,6 +10,7 @@ import { join } from 'node:path';
 // overstated "the agent cannot dismiss this" claim reached review.
 
 const HOOK = join(import.meta.dir, '..', 'hooks', 'claude', 'review-police.sh');
+const SUPERVISOR = join(import.meta.dir, '..', 'hooks', 'claude', 'fail-closed-hook.sh');
 
 let repo: string;
 let bin: string;
@@ -39,13 +40,17 @@ interface StrictReviewFixture {
   evidence_ref: string;
 }
 
-function runHook(command: string, opts: { tool?: string; cwd?: string } = {}): string {
+function runHook(
+  command: string,
+  opts: { tool?: string; cwd?: string; supervised?: boolean } = {},
+): string {
   const input = JSON.stringify({
     tool_name: opts.tool ?? 'Bash',
     tool_input: opts.tool && opts.tool !== 'Bash' ? { pull_number: 12 } : { command },
     session_id: 'test-session',
   });
-  const res = spawnSync('bash', [HOOK], {
+  const args = opts.supervised ? [SUPERVISOR, '5', HOOK] : [HOOK];
+  const res = spawnSync('bash', args, {
     cwd: opts.cwd ?? repo,
     input,
     encoding: 'utf-8',
@@ -100,7 +105,11 @@ function record(body: unknown, slug = 'feat__thing'): void {
 }
 
 const passing = { head_sha: HEAD, verdict: 'pass', findings: [] };
-const MERGE = 'glab mr merge 12 --squash --yes';
+const MERGE = `glab mr merge 12 --squash --yes --sha ${HEAD} --auto-merge=false`;
+
+function mergeForHead(head: string): string {
+  return `glab mr merge 12 --squash --yes --sha ${head} --auto-merge=false`;
+}
 
 const strictAnalysisKinds = [
   'claims_audit',
@@ -382,6 +391,29 @@ describe('review-police: intended semantics', () => {
     expect(runHook(MERGE)).toBe('');
   });
 
+  test('requires the forge merge itself to carry the reviewed head precondition', () => {
+    record(passing);
+    for (const cmd of [
+      'glab mr merge 12 --auto-merge=false --yes',
+      `glab mr merge 12 --sha ${'b'.repeat(40)} --auto-merge=false --yes`,
+      'gh pr merge 12 --squash',
+      `gh pr merge 12 --match-head-commit ${'b'.repeat(40)} --squash`,
+    ]) {
+      expect(runHook(cmd), cmd).toContain('head precondition');
+    }
+    expect(runHook(`glab mr merge 12 --sha ${HEAD} --auto-merge=false --yes`)).toBe('');
+    expect(runHook(`gh pr merge 12 --match-head-commit=${HEAD} --squash`)).toBe('');
+  });
+
+  test('requires current glab to disable its deferred auto-merge default', () => {
+    record(passing);
+    expect(runHook(`glab mr merge 12 --sha ${HEAD} --yes`)).toContain('auto-merge');
+    expect(runHook(`glab mr merge 12 --sha ${HEAD} --auto-merge=true --yes`)).toContain(
+      'auto-merge',
+    );
+    expect(runHook(`glab mr merge 12 --sha ${HEAD} --auto-merge=false --yes`)).toBe('');
+  });
+
   test('allows once the blocking finding is resolved', () => {
     record({ ...passing, findings: [{ severity: 'BLOCKER', summary: 'fixed', resolved: true }] });
     expect(runHook(MERGE)).toBe('');
@@ -406,7 +438,9 @@ describe('review-police: intended semantics', () => {
 describe('review-police: forge host binding', () => {
   test('pins GitHub target APIs to the host resolved from the target repository', () => {
     record(passing);
-    expect(runHook('gh pr merge 12 --repo github.example/owner/repo')).toBe('');
+    expect(
+      runHook(`gh pr merge 12 --repo github.example/owner/repo --match-head-commit ${HEAD}`),
+    ).toBe('');
 
     expect(readFileSync(forgeLog, 'utf-8')).toContain(
       'gh\tapi --hostname github.example repos/owner/repo/branches/main',
@@ -415,7 +449,11 @@ describe('review-police: forge host binding', () => {
 
   test('pins GitLab target APIs to the host resolved from the merge request', () => {
     record(passing);
-    expect(runHook('glab mr merge 12 --repo github.example/owner/repo')).toBe('');
+    expect(
+      runHook(
+        `glab mr merge 12 --repo github.example/owner/repo --sha ${HEAD} --auto-merge=false`,
+      ),
+    ).toBe('');
 
     expect(readFileSync(forgeLog, 'utf-8')).toContain(
       'glab\tapi --hostname github.example projects/1/repository/branches/main',
@@ -428,7 +466,7 @@ describe('review-police: target-owned strict policy', () => {
     enableTargetPolicy();
     commitSourceChange();
     record(strictRecord());
-    expect(runHook(MERGE)).toBe('');
+    expect(runHook(mergeForHead(sourceSha))).toBe('');
   });
 
   test('does not let the source checkout weaken the policy judging itself', () => {
@@ -452,7 +490,7 @@ describe('review-police: target-owned strict policy', () => {
     };
     record(body);
 
-    const out = runHook(MERGE);
+    const out = runHook(mergeForHead(sourceSha));
     expect(out).toContain('"deny"');
     expect(out).toContain('minimum risk tier is critical');
   });
@@ -488,7 +526,7 @@ describe('review-police: target-owned strict policy', () => {
     writeFakeForge();
     record(passing);
 
-    expect(runHook('gh pr merge 12 --squash')).toBe('');
+    expect(runHook(`gh pr merge 12 --squash --match-head-commit ${HEAD}`)).toBe('');
   });
 
   test('uses its packaged validator instead of a PATH-shadowed executable', () => {
@@ -499,7 +537,7 @@ describe('review-police: target-owned strict policy', () => {
     chmodSync(shadow, 0o755);
     record({ ...strictRecord(), schema_version: 99 });
 
-    const out = runHook(MERGE);
+    const out = runHook(mergeForHead(sourceSha));
     expect(out).toContain('"deny"');
     expect(out).toContain('record schema');
   });
@@ -526,9 +564,30 @@ describe('review-police: bypasses found in adversarial review', () => {
     record(passing);
     for (const cmd of [
       'git push -o merge_request.merge_when_pipeline_succeeds origin feat/thing',
+      'git push -omerge_request.merge_when_pipeline_succeeds origin feat/thing',
       'git push --push-option=merge_request.merge_when_pipeline_succeeds origin feat/thing',
+      'G=git; $G push -o merge_request.merge_when_pipeline_succeeds origin feat/thing',
     ]) {
       expect(runHook(cmd)).toContain('"deny"');
+    }
+  });
+
+  test('an assembled forge executable still reaches the standalone-command denial', () => {
+    record(passing);
+    const out = runHook('A=g; B=lab; "$A$B" mr merge 12 --yes');
+    expect(out).toContain('"deny"');
+    expect(out).toContain('standalone forge CLI command');
+  });
+
+  test('the supervisor preserves denials for runtime-built merge forms', () => {
+    record(passing);
+    for (const cmd of [
+      'cli=glab; "$cli" mr merge 12 --yes',
+      'base=https://api.github.com/repos/o/r/pulls/12; action=merge; curl -X PUT "$base/$action"',
+      '/usr/bin/git push -o merge_request.merge_when_pipeline_succeeds origin feat/thing',
+      'glab mr merge 12 --auto-merge',
+    ]) {
+      expect(runHook(cmd, { supervised: true }), cmd).toContain('"deny"');
     }
   });
 
@@ -723,8 +782,10 @@ describe('review-police: bypasses found in adversarial review', () => {
 
   test('repository selectors after the literal change id remain bindable', () => {
     record(passing);
-    expect(runHook('glab mr merge 12 --repo group/proj')).toBe('');
-    expect(runHook('gh pr merge 12 --repo owner/repo')).toBe('');
+    expect(
+      runHook(`glab mr merge 12 --repo group/proj --sha ${HEAD} --auto-merge=false`),
+    ).toBe('');
+    expect(runHook(`gh pr merge 12 --repo owner/repo --match-head-commit ${HEAD}`)).toBe('');
   });
 
   test('H1: -R / --repo flag variants are still gated', () => {
@@ -755,6 +816,7 @@ describe('review-police: bypasses found in adversarial review', () => {
   test('M2: auto-merge is refused — it lands a head no review has seen', () => {
     record(passing);
     expect(runHook('glab mr merge 12 --auto')).toContain('auto-merge');
+    expect(runHook('glab mr merge 12 --auto-merge')).toContain('auto-merge');
   });
 
   test('REST merges are gated, contiguous or split across variables', () => {
@@ -762,6 +824,11 @@ describe('review-police: bypasses found in adversarial review', () => {
     expect(runHook('curl -X PUT https://gitlab.com/api/v4/projects/1/merge_requests/999/merge'))
       .toContain('"deny"');
     expect(runHook('gh api --method PUT /repos/o/r/pulls/999/merge')).toContain('"deny"');
+    expect(
+      runHook(
+        'base=https://api.github.com/repos/o/r/pulls/12; action=merge; curl -X PUT "$base/$action"',
+      ),
+    ).toContain('"deny"');
   });
 
   test('a shell-wrapped merge is still a merge, in every calling convention', () => {
@@ -844,8 +911,8 @@ describe('review-police: bypasses found in adversarial review', () => {
 
   test('the literal change id precedes merge flags', () => {
     record(passing);
-    expect(runHook('gh pr merge 12 --squash')).toBe('');
-    expect(runHook('glab mr merge 12 --yes')).toBe('');
+    expect(runHook(`gh pr merge 12 --squash --match-head-commit ${HEAD}`)).toBe('');
+    expect(runHook(`glab mr merge 12 --yes --sha ${HEAD} --auto-merge=false`)).toBe('');
     expect(runHook('gh pr merge --squash 12')).toContain('standalone forge CLI command');
     expect(runHook('glab mr merge --yes 12')).toContain('standalone forge CLI command');
     expect(runHook('gh pr merge --squash 999')).toContain('"deny"');

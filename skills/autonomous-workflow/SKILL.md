@@ -43,8 +43,12 @@ Exceptions: bug fixes in already-approved work, read-only research, formatting.
 
 Review is a gate, not a parallel task and not advice. `review-police.sh` allows
 one standalone `gh pr merge` or `glab mr merge` only with a passing record for
-the exact source head selected by the forge. It refuses direct REST/GraphQL/MCP
-and compound or wrapped merges because they cannot be bound safely.
+the exact source head selected by the forge. The command must carry that head
+through `gh --match-head-commit` or `glab --sha`, so the forge refuses a source
+that advances between review and merge. GitLab commands must also pass
+`--auto-merge=false` so current `glab` does not defer the merge by default. It
+refuses direct REST/GraphQL/MCP and compound or wrapped merges because they
+cannot be bound safely.
 
 Be honest about its limits: the record lives in the repo and you can write it,
 so the hook cannot _prevent_ a determined bypass — it makes the honest path

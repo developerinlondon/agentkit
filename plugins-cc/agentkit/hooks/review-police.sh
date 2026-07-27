@@ -202,9 +202,13 @@ after() { printf '%s' "$COMMAND" | awk -v k="$1" 'p { print; exit } $0 == k { p 
 # `set -e` that exits the hook silently — i.e. FAILS OPEN, allowing the merge.
 is_merge=0
 direct_api_merge=0
-if has_basename glab && has mr && has merge; then is_merge=1; fi
-if has_basename glab && has mr && has accept; then is_merge=1; fi
-if has_basename gh && has pr && has merge; then is_merge=1; fi
+# Do not require a literal `glab` / `gh` token here. Shell variables can build
+# the executable name (`A=g; B=lab; "$A$B" mr merge 12`) while leaving the
+# subcommand tokens intact. Classify the merge shape first; the standalone
+# parser below then rejects anything except one literal forge invocation.
+if has mr && has merge; then is_merge=1; fi
+if has mr && has accept; then is_merge=1; fi
+if has pr && has merge; then is_merge=1; fi
 # The merge path IS the attempt, whatever calls it: any caller allowlist leaves
 # python, node, ruby and every wrapper script outside it. Reading such a URL
 # therefore denies too — a false deny is the cheaper failure here.
@@ -227,6 +231,16 @@ if echo "$RAW_COMMAND" | grep -qiE 'merge_requests?|/pulls?/' &&
 	is_merge=1
 	direct_api_merge=1
 fi
+# The final path component can itself be a variable. Keep this deliberately
+# conservative: a pull/MR endpoint, a variable whose exact assigned value is
+# `merge`, and a variable interpolation immediately after `/` together form a
+# merge-shaped endpoint even though the literal `/merge` never appears.
+if echo "$RAW_COMMAND" | grep -qiE 'merge_requests?|/pulls?/' &&
+	tok_match '^[[:alpha:]_][[:alnum:]_]*=merge$' &&
+	tok_match '/\$\{?[[:alpha:]_]'; then
+	is_merge=1
+	direct_api_merge=1
+fi
 # Gate on an actual `git push` — `-o` is ubiquitous (grep -o, curl -o, cc -o),
 # so matching it bare denied commands that merely MENTIONED the pattern,
 # including grepping for the rule this hook enforces. As tokens: the option's
@@ -236,10 +250,11 @@ fi
 # form, and reading only the token after the first `-o` let it through.
 # A push-option value counts when its PREDECESSOR token is -o/--push-option
 # (covering both the short and the space-separated long form), or when it is
-# fused as --push-option=<value>.
+# fused as --push-option=<value> or Git's valid -o<value> spelling.
 push_option_merge() {
 	printf '%s' "$COMMAND" | awk '
 		/^--push-option=.*merge_request\.merge/ { found = 1 }
+		/^-omerge_request\.merge/ { found = 1 }
 		prev == "-o" || prev == "--push-option" {
 			if ($0 ~ /^merge_request\.merge/) found = 1
 		}
@@ -247,7 +262,10 @@ push_option_merge() {
 		END { exit(found ? 0 : 1) }
 	'
 }
-if has git && has push && push_option_merge; then
+# The executable can itself be expanded from a variable. `push` plus the exact
+# merge-option shape is specific enough to fail closed without a literal `git`;
+# quoted commit-message prose remains one token and does not satisfy either arm.
+if has push && push_option_merge; then
 	deny "BLOCKED: a merge-on-pipeline push option queues a merge no review has seen.
 
 Push the branch without the merge push-option, then merge explicitly so the
@@ -276,7 +294,7 @@ fi
 # disagreement over which change the actual CLI targets.
 parse_standalone_forge_merge() {
 	printf '%s' "$RAW_COMMAND" | python3 -c '
-import json, shlex, sys
+import json, re, shlex, sys
 
 raw = sys.stdin.read()
 if "\n" in raw or "$" in raw or chr(96) in raw:
@@ -306,6 +324,9 @@ if tokens.count("merge") != 1:
 
 repo = ""
 selectors = 0
+expected_head = ""
+head_guards = 0
+head_flag = "--match-head-commit" if tool == "gh" else "--sha"
 i = 4
 while i < len(tokens):
     token = tokens[i]
@@ -321,13 +342,29 @@ while i < len(tokens):
             raise SystemExit(1)
         selectors += 1
         repo = value
+    elif token == head_flag:
+        i += 1
+        if i >= len(tokens):
+            raise SystemExit(1)
+        head_guards += 1
+        expected_head = tokens[i].lower()
+    elif token.startswith(head_flag + "="):
+        head_guards += 1
+        expected_head = token[len(head_flag) + 1:].lower()
     elif token.startswith("-R") or token.startswith("--repo") or token.startswith("--host"):
         raise SystemExit(1)
     i += 1
 
-if selectors > 1:
+if selectors > 1 or head_guards > 1:
     raise SystemExit(1)
-print(json.dumps({"cli": tool, "change_id": int(tokens[3]), "repository": repo}))
+if expected_head and not re.fullmatch("[0-9a-f]{40}([0-9a-f]{24})?", expected_head):
+    raise SystemExit(1)
+print(json.dumps({
+    "cli": tool,
+    "change_id": int(tokens[3]),
+    "repository": repo,
+    "expected_head": expected_head,
+}))
 ' 2>/dev/null
 }
 if ! CLI_CONTEXT=$(parse_standalone_forge_merge); then
@@ -341,17 +378,24 @@ fi
 CLI=$(jq -r '.cli // empty' <<<"$CLI_CONTEXT" 2>/dev/null || true)
 MR_ID=$(jq -r '.change_id // empty' <<<"$CLI_CONTEXT" 2>/dev/null || true)
 REPO_FLAG=$(jq -r '.repository // empty' <<<"$CLI_CONTEXT" 2>/dev/null || true)
+EXPECTED_HEAD=$(jq -r '.expected_head // empty' <<<"$CLI_CONTEXT" 2>/dev/null || true)
 if [[ ( "$CLI" != "gh" && "$CLI" != "glab" ) || ! "$MR_ID" =~ ^[0-9]+$ ]]; then
 	deny 'BLOCKED: the standalone merge command could not be bound to one literal change ID.'
 fi
 
 # Auto-merge queues the merge for a LATER head — the sha we check now is not
 # the sha that lands. Refuse the mode rather than pretend to gate it.
-if tok_match '^--(auto|merge-when-pipeline-succeeds|when-pipeline-succeeds)$'; then
+if tok_match '^--(auto|auto-merge(=true)?|merge-when-pipeline-succeeds|when-pipeline-succeeds)$'; then
 	deny "BLOCKED: auto-merge cannot be review-gated.
 
 It merges a future head that no review has seen. Wait for the pipeline, then
 merge explicitly so the gate can check the commit that actually lands."
+fi
+if [[ "$CLI" == "glab" ]] && ! tok_match '^--auto-merge=false$'; then
+	deny "BLOCKED: current glab defaults to auto-merge while a pipeline is running.
+
+Add '--auto-merge=false' so this command attempts an immediate merge. Deferred
+auto-merge can land a later head that no review has seen."
 fi
 
 # --- Resolve WHAT is being merged, from the forge ---------------------------
@@ -444,6 +488,25 @@ The gate must read the change's source/target branches and exact SHAs from the
 forge — the local checkout alone says nothing about the commit being merged.
 Run the merge from the repo directory with an explicit MR/PR number and an
 authenticated forge CLI."
+fi
+
+# The hook and merge are two separate processes. The source may advance after
+# this check but before the CLI reaches the forge. Make the forge itself enforce
+# the reviewed SHA so that race becomes a refused merge, not an unreviewed one.
+if [[ -z "$EXPECTED_HEAD" || "$EXPECTED_HEAD" != "$HEAD_SHA" ]]; then
+	HEAD_FLAG='--sha'
+	GROUP='mr'
+	if [[ "$CLI" == "gh" ]]; then
+		HEAD_FLAG='--match-head-commit'
+		GROUP='pr'
+	fi
+	deny "BLOCKED: the merge command must carry the exact reviewed head precondition.
+
+  resolved head: $HEAD_SHA
+  command head:  ${EXPECTED_HEAD:-<missing>}
+
+Retry '$CLI $GROUP merge $MR_ID' after adding '$HEAD_FLAG $HEAD_SHA'. The forge will
+then refuse the merge if the source branch changes after this hook checks it."
 fi
 
 SLUG=$(echo "$BRANCH" | sed 's#/#__#g')

@@ -161,7 +161,12 @@ allows it; the hook logs that path. Missing or malformed evidence is invalid and
 cannot be consented away.
 
 The evidence token can authorize only one literal, top-level `gh pr merge` or
-`glab mr merge` invocation. Direct REST/GraphQL and MCP merges are refused, as
+`glab mr merge` invocation. The command must pass the resolved source SHA back
+to the forge with GitHub's `--match-head-commit` or GitLab's `--sha`
+precondition. That closes the check-to-merge race: if the branch advances after
+the hook checks it, the forge refuses the merge. Current `glab` also requires
+`--auto-merge=false`; otherwise a running pipeline makes the command queue a
+deferred merge by default. Direct REST/GraphQL and MCP merges are refused, as
 are shell wrappers, command substitutions, compound commands, multiple merge
 verbs, and commands that could update the source before merging it. This is
 deliberately fail-closed: a single PreToolUse decision cannot prove which head a
