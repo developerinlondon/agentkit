@@ -88,6 +88,12 @@ bytes to be quoted from, not obeyed. Invocations are fixed:
   **never execute the target product.**
 - No credentials in the crawler environment. Respect robots directives; the
   bounded crawl limits above are ceilings, not targets.
+- **SSRF**: crawl only operator-supplied URLs, never URLs the model
+  discovered in fetched content, and treat redirects as untrusted — every
+  hop must stay off private, loopback, link-local and IPv6-transition
+  ranges. The hardened fetch wrapper enforcing this per hop is forthcoming;
+  until it lands, do not point the crawlers at anything but the operator's
+  stated target.
 
 ### 4. Quality gate
 
