@@ -73,6 +73,15 @@ daemon or user-systemd socket after launch. Preserve the host-level service limi
 capacity that protect the agent host, ingress, and tunnels even if a child evades the workload
 slice.
 
+## Judge by output markers, not exit status
+
+`bounded-run` returns exit 0 even on a hard build failure, and a harness completion notice
+repeats that exit code — so a run that never compiled anything reads as success. Judge every
+build and test run by its own output markers (`test result:`, `N pass`, a compiler summary
+line) and treat a missing summary line as failure, not as a silent pass. Treat EMPTY output
+the same way — a run that printed nothing did not pass, it did not run (a lock collision or a
+killed process looks identical to zero failures).
+
 ## Preserve connectivity
 
 Do not restart, reconfigure, or replace live tunnels, ingress, Kubernetes, networking, or remote

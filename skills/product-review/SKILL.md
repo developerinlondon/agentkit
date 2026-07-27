@@ -119,6 +119,24 @@ Two rules carried over from diff review, because they were learned the hard
 way: report what you actually observed rather than what the code implies, and
 never describe coverage you did not obtain.
 
+## Claims audit
+
+Apply the claims audit specified in the **autonomous-workflow** skill under
+"Review Gates The Merge" as part of this lane too. A product reviewer sees
+claim defects a diff reviewer cannot, such as a README that promises behaviour
+the product does not have.
+
+### Observed vs inferred
+
+When you state a fact — in a finding, a comment, a commit message, an MR
+description — mark which it is:
+
+- `Probe-verified: <the payload or output you actually saw>`
+- `Inferred from the documented meaning of X` / `inferred from the call site`
+
+Marking the evidence boundary while writing keeps observation and inference
+from being reported as the same thing.
+
 ## Scope
 
 Product review does NOT replace diff review — it adds the lens diff review

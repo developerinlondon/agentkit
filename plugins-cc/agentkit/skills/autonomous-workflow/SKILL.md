@@ -78,7 +78,19 @@ gate as something it is not.
    workaround, not a flag that hides it, not a comment explaining why it is
    acceptable. Then re-run the reviewer against the new head and merge on a
    fresh pass.
-5. **Do not hand findings to the user to approve.** They are not a queue for
+5. **Audit the claims, not just the logic.** Grep the diff's comments, commit
+   messages and MR/PR description for factual assertions — especially
+   **every, always, never, all, verified, probed, cannot** — and check each
+   against reality with `git grep`, a probe, or the code itself.
+
+   Common failure shapes include a change description asserting compatibility
+   with clients that do not exist, a comment citing a probe that exercised a
+   different branch, or a rule table contradicted by code in the same file.
+
+   Report any claim that outruns its evidence, **even when the code is
+   correct**. Wrong prose is not cosmetic — it teaches the next reader a wrong
+   model, and the next change is made against that model.
+6. **Do not hand findings to the user to approve.** They are not a queue for
    work you would rather not do. Escalate only when a finding genuinely cannot
    be fixed — an upstream or platform limitation — and say why. If they then
    approve in writing, record their exact words in `user_consent`. Fabricating
@@ -101,6 +113,40 @@ a separate pass: build it, run it, use it, from a cold start. It reads
 `.agentkit/product.yaml` and refuses rather than guessing when that is absent.
 When the two lenses disagree on severity, the user-facing consequence wins —
 internally correct code that cannot be used is still broken.
+
+## Observe External Behaviour Before Building On It
+
+Before building on another system's behaviour, OBSERVE it: run a probe, capture
+a real payload, or quote the doc with its URL. Preserve the relevant evidence
+next to the code that depends on it, with secrets, tokens and personal data redacted,
+and mark it observed vs inferred (see "Observed vs inferred" in product-review).
+
+Assumptions about wire protocols, event names, error shapes and field
+nullability are the ones that bite — and tests written from an assumption
+cannot catch it, they encode it.
+
+Tests that synthesise an assumed provider event prove only that the code handles
+the invented fixture. Probe the real transport before treating that event as a
+supported contract.
+
+## Mutation-Check Load-Bearing Values
+
+Take the **one or two values this change is actually about** — not every value
+the feature touches. A re-run per value is the one rule here that can eat an
+afternoon on a slow suite. Replace each with a constant and re-run.
+
+- **A green suite means that value is not covered.**
+- **Restore the original value after each run** before making any further change.
+- **If nothing can observe the value — the test double cannot report anything
+  else — building that seam is part of this change, not a follow-up.** No test
+  can exist until it does. This is the case that motivated the rule.
+- **Confirm the mutation applied and compiled** before believing any result. An
+  invalid mutation reads exactly like "covered".
+- **Judge by the run's output markers, never its exit status** — see
+  **resource-safe-execution**. Runners report success on builds that never ran.
+
+If replacing a load-bearing value with a constant leaves the suite green, the
+tests do not observe that value yet.
 
 ## Commit Hygiene
 
@@ -127,3 +173,9 @@ pattern, a gotcha, a convention, a lesson learned -- PROPOSE updating the releva
    patterns that should be standardized
 2. **Always propose first**: Never silently update config files. Describe what you learned and why
    it should be codified. Wait for approval.
+
+### Correct notes the moment they are disproved
+
+When a reviewer disproves something you asserted, correct the stored note then —
+not at session end, not on a timer. Prune as readily as you append: a confident
+stale note is worse than none, because later work may trust it.
