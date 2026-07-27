@@ -1,0 +1,40 @@
+brief_version: "1.0"
+subject:
+  name: tidyenv
+  repo: github.com/example/tidyenv
+  one_liner: CLI that strips .env entries nothing in the codebase reads.
+evidence:
+  ledger: ledger.yaml
+  acquired_at: "2026-07-27"
+  acquisition:
+    - tool: repomix --remote
+      target: example/tidyenv
+      retrieved_at: "2026-07-27"
+    - tool: gh api
+      target: example/tidyenv
+      retrieved_at: "2026-07-27"
+positioning:
+  target_customer: developers on aging codebases
+  need: knowing which env vars are actually read
+  category: developer hygiene CLI
+  key_benefit: dead configuration is found, not guessed at
+  claims: [C-001]
+job_stories:
+  - situation: I inherit a service with a 200-line .env.example
+    motivation: I want to know which entries still matter
+    outcome: I can onboard without cargo-culting dead configuration
+    claims: [C-001]
+workflows:
+  - name: clean a service's configuration
+    steps:
+      - step: locate
+        description: tidyenv scans the codebase for env reads
+        claims: [C-001]
+      - step: execute
+        description: unused entries are stripped from the .env files
+        claims: [C-001]
+cannot_verify:
+  - what: adoption, download counts or anyone using it in production
+    why: only the repository was acquired; no site or registry stats
+  - what: behavior on Windows
+    why: no acquired source states platform support in either direction
