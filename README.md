@@ -15,6 +15,7 @@ Reusable AI agent skills, rules, plugins, hooks, and tools for OpenCode, Claude 
 | **code-quality**            | Warnings-as-errors, no underscore prefixes, test coverage                                |
 | **documentation**           | Surface-aware diagrams (Mermaid / ASCII), structured plan format, formatting rules       |
 | **issue-raiser**            | GitLab issue creation with root cause analysis and git-history-based assignees           |
+| **product-intelligence**    | Evidence-backed product briefs with a claim-by-claim ledger; hardened acquisition        |
 | **project-planning**        | Structured project planning: break down ideas into architecture, file structure, roadmap |
 | **resource-safe-execution** | On Linux, runs heavy developer commands inside deterministic systemd resource limits     |
 

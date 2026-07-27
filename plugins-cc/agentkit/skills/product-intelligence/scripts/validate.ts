@@ -26,7 +26,8 @@ const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d(\.\d+)?)?(Z|[+-]([01]\d|2[0-3
 function isDate(value: string): boolean {
   if (!DATE_RE.test(value)) return false;
   const [y, m, d] = value.split('-').map(Number);
-  const date = new Date(Date.UTC(y, m - 1, d));
+  const date = new Date(Date.UTC(2000, m - 1, d));
+  date.setUTCFullYear(y); // Date.UTC would remap years 0-99 to 1900-1999
   return date.getUTCFullYear() === y && date.getUTCMonth() === m - 1 && date.getUTCDate() === d;
 }
 
