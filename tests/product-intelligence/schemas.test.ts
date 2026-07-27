@@ -24,6 +24,7 @@ const expectedFailures: Record<string, string> = {
   'ledger-merged-class-confidence.yaml': 'must be one of',
   'ledger-unknown-field.yaml': "unknown field 'severity'",
   'ledger-source-missing-quote.yaml': "missing required field 'quote'",
+  'ledger-impossible-date.yaml': 'expected a real ISO-8601 date',
   'brief-unknown-claim.yaml': "unknown ledger claim 'C-999'",
   'brief-disposition-without-rationale.yaml': 'requires a rationale',
   'brief-missing-subject-name.yaml': "missing required field 'name'",

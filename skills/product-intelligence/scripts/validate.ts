@@ -20,8 +20,22 @@ function loadSchema(name: string): Schema {
 }
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d(\.\d+)?)?(Z|[+-]([01]\d|2[0-3]):?[0-5]\d)?$/;
+
+// Shape alone lets 2026-13-45 through; round-trip through Date catches it.
+function isDate(value: string): boolean {
+  if (!DATE_RE.test(value)) return false;
+  const [y, m, d] = value.split('-').map(Number);
+  const date = new Date(Date.UTC(y, m - 1, d));
+  return date.getUTCFullYear() === y && date.getUTCMonth() === m - 1 && date.getUTCDate() === d;
+}
+
 // The ledger declares generated_at as "date (or date-time)"; accept both.
-const DATE_TIME_RE = /^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?)?$/;
+function isDateTime(value: string): boolean {
+  if (!isDate(value.slice(0, 10))) return false;
+  const rest = value.slice(10);
+  return rest === '' || ((rest[0] === 'T' || rest[0] === ' ') && TIME_RE.test(rest.slice(1)));
+}
 
 function resolveRef(root: Schema, ref: string): Schema {
   if (!ref.startsWith('#/')) throw new Error(`unsupported $ref: ${ref}`);
@@ -63,16 +77,16 @@ export function checkSchema(value: Json, schema: Schema, root: Schema, path: str
 
 function checkString(value: string, schema: Schema, path: string, errors: string[]): void {
   if (typeof schema.minLength === 'number' && value.length < schema.minLength) {
-    errors.push(`${path}: must not be empty`);
+    errors.push(`${path}: must be at least ${schema.minLength} character(s)`);
   }
   if (typeof schema.pattern === 'string' && !new RegExp(schema.pattern).test(value)) {
     errors.push(`${path}: does not match pattern ${schema.pattern}`);
   }
-  if (schema.format === 'date' && !DATE_RE.test(value)) {
-    errors.push(`${path}: expected an ISO-8601 date (YYYY-MM-DD)`);
+  if (schema.format === 'date' && !isDate(value)) {
+    errors.push(`${path}: expected a real ISO-8601 date (YYYY-MM-DD)`);
   }
-  if (schema.format === 'date-time' && !DATE_TIME_RE.test(value)) {
-    errors.push(`${path}: expected an ISO-8601 date or date-time`);
+  if (schema.format === 'date-time' && !isDateTime(value)) {
+    errors.push(`${path}: expected a real ISO-8601 date or date-time`);
   }
 }
 

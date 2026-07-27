@@ -5,3 +5,9 @@ This product includes software developed by agentkit contributors.
 
 Licensed under the Apache License, Version 2.0 (the "License").
 See the LICENSE file for the full license text.
+
+Third-party content:
+
+skills/product-intelligence/assets/brief-template.md is derived from
+BMAD-METHOD (https://github.com/bmad-code-org/BMAD-METHOD),
+Copyright (c) 2025 BMad Code, LLC, licensed under the MIT License.
