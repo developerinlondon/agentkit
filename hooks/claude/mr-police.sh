@@ -14,8 +14,13 @@
 # mr create …`) — inline assignments never reach the hook process.
 set -euo pipefail
 
-INPUT=$(cat)
-COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty')
+# shellcheck source=lib/hook-input.sh
+# Pure bash dirname: external `dirname` is missing when PATH is empty (the
+# missing-jq fail-open probe), and a source failure under set -e would silence
+# the gate. BASH_SOURCE is absolute when the harness invokes the script by path.
+source "${BASH_SOURCE[0]%/*}/lib/hook-input.sh"
+agentkit_slurp_input
+COMMAND=$(agentkit_command)
 [[ -z "$COMMAND" ]] && exit 0
 
 # Only act on MR-creation commands; everything else passes through instantly.
@@ -24,13 +29,7 @@ if ! echo "$COMMAND" | grep -qiE 'glab[[:space:]]+mr[[:space:]]+create|merge_req
 fi
 
 deny() {
-	jq -n --arg r "$1" '{
-    hookSpecificOutput: {
-      hookEventName: "PreToolUse",
-      permissionDecision: "deny",
-      permissionDecisionReason: $r
-    }
-  }'
+	agentkit_deny_json "$1"
 	exit 0
 }
 

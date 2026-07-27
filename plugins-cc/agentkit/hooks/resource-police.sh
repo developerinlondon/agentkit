@@ -1,12 +1,94 @@
 #!/bin/bash
 set -euo pipefail
 
-readonly AWK_BIN=/usr/bin/awk
-readonly CAT_BIN=/usr/bin/cat
-readonly JQ_BIN=/usr/bin/jq
+# bash 3.2 — stock on macOS — cannot parse `(` inside [[ =~ ]]. Held in
+# variables, these parse everywhere and BASH_REMATCH still works.
+# A parse error here is fatal: this is a PreToolUse Bash hook, so it would
+# deny EVERY command with the kill switch unreachable.
+RE_BARE_TASK='^(build|check|type-?check|lint)(:[[:alnum:]_-]+)?$'
+RE_BUN_HEAVY='^(add|install|update|test)$'
+RE_CARGO_HEAVY='^(build|check|test|clippy)$'
+RE_DELEGATING='^(ansible|ansible-playbook|doas|mosh|pkexec|run0|ssh|sudo|systemd-run)$'
+RE_DOCKER_READONLY='^(diff|events|history|images|info|inspect|logs|port|ps|stats|top|version)$'
+RE_GO_HEAVY='^(build|test)$'
+RE_KUBECTL_READONLY='^(api-resources|api-versions|auth|cluster-info|describe|explain|get|logs|top|version)$'
+RE_MACHINECTL_READONLY='^(list|show|status)$'
+RE_NPM_HEAVY='^(add|install|i|ci|update|upgrade|test)$'
+RE_ORCHESTRATOR='^(buildah|docker|kubectl|machinectl|nerdctl|podman|service|systemctl)$'
+RE_BUILDAH_READONLY='^(containers|images|info|inspect|version)$'
+RE_SCRIPT_TASK='^(build|check|type-?check|lint|test)(:[[:alnum:]_-]+)?$'
+RE_SHELL='^(bash|dash|fish|sh|zsh)$'
+RE_SYSTEMCTL_READONLY='^(cat|get-default|is-active|is-enabled|is-failed|list-|show|status)'
+RE_UV_HEAVY='^(add|sync)$'
+RE_YARN_HEAVY='^(add|install|up|upgrade|test)$'
 
-INPUT=$("$CAT_BIN")
-COMMAND=$(printf '%s' "$INPUT" | "$JQ_BIN" -r '.tool_input.command // empty')
+
+# Absolute paths are deliberate: a hook that inspects a command must not
+# resolve its own tools through a PATH that command could have manipulated.
+# But the locations are NOT the same everywhere — `cat` is /bin/cat on macOS
+# and /usr/bin/cat on most Linux, and jq is wherever it was installed. Probing
+# a short list of known locations keeps the intent while working on both.
+#
+# This mattered: the hardcoded /usr/bin/cat does not exist on macOS, so with
+# `set -e` the hook died on its very first line. Claude Code reported only
+# "non-blocking status code", which reads as noise — so the guard was not
+# merely broken, it was silently OFF while appearing to be installed.
+pick_bin() {
+	local p
+	for p in "$@"; do
+		[[ -x "$p" ]] && {
+			printf '%s' "$p"
+			return 0
+		}
+	done
+	return 1
+}
+
+AWK_BIN=$(pick_bin /usr/bin/awk /bin/awk) || AWK_BIN=""
+CAT_BIN=$(pick_bin /bin/cat /usr/bin/cat) || CAT_BIN=""
+JQ_BIN=$(pick_bin /usr/bin/jq /opt/homebrew/bin/jq /usr/local/bin/jq) || JQ_BIN=""
+readonly AWK_BIN CAT_BIN JQ_BIN
+
+# Missing tools mean this guard cannot run. Say so ONCE, loudly, and allow the
+# command: this is defence-in-depth detection, not a sandbox, so failing closed
+# would wedge every Bash call over a missing utility. What must not happen is
+# failing silently, which is exactly what it did before.
+if [[ -z "$AWK_BIN" || -z "$CAT_BIN" || -z "$JQ_BIN" ]]; then
+	printf 'resource-police: DISABLED — missing %s. Heavy commands are NOT being bounded.\n' \
+		"$([[ -z "$AWK_BIN" ]] && printf 'awk '; [[ -z "$CAT_BIN" ]] && printf 'cat '; [[ -z "$JQ_BIN" ]] && printf 'jq ')" >&2
+	exit 0
+fi
+
+# Stand down where bounding is IMPOSSIBLE, not merely unconfigured.
+#
+# bounded-run contains work in a systemd scope backed by cgroup v2, and dies
+# with 'cgroup v2 is unavailable' without it. macOS has neither cgroups nor
+# systemd, so enforcing here would deny every heavy command and name a remedy
+# that cannot run on this host — a deadlock with no way out except the escape
+# hatch, on every build, test and typecheck.
+#
+# Announced once per session rather than per command: a warning on every Bash
+# call is the kind of noise that trains people to ignore hooks, but silently
+# disabling a guard is how it stays broken for months.
+if [[ ! -r /sys/fs/cgroup/cgroup.controllers ]]; then
+	# Keyed on PPID — the client process, stable across every hook invocation
+	# in one session. $$ is this hook's own pid and changes each time, which
+	# would make "once" mean "always".
+	notice="${TMPDIR:-/tmp}/.agentkit-resource-police-inactive.$PPID"
+	if [[ ! -e "$notice" ]]; then
+		: >"$notice" 2>/dev/null || true
+		printf 'resource-police: INACTIVE on this host — cgroup v2 is unavailable, so bounded-run cannot contain anything. Heavy commands are not being bounded.\n' >&2
+	fi
+	exit 0
+fi
+
+# shellcheck source=lib/hook-input.sh
+# Pure bash dirname: external `dirname` is missing when PATH is empty (the
+# missing-jq fail-open probe), and a source failure under set -e would silence
+# the gate. BASH_SOURCE is absolute when the harness invokes the script by path.
+source "${BASH_SOURCE[0]%/*}/lib/hook-input.sh"
+agentkit_slurp_input
+COMMAND=$(agentkit_command)
 [[ -z "$COMMAND" ]] && exit 0
 
 # User-approved escape hatch for sanctioned delegated workloads (e.g. an
@@ -37,13 +119,7 @@ deny() {
 	else
 		reason="BLOCKED: resource-intensive command is not contained: $segment. Run it through $runner_hint, for example: $runner_hint --profile compile -- bun run typecheck. Use profile browser for Playwright and browser builds."
 	fi
-	"$JQ_BIN" -n --arg r "$reason" '{
-    hookSpecificOutput: {
-      hookEventName: "PreToolUse",
-      permissionDecision: "deny",
-      permissionDecisionReason: $r
-    }
-  }'
+	agentkit_deny_json "$reason"
 	exit 0
 }
 
@@ -137,35 +213,40 @@ parse_launch() {
 }
 
 is_heavy() {
-	local executable="${EXECUTABLE,,}"
+	# `${VAR,,}` is bash 4+. macOS ships bash 3.2 at /bin/bash, which this
+	# script's shebang selects, so that expansion is a hard parse error there —
+	# and with `set -e` it killed the hook mid-run, leaving the guard off. `tr`
+	# is portable and the cost is irrelevant at one call per command.
+	local executable
+	executable=$(printf '%s' "$EXECUTABLE" | LC_ALL=C tr '[:upper:]' '[:lower:]')
 	local first="${ARGS[0]:-}"
 	local second="${ARGS[1]:-}"
 	case "$executable" in
 	bun)
-		[[ "$first" =~ ^(add|install|update|test)$ ]] && return 0
-		[[ "$first" == run && "$second" =~ ^(build|check|type-?check|lint|test)(:[[:alnum:]_-]+)?$ ]]
+		[[ "$first" =~ $RE_BUN_HEAVY ]] && return 0
+		[[ "$first" == run && "$second" =~ $RE_SCRIPT_TASK ]]
 		;;
 	bunx | npx)
 		[[ "$first" == tsc && "$second" != --version ]] \
 			|| [[ "$first" == playwright && "$second" == test ]]
 		;;
 	npm | pnpm)
-		[[ "$first" =~ ^(add|install|i|ci|update|upgrade|test)$ ]] && return 0
-		[[ "$first" == run && "$second" =~ ^(build|check|type-?check|lint|test)(:[[:alnum:]_-]+)?$ ]]
+		[[ "$first" =~ $RE_NPM_HEAVY ]] && return 0
+		[[ "$first" == run && "$second" =~ $RE_SCRIPT_TASK ]]
 		;;
 	yarn)
 		[[ -z "$first" ]] && return 0
-		[[ "$first" =~ ^(add|install|up|upgrade|test)$ ]] && return 0
-		[[ "$first" == run && "$second" =~ ^(build|check|type-?check|lint|test)(:[[:alnum:]_-]+)?$ ]] && return 0
-		[[ "$first" =~ ^(build|check|type-?check|lint)(:[[:alnum:]_-]+)?$ ]]
+		[[ "$first" =~ $RE_YARN_HEAVY ]] && return 0
+		[[ "$first" == run && "$second" =~ $RE_SCRIPT_TASK ]] && return 0
+		[[ "$first" =~ $RE_BARE_TASK ]]
 		;;
 	tsc) [[ "$first" != --version ]] ;;
 	playwright) [[ "$first" == test ]] ;;
-	cargo) [[ "$first" =~ ^(build|check|test|clippy)$ ]] ;;
-	go) [[ "$first" =~ ^(build|test)$ ]] ;;
+	cargo) [[ "$first" =~ $RE_CARGO_HEAVY ]] ;;
+	go) [[ "$first" =~ $RE_GO_HEAVY ]] ;;
 	pip | pip3) [[ "$first" == install ]] ;;
 	uv)
-		[[ "$first" =~ ^(add|sync)$ ]] && return 0
+		[[ "$first" =~ $RE_UV_HEAVY ]] && return 0
 		[[ "$first" == pip && "$second" == install ]] && return 0
 		[[ "$first" == run && "$second" == pytest ]]
 		;;
@@ -196,12 +277,12 @@ shell_command_payload() {
 }
 
 is_delegating() {
-	[[ "$EXECUTABLE" =~ ^(ansible|ansible-playbook|doas|mosh|pkexec|run0|ssh|sudo|systemd-run)$ ]] && return 0
-	if [[ "$EXECUTABLE" =~ ^(buildah|docker|kubectl|machinectl|nerdctl|podman|service|systemctl)$ ]]; then
+	[[ "$EXECUTABLE" =~ $RE_DELEGATING ]] && return 0
+	if [[ "$EXECUTABLE" =~ $RE_ORCHESTRATOR ]]; then
 		is_read_only_diagnostic && return 1
 		return 0
 	fi
-	if [[ "$EXECUTABLE" =~ ^(bash|dash|fish|sh|zsh)$ ]]; then
+	if [[ "$EXECUTABLE" =~ $RE_SHELL ]]; then
 		shell_command_payload && return 0
 	fi
 	return 1
@@ -209,7 +290,7 @@ is_delegating() {
 
 is_read_only_diagnostic() {
 	local first='' second='' argument
-	for argument in "${ARGS[@]}"; do
+	for argument in "${ARGS[@]+"${ARGS[@]}"}"; do
 		[[ "$argument" == -* ]] && continue
 		if [[ -z "$first" ]]; then
 			first="$argument"
@@ -219,11 +300,11 @@ is_read_only_diagnostic() {
 		break
 	done
 	case "$EXECUTABLE" in
-	systemctl) [[ "$first" =~ ^(cat|get-default|is-active|is-enabled|is-failed|list-|show|status) ]] ;;
-	kubectl) [[ "$first" =~ ^(api-resources|api-versions|auth|cluster-info|describe|explain|get|logs|top|version)$ ]] ;;
-	docker | nerdctl | podman) [[ "$first" =~ ^(diff|events|history|images|info|inspect|logs|port|ps|stats|top|version)$ ]] ;;
-	buildah) [[ "$first" =~ ^(containers|images|info|inspect|version)$ ]] ;;
-	machinectl) [[ "$first" =~ ^(list|show|status)$ ]] ;;
+	systemctl) [[ "$first" =~ $RE_SYSTEMCTL_READONLY ]] ;;
+	kubectl) [[ "$first" =~ $RE_KUBECTL_READONLY ]] ;;
+	docker | nerdctl | podman) [[ "$first" =~ $RE_DOCKER_READONLY ]] ;;
+	buildah) [[ "$first" =~ $RE_BUILDAH_READONLY ]] ;;
+	machinectl) [[ "$first" =~ $RE_MACHINECTL_READONLY ]] ;;
 	service) [[ "$second" == status ]] ;;
 	*) return 1 ;;
 	esac
@@ -295,7 +376,7 @@ analyze_command() {
 			fi
 			continue
 		fi
-		if [[ "$EXECUTABLE" =~ ^(bash|dash|fish|sh|zsh)$ ]] && shell_command_payload; then
+		if [[ "$EXECUTABLE" =~ $RE_SHELL ]] && shell_command_payload; then
 			analyze_command "$PAYLOAD" $((depth + 1))
 			continue
 		fi

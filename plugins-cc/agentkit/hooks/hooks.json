@@ -68,6 +68,12 @@
             "command": "${CLAUDE_PLUGIN_ROOT}/hooks/coding-police.sh",
             "timeout": 15,
             "statusMessage": "coding-police: checking coding standards..."
+          },
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/comment-police.sh",
+            "timeout": 15,
+            "statusMessage": "comment-police: checking comment discipline..."
           }
         ]
       }

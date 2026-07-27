@@ -1,6 +1,12 @@
 # Agentkit Configuration
 # Copy to: ~/.config/agentkit/config.yaml
 # XDG_CONFIG_HOME is respected if set.
+#
+# comment-police, coding-police and format-police BLOCK an edit (exit 2) when
+# they find a violation — exit 0 would have their output discarded. Turn one or
+# all of them off for a session with:
+#   AGENTKIT_SKIP_HOOKS=coding-police
+#   AGENTKIT_SKIP_HOOKS=all
 
 git-police:
   branch-protection:

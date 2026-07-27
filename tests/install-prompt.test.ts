@@ -1,9 +1,11 @@
 import { describe, test, expect } from 'bun:test';
 import {
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readlinkSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
@@ -19,12 +21,13 @@ function countOccurrences(text: string, needle: string): number {
 }
 
 function runGlobalInstall(home: string) {
-  return spawnSync('bash', [installScript, '--global'], {
+  return spawnSync('bash', [installScript, '--global', '--no-session-scope'], {
     cwd: repoRoot,
     env: {
       ...process.env,
       HOME: home,
       XDG_CONFIG_HOME: join(home, '.config'),
+      AGENTKIT_HOME: join(home, '.agentkit'),
     },
     encoding: 'utf-8',
   });
@@ -67,22 +70,23 @@ describe('global prompt installation', () => {
         expect(result.status, result.stderr.toString()).toBe(0);
       }
 
-      const antiGlaze = join(home, '.agents', 'instructions', 'anti-glaze.md');
+      // Canonical files live under ~/.agentkit; ~/.agents gets per-name links.
+      const antiGlaze = join(home, '.agentkit', 'instructions', 'anti-glaze.md');
       const codingDiscipline = join(
         home,
-        '.agents',
+        '.agentkit',
         'instructions',
         'coding-discipline.md',
       );
       const collaborationVisibility = join(
         home,
-        '.agents',
+        '.agentkit',
         'instructions',
         'collaboration-visibility.md',
       );
       const resourceSafety = join(
         home,
-        '.agents',
+        '.agentkit',
         'instructions',
         'resource-safety.md',
       );
@@ -90,6 +94,12 @@ describe('global prompt installation', () => {
       expect(existsSync(codingDiscipline)).toBe(true);
       expect(existsSync(collaborationVisibility)).toBe(true);
       expect(existsSync(resourceSafety)).toBe(true);
+      const agentsAntiGlaze = join(home, '.agents', 'instructions', 'anti-glaze.md');
+      expect(lstatSync(agentsAntiGlaze).isSymbolicLink()).toBe(true);
+      expect(readlinkSync(agentsAntiGlaze)).toBe(antiGlaze);
+      const grokAntiGlaze = join(home, '.grok', 'rules', 'anti-glaze.md');
+      expect(lstatSync(grokAntiGlaze).isSymbolicLink()).toBe(true);
+      expect(readlinkSync(grokAntiGlaze)).toBe(antiGlaze);
       expect(readFileSync(antiGlaze, 'utf-8')).toContain(
         'agentkit:anti-glaze:start',
       );

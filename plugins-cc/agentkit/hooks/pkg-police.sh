@@ -4,8 +4,13 @@
 # Equivalent to: plugins/pkg-police.ts (OpenCode)
 set -euo pipefail
 
-INPUT=$(cat)
-COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty')
+# shellcheck source=lib/hook-input.sh
+# Pure bash dirname: external `dirname` is missing when PATH is empty (the
+# missing-jq fail-open probe), and a source failure under set -e would silence
+# the gate. BASH_SOURCE is absolute when the harness invokes the script by path.
+source "${BASH_SOURCE[0]%/*}/lib/hook-input.sh"
+agentkit_slurp_input
+COMMAND=$(agentkit_command)
 
 [[ -z "$COMMAND" ]] && exit 0
 
@@ -21,13 +26,7 @@ fi
 
 deny() {
   local reason="$1"
-  jq -n --arg r "$reason" '{
-    hookSpecificOutput: {
-      hookEventName: "PreToolUse",
-      permissionDecision: "deny",
-      permissionDecisionReason: $r
-    }
-  }'
+  agentkit_deny_json "$reason"
   exit 0
 }
 

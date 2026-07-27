@@ -101,7 +101,9 @@ function runHook(config: string, shimBin?: (directory: string) => void) {
 function expectConfiguredThresholds(stderr: string): void {
   expect(stderr).toContain('FILE TOO LONG: 8 lines (limit: 5');
   expect(stderr).toContain('LONG FUNCTION: `alpha` is 4 lines (limit: 2');
-  expect(stderr).toContain('DUPLICATE CODE: 2+ line block');
+  // The configured minimum is what this pins; the wording is the check's own
+  // business.
+  expect(stderr).toContain('the largest is 2+ lines');
   expect(stderr).toContain('TOO MANY EXPORTS: 2 exports in this file (limit: 1');
 }
 
@@ -109,14 +111,14 @@ describe('Claude coding-police configuration', () => {
   test('loads every threshold before a following YAML section', () => {
     const result = runHook(`coding-police:\n${settings}git-police:\n  enabled: true\n`);
 
-    expect(result.status, result.stderr).toBe(0);
+    expect(result.status, result.stderr).toBe(result.stderr.includes("VIOLATION") ? 2 : 0);
     expectConfiguredThresholds(result.stderr);
   });
 
   test('loads every threshold when coding-police is the final YAML section', () => {
     const result = runHook(`git-police:\n  enabled: true\ncoding-police:\n${settings}`);
 
-    expect(result.status, result.stderr).toBe(0);
+    expect(result.status, result.stderr).toBe(result.stderr.includes("VIOLATION") ? 2 : 0);
     expectConfiguredThresholds(result.stderr);
   });
 
@@ -125,7 +127,7 @@ describe('Claude coding-police configuration', () => {
       `coding-police:\n${settings}notes: |\n  max-file-lines: 1\n`,
     );
 
-    expect(result.status, result.stderr).toBe(0);
+    expect(result.status, result.stderr).toBe(result.stderr.includes("VIOLATION") ? 2 : 0);
     expectConfiguredThresholds(result.stderr);
     expect(result.stderr).not.toContain('FILE TOO LONG: 8 lines (limit: 1');
   });
@@ -160,7 +162,7 @@ exec /usr/bin/head "$@"
       );
     });
 
-    expect(result.status, result.stderr).toBe(0);
+    expect(result.status, result.stderr).toBe(result.stderr.includes("VIOLATION") ? 2 : 0);
     expect(result.stderr).not.toContain('unsupported -P');
     expect(result.stderr).not.toContain('unsupported \\s');
     expect(result.stderr).not.toContain('illegal line count');
@@ -185,7 +187,7 @@ describe('Claude coding-police monolith directory', () => {
     const result = runHookOnFile('coding-police:\n  max-dir-files: 15\n', root, target);
     rmSync(root, { force: true, recursive: true });
 
-    expect(result.status, result.stderr).toBe(0);
+    expect(result.status, result.stderr).toBe(result.stderr.includes("VIOLATION") ? 2 : 0);
     expect(result.stderr).toContain('MONOLITH DIRECTORY');
     expect(result.stderr).toContain('15 source files');
     expect(result.stderr).toContain('cap: 15');
@@ -203,7 +205,7 @@ describe('Claude coding-police monolith directory', () => {
     const result = runHookOnFile('coding-police:\n  max-dir-files: 15\n', root, target);
     rmSync(root, { force: true, recursive: true });
 
-    expect(result.status, result.stderr).toBe(0);
+    expect(result.status, result.stderr).toBe(result.stderr.includes("VIOLATION") ? 2 : 0);
     expect(result.stderr).not.toContain('MONOLITH DIRECTORY');
   });
 
@@ -219,7 +221,7 @@ describe('Claude coding-police monolith directory', () => {
     const result = runHookOnFile('coding-police:\n  max-dir-files: 0\n', root, target);
     rmSync(root, { force: true, recursive: true });
 
-    expect(result.status, result.stderr).toBe(0);
+    expect(result.status, result.stderr).toBe(result.stderr.includes("VIOLATION") ? 2 : 0);
     expect(result.stderr).not.toContain('MONOLITH DIRECTORY');
   });
 
@@ -239,7 +241,7 @@ describe('Claude coding-police monolith directory', () => {
     );
     rmSync(root, { force: true, recursive: true });
 
-    expect(result.status, result.stderr).toBe(0);
+    expect(result.status, result.stderr).toBe(result.stderr.includes("VIOLATION") ? 2 : 0);
     expect(result.stderr).not.toContain('MONOLITH DIRECTORY');
   });
 
@@ -255,7 +257,140 @@ describe('Claude coding-police monolith directory', () => {
     const result = runHookOnFile('coding-police:\n  max-dir-files: 15\n', root, target);
     rmSync(root, { force: true, recursive: true });
 
-    expect(result.status, result.stderr).toBe(0);
+    expect(result.status, result.stderr).toBe(result.stderr.includes("VIOLATION") ? 2 : 0);
     expect(result.stderr).not.toContain('MONOLITH DIRECTORY');
+  });
+});
+
+describe('Claude coding-police duplicate reporting is bounded', () => {
+  const run = (file: string) =>
+    spawnSync('bash', [hook], {
+      input: JSON.stringify({ tool_name: 'Edit', tool_input: { file_path: file, new_string: 'x' } }),
+      encoding: 'utf-8',
+    });
+
+  const block = (tag: string, n: number) =>
+    Array.from({ length: n }, (_, i) => `const ${tag}${i} = ${i};`).join('\n') + '\n';
+
+  const dupRepo = () => {
+    const dir = mkdtempSync(join(tmpdir(), 'agentkit-dup-'));
+    const file = join(dir, 'd.ts');
+    const git = (...a: string[]) => spawnSync('git', a, { cwd: dir, encoding: 'utf-8' });
+    git('init', '-q');
+    git('config', 'user.email', 't@t.t');
+    git('config', 'user.name', 't');
+    return { dir, file, git };
+  };
+
+  test('a pathological file stays far inside the hook timeout', () => {
+    // The window slides by one, so a duplicated region used to emit roughly one
+    // finding per line: 1489 of them on a 1500-line file, which made the
+    // subtraction quadratic and took the hook past its 15s registered budget.
+    const dir = mkdtempSync(join(tmpdir(), 'agentkit-dupcost-'));
+    const file = join(dir, 'big.ts');
+    const block = 'const a = 1;\nconst b = 2;\nconst c = 3;\nconst d = 4;\nconst e = 5;\nconst f = 6;\n';
+    writeFileSync(file, block.repeat(250));
+    const started = Date.now();
+    const out = `${run(file).stdout ?? ''}${run(file).stderr ?? ''}`;
+    const elapsed = Date.now() - started;
+    const findings = out.split('\n').filter((l) => l.includes('DUPLICATE CODE')).length;
+    // The count assertion is near-tautological under one-finding-per-file; the
+    // bound is what carries weight. hooks.json registers 15s for ONE run.
+    expect(findings).toBe(1);
+    expect(elapsed).toBeLessThan(10_000);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test('the reported region size is the real one, not the window minimum', () => {
+    // Without coalescing every sliding-window position is its own match, so
+    // the largest region reads as the configured minimum however much code is
+    // actually duplicated — and the size is what tells you what to extract.
+    const dir = mkdtempSync(join(tmpdir(), 'agentkit-dupsize-'));
+    const file = join(dir, 'big.ts');
+    const P = Array.from({ length: 48 }, (_, i) => `const p${i} = ${i};`).join('\n') + '\n';
+    writeFileSync(file, `${P}const z = 0;\n${P}`);
+    const out = `${run(file).stdout ?? ''}${run(file).stderr ?? ''}`;
+    const m = out.match(/the largest is (\d+)\+ lines/);
+    expect(m).not.toBeNull();
+    expect(Number(m![1])).toBeGreaterThan(40);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test('MORE duplicated text reports, even adjacent to an existing region', () => {
+    // The first cut coalesced regions but kept only the copy COUNT as
+    // severity, so 40 lines that became duplicated next to an existing
+    // duplicate were byte-identical in shape and equal in metric — silent.
+    const { dir, file, git } = dupRepo();
+    const P = block('p', 8);
+    const Q = block('q', 40);
+    writeFileSync(file, `${P}${Q}const z1 = 9;\n${P}const z2 = 9;\n`);
+    git('add', '-A');
+    git('commit', '-qm', 'P is duplicated, Q is not');
+    expect(run(file).status).toBe(0);
+    // Q is now duplicated too.
+    writeFileSync(file, `${P}${Q}const z1 = 9;\n${P}${Q}const z2 = 9;\n`);
+    const worse = run(file);
+    expect(`${worse.stdout ?? ''}${worse.stderr ?? ''}`).toContain('DUPLICATE CODE');
+    expect(worse.status).toBe(2);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test('LESS duplicated text is silent even when the edit MERGES runs', () => {
+    // A run breaks on a normalised-away line inside the FIRST copy, so removing
+    // one merges two runs. Summing run lengths counted min-1 twice at that
+    // boundary, so the merge alone lowered the total — a refund that could pay
+    // for new duplication. The earlier fixture could not catch it: with no
+    // interior gaps it was monotone-down under every candidate metric.
+    const { dir, file, git } = dupRepo();
+    const R = block('r', 20).trimEnd().split('\n');
+    const split = `${R.slice(0, 7).join('\n')}\n\n${R.slice(7, 13).join('\n')}\n\n${R.slice(13).join('\n')}\n`;
+    const flat = `${R.join('\n')}\n`;
+    writeFileSync(file, `${split}const z1 = 9;\n${flat}const z2 = 9;\n${flat}`);
+    git('add', '-A');
+    git('commit', '-qm', 'three copies, gaps inside the first');
+    expect(run(file).status).toBe(0);
+    // Gaps removed AND a copy deleted: strictly less duplicated text.
+    writeFileSync(file, `${flat}const z1 = 9;\n${flat}`);
+    const better = run(file);
+    expect(`${better.stdout ?? ''}${better.stderr ?? ''}`).not.toContain('DUPLICATE CODE');
+    expect(better.status).toBe(0);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test('a THIRD copy of an existing pair reports', () => {
+    // Kills the max class: a metric that keeps only the largest region, rather
+    // than how much is duplicated, is unmoved by another copy of the same size.
+    const { dir, file, git } = dupRepo();
+    const P = block('p', 10);
+    writeFileSync(file, `${P}const z1 = 9;\n${P}`);
+    git('add', '-A');
+    git('commit', '-qm', 'two copies');
+    expect(run(file).status).toBe(0);
+    writeFileSync(file, `${P}const z1 = 9;\n${P}const z2 = 9;\n${P}`);
+    const worse = run(file);
+    expect(`${worse.stdout ?? ''}${worse.stderr ?? ''}`).toContain('DUPLICATE CODE');
+    expect(worse.status).toBe(2);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test('removing interior gaps does not refund NEW duplication elsewhere', () => {
+    // The R2-1 fixture: duplication genuinely rises 20 -> 28 lines while two
+    // blank lines come out of the first copy. Summing run lengths read the
+    // baseline as 30 and the edit as 28, so the subtraction absorbed it and
+    // said nothing.
+    const { dir, file, git } = dupRepo();
+    const R = block('r', 20).trimEnd().split('\n');
+    const M = block('m', 8);
+    const split = `${R.slice(0, 7).join('\n')}\n\n${R.slice(7, 13).join('\n')}\n\n${R.slice(13).join('\n')}\n`;
+    const flat = `${R.join('\n')}\n`;
+    writeFileSync(file, `${split}const z1 = 9;\n${flat}`);
+    git('add', '-A');
+    git('commit', '-qm', 'R duplicated once, gaps inside the first copy');
+    expect(run(file).status).toBe(0);
+    writeFileSync(file, `${flat}const z1 = 9;\n${flat}const z2 = 9;\n${M}const z3 = 9;\n${M}`);
+    const worse = run(file);
+    expect(`${worse.stdout ?? ''}${worse.stderr ?? ''}`).toContain('DUPLICATE CODE');
+    expect(worse.status).toBe(2);
+    rmSync(dir, { recursive: true, force: true });
   });
 });

@@ -1,6 +1,6 @@
 # agentkit
 
-Reusable AI agent skills, rules, plugins, hooks, and tools for OpenCode, Claude Code, and other AI coding agents.
+Reusable AI agent skills, rules, plugins, hooks, and tools for OpenCode, Claude Code, Codex CLI, Grok CLI, and other AI coding agents.
 
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
@@ -128,14 +128,25 @@ git clone git@github.com:developerinlondon/agentkit.git
 ./agentkit/install.sh --global
 ```
 
-Installs skills to `~/.agents/skills/`, rules to `~/.agents/rules/`, OpenCode plugins to
-`~/.config/opencode/plugins/`, executable tools to `~/.local/bin/` with a Claude mirror in
-`~/.claude/tools/`, and every `instructions/*.md` prompt to
-`~/.agents/instructions/`. The global installer wires every instruction file into Codex
-(`~/.codex/config.toml` — concatenated into `developer_instructions`), Claude Code
-(`~/.claude/CLAUDE.md` — one markered block per file), and OpenCode
-(`~/.config/opencode/opencode.json` — one entry per file in `instructions[]`) idempotently. Skills
-and plugins are auto-discovered by OpenCode from its standard global directories.
+**One shared content tree, client adapters by symlink.** Portable units land once under
+`~/.agentkit/{skills,rules,instructions,hooks,tools}`. Each client then gets **per-name**
+symlinks into that root (never a second full copy):
+
+| Client | Adapter |
+| --- | --- |
+| OpenCode | `~/.agents/skills\|rules\|instructions` → `~/.agentkit/…` |
+| Claude Code | `~/.claude/skills\|hooks\|tools` → `~/.agentkit/…` (settings still point at `~/.claude/hooks`) |
+| Grok CLI | `~/.grok/skills\|rules` → `~/.agentkit/…`; instructions also as `~/.grok/rules/*.md` (always-on) |
+| Codex CLI | policies/prompts still copied into `~/.codex/` (Starlark + `/prompt` shape differs) |
+
+Per-name links mean non-agentkit siblings stay put — OMC skills under `~/.claude/skills/`,
+Grok builtins under `~/.grok/skills/`, etc. OpenCode plugins still install as real files under
+`~/.config/opencode/plugins/` (runtime TS, not portable units). Tools also land on
+`~/.local/bin/`. Instructions are wired into Codex (`developer_instructions`), Claude Code
+(`~/.claude/CLAUDE.md` markered blocks), OpenCode (`instructions[]`), and Grok
+(`~/.grok/rules/`) idempotently.
+
+Override the shared root with `AGENTKIT_HOME=/path` if needed.
 
 ### Option 3: Install into a specific project
 
@@ -154,6 +165,24 @@ cp -r skills/gitops-master/ your-project/.opencode/skills/
 cp rules/credential-bootstrap.md your-project/.opencode/rules/
 cp plugins/version-police.ts your-project/.opencode/plugins/
 ```
+
+### Grok CLI
+
+Grok loads agentkit **hooks** via Claude settings compatibility (`~/.claude/settings.json`
+when `[compat.claude] hooks = true`, the default). Soft guidance (skills/rules/instructions)
+is separate. Full install, soft-vs-hard table, and a deny probe:
+
+**[docs/grok.md](./docs/grok.md)**
+
+Police scripts accept both Claude snake_case and Grok camelCase payloads and dual-emit deny
+JSON so either harness can block. Matcher aliases alone are not enough.
+
+### Agent review / merge gate
+
+`review-police` blocks forge merges unless an independent review record covers the exact
+commit being merged. Record shape, who may write what, and the consent path:
+
+**[docs/review-process.md](./docs/review-process.md)**
 
 ### Tools
 

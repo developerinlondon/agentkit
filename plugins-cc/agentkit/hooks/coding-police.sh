@@ -4,6 +4,18 @@
 # Equivalent to: plugins/coding-police.ts (OpenCode)
 set -euo pipefail
 
+# Kill switch, matching the AGENTKIT_* convention used by the PreToolUse
+# police. Comma-separated hook names; a blocking hook with no way off is a
+# hook that eventually gets deleted instead of configured.
+# Trimmed, so "a, b" behaves like "a,b" — version-police already trims, and two
+# readings of one env var is a silent disagreement.
+if [[ -n "${AGENTKIT_SKIP_HOOKS:-}" ]]; then
+  _skip=",$(printf '%s' "$AGENTKIT_SKIP_HOOKS" | tr -d '[:space:]'),"
+  case "$_skip" in
+    *",coding-police,"*|*",all,"*) exit 0 ;;
+  esac
+fi
+
 # ── Configuration ───────────────────────────────────────────────────────────
 AGENTKIT_CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/agentkit/config.yaml"
 
@@ -62,18 +74,23 @@ load_config() {
 }
 load_config
 
+# shellcheck source=lib/hook-input.sh
+# Pure bash dirname: external `dirname` is missing when PATH is empty (the
+# missing-jq fail-open probe), and a source failure under set -e would silence
+# the gate. BASH_SOURCE is absolute when the harness invokes the script by path.
+source "${BASH_SOURCE[0]%/*}/lib/hook-input.sh"
 # ── Input parsing ───────────────────────────────────────────────────────────
-INPUT=$(cat)
-TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty')
+agentkit_slurp_input
+TOOL_NAME=$(agentkit_tool_name)
+TOOL_FAMILY=$(agentkit_tool_family "$TOOL_NAME")
 
-# Only trigger on Edit or Write tools
-case "$TOOL_NAME" in
-  Edit|Write|edit|write) ;;
-  *) exit 0 ;;
-esac
+# Only trigger on Edit or Write tools (incl. Grok search_replace / write)
+if ! agentkit_is_file_write_tool "$TOOL_NAME"; then
+  exit 0
+fi
 
 # Extract the file path from tool input
-FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // .tool_input.filePath // empty')
+FILE_PATH=$(agentkit_file_path)
 [[ -z "$FILE_PATH" ]] && exit 0
 
 IS_CODE_FILE=false
@@ -97,7 +114,7 @@ case "$FILE_PATH" in
 esac
 
 # Skip paths matching an exclude-patterns entry (e.g. homogeneous routes/migrations dirs)
-for pattern in "${EXCLUDE_PATTERNS[@]}"; do
+for pattern in "${EXCLUDE_PATTERNS[@]+"${EXCLUDE_PATTERNS[@]}"}"; do
   [[ "$FILE_PATH" == *"$pattern"* ]] && exit 0
 done
 
@@ -120,6 +137,19 @@ check_cross_repo_relative_paths() {
 }
 
 # ── Check 1: File length ───────────────────────────────────────────────────
+
+# The committed version of FILE_PATH, or empty when it is new / not in git.
+# Whole-file checks measure state the current edit may not have caused; a file
+# that was already too long would otherwise block EVERY later edit to it,
+# unfixably, and Claude Code has no PostToolUse loop guard to stop that.
+baseline_of() {
+  local top rel
+  top=$(git -C "$(dirname "$FILE_PATH")" rev-parse --show-toplevel 2>/dev/null) || return 0
+  rel=${FILE_PATH#"$top"/}
+  git -C "$top" show "HEAD:$rel" 2>/dev/null || true
+}
+
+
 check_file_length() {
   local line_count
   line_count=$(wc -l < "$FILE_PATH")
@@ -228,7 +258,22 @@ check_duplicate_blocks() {
       norm[idx] = line
       orig[idx] = NR
     }
+    function flush() {
+      if (run > 0) {
+        size = min + run - 1
+        if (!(run_first in copies) || size > biggest[run_first]) {
+          biggest[run_first] = size
+          echo_at[run_first] = run_here
+        }
+        copies[run_first]++
+        run = 0
+      }
+    }
     END {
+      # ONE finding per duplicated REGION. The window slides by one, so a
+      # region of L lines used to emit L-min+1 near-identical findings — about
+      # one per line, which is what made the subtraction quadratic and took the
+      # hook past its 15s budget on ordinary files.
       for (i = 1; i <= idx - min + 1; i++) {
         block = ""
         for (k = 0; k < min; k++) {
@@ -236,15 +281,57 @@ check_duplicate_blocks() {
         }
 
         if (block in seen) {
-          first = seen[block]
-          key = first ":" orig[i]
-          if (!(key in reported)) {
-            reported[key] = 1
-            printf "DUPLICATE CODE: %d+ line block duplicated at lines %d and %d. Extract into a shared function to keep code DRY.\n", min, first, orig[i]
+          # Mark the LINES this window covers. Summing run lengths instead
+          # double-counted min-1 at every run boundary, and a boundary is a
+          # property of layout: deleting a blank line inside a region merged
+          # two runs and made the total FALL, which silently paid for new
+          # duplication elsewhere. A line marked twice is still one line.
+          for (d = 0; d < min; d++) {
+            dup_line[i + d] = 1
           }
+          first = seen[block]
+          # The same region continues when both sides advanced together.
+          if (run > 0 && i == prev_i + 1 && first == prev_first + 1) {
+            run++
+          } else {
+            flush()
+            run = 1
+            run_first = first
+            run_here = orig[i]
+          }
+          prev_i = i
+          prev_first = first
         } else {
           seen[block] = orig[i]
+          flush()
         }
+      }
+      flush()
+      # One finding per duplicated SOURCE region, with the number of copies as
+      # the severity. A repeated block used to emit one finding per repetition;
+      # as a count it is both less noise and a metric the subtraction can
+      # compare, so a THIRD copy of an existing pair still reports as worse.
+      # ONE finding for the file. Per-region findings all normalise to the
+      # same shape, so the subtraction could only pair them by position — and
+      # `for (f in ...)` has no defined order, so adding or removing any region
+      # reshuffled the pairing and reported untouched code. The question this
+      # check exists to answer is whether the edit left MORE duplication.
+      total = 0
+      for (d in dup_line) {
+        total++
+      }
+      regions = 0
+      top = 0
+      for (f in copies) {
+        regions++
+        if (biggest[f] > top) {
+          top = biggest[f]
+          top_at = f
+          top_echo = echo_at[f]
+        }
+      }
+      if (total > 0) {
+        printf "DUPLICATE CODE: %d duplicated lines across %d region(s); the largest is %d+ lines, first at line %d, again at line %d. Extract into a shared function to keep code DRY.\n", total, regions, top, top_at, top_echo
       }
     }
   ' "$FILE_PATH" 2>/dev/null || true)
@@ -271,8 +358,8 @@ check_export_count() {
 
 # ── Check 6: Monolith directory (Write only — Edit cannot create new files) ─
 check_monolith_directory() {
-  case "$TOOL_NAME" in
-    Write|write) ;;
+  case "$TOOL_FAMILY" in
+    Write) ;;
     *) return 0 ;;
   esac
   (( MAX_DIR_FILES > 0 )) || return 0
@@ -300,7 +387,7 @@ check_monolith_directory() {
     esac
 
     excluded=false
-    for pattern in "${EXCLUDE_PATTERNS[@]}"; do
+    for pattern in "${EXCLUDE_PATTERNS[@]+"${EXCLUDE_PATTERNS[@]}"}"; do
       [[ "$entry" == *"$pattern"* ]] && { excluded=true; break; }
     done
     [[ "$excluded" == true ]] && continue
@@ -332,15 +419,163 @@ if [[ "$IS_CODE_FILE" != true ]]; then
       echo ""
       echo "Fix these violations before proceeding."
     } >&2
+    exit 2
   fi
   exit 0
 fi
 
+# Whole-file checks measure state this edit may not have caused. Run them once
+# against the committed baseline and once against the working file, then report
+# only what is NEW — otherwise a legacy file with a long function or a
+# duplicated block nags after every unrelated edit, forever, and there is no
+# PostToolUse loop guard to stop it.
+#
+# Compared as a MULTISET of violations with every number blanked. Numbers are
+# line offsets and sizes that shift when unrelated lines move, so matching on
+# them reported untouched legacy code and hid genuinely new violations. Blanking
+# them compares the SHAPE and the identifier; counting occurrences means a
+# second duplicate block, or a second over-long function, still surfaces.
+# Blank the numeric FIELDS for the shape, and carry the severity separately.
+# Keeping sizes in the shape made the compare symmetric: a metric that moved in
+# either direction stopped matching, so DELETING 100 lines from an over-limit
+# file reported it as new — punishing the model for the cleanup the rule asks
+# for. The shape answers "same violation?"; the metric answers "worse?".
+#
+# Field by field, never a blanket s/[0-9]+/#/g: that also rewrote the backticked
+# identifier, so `handleV1Request` and `handleV2Request` collapsed into ONE
+# shape and the worse-slot pass below handed a real regression the other
+# function's slot — reporting nothing at all. Silence is the fail-open
+# direction. Directory paths and quoted source lines have the same hazard.
+violation_shape() {
+  printf '%s' "$1" | sed -E '
+    s/^(FILE TOO LONG: )[0-9]+/\1#/
+    s/^(DUPLICATE CODE: )[0-9]+( duplicated lines across )[0-9]+( region\(s\); the largest is )[0-9]+/\1#\2#\3#/
+    s/(first at line )[0-9]+/\1#/
+    s/(again at line )[0-9]+/\1#/
+    s/^(TOO MANY EXPORTS: )[0-9]+/\1#/
+    s/( is )[0-9]+( lines)/\1#\2/
+    s/(limit: )[0-9]+/\1#/
+    s/(cap: )[0-9]+/\1#/
+    s/(over by )[0-9]+/\1#/
+    s/(already has )[0-9]+/\1#/
+    s/(at lines? )[0-9]+/\1#/g
+    s/( and )[0-9]+/\1#/g
+  '
+}
+
+# The severity number, chosen per message TYPE. Never "the largest number in
+# the line" — that picked up `starts at line 201` and inverted the comparison
+# on any file long enough for a line number to exceed a length.
+violation_metric() {
+  local m
+  case "$1" in
+    "FILE TOO LONG: "*) m=$(printf '%s' "$1" | sed -E 's/^FILE TOO LONG: ([0-9]+) lines.*/\1/') ;;
+    "LONG FUNCTION: "*) m=$(printf '%s' "$1" | sed -E 's/^LONG FUNCTION: .* is ([0-9]+) lines.*/\1/') ;;
+    "DUPLICATE CODE: "*)
+      # Both dimensions: more copies OR a longer region must raise it, or
+      # newly duplicated code adjacent to an existing region reports nothing.
+      m=$(printf '%s' "$1" | sed -E 's/^DUPLICATE CODE: ([0-9]+) duplicated lines.*/\1/')
+      ;;
+    "TOO MANY EXPORTS: "*) m=$(printf '%s' "$1" | sed -E 's/^TOO MANY EXPORTS: ([0-9]+) exports.*/\1/') ;;
+    *) m=0 ;;
+  esac
+  # A sed that did not match returns the whole line; that must not reach $(( )).
+  [[ "$m" =~ ^[0-9]+$ ]] || m=0
+  printf '%s' "$m"
+}
+
+# The cross-repo check already ran and its findings are NOT whole-file state —
+# they must survive the baseline pass, which resets the array.
+PRE_EXISTING=("${VIOLATIONS[@]+"${VIOLATIONS[@]}"}")
+
+BASE_SHAPES=()
+BASE_METRICS=()
+BASELINE_FILE=""
+baseline_content=$(baseline_of)
+if [[ -n "$baseline_content" ]]; then
+  # mktemp needs the X's LAST (BSD accepts no suffix), but the baseline file is
+  # then measured as if it were the real one — and check_export_count gates on
+  # the extension, so an extensionless temp file silently skipped that check and
+  # left every over-cap file blocking its own edits forever. Rename it back.
+  BASELINE_FILE=$(mktemp "${TMPDIR:-/tmp}/coding-police-base-XXXXXX")
+  # Under `set -e` a failure here would kill the hook between mktemp and rm:
+  # it would leak the file and, worse, emit no decision at all — which the
+  # harness reads as ALLOW. Degrade to "no baseline" instead of dying.
+  trap 'rm -f "$BASELINE_FILE"' EXIT
+  baseline_ext="${FILE_PATH##*.}"
+  if [[ "$baseline_ext" != "$FILE_PATH" ]]; then
+    if mv -f -- "$BASELINE_FILE" "$BASELINE_FILE.$baseline_ext"; then
+      BASELINE_FILE="$BASELINE_FILE.$baseline_ext"
+    else
+      rm -f "$BASELINE_FILE"
+      BASELINE_FILE=""
+    fi
+  fi
+fi
+
+# Empty when there is no committed baseline, or the rename failed and the
+# baseline was abandoned. Both mean "measure nothing" — never "die".
+if [[ -n "$BASELINE_FILE" ]]; then
+  printf '%s\n' "$baseline_content" > "$BASELINE_FILE"
+  REAL_FILE_PATH="$FILE_PATH"
+  FILE_PATH="$BASELINE_FILE"
+  VIOLATIONS=()
+  check_file_length
+  check_function_lengths
+  check_duplicate_blocks
+  check_export_count
+  for v in "${VIOLATIONS[@]+"${VIOLATIONS[@]}"}"; do
+    BASE_SHAPES+=("$(violation_shape "$v")")
+    BASE_METRICS+=("$(violation_metric "$v")")
+  done
+  FILE_PATH="$REAL_FILE_PATH"
+  rm -f "$BASELINE_FILE"
+  trap - EXIT
+fi
+
+VIOLATIONS=()
 check_file_length
 check_function_lengths
 check_duplicate_blocks
 check_export_count
 check_monolith_directory
+
+if (( ${#BASE_SHAPES[@]} > 0 )); then
+  KEPT=()
+  for v in "${VIOLATIONS[@]+"${VIOLATIONS[@]}"}"; do
+    shape=$(violation_shape "$v")
+    metric=$(violation_metric "$v")
+    matched=""
+    # Same severity first, so an unchanged violation claims its own baseline
+    # slot before a shrunken one consumes a bigger neighbour's and leaves the
+    # neighbour looking new.
+    for i in "${!BASE_SHAPES[@]}"; do
+      if [[ "${BASE_SHAPES[$i]}" == "$shape" ]] && (( BASE_METRICS[i] == metric )); then
+        matched=$i
+        break
+      fi
+    done
+    if [[ -z "$matched" ]]; then
+      # Otherwise any baseline slot that was WORSE absorbs it — an improvement
+      # is silent. A metric above every slot is a real regression and is kept.
+      for i in "${!BASE_SHAPES[@]}"; do
+        if [[ "${BASE_SHAPES[$i]}" == "$shape" ]] && (( BASE_METRICS[i] > metric )); then
+          matched=$i
+          break
+        fi
+      done
+    fi
+    if [[ -n "$matched" ]]; then
+      # Consume it: a THIRD duplicate block when the baseline had two is new.
+      unset 'BASE_SHAPES[matched]' 'BASE_METRICS[matched]'
+    else
+      KEPT+=("$v")
+    fi
+  done
+  VIOLATIONS=("${KEPT[@]+"${KEPT[@]}"}")
+fi
+
+VIOLATIONS=("${PRE_EXISTING[@]+"${PRE_EXISTING[@]}"}" "${VIOLATIONS[@]+"${VIOLATIONS[@]}"}")
 
 # ── Output violations ──────────────────────────────────────────────────────
 if (( ${#VIOLATIONS[@]} > 0 )); then
@@ -362,6 +597,9 @@ if (( ${#VIOLATIONS[@]} > 0 )); then
     echo ""
     echo "Fix these violations before proceeding."
   } >&2
+  # Exit 2 is what delivers this. Claude Code discards a PostToolUse
+  # hook's stderr at exit 0, so the check ran and nobody heard it.
+  exit 2
 fi
 
 exit 0

@@ -83,6 +83,29 @@ describe('git-police branch hygiene (rule 7)', () => {
     git(clone, 'branch -D feat/merged-away');
     expect(runHook(clone, 'git checkout -b feat/next')).not.toContain('feat/merged-away');
   });
+
+  test('a gone-upstream branch checked out in another worktree is NOT flagged as stale', () => {
+    // Under a worktree-per-branch workflow this is the normal state, not clutter:
+    // the branch is active elsewhere (git branch -vv prefixes it with `+`) and
+    // cannot be deleted from here. It must not block new branch creation.
+    git(clone, 'checkout -q -b feat/in-worktree');
+    git(clone, 'commit --allow-empty -m work');
+    git(clone, 'push -q -u origin feat/in-worktree');
+    git(clone, 'checkout -q main');
+    const wt = join(root, 'wt-active');
+    git(clone, `worktree add -q ${wt} feat/in-worktree`);
+    git(clone, 'push -q origin --delete feat/in-worktree');
+    git(clone, 'fetch -pq');
+
+    // git branch -vv now shows `+ feat/in-worktree ... : gone]`. Pre-fix this
+    // emitted `+` as a bogus stale-branch name and blocked; it must allow now.
+    const out = runHook(clone, 'git checkout -b feat/next');
+    expect(out).not.toContain('feat/in-worktree');
+    expect(out).not.toContain('Stale local branches');
+
+    git(clone, `worktree remove --force ${wt}`);
+    git(clone, 'branch -D feat/in-worktree');
+  });
 });
 
 describe('git-police branch creation resolves the targeted repo (rules 6-7)', () => {
@@ -157,6 +180,66 @@ describe('git-police push branch resolution (rule 4)', () => {
   });
 });
 
+describe('git-police merge-return hygiene (rule 9, advisory)', () => {
+  // Rule 7 hard-denies gone branches only at branch CREATION. Rule 9 fires a
+  // non-blocking reminder at the other cleanup moment: returning to the
+  // default branch (or pulling while on it). Build a squash-merged (gone
+  // upstream) branch, then exercise those return moments.
+  function makeGoneBranch(name: string): void {
+    git(clone, `checkout -q -b ${name}`);
+    git(clone, 'commit --allow-empty -m work');
+    git(clone, `push -q -u origin ${name}`);
+    git(clone, 'checkout -q main');
+    git(clone, `push -q origin --delete ${name}`);
+    git(clone, 'fetch -pq');
+  }
+
+  test('reminds (without blocking) on checkout to default when a gone branch lingers', () => {
+    makeGoneBranch('feat/gone-a');
+    const out = runHook(clone, 'git checkout main');
+    expect(out).toContain('additionalContext'); // the reminder reaches the agent
+    expect(out).toContain('feat/gone-a'); // it names the stale branch
+    expect(out).toContain('xargs -r git branch -D'); // and gives the cleanup command
+    expect(out).not.toContain('"deny"'); // but never blocks the command
+    git(clone, 'branch -D feat/gone-a');
+  });
+
+  test('reminds on git pull while on the default branch', () => {
+    makeGoneBranch('feat/gone-b');
+    const out = runHook(clone, 'git pull');
+    expect(out).toContain('additionalContext');
+    expect(out).toContain('feat/gone-b');
+    expect(out).not.toContain('"deny"');
+    git(clone, 'branch -D feat/gone-b');
+  });
+
+  test('stays silent on checkout to default when no gone branches exist', () => {
+    git(clone, 'checkout -q main');
+    const out = runHook(clone, 'git checkout main');
+    expect(out.trim()).toBe(''); // no advisory, no deny — fully silent
+  });
+
+  test('does not fire when returning to a feature branch (only the default branch)', () => {
+    git(clone, 'checkout -q -b feat/keep');
+    makeGoneBranch('feat/gone-c'); // leaves the clone on main with a gone branch
+    const out = runHook(clone, 'git checkout feat/keep');
+    expect(out).not.toContain('additionalContext');
+    expect(out).not.toContain('feat/gone-c');
+    git(clone, 'checkout -q main');
+    git(clone, 'branch -D feat/gone-c');
+    git(clone, 'branch -D feat/keep');
+  });
+
+  test('branch creation still hard-denies with a gone branch present (rule 7 unchanged)', () => {
+    makeGoneBranch('feat/gone-d');
+    const out = runHook(clone, 'git checkout -b feat/after');
+    expect(out).toContain('"deny"'); // rule 7 still blocks new work
+    expect(out).toContain('feat/gone-d');
+    expect(out).not.toContain('additionalContext'); // deny short-circuits before rule 9
+    git(clone, 'branch -D feat/gone-d');
+  });
+});
+
 describe('git-police push rules require a push subcommand', () => {
   test('allows stash push combined with branch -f in a compound command', () => {
     git(clone, 'checkout -q main');
@@ -173,5 +256,50 @@ describe('git-police push rules require a push subcommand', () => {
   test('still blocks force push behind global flags', () => {
     const out = runHook(clone, `git -C ${clone} push --force origin feat/x`);
     expect(out).toContain('Force push');
+  });
+});
+
+describe('shared-clone branch guard', () => {
+  let solo: string;
+  let shared: string;
+  let linked: string;
+
+  beforeAll(() => {
+    solo = join(root, 'solo');
+    shared = join(root, 'shared');
+    linked = join(root, 'shared-wt', 'feat');
+    execSync(`git clone ${origin} ${solo}`, { stdio: 'pipe' });
+    execSync(`git clone ${origin} ${shared}`, { stdio: 'pipe' });
+    git(shared, `worktree add ${linked} -b wt/existing`);
+  });
+
+  test('a clone with no worktrees is left alone', () => {
+    expect(runHook(solo, 'git checkout -b feat/x')).not.toContain('shared clone');
+  });
+
+  test('creating a branch in a clone others share is refused', () => {
+    const out = runHook(shared, 'git checkout -b feat/x');
+    expect(out).toContain('shared clone');
+    expect(out).toContain('git worktree add');
+    expect(runHook(shared, 'git switch -c feat/x')).toContain('shared clone');
+  });
+
+  test('inside a worktree it is allowed — that is the point', () => {
+    expect(runHook(linked, 'git checkout -b feat/y')).not.toContain('shared clone');
+  });
+
+  test('the escape hatch works inline, where a prefix cannot reach the hook env', () => {
+    expect(runHook(shared, 'AGENTKIT_ALLOW_SHARED_BRANCH=1 git checkout -b feat/x'))
+      .not.toContain('shared clone');
+  });
+
+  test('switching to an existing branch, and creating a worktree, are untouched', () => {
+    expect(runHook(shared, 'git checkout main')).not.toContain('shared clone');
+    expect(runHook(shared, 'git worktree add ../x -b feat/z')).not.toContain('shared clone');
+  });
+
+  test('the words appearing in a commit message are not a branch creation', () => {
+    expect(runHook(shared, "git commit -m 'git checkout -b is blocked'"))
+      .not.toContain('shared clone');
   });
 });
