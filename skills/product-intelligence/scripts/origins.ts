@@ -34,28 +34,74 @@ export function formatOrigins(origins: Origin[]): string {
   return `${lines.join('\n')}\n`;
 }
 
-function key(origin: Origin): string {
-  return `${origin.id}|${origin.kind}|${origin.target}`;
+export interface CanonicalTarget {
+  host?: string;
+  path: string;
 }
 
-export function checkOrigins(derived: Origin[], brief: unknown): string[] {
+// Both schemas advertise a clone URL and `owner/repo` as the same thing, so
+// comparing the raw strings reports one repository as simultaneously missing
+// and unrecognised. Reduce to owner/repo, keeping the host when it is stated:
+// two hosts that disagree are two repositories, not one written two ways.
+export function canonicalTarget(kind: string, target: string): CanonicalTarget {
+  const trimmed = target.trim().replace(/\/+$/, '');
+  const scp = /^(?:[\w.-]+@)?([\w.-]+\.[a-z]{2,}):(.+)$/i.exec(trimmed);
+  const hostPath = scp
+    ? `${scp[1]}/${scp[2]}`
+    : trimmed.replace(/^[a-z][a-z0-9+.-]*:\/\//i, '').replace(/^[\w.-]+@/, '');
+  const bare = hostPath.replace(/\.git$/, '');
+  const segments = bare.split('/').filter(Boolean);
+  const host = (segments[0] ?? '').includes('.') ? (segments[0] as string).toLowerCase() : undefined;
+
+  // Hostnames are case-insensitive by DNS; the path after them is not, on any
+  // forge or web server, so only the host is folded.
+  if (kind !== 'repo') {
+    return host === undefined ? { path: bare } : { host, path: segments.slice(1).join('/') };
+  }
+  if (segments.length <= 2) return { path: segments.join('/') };
+  return { host, path: segments.slice(-2).join('/') };
+}
+
+export function sameTarget(a: Origin, b: Origin): boolean {
+  const left = canonicalTarget(a.kind, a.target);
+  const right = canonicalTarget(b.kind, b.target);
+  if (left.path !== right.path) return false;
+  return left.host === undefined || right.host === undefined || left.host === right.host;
+}
+
+export interface OriginCheck {
+  errors: string[];
+  notes: string[];
+}
+
+// One-directional on purpose: every part must be cited, but a brief may cite
+// sources that are not parts — the product repo's own documents, a supplied
+// docset — so an unmatched origin is reported without failing the check.
+export function checkOrigins(derived: Origin[], brief: unknown): OriginCheck {
   const declared = (((brief as Record<string, unknown>).subject as Record<string, unknown> | undefined)
     ?.origins ?? []) as Origin[];
   const errors: string[] = [];
-  const declaredKeys = new Set(declared.map(key));
-  const derivedKeys = new Set(derived.map(key));
+  const notes: string[] = [];
+  const byId = new Map(declared.map((origin) => [origin.id, origin]));
 
-  for (const origin of derived) {
-    if (!declaredKeys.has(key(origin))) {
-      errors.push(`missing origin for part '${origin.id}': ${origin.kind} ${origin.target}`);
+  for (const part of derived) {
+    const cited = byId.get(part.id);
+    if (!cited) {
+      errors.push(`missing origin for part '${part.id}': ${part.kind} ${part.target}`);
+    } else if (cited.kind !== part.kind || !sameTarget(part, cited)) {
+      errors.push(
+        `origin '${part.id}' cites ${cited.kind} ${cited.target}, but the part declares ${part.kind} ${part.target}`,
+      );
     }
   }
+
+  const partIds = new Set(derived.map((origin) => origin.id));
   for (const origin of declared) {
-    if (!derivedKeys.has(key(origin))) {
-      errors.push(`origin '${origin.id}' is not derived from any part: ${origin.kind} ${origin.target}`);
+    if (!partIds.has(origin.id)) {
+      notes.push(`origin '${origin.id}' is not a declared part: ${origin.kind} ${origin.target}`);
     }
   }
-  return errors;
+  return { errors, notes };
 }
 
 function load(path: string): unknown {
@@ -76,10 +122,14 @@ if (import.meta.main) {
   }
   const origins = deriveOrigins(load(productPath));
   if (flag === '--check') {
-    const drift = checkOrigins(origins, Bun.YAML.parse(readFileSync(briefPath as string, 'utf-8')));
-    for (const error of drift) console.error(`error: ${briefPath}: ${error}`);
-    if (drift.length > 0) process.exit(1);
-    console.log(`ok: ${briefPath} origins match ${productPath}`);
+    const { errors, notes } = checkOrigins(origins, Bun.YAML.parse(readFileSync(briefPath as string, 'utf-8')));
+    for (const note of notes) console.log(`note: ${briefPath}: ${note}`);
+    for (const error of errors) console.error(`error: ${briefPath}: ${error}`);
+    if (errors.length > 0) {
+      console.error(`hint: run '${process.argv[1]} ${productPath}' to print the origins the declaration derives`);
+      process.exit(1);
+    }
+    console.log(`ok: ${briefPath} cites every part declared by ${productPath}`);
   } else if (flag === '--json') {
     console.log(JSON.stringify(origins, null, 2));
   } else {

@@ -32,7 +32,7 @@ Paths are relative to the product declaration.
 
 ## Working here
 
-Each part above is a separate repo or service with its own clone. A component
-names the part it is via `part_of` in its `.agentkit/product.yaml`; that marker
-and this declaration must agree on the id, so `acme-platform` is
-discoverable from either end.
+Each part above is a separate repo or service with its own clone. The
+convention is that a component names the part it is with a `part_of` block in
+its `.agentkit/product.yaml`, reusing the id from this table. A component
+without one is still reachable from here, but does not point back.

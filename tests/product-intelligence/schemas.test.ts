@@ -36,6 +36,7 @@ const expectedFailures: Record<string, string> = {
   'product-unknown-part-kind.yaml': 'must be one of',
   'product-missing-part-target.yaml': "missing required field 'target'",
   'product-dangling-evidence.yaml': 'not found relative to the declaration',
+  'product-empty-parts.yaml': 'must have at least 1 item',
   'part-of-missing-part.yaml': "missing required field 'part'",
   'part-of-unslugged-id.yaml': 'does not match pattern',
 };
@@ -103,9 +104,14 @@ describe('validate.ts CLI', () => {
     expect(result.stderr).toContain('not symmetric');
   });
 
-  test('exits 2 with usage when given no files', () => {
+  // The one message a first-time user is guaranteed to see, so it has to name
+  // every kind the dispatch actually accepts.
+  test('exits 2 with usage naming all four document kinds', () => {
     const result = run();
     expect(result.status).toBe(2);
     expect(result.stderr).toContain('usage');
+    for (const kind of ['ledger', 'brief', 'product', 'part-of']) {
+      expect(result.stderr, kind).toContain(kind);
+    }
   });
 });

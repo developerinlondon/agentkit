@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { validateFile } from '../../skills/product-intelligence/scripts/validate.ts';
-import { checkOrigins, deriveOrigins } from '../../skills/product-intelligence/scripts/origins.ts';
+import { canonicalTarget, checkOrigins, deriveOrigins } from '../../skills/product-intelligence/scripts/origins.ts';
 import { renderOrientation } from '../../skills/product-intelligence/scripts/orient.ts';
 
 const repoRoot = dirname(dirname(import.meta.dir));
@@ -19,6 +19,14 @@ function tempDeclaration(body: string): string {
   const dir = mkdtempSync(join(tmpdir(), 'agentkit-composition-'));
   const path = join(dir, 'product.yaml');
   writeFileSync(path, body);
+  return path;
+}
+
+// YAML is a superset of JSON, so the parser reads this back unchanged.
+function tempBrief(origins: unknown[]): string {
+  const dir = mkdtempSync(join(tmpdir(), 'agentkit-composition-'));
+  const path = join(dir, 'brief.yaml');
+  writeFileSync(path, JSON.stringify({ subject: { origins } }));
   return path;
 }
 
@@ -40,33 +48,126 @@ describe('derived origins', () => {
   });
 
   test("the example brief's origins are exactly what the declaration derives", () => {
-    expect(checkOrigins(deriveOrigins(parse(declaration)), parse(join(example, 'brief.yaml')))).toEqual([]);
+    const check = checkOrigins(deriveOrigins(parse(declaration)), parse(join(example, 'brief.yaml')));
+    expect(check.errors).toEqual([]);
+    expect(check.notes).toEqual([]);
   });
 
-  test('a part with no origin in the brief is reported', () => {
+  test('a part with no origin in the brief is an error', () => {
     const brief = parse(join(example, 'brief.yaml'));
     brief.subject.origins = brief.subject.origins.filter((o: { id: string }) => o.id !== 'console');
-    expect(checkOrigins(deriveOrigins(parse(declaration)), brief).join('\n')).toContain(
+    expect(checkOrigins(deriveOrigins(parse(declaration)), brief).errors.join('\n')).toContain(
       "missing origin for part 'console'",
     );
   });
 
-  // Drift in this direction is the one hand-typing produces: an origin nobody
-  // declared as a part, which no `part_of` marker will ever point back from.
-  test('an origin matching no part is reported', () => {
+  // The skill tells you to cite the product repo's own documents, which are not
+  // a part; failing on that would make the documented workflow permanently red.
+  test('an origin that is not a declared part is a note, not a failure', () => {
     const brief = parse(join(example, 'brief.yaml'));
-    brief.subject.origins.push({ id: 'ghost', kind: 'repo', target: 'acme/ghost' });
-    expect(checkOrigins(deriveOrigins(parse(declaration)), brief).join('\n')).toContain(
-      "origin 'ghost' is not derived from any part",
-    );
+    brief.subject.origins.push({ id: 'product', kind: 'repo', target: 'acme/product' });
+    const check = checkOrigins(deriveOrigins(parse(declaration)), brief);
+    expect(check.errors).toEqual([]);
+    expect(check.notes.join('\n')).toContain("origin 'product' is not a declared part");
   });
 
-  test('a retargeted part is drift, not a match on id alone', () => {
+  test('a retargeted part is drift, and says what each side claims', () => {
     const brief = parse(join(example, 'brief.yaml'));
     brief.subject.origins[0].target = 'acme/engine-fork';
-    const errors = checkOrigins(deriveOrigins(parse(declaration)), brief);
-    expect(errors.join('\n')).toContain('missing origin for part \'engine\'');
-    expect(errors).toHaveLength(2);
+    const check = checkOrigins(deriveOrigins(parse(declaration)), brief);
+    expect(check.errors).toHaveLength(1);
+    expect(check.errors[0]).toContain("origin 'engine' cites repo acme/engine-fork");
+    expect(check.errors[0]).toContain('the part declares repo acme/engine');
+    expect(check.notes).toEqual([]);
+  });
+});
+
+describe('target notation', () => {
+  const briefCiting = (target: string) => {
+    const brief = parse(join(example, 'brief.yaml'));
+    brief.subject.origins[0].target = target;
+    return brief;
+  };
+  const errorsFor = (target: string) =>
+    checkOrigins(deriveOrigins(parse(declaration)), briefCiting(target)).errors;
+
+  // Both schemas advertise these as the same repository, so a comparator that
+  // disagreed would report one repo as missing and unrecognised at once.
+  for (
+    const notation of [
+      'https://github.com/acme/engine',
+      'http://github.com/acme/engine',
+      'https://github.com/acme/engine.git',
+      'https://github.com/acme/engine/',
+      'git@github.com:acme/engine.git',
+      'https://GITHUB.com/acme/engine',
+    ]
+  ) {
+    test(`the declaration's 'acme/engine' matches a brief citing '${notation}'`, () => {
+      expect(errorsFor(notation)).toEqual([]);
+    });
+  }
+
+  test('the same equivalence holds when the declaration carries the URL form', () => {
+    const path = tempDeclaration(
+      'product_version: "0.1"\nproduct:\n  name: acme\ncomposition:\n  parts:\n    - id: engine\n'
+        + '      kind: repo\n      target: https://github.com/acme/engine.git\n',
+    );
+    const brief = { subject: { origins: [{ id: 'engine', kind: 'repo', target: 'acme/engine' }] } };
+    expect(checkOrigins(deriveOrigins(parse(path)), brief).errors).toEqual([]);
+  });
+
+  // Normalising must not go so far that two repos become one.
+  test('the same owner/repo on two hosts stays two repositories', () => {
+    const path = tempDeclaration(
+      'product_version: "0.1"\nproduct:\n  name: acme\ncomposition:\n  parts:\n    - id: engine\n'
+        + '      kind: repo\n      target: https://github.com/acme/engine\n',
+    );
+    const brief = {
+      subject: { origins: [{ id: 'engine', kind: 'repo', target: 'https://gitlab.com/acme/engine' }] },
+    };
+    expect(checkOrigins(deriveOrigins(parse(path)), brief).errors.join('\n')).toContain('gitlab.com');
+  });
+
+  test('a different repo under the same host is still drift', () => {
+    expect(errorsFor('https://github.com/acme/engine-fork').join('\n')).toContain('engine-fork');
+  });
+
+  // Only exercises host folding when BOTH sides state a host: with one side
+  // bare, the comparison short-circuits and any casing would pass.
+  test('two spellings of one host are the same host', () => {
+    const path = tempDeclaration(
+      'product_version: "0.1"\nproduct:\n  name: acme\ncomposition:\n  parts:\n    - id: engine\n'
+        + '      kind: repo\n      target: https://GitHub.COM/acme/engine\n',
+    );
+    const brief = { subject: { origins: [{ id: 'engine', kind: 'repo', target: 'https://github.com/acme/engine' }] } };
+    expect(checkOrigins(deriveOrigins(parse(path)), brief).errors).toEqual([]);
+  });
+
+  test('a matching target under the wrong kind is drift', () => {
+    const brief = parse(join(example, 'brief.yaml'));
+    brief.subject.origins[0].kind = 'site';
+    const errors = checkOrigins(deriveOrigins(parse(declaration)), brief).errors;
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain('cites site acme/engine');
+  });
+
+  // filter(Boolean) hides a trailing slash on any hosted target, so the strip
+  // is only load-bearing where there is no host to split on.
+  test('a trailing slash is not part of a bare target', () => {
+    expect(canonicalTarget('docset', 'contracts/')).toEqual(canonicalTarget('docset', 'contracts'));
+  });
+
+  test('a service URL matches with or without scheme and trailing slash', () => {
+    const brief = parse(join(example, 'brief.yaml'));
+    brief.subject.origins[2].target = 'app.acme.example/';
+    expect(checkOrigins(deriveOrigins(parse(declaration)), brief).errors).toEqual([]);
+  });
+
+  test('a differing URL path is not folded away', () => {
+    const brief = parse(join(example, 'brief.yaml'));
+    brief.subject.origins[2].target = 'https://app.acme.example/status';
+    expect(checkOrigins(deriveOrigins(parse(declaration)), brief).errors).toHaveLength(1);
   });
 });
 
@@ -108,6 +209,15 @@ describe('workspace orientation', () => {
     const page = renderOrientation(path);
     expect(page).toContain('- **engine** — first line second line');
     expect(page.split('\n').filter((l) => l.includes('second line'))).toHaveLength(1);
+  });
+
+  // The generator cannot see whether components carry markers — this branch is
+  // what makes them possible — so the page states the convention rather than
+  // reporting unverified state as fact.
+  test('states the part_of convention without claiming components already follow it', () => {
+    const page = renderOrientation(declaration);
+    expect(page).toContain('convention is that a component names the part it is');
+    expect(page).not.toContain('must agree on the id');
   });
 
   test('refuses to render an invalid declaration rather than orienting from a guess', () => {
@@ -160,7 +270,25 @@ describe('composition CLIs', () => {
   test('origins.ts --check exits 0 when the brief matches', () => {
     const result = run('origins.ts', declaration, '--check', join(example, 'brief.yaml'));
     expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout).toContain('origins match');
+    expect(result.stdout).toContain('cites every part declared by');
+  });
+
+  test('origins.ts --check accepts a brief citing a source that is not a part', () => {
+    const brief = tempBrief([
+      ...deriveOrigins(parse(declaration)),
+      { id: 'product', kind: 'repo', target: 'acme/product' },
+    ]);
+    const result = run('origins.ts', declaration, '--check', brief);
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain("note: ");
+    expect(result.stdout).toContain("origin 'product' is not a declared part");
+  });
+
+  test('origins.ts --check points at the remedy when a part is uncited', () => {
+    const result = run('origins.ts', declaration, '--check', tempBrief([]));
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('hint:');
+    expect(result.stderr).toContain('origins the declaration derives');
   });
 
   test('origins.ts --check exits 1 and names the drift', () => {

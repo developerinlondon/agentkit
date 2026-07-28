@@ -71,9 +71,16 @@ export function checkSchema(value: Json, schema: Schema, root: Schema, path: str
   }
   if (schema.type === 'string') checkString(value as string, schema, path, errors);
   if (schema.type === 'object') checkObject(value as Record<string, Json>, schema, root, path, errors);
-  if (schema.type === 'array' && schema.items) {
-    (value as Json[]).forEach((item, i) => checkSchema(item, schema.items as Schema, root, `${path}[${i}]`, errors));
+  if (schema.type === 'array') checkArray(value as Json[], schema, root, path, errors);
+}
+
+function checkArray(value: Json[], schema: Schema, root: Schema, path: string, errors: string[]): void {
+  if (typeof schema.minItems === 'number' && value.length < schema.minItems) {
+    errors.push(`${path}: must have at least ${schema.minItems} item(s)`);
+    return;
   }
+  if (!schema.items) return;
+  value.forEach((item, i) => checkSchema(item, schema.items as Schema, root, `${path}[${i}]`, errors));
 }
 
 function checkString(value: string, schema: Schema, path: string, errors: string[]): void {
@@ -365,7 +372,7 @@ function validateBriefFile(doc: Json, path: string): string[] {
 if (import.meta.main) {
   const files = process.argv.slice(2);
   if (files.length === 0) {
-    console.error('usage: validate.ts <ledger-or-brief>...');
+    console.error('usage: validate.ts <ledger|brief|product-declaration|part-of-marker>...');
     process.exit(2);
   }
   let failed = false;

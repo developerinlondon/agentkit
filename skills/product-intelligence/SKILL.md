@@ -257,12 +257,20 @@ bun skills/product-intelligence/scripts/origins.ts product.yaml --check brief.ya
 One part becomes one origin, keyed by the part id: `repo` and `site` pass
 through, and a `service` part derives a `site` origin — a brief has no kind for
 something that runs, and a service is evidence you acquire by visiting its URL.
-`--check` exits non-zero on drift in either direction: a part with no origin,
-or an origin matching no part.
 
-The declaration carries no self-locator, so the product repo itself is not
-emitted as an origin. When the brief cites the product repo's own documents,
-add that origin by hand.
+`--check` fails when a declared part has no origin in the brief, or when the
+brief cites that part under a different target. Targets compare canonically, so
+a clone URL and its `owner/repo` short form are the same repository — both
+schemas advertise the two notations as interchangeable, and a checker that
+disagreed would report one repo as missing and unrecognised at once. Two
+different hosts are still two repositories.
+
+The check is deliberately **one-directional**: every part must be cited, but a
+brief may legitimately cite sources that are not parts — the product repo's own
+documents, or a supplied docset. Those are reported as `note:` lines and do not
+fail the check. The declaration carries no self-locator, so the product repo is
+never derived as an origin; cite it in the brief when its documents are
+evidence, and the note is the acknowledgement, not a defect to chase.
 
 ### Workspace orientation
 

@@ -71,14 +71,17 @@ function evidenceSection(product: Dict): string[] {
   return lines;
 }
 
-function claimingSection(product: Dict): string[] {
+// States the convention, never that the components currently follow it — this
+// page is generated, and a generated page that reports unverified state as
+// fact is the failure the skill exists to prevent.
+function conventionSection(): string[] {
   return [
     '## Working here',
     '',
-    'Each part above is a separate repo or service with its own clone. A component',
-    'names the part it is via `part_of` in its `.agentkit/product.yaml`; that marker',
-    `and this declaration must agree on the id, so \`${collapse(product.product?.name)}\` is`,
-    'discoverable from either end.',
+    'Each part above is a separate repo or service with its own clone. The',
+    'convention is that a component names the part it is with a `part_of` block in',
+    'its `.agentkit/product.yaml`, reusing the id from this table. A component',
+    'without one is still reachable from here, but does not point back.',
     '',
   ];
 }
@@ -91,7 +94,7 @@ export function renderOrientation(productPath: string): string {
     ...heading(product),
     ...partsTable(product),
     ...evidenceSection(product),
-    ...claimingSection(product),
+    ...conventionSection(),
   ].join('\n');
 }
 
