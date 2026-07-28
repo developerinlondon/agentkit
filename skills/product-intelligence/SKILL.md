@@ -31,8 +31,20 @@ All under `.agentkit/intelligence/<subject-slug>/`:
 To SHOW a brief to a human, render it — the YAML is the auditable form, not
 the readable one: `bun skills/product-intelligence/scripts/render.ts <dir>` weaves the brief, the
 ledger's verbatim quotes and the findings into one page-ready
-`brief-page.md` (derived, never committed), which publish-page can put on a
-URL as-is.
+`brief-page.html` (derived, never committed), which publish-page puts on a URL:
+
+```sh
+bun skills/product-intelligence/scripts/render.ts <dir>
+bun skills/publish-page/publish.ts --name <slug> --file <dir>/brief-page.html \
+  --title "<subject>: what the evidence says"
+```
+
+The render is HTML rather than markdown because a crawled quote must reach the
+reader as the source wrote it: escaping into markdown cannot say "literal"
+inside a code span or a fence, so a Windows path grew a second backslash and a
+diagram in `findings.md` was destroyed on the way to the page. HTML has one
+escape for every position, and the CLI prints the `--title` to pass, since a
+page that is not markdown has no heading for publish-page to lift.
 
 For a walked-through presentation rather than a page to read, add `--deck`:
 
@@ -346,11 +358,8 @@ output, so a rebuilt page only changes when the evidence does.
 
 One-time on the machine that renders: `cd skills/publish-page && bun install`.
 
-**Findings diagrams: known limitation.** A `` ```mermaid `` fence in
-`findings.md` reaches the page with the findings sanitizer's escaping applied inside
-the fence, so any diagram using `[`, `]`, `(` or `)` fails to parse — while
-the 3.4 MB mermaid runtime is inlined regardless. Keep diagrams out of
-`findings.md` until that escaping is fence-aware.
+A `` ```mermaid `` fence in `findings.md` renders as a diagram; the 3.4 MB
+mermaid runtime is inlined only when the page actually carries one.
 
 ### Rung 2 — Pages CI
 
@@ -363,7 +372,7 @@ Scaffolds in `assets/ci/` — copy one into the repo that owns the brief and set
 | `assets/ci/gitlab-ci.yml`    | `.gitlab-ci.yml`                    |
 
 Both jobs do the same three things: validate `brief.yaml` + `ledger.yaml`,
-render `brief-page.md` and `index.html` into `public/`, publish that directory.
+render `brief-page.html` and `index.html` into `public/`, publish that directory.
 Validation runs first on purpose — a dangling claim id fails the build instead
 of publishing a brief whose citations go nowhere. Pin `AGENTKIT_REF` to a tag
 so a rebuild cannot change with upstream.

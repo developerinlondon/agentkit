@@ -21,7 +21,7 @@ pages:
   script:
     - bun /tmp/agentkit/skills/product-intelligence/scripts/validate.ts "$INTELLIGENCE_DIR/brief.yaml" "$INTELLIGENCE_DIR/ledger.yaml"
     - mkdir -p public
-    - bun /tmp/agentkit/skills/product-intelligence/scripts/render.ts "$INTELLIGENCE_DIR" --out public/brief-page.md
+    - bun /tmp/agentkit/skills/product-intelligence/scripts/render.ts "$INTELLIGENCE_DIR" --out public/brief-page.html
     - bun /tmp/agentkit/skills/product-intelligence/scripts/render.ts "$INTELLIGENCE_DIR" --html --out public/index.html
   artifacts:
     paths:

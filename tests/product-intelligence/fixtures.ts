@@ -54,9 +54,22 @@ export const marker = (field: string) => field.replace(/_/g, '');
 export const payload = (field: string) =>
   `<script>${marker(field)}</script>[x](javascript:alert(1))\n\n## forged ${marker(field)}`;
 
-const y = (field: string) => JSON.stringify(payload(field));
+// Markdown syntax is inert where the doc lane emits HTML, so the shapes that
+// still matter there are the ones that reach for a tag, an attribute or a
+// scheme. Each keeps the field's marker, so a surviving gap still names itself.
+export const HOSTILE_SHAPES: Record<string, (field: string) => string> = {
+  tag: payload,
+  attribute: (f) => `" onmouseover="alert(1)" data-${marker(f)}="`,
+  quote: (f) => `'><script>${marker(f)}</script>`,
+  entity: (f) => `&lt;script&gt;${marker(f)}&lt;/script&gt;&#106;`,
+  scheme: (f) => `javascript:alert(1)//${marker(f)}`,
+  backslash: (f) => `C:\\Users\\${marker(f)}\\`,
+};
 
-export function hostileBrief(): string {
+export type Payload = (field: string) => string;
+
+export function hostileBrief(make: Payload = payload): string {
+  const y = (field: string) => JSON.stringify(make(field));
   return [
     "brief_version: '1.0'",
     'subject:',
@@ -101,7 +114,8 @@ export function hostileBrief(): string {
   ].join('\n');
 }
 
-export function hostileLedger(): string {
+export function hostileLedger(make: Payload = payload): string {
+  const y = (field: string) => JSON.stringify(make(field));
   return [
     "ledger_version: '1.0'",
     `generated_by: ${y('generated_by')}`,
@@ -109,10 +123,10 @@ export function hostileLedger(): string {
     'claims:',
     // Two claims in conflict: with one, the contradiction renderers never see
     // hostile input at all and their escaping is asserted by nothing.
-    ...claim(payload('claim_id'), payload('statement'), 'observed', 'high', [
-      src(payload('locator'), payload('quote'), 'supports'),
+    ...claim(make('claim_id'), make('statement'), 'observed', 'high', [
+      src(make('locator'), make('quote'), 'supports'),
     ]),
     `    contradicts: [${y('claim_id_b')}]`,
-    ...claim(payload('claim_id_b'), payload('statement_b'), 'observed', 'high'),
+    ...claim(make('claim_id_b'), make('statement_b'), 'observed', 'high'),
   ].join('\n');
 }

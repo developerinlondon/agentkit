@@ -4,7 +4,7 @@
 // an air-gapped laptop or an email attachment.
 
 import { join } from 'node:path';
-import { briefTitle, renderBrief } from './render.ts';
+import { briefTitle, renderBrief } from './doc.ts';
 
 const themeSkill = join(import.meta.dir, '..', '..', 'publish-page');
 
@@ -24,7 +24,7 @@ export async function renderBriefHtml(dir: string): Promise<string> {
   const { bundledThemePath, renderThemed } = await themeRenderer();
   return renderThemed({
     source: renderBrief(dir),
-    isMd: true,
+    isMd: false,
     template: 'doc',
     title: briefTitle(dir),
     // The bundled theme, never the agentkit-pages clone publish.ts prefers: a

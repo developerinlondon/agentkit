@@ -659,6 +659,7 @@ describe('render.ts --deck CLI', () => {
     expect(readFileSync(target, 'utf-8')).toContain('<div class="cover">');
     const doc = spawnSync('bun', [script, scratch], { encoding: 'utf-8' });
     expect(doc.status, doc.stderr).toBe(0);
-    expect(readFileSync(join(scratch, 'brief-page.md'), 'utf-8')).toContain('# acme-notes: what the evidence says');
+    expect(readFileSync(join(scratch, 'brief-page.html'), 'utf-8'))
+      .toContain('<h1>acme-notes: what the evidence says</h1>');
   });
 });
