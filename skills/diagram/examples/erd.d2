@@ -1,0 +1,72 @@
+direction: down
+
+account: {
+  shape: sql_table
+  id: uuid {constraint: primary_key}
+  email: citext {constraint: unique}
+  created_at: timestamptz
+}
+
+site: {
+  shape: sql_table
+  id: uuid {constraint: primary_key}
+  account_id: uuid {constraint: foreign_key}
+  slug: citext {constraint: unique}
+  theme: text
+}
+
+page: {
+  shape: sql_table
+  id: uuid {constraint: primary_key}
+  site_id: uuid {constraint: foreign_key}
+  slug: citext
+  title: text
+  body_md: text
+  published_at: timestamptz
+}
+
+revision: {
+  shape: sql_table
+  id: bigserial {constraint: primary_key}
+  page_id: uuid {constraint: foreign_key}
+  author_id: uuid {constraint: foreign_key}
+  body_md: text
+  created_at: timestamptz
+}
+
+tag: {
+  shape: sql_table
+  id: uuid {constraint: primary_key}
+  name: citext {constraint: unique}
+}
+
+page_tag: {
+  shape: sql_table
+  page_id: uuid {constraint: [primary_key; foreign_key]}
+  tag_id: uuid {constraint: [primary_key; foreign_key]}
+}
+
+account.id -> site.account_id: owns\n1..N {
+  target-arrowhead.shape: cf-many-required
+  source-arrowhead.shape: cf-one-required
+}
+site.id -> page.site_id: contains\n1..N {
+  target-arrowhead.shape: cf-many-required
+  source-arrowhead.shape: cf-one-required
+}
+page.id -> revision.page_id: has history\n1..N {
+  target-arrowhead.shape: cf-many-required
+  source-arrowhead.shape: cf-one-required
+}
+account.id -> revision.author_id: authored\n1..N {
+  target-arrowhead.shape: cf-many
+  source-arrowhead.shape: cf-one-required
+}
+page.id -> page_tag.page_id: 1..N {
+  target-arrowhead.shape: cf-many
+  source-arrowhead.shape: cf-one-required
+}
+tag.id -> page_tag.tag_id: 1..N {
+  target-arrowhead.shape: cf-many
+  source-arrowhead.shape: cf-one-required
+}

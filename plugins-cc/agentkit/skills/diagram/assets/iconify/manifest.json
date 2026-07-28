@@ -1,0 +1,1160 @@
+{
+  "ansible": {
+    "set": "logos",
+    "name": "ansible",
+    "file": "logos/ansible.svg",
+    "license": "CC0-1.0"
+  },
+  "api gateway": {
+    "set": "logos",
+    "name": "aws-api-gateway",
+    "file": "logos/aws-api-gateway.svg",
+    "license": "CC0-1.0"
+  },
+  "argo": {
+    "set": "logos",
+    "name": "argo",
+    "file": "logos/argo.svg",
+    "license": "CC0-1.0"
+  },
+  "auth0": {
+    "set": "logos",
+    "name": "auth0",
+    "file": "logos/auth0.svg",
+    "license": "CC0-1.0"
+  },
+  "aws": {
+    "set": "logos",
+    "name": "aws",
+    "file": "logos/aws.svg",
+    "license": "CC0-1.0"
+  },
+  "aws-api-gateway": {
+    "set": "logos",
+    "name": "aws-api-gateway",
+    "file": "logos/aws-api-gateway.svg",
+    "license": "CC0-1.0"
+  },
+  "aws-cloudformation": {
+    "set": "logos",
+    "name": "aws-cloudformation",
+    "file": "logos/aws-cloudformation.svg",
+    "license": "CC0-1.0"
+  },
+  "aws-cloudfront": {
+    "set": "logos",
+    "name": "aws-cloudfront",
+    "file": "logos/aws-cloudfront.svg",
+    "license": "CC0-1.0"
+  },
+  "aws-cloudwatch": {
+    "set": "logos",
+    "name": "aws-cloudwatch",
+    "file": "logos/aws-cloudwatch.svg",
+    "license": "CC0-1.0"
+  },
+  "aws-dynamodb": {
+    "set": "logos",
+    "name": "aws-dynamodb",
+    "file": "logos/aws-dynamodb.svg",
+    "license": "CC0-1.0"
+  },
+  "aws-ec2": {
+    "set": "logos",
+    "name": "aws-ec2",
+    "file": "logos/aws-ec2.svg",
+    "license": "CC0-1.0"
+  },
+  "aws-ecs": {
+    "set": "logos",
+    "name": "aws-ecs",
+    "file": "logos/aws-ecs.svg",
+    "license": "CC0-1.0"
+  },
+  "aws-eks": {
+    "set": "logos",
+    "name": "aws-eks",
+    "file": "logos/aws-eks.svg",
+    "license": "CC0-1.0"
+  },
+  "aws-elasticache": {
+    "set": "logos",
+    "name": "aws-elasticache",
+    "file": "logos/aws-elasticache.svg",
+    "license": "CC0-1.0"
+  },
+  "aws-fargate": {
+    "set": "logos",
+    "name": "aws-fargate",
+    "file": "logos/aws-fargate.svg",
+    "license": "CC0-1.0"
+  },
+  "aws-iam": {
+    "set": "logos",
+    "name": "aws-iam",
+    "file": "logos/aws-iam.svg",
+    "license": "CC0-1.0"
+  },
+  "aws-kinesis": {
+    "set": "logos",
+    "name": "aws-kinesis",
+    "file": "logos/aws-kinesis.svg",
+    "license": "CC0-1.0"
+  },
+  "aws-lambda": {
+    "set": "logos",
+    "name": "aws-lambda",
+    "file": "logos/aws-lambda.svg",
+    "license": "CC0-1.0"
+  },
+  "aws-rds": {
+    "set": "logos",
+    "name": "aws-rds",
+    "file": "logos/aws-rds.svg",
+    "license": "CC0-1.0"
+  },
+  "aws-route53": {
+    "set": "logos",
+    "name": "aws-route53",
+    "file": "logos/aws-route53.svg",
+    "license": "CC0-1.0"
+  },
+  "aws-s3": {
+    "set": "logos",
+    "name": "aws-s3",
+    "file": "logos/aws-s3.svg",
+    "license": "CC0-1.0"
+  },
+  "aws-secrets-manager": {
+    "set": "logos",
+    "name": "aws-secrets-manager",
+    "file": "logos/aws-secrets-manager.svg",
+    "license": "CC0-1.0"
+  },
+  "aws-sns": {
+    "set": "logos",
+    "name": "aws-sns",
+    "file": "logos/aws-sns.svg",
+    "license": "CC0-1.0"
+  },
+  "aws-sqs": {
+    "set": "logos",
+    "name": "aws-sqs",
+    "file": "logos/aws-sqs.svg",
+    "license": "CC0-1.0"
+  },
+  "aws-step-functions": {
+    "set": "logos",
+    "name": "aws-step-functions",
+    "file": "logos/aws-step-functions.svg",
+    "license": "CC0-1.0"
+  },
+  "aws-vpc": {
+    "set": "logos",
+    "name": "aws-vpc",
+    "file": "logos/aws-vpc.svg",
+    "license": "CC0-1.0"
+  },
+  "azure": {
+    "set": "logos",
+    "name": "azure",
+    "file": "logos/azure.svg",
+    "license": "CC0-1.0"
+  },
+  "azure-icon": {
+    "set": "logos",
+    "name": "azure-icon",
+    "file": "logos/azure-icon.svg",
+    "license": "CC0-1.0"
+  },
+  "blob storage": {
+    "set": "logos",
+    "name": "aws-s3",
+    "file": "logos/aws-s3.svg",
+    "license": "CC0-1.0"
+  },
+  "cache": {
+    "set": "logos",
+    "name": "redis",
+    "file": "logos/redis.svg",
+    "license": "CC0-1.0"
+  },
+  "cassandra": {
+    "set": "logos",
+    "name": "cassandra",
+    "file": "logos/cassandra.svg",
+    "license": "CC0-1.0"
+  },
+  "cdn": {
+    "set": "logos",
+    "name": "cloudflare-icon",
+    "file": "logos/cloudflare-icon.svg",
+    "license": "CC0-1.0"
+  },
+  "ci": {
+    "set": "logos",
+    "name": "jenkins",
+    "file": "logos/jenkins.svg",
+    "license": "CC0-1.0"
+  },
+  "clickhouse": {
+    "set": "simple-icons",
+    "name": "clickhouse",
+    "file": "simple-icons/clickhouse.svg",
+    "license": "CC0-1.0"
+  },
+  "cloudflare": {
+    "set": "logos",
+    "name": "cloudflare",
+    "file": "logos/cloudflare.svg",
+    "license": "CC0-1.0"
+  },
+  "cloudflare-icon": {
+    "set": "logos",
+    "name": "cloudflare-icon",
+    "file": "logos/cloudflare-icon.svg",
+    "license": "CC0-1.0"
+  },
+  "consul": {
+    "set": "logos",
+    "name": "consul",
+    "file": "logos/consul.svg",
+    "license": "CC0-1.0"
+  },
+  "container": {
+    "set": "logos",
+    "name": "docker-icon",
+    "file": "logos/docker-icon.svg",
+    "license": "CC0-1.0"
+  },
+  "datadog": {
+    "set": "logos",
+    "name": "datadog",
+    "file": "logos/datadog.svg",
+    "license": "CC0-1.0"
+  },
+  "digitalocean": {
+    "set": "simple-icons",
+    "name": "digitalocean",
+    "file": "simple-icons/digitalocean.svg",
+    "license": "CC0-1.0"
+  },
+  "dns": {
+    "set": "logos",
+    "name": "aws-route53",
+    "file": "logos/aws-route53.svg",
+    "license": "CC0-1.0"
+  },
+  "docker": {
+    "set": "logos",
+    "name": "docker",
+    "file": "logos/docker.svg",
+    "license": "CC0-1.0"
+  },
+  "docker-icon": {
+    "set": "logos",
+    "name": "docker-icon",
+    "file": "logos/docker-icon.svg",
+    "license": "CC0-1.0"
+  },
+  "dotnet": {
+    "set": "logos",
+    "name": "dotnet",
+    "file": "logos/dotnet.svg",
+    "license": "CC0-1.0"
+  },
+  "elasticsearch": {
+    "set": "logos",
+    "name": "elasticsearch",
+    "file": "logos/elasticsearch.svg",
+    "license": "CC0-1.0"
+  },
+  "firebase": {
+    "set": "logos",
+    "name": "firebase",
+    "file": "logos/firebase.svg",
+    "license": "CC0-1.0"
+  },
+  "gcp": {
+    "set": "logos",
+    "name": "google-cloud",
+    "file": "logos/google-cloud.svg",
+    "license": "CC0-1.0"
+  },
+  "github-icon": {
+    "set": "logos",
+    "name": "github-icon",
+    "file": "logos/github-icon.svg",
+    "license": "CC0-1.0"
+  },
+  "gitlab": {
+    "set": "logos",
+    "name": "gitlab",
+    "file": "logos/gitlab.svg",
+    "license": "CC0-1.0"
+  },
+  "go": {
+    "set": "logos",
+    "name": "go",
+    "file": "logos/go.svg",
+    "license": "CC0-1.0"
+  },
+  "google-cloud": {
+    "set": "logos",
+    "name": "google-cloud",
+    "file": "logos/google-cloud.svg",
+    "license": "CC0-1.0"
+  },
+  "grafana": {
+    "set": "logos",
+    "name": "grafana",
+    "file": "logos/grafana.svg",
+    "license": "CC0-1.0"
+  },
+  "graph database": {
+    "set": "logos",
+    "name": "neo4j",
+    "file": "logos/neo4j.svg",
+    "license": "CC0-1.0"
+  },
+  "helm": {
+    "set": "logos",
+    "name": "helm",
+    "file": "logos/helm.svg",
+    "license": "CC0-1.0"
+  },
+  "heroku-icon": {
+    "set": "logos",
+    "name": "heroku-icon",
+    "file": "logos/heroku-icon.svg",
+    "license": "CC0-1.0"
+  },
+  "identity provider": {
+    "set": "simple-icons",
+    "name": "keycloak",
+    "file": "simple-icons/keycloak.svg",
+    "license": "CC0-1.0"
+  },
+  "ingress": {
+    "set": "simple-icons",
+    "name": "traefikproxy",
+    "file": "simple-icons/traefikproxy.svg",
+    "license": "CC0-1.0"
+  },
+  "istio": {
+    "set": "simple-icons",
+    "name": "istio",
+    "file": "simple-icons/istio.svg",
+    "license": "CC0-1.0"
+  },
+  "java": {
+    "set": "logos",
+    "name": "java",
+    "file": "logos/java.svg",
+    "license": "CC0-1.0"
+  },
+  "javascript": {
+    "set": "logos",
+    "name": "javascript",
+    "file": "logos/javascript.svg",
+    "license": "CC0-1.0"
+  },
+  "jenkins": {
+    "set": "logos",
+    "name": "jenkins",
+    "file": "logos/jenkins.svg",
+    "license": "CC0-1.0"
+  },
+  "k8s": {
+    "set": "logos",
+    "name": "kubernetes",
+    "file": "logos/kubernetes.svg",
+    "license": "CC0-1.0"
+  },
+  "kafka": {
+    "set": "logos",
+    "name": "kafka",
+    "file": "logos/kafka.svg",
+    "license": "CC0-1.0"
+  },
+  "keycloak": {
+    "set": "simple-icons",
+    "name": "keycloak",
+    "file": "simple-icons/keycloak.svg",
+    "license": "CC0-1.0"
+  },
+  "kotlin": {
+    "set": "logos",
+    "name": "kotlin",
+    "file": "logos/kotlin.svg",
+    "license": "CC0-1.0"
+  },
+  "kubernetes": {
+    "set": "logos",
+    "name": "kubernetes",
+    "file": "logos/kubernetes.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:ansible": {
+    "set": "logos",
+    "name": "ansible",
+    "file": "logos/ansible.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:argo": {
+    "set": "logos",
+    "name": "argo",
+    "file": "logos/argo.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:auth0": {
+    "set": "logos",
+    "name": "auth0",
+    "file": "logos/auth0.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:aws": {
+    "set": "logos",
+    "name": "aws",
+    "file": "logos/aws.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:aws-api-gateway": {
+    "set": "logos",
+    "name": "aws-api-gateway",
+    "file": "logos/aws-api-gateway.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:aws-cloudformation": {
+    "set": "logos",
+    "name": "aws-cloudformation",
+    "file": "logos/aws-cloudformation.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:aws-cloudfront": {
+    "set": "logos",
+    "name": "aws-cloudfront",
+    "file": "logos/aws-cloudfront.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:aws-cloudwatch": {
+    "set": "logos",
+    "name": "aws-cloudwatch",
+    "file": "logos/aws-cloudwatch.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:aws-dynamodb": {
+    "set": "logos",
+    "name": "aws-dynamodb",
+    "file": "logos/aws-dynamodb.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:aws-ec2": {
+    "set": "logos",
+    "name": "aws-ec2",
+    "file": "logos/aws-ec2.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:aws-ecs": {
+    "set": "logos",
+    "name": "aws-ecs",
+    "file": "logos/aws-ecs.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:aws-eks": {
+    "set": "logos",
+    "name": "aws-eks",
+    "file": "logos/aws-eks.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:aws-elasticache": {
+    "set": "logos",
+    "name": "aws-elasticache",
+    "file": "logos/aws-elasticache.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:aws-fargate": {
+    "set": "logos",
+    "name": "aws-fargate",
+    "file": "logos/aws-fargate.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:aws-iam": {
+    "set": "logos",
+    "name": "aws-iam",
+    "file": "logos/aws-iam.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:aws-kinesis": {
+    "set": "logos",
+    "name": "aws-kinesis",
+    "file": "logos/aws-kinesis.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:aws-lambda": {
+    "set": "logos",
+    "name": "aws-lambda",
+    "file": "logos/aws-lambda.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:aws-rds": {
+    "set": "logos",
+    "name": "aws-rds",
+    "file": "logos/aws-rds.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:aws-route53": {
+    "set": "logos",
+    "name": "aws-route53",
+    "file": "logos/aws-route53.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:aws-s3": {
+    "set": "logos",
+    "name": "aws-s3",
+    "file": "logos/aws-s3.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:aws-secrets-manager": {
+    "set": "logos",
+    "name": "aws-secrets-manager",
+    "file": "logos/aws-secrets-manager.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:aws-sns": {
+    "set": "logos",
+    "name": "aws-sns",
+    "file": "logos/aws-sns.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:aws-sqs": {
+    "set": "logos",
+    "name": "aws-sqs",
+    "file": "logos/aws-sqs.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:aws-step-functions": {
+    "set": "logos",
+    "name": "aws-step-functions",
+    "file": "logos/aws-step-functions.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:aws-vpc": {
+    "set": "logos",
+    "name": "aws-vpc",
+    "file": "logos/aws-vpc.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:azure": {
+    "set": "logos",
+    "name": "azure",
+    "file": "logos/azure.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:azure-icon": {
+    "set": "logos",
+    "name": "azure-icon",
+    "file": "logos/azure-icon.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:cassandra": {
+    "set": "logos",
+    "name": "cassandra",
+    "file": "logos/cassandra.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:cloudflare": {
+    "set": "logos",
+    "name": "cloudflare",
+    "file": "logos/cloudflare.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:cloudflare-icon": {
+    "set": "logos",
+    "name": "cloudflare-icon",
+    "file": "logos/cloudflare-icon.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:consul": {
+    "set": "logos",
+    "name": "consul",
+    "file": "logos/consul.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:datadog": {
+    "set": "logos",
+    "name": "datadog",
+    "file": "logos/datadog.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:docker": {
+    "set": "logos",
+    "name": "docker",
+    "file": "logos/docker.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:docker-icon": {
+    "set": "logos",
+    "name": "docker-icon",
+    "file": "logos/docker-icon.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:dotnet": {
+    "set": "logos",
+    "name": "dotnet",
+    "file": "logos/dotnet.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:elasticsearch": {
+    "set": "logos",
+    "name": "elasticsearch",
+    "file": "logos/elasticsearch.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:firebase": {
+    "set": "logos",
+    "name": "firebase",
+    "file": "logos/firebase.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:github-icon": {
+    "set": "logos",
+    "name": "github-icon",
+    "file": "logos/github-icon.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:gitlab": {
+    "set": "logos",
+    "name": "gitlab",
+    "file": "logos/gitlab.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:go": {
+    "set": "logos",
+    "name": "go",
+    "file": "logos/go.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:google-cloud": {
+    "set": "logos",
+    "name": "google-cloud",
+    "file": "logos/google-cloud.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:grafana": {
+    "set": "logos",
+    "name": "grafana",
+    "file": "logos/grafana.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:helm": {
+    "set": "logos",
+    "name": "helm",
+    "file": "logos/helm.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:heroku-icon": {
+    "set": "logos",
+    "name": "heroku-icon",
+    "file": "logos/heroku-icon.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:java": {
+    "set": "logos",
+    "name": "java",
+    "file": "logos/java.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:javascript": {
+    "set": "logos",
+    "name": "javascript",
+    "file": "logos/javascript.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:jenkins": {
+    "set": "logos",
+    "name": "jenkins",
+    "file": "logos/jenkins.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:kafka": {
+    "set": "logos",
+    "name": "kafka",
+    "file": "logos/kafka.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:kotlin": {
+    "set": "logos",
+    "name": "kotlin",
+    "file": "logos/kotlin.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:kubernetes": {
+    "set": "logos",
+    "name": "kubernetes",
+    "file": "logos/kubernetes.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:mariadb": {
+    "set": "logos",
+    "name": "mariadb",
+    "file": "logos/mariadb.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:mongodb": {
+    "set": "logos",
+    "name": "mongodb",
+    "file": "logos/mongodb.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:mysql": {
+    "set": "logos",
+    "name": "mysql",
+    "file": "logos/mysql.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:nats": {
+    "set": "logos",
+    "name": "nats",
+    "file": "logos/nats.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:neo4j": {
+    "set": "logos",
+    "name": "neo4j",
+    "file": "logos/neo4j.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:netlify": {
+    "set": "logos",
+    "name": "netlify",
+    "file": "logos/netlify.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:nginx": {
+    "set": "logos",
+    "name": "nginx",
+    "file": "logos/nginx.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:nodejs": {
+    "set": "logos",
+    "name": "nodejs",
+    "file": "logos/nodejs.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:openai": {
+    "set": "logos",
+    "name": "openai",
+    "file": "logos/openai.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:php": {
+    "set": "logos",
+    "name": "php",
+    "file": "logos/php.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:postgresql": {
+    "set": "logos",
+    "name": "postgresql",
+    "file": "logos/postgresql.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:prometheus": {
+    "set": "logos",
+    "name": "prometheus",
+    "file": "logos/prometheus.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:python": {
+    "set": "logos",
+    "name": "python",
+    "file": "logos/python.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:rabbitmq": {
+    "set": "logos",
+    "name": "rabbitmq",
+    "file": "logos/rabbitmq.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:redis": {
+    "set": "logos",
+    "name": "redis",
+    "file": "logos/redis.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:ruby": {
+    "set": "logos",
+    "name": "ruby",
+    "file": "logos/ruby.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:rust": {
+    "set": "logos",
+    "name": "rust",
+    "file": "logos/rust.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:sentry-icon": {
+    "set": "logos",
+    "name": "sentry-icon",
+    "file": "logos/sentry-icon.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:sqlite": {
+    "set": "logos",
+    "name": "sqlite",
+    "file": "logos/sqlite.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:stripe": {
+    "set": "logos",
+    "name": "stripe",
+    "file": "logos/stripe.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:supabase-icon": {
+    "set": "logos",
+    "name": "supabase-icon",
+    "file": "logos/supabase-icon.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:swift": {
+    "set": "logos",
+    "name": "swift",
+    "file": "logos/swift.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:terraform": {
+    "set": "logos",
+    "name": "terraform",
+    "file": "logos/terraform.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:twilio": {
+    "set": "logos",
+    "name": "twilio",
+    "file": "logos/twilio.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:typescript-icon": {
+    "set": "logos",
+    "name": "typescript-icon",
+    "file": "logos/typescript-icon.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:vault": {
+    "set": "logos",
+    "name": "vault",
+    "file": "logos/vault.svg",
+    "license": "CC0-1.0"
+  },
+  "logos:vercel": {
+    "set": "logos",
+    "name": "vercel",
+    "file": "logos/vercel.svg",
+    "license": "CC0-1.0"
+  },
+  "mariadb": {
+    "set": "logos",
+    "name": "mariadb",
+    "file": "logos/mariadb.svg",
+    "license": "CC0-1.0"
+  },
+  "message queue": {
+    "set": "logos",
+    "name": "rabbitmq",
+    "file": "logos/rabbitmq.svg",
+    "license": "CC0-1.0"
+  },
+  "metrics": {
+    "set": "logos",
+    "name": "prometheus",
+    "file": "logos/prometheus.svg",
+    "license": "CC0-1.0"
+  },
+  "mongodb": {
+    "set": "logos",
+    "name": "mongodb",
+    "file": "logos/mongodb.svg",
+    "license": "CC0-1.0"
+  },
+  "mysql": {
+    "set": "logos",
+    "name": "mysql",
+    "file": "logos/mysql.svg",
+    "license": "CC0-1.0"
+  },
+  "nats": {
+    "set": "logos",
+    "name": "nats",
+    "file": "logos/nats.svg",
+    "license": "CC0-1.0"
+  },
+  "neo4j": {
+    "set": "logos",
+    "name": "neo4j",
+    "file": "logos/neo4j.svg",
+    "license": "CC0-1.0"
+  },
+  "netlify": {
+    "set": "logos",
+    "name": "netlify",
+    "file": "logos/netlify.svg",
+    "license": "CC0-1.0"
+  },
+  "nginx": {
+    "set": "logos",
+    "name": "nginx",
+    "file": "logos/nginx.svg",
+    "license": "CC0-1.0"
+  },
+  "nodejs": {
+    "set": "logos",
+    "name": "nodejs",
+    "file": "logos/nodejs.svg",
+    "license": "CC0-1.0"
+  },
+  "object storage": {
+    "set": "logos",
+    "name": "aws-s3",
+    "file": "logos/aws-s3.svg",
+    "license": "CC0-1.0"
+  },
+  "observability": {
+    "set": "logos",
+    "name": "grafana",
+    "file": "logos/grafana.svg",
+    "license": "CC0-1.0"
+  },
+  "openai": {
+    "set": "logos",
+    "name": "openai",
+    "file": "logos/openai.svg",
+    "license": "CC0-1.0"
+  },
+  "opentelemetry": {
+    "set": "simple-icons",
+    "name": "opentelemetry",
+    "file": "simple-icons/opentelemetry.svg",
+    "license": "CC0-1.0"
+  },
+  "php": {
+    "set": "logos",
+    "name": "php",
+    "file": "logos/php.svg",
+    "license": "CC0-1.0"
+  },
+  "postgres": {
+    "set": "logos",
+    "name": "postgresql",
+    "file": "logos/postgresql.svg",
+    "license": "CC0-1.0"
+  },
+  "postgresql": {
+    "set": "logos",
+    "name": "postgresql",
+    "file": "logos/postgresql.svg",
+    "license": "CC0-1.0"
+  },
+  "prometheus": {
+    "set": "logos",
+    "name": "prometheus",
+    "file": "logos/prometheus.svg",
+    "license": "CC0-1.0"
+  },
+  "python": {
+    "set": "logos",
+    "name": "python",
+    "file": "logos/python.svg",
+    "license": "CC0-1.0"
+  },
+  "queue": {
+    "set": "logos",
+    "name": "aws-sqs",
+    "file": "logos/aws-sqs.svg",
+    "license": "CC0-1.0"
+  },
+  "rabbitmq": {
+    "set": "logos",
+    "name": "rabbitmq",
+    "file": "logos/rabbitmq.svg",
+    "license": "CC0-1.0"
+  },
+  "redis": {
+    "set": "logos",
+    "name": "redis",
+    "file": "logos/redis.svg",
+    "license": "CC0-1.0"
+  },
+  "relational database": {
+    "set": "logos",
+    "name": "postgresql",
+    "file": "logos/postgresql.svg",
+    "license": "CC0-1.0"
+  },
+  "ruby": {
+    "set": "logos",
+    "name": "ruby",
+    "file": "logos/ruby.svg",
+    "license": "CC0-1.0"
+  },
+  "rust": {
+    "set": "logos",
+    "name": "rust",
+    "file": "logos/rust.svg",
+    "license": "CC0-1.0"
+  },
+  "search": {
+    "set": "logos",
+    "name": "elasticsearch",
+    "file": "logos/elasticsearch.svg",
+    "license": "CC0-1.0"
+  },
+  "secrets": {
+    "set": "logos",
+    "name": "vault",
+    "file": "logos/vault.svg",
+    "license": "CC0-1.0"
+  },
+  "sentry-icon": {
+    "set": "logos",
+    "name": "sentry-icon",
+    "file": "logos/sentry-icon.svg",
+    "license": "CC0-1.0"
+  },
+  "serverless": {
+    "set": "logos",
+    "name": "aws-lambda",
+    "file": "logos/aws-lambda.svg",
+    "license": "CC0-1.0"
+  },
+  "service mesh": {
+    "set": "simple-icons",
+    "name": "istio",
+    "file": "simple-icons/istio.svg",
+    "license": "CC0-1.0"
+  },
+  "simple-icons:argo": {
+    "set": "simple-icons",
+    "name": "argo",
+    "file": "simple-icons/argo.svg",
+    "license": "CC0-1.0"
+  },
+  "simple-icons:clickhouse": {
+    "set": "simple-icons",
+    "name": "clickhouse",
+    "file": "simple-icons/clickhouse.svg",
+    "license": "CC0-1.0"
+  },
+  "simple-icons:digitalocean": {
+    "set": "simple-icons",
+    "name": "digitalocean",
+    "file": "simple-icons/digitalocean.svg",
+    "license": "CC0-1.0"
+  },
+  "simple-icons:istio": {
+    "set": "simple-icons",
+    "name": "istio",
+    "file": "simple-icons/istio.svg",
+    "license": "CC0-1.0"
+  },
+  "simple-icons:keycloak": {
+    "set": "simple-icons",
+    "name": "keycloak",
+    "file": "simple-icons/keycloak.svg",
+    "license": "CC0-1.0"
+  },
+  "simple-icons:opentelemetry": {
+    "set": "simple-icons",
+    "name": "opentelemetry",
+    "file": "simple-icons/opentelemetry.svg",
+    "license": "CC0-1.0"
+  },
+  "simple-icons:traefikproxy": {
+    "set": "simple-icons",
+    "name": "traefikproxy",
+    "file": "simple-icons/traefikproxy.svg",
+    "license": "CC0-1.0"
+  },
+  "sqlite": {
+    "set": "logos",
+    "name": "sqlite",
+    "file": "logos/sqlite.svg",
+    "license": "CC0-1.0"
+  },
+  "stream": {
+    "set": "logos",
+    "name": "kafka",
+    "file": "logos/kafka.svg",
+    "license": "CC0-1.0"
+  },
+  "stripe": {
+    "set": "logos",
+    "name": "stripe",
+    "file": "logos/stripe.svg",
+    "license": "CC0-1.0"
+  },
+  "supabase-icon": {
+    "set": "logos",
+    "name": "supabase-icon",
+    "file": "logos/supabase-icon.svg",
+    "license": "CC0-1.0"
+  },
+  "swift": {
+    "set": "logos",
+    "name": "swift",
+    "file": "logos/swift.svg",
+    "license": "CC0-1.0"
+  },
+  "terraform": {
+    "set": "logos",
+    "name": "terraform",
+    "file": "logos/terraform.svg",
+    "license": "CC0-1.0"
+  },
+  "tracing": {
+    "set": "simple-icons",
+    "name": "opentelemetry",
+    "file": "simple-icons/opentelemetry.svg",
+    "license": "CC0-1.0"
+  },
+  "traefikproxy": {
+    "set": "simple-icons",
+    "name": "traefikproxy",
+    "file": "simple-icons/traefikproxy.svg",
+    "license": "CC0-1.0"
+  },
+  "twilio": {
+    "set": "logos",
+    "name": "twilio",
+    "file": "logos/twilio.svg",
+    "license": "CC0-1.0"
+  },
+  "typescript": {
+    "set": "logos",
+    "name": "typescript-icon",
+    "file": "logos/typescript-icon.svg",
+    "license": "CC0-1.0"
+  },
+  "typescript-icon": {
+    "set": "logos",
+    "name": "typescript-icon",
+    "file": "logos/typescript-icon.svg",
+    "license": "CC0-1.0"
+  },
+  "vault": {
+    "set": "logos",
+    "name": "vault",
+    "file": "logos/vault.svg",
+    "license": "CC0-1.0"
+  },
+  "vercel": {
+    "set": "logos",
+    "name": "vercel",
+    "file": "logos/vercel.svg",
+    "license": "CC0-1.0"
+  }
+}

@@ -12,6 +12,27 @@ diagram is five identical boxes with different names, it has said nothing.
 Method inspired by coleam00/excalidraw-diagram-skill; text and tooling here are
 original.
 
+## 0 — Pick the register
+
+Established engineering notation — **ERD, C4 context/container, deployment
+topology** — goes to the technical register, which renders D2 to a
+self-contained SVG. Everything conceptual, argumentative or explanatory stays
+here in the hand-drawn register.
+
+```bash
+bun <skill-dir>/scripts/d2-render.ts --in topology.d2 --out topology.svg \
+  --png topology.png --label "Production deployment topology"
+```
+
+Renderer is pinned to **d2 v0.7.1**; the wrapper refuses any other version,
+inlines vendored CC0 icons (`icon: @postgres`), and fails the render if the
+output is not self-contained. Same render-LOOK-fix loop as below — read the
+PNG, never the SVG. Authoring rules, notation conventions, the icon manifest
+and the trademark rule: `references/technical-register.md`.
+
+Vendor logos are never recoloured or theme-filtered; that is why D2 output is
+exempt from the page's light-mode inversion.
+
 ## 1 — Decide the depth
 
 - **Conceptual**: mental models, philosophies, quick overviews. Abstract shapes

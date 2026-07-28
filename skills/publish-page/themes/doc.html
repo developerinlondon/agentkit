@@ -162,8 +162,10 @@
      180° hue-rotate turns each accent back toward its authored hue — so
      diagrams follow the theme without a second authored variant.
      svg[role="img"] is the baked-diagram convention; mermaid, edge overlays
-     and UI icons never carry it. */
-  html[data-theme="light"] svg[role="img"]:not(.edges) {
+     and UI icons never carry it.
+     .d2 is exempt: it ships both palettes and switches on the same data-theme
+     attribute, and it embeds vendor logos that must never be filtered. */
+  html[data-theme="light"] svg[role="img"]:not(.edges):not(.d2) {
     filter: invert(0.93) hue-rotate(180deg);
   }
   @media print {
