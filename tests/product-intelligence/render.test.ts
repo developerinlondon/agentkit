@@ -7,7 +7,10 @@ import { renderBrief } from '../../skills/product-intelligence/scripts/doc.ts';
 import {
   claim,
   FIELDS,
+  findingsPayload,
+  FINDINGS_SITES,
   hostileBrief,
+  hostileFindings,
   HOSTILE_SHAPES,
   hostileLedger,
   journalBrief,
@@ -546,6 +549,19 @@ describe('renderBrief', () => {
     );
     expect(section).not.toContain('\\\\');
     expect(section).not.toContain('\\@');
+  });
+
+  // Sampling positions let the heading and header-cell escapes be deleted with
+  // the suite still green, so every position is driven at once.
+  test('every findings.md block position escapes what the author wrote', async () => {
+    const section = findingsSection(withFindings(...hostileFindings().split('\n')));
+    await expectRendererMarkupOnly(section, 'findings positions');
+    for (const site of FINDINGS_SITES) {
+      expect(section, `${site} unescaped`).not.toContain(findingsPayload(site));
+      expect(section, `${site} missing`).toContain(
+        `&lt;img src=x onerror=alert(1)&gt;${site}`,
+      );
+    }
   });
 
   // The fence's info string reaches a class attribute, the one place in the

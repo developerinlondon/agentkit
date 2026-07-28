@@ -60,6 +60,14 @@ one slide per ledger claim carrying its verbatim quote. Pass `--title` rather
 than letting the deck open with a heading: the deck has none, by design, so a
 document heading would stack a second headline above the cover.
 
+**Diagrams in a deck: known limitation.** A deck is markdown that the publisher
+reparses, so `findings.md` still reaches a slide with markdown escaping applied
+inside code fences: a `` ```mermaid `` fence there cannot parse, while the
+runtime is inlined for it regardless. Keep diagrams out of `findings.md` when
+you present a deck, or show them from the doc page. The doc lane is free of
+this because it emits HTML that nothing parses again; a deck would need the
+same end-to-end change to its slide grammar.
+
 Both renderings are the same transform over the same artifacts — deterministic,
 never a fresh pass over the evidence. Nothing is written for a slide that is
 not already in the brief or the ledger, so a deck cannot say more than the
@@ -358,8 +366,10 @@ output, so a rebuilt page only changes when the evidence does.
 
 One-time on the machine that renders: `cd skills/publish-page && bun install`.
 
-A `` ```mermaid `` fence in `findings.md` renders as a diagram; the 3.4 MB
-mermaid runtime is inlined only when the page actually carries one.
+A `` ```mermaid `` fence in `findings.md` renders as a diagram on the page the
+doc lane produces — this rung and the published `brief-page.html` alike; the
+3.4 MB mermaid runtime is inlined only when the page actually carries one. The
+deck lane does not share this (see below).
 
 ### Rung 2 — Pages CI
 
