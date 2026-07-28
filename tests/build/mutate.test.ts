@@ -1,10 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 
-const MUTATE = join(import.meta.dir, '..', '..', 'scripts', 'mutate');
+// Overridable so the harness can be mutation-tested against a copy of itself:
+// it refuses to rewrite the script it is currently executing.
+const MUTATE = process.env.AGENTKIT_MUTATE ?? join(import.meta.dir, '..', '..', 'scripts', 'mutate');
 
 let root: string;
 let target: string;
@@ -89,6 +91,42 @@ describe('restoration', () => {
     mutate(['--replace', 'LIMIT = 10', '--with', 'LIMIT = 99'], 'kill -9 $$');
 
     expect(readFileSync(target, 'utf-8')).toBe(SOURCE);
+  });
+
+  test('a restore that cannot write the file is a hard error, not a verdict', () => {
+    const result = mutate(
+      ['--replace', 'LIMIT = 10', '--with', 'LIMIT = 99'],
+      `chmod 444 '${target}'; printf '\\n 2 pass\\n 1 fail\\n'`,
+    );
+    chmodSync(target, 0o644);
+
+    expect(result.stderr).toContain('RESTORE FAILED');
+    expect(result.stderr).not.toContain('SURVIVED');
+    expect(result.status).toBe(3);
+  });
+
+  test('a restore that writes the wrong bytes is a hard error', () => {
+    const result = mutate(
+      ['--replace', 'LIMIT = 10', '--with', 'LIMIT = 99'],
+      `for d in "\${TMPDIR:-/tmp}"/agentkit-mutate.*; do [ -f "$d/source.ts" ] && printf 'TAMPERED\\n' > "$d/source.ts"; done; printf '\\n 2 pass\\n 1 fail\\n'`,
+    );
+
+    expect(result.stderr).toContain('RESTORE FAILED');
+    expect(result.status).toBe(3);
+  });
+
+  test('a failed restore keeps the backup and names where it is', () => {
+    const result = mutate(
+      ['--replace', 'LIMIT = 10', '--with', 'LIMIT = 99'],
+      `chmod 444 '${target}'; printf '\\n 2 pass\\n 1 fail\\n'`,
+    );
+    chmodSync(target, 0o644);
+
+    const backup = /backup kept at (\S+)/.exec(result.stderr ?? '');
+    expect(backup, result.stderr).not.toBeNull();
+    expect(existsSync(backup![1])).toBe(true);
+    expect(readFileSync(backup![1], 'utf-8')).toBe(SOURCE);
+    rmSync(dirname(backup![1]), { force: true, recursive: true });
   });
 
   test('an uncommitted neighbouring edit survives, because git is never used to restore', () => {

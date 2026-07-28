@@ -135,7 +135,7 @@ fileGroups:
   reviewInputs:
     - '.agentkit/config.yaml'
     - '.agentkit/review-policy.json'
-    - 'BUILD-DISCIPLINE.md'
+    - "BUILD-DISCIPLINE.md"
     - 'config.example.yaml'
     - 'hooks/claude/fail-closed-hook.sh'
     - 'hooks/claude/review-police.sh'
@@ -149,16 +149,16 @@ fileGroups:
     - 'plugins-cc/agentkit/skills/test-driven-development/**/*'
     - 'plugins-cc/agentkit/tools/review-gate'
     - 'plugins-cc/agentkit/tools/review-profile'
-    - 'scripts/bash-status-check'
-    - 'scripts/lib/test-verdict.sh'
-    - 'scripts/mutate'
-    - 'scripts/preflight'
+    - "scripts/bash-status-check"
+    - "scripts/lib/test-verdict.sh"
+    - "scripts/mutate"
+    - "scripts/preflight"
     - 'scripts/product-command'
     - 'skills/adversarial-review/**/*'
     - 'skills/autonomous-workflow/**/*'
     - 'skills/product-review/**/*'
     - 'skills/test-driven-development/**/*'
-    - 'tests/build/**/*'
+    - "tests/build/**/*"
     - 'tests/codex-review-hooks.test.ts'
     - 'tests/probe-cases.txt'
     - 'tests/product-command.test.ts'
@@ -175,6 +175,11 @@ fileGroups:
     - 'tools/agent-session'
 
 tasks:
+  preflight:
+    command: "scripts/preflight"
+    options:
+      cache: false
+
   check-test-slices:
     command: 'bun run scripts/check-test-slices.ts --check'
 

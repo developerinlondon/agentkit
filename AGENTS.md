@@ -18,6 +18,20 @@
 
 **Exceptions:** Read-only operations (grep, file reads, status checks, exploration).
 
+## Before requesting review
+
+Read [BUILD-DISCIPLINE.md](BUILD-DISCIPLINE.md) before building, and run the gate before
+handing work to a reviewer:
+
+```bash
+scripts/preflight              # or: moon run agentkit:preflight
+scripts/preflight --slice review
+```
+
+It checks only what the change touched and exits non-zero on any finding. The catalogue
+explains each check and the reviewed defect behind it, and documents `scripts/mutate` — use
+it on every load-bearing line, and treat SURVIVED as a missing test.
+
 ## What is Agentkit
 
 Reusable AI agent skills, rules, plugins, hooks, and tools for OpenCode, Claude Code, Codex CLI,

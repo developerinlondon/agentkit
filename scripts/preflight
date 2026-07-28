@@ -107,14 +107,21 @@ check_bash_syntax() {
 }
 
 check_bash_status() {
-	local report
-	report="$("$SCRIPT_DIR/bash-status-check" "$@" || true)"
-	if [[ -n "$report" ]]; then
+	local report rc=0
+	set +e
+	report="$("$SCRIPT_DIR/bash-status-check" "$@")"
+	rc=$?
+	set -e
+	# A findings run always names them, so exit 1 with nothing said is a checker
+	# that died rather than a file that is clean.
+	if [[ "$rc" -eq 0 ]]; then
+		ok "no conditional-and status leaks"
+	elif [[ "$rc" -eq 1 && -n "$report" ]]; then
 		printf '%s\n' "$report"
 		bad "conditional-and status leak — see BUILD-DISCIPLINE.md 'silent status leak'"
-		return 0
+	else
+		bad "bash-status-check could not run (exit $rc) — the status-leak class went unchecked"
 	fi
-	ok "no conditional-and status leaks"
 	return 0
 }
 
@@ -205,32 +212,50 @@ check_slice() {
 	return 0
 }
 
-# Drift that predates the change is not the change's to repair: reformatting it
-# buries the diff in churn the reviewer then has to read past.
-base_unformatted() {
-	local path="$1" base tmp name result=1
+# Drift on the lines this change actually wrote. Whole-file drift a change
+# inherited is not its to repair — reformatting buries the diff in churn a
+# reviewer must then read past — but drift on its own added lines is, even when
+# the file was already drifted.
+new_drift_lines() {
+	local path="$1" base tmp name hits=0
 	base="$(git -C "$REPO" merge-base "$BASE" HEAD 2>/dev/null || printf '%s' "$BASE")"
 	tmp="$(mktemp -d "${TMPDIR:-/tmp}/agentkit-preflight-fmt.XXXXXX")"
 	name="$(basename "$path")"
-	if git -C "$REPO" show "$base:$path" >"$tmp/$name" 2>/dev/null; then
-		cp "$REPO/dprint.json" "$tmp/dprint.json"
-		if ! (cd "$tmp" && dprint check "$name" >/dev/null 2>&1); then
-			result=0
-		fi
+
+	if ! (cd "$REPO" && dprint fmt --stdin "$name" <"$REPO/$path" >"$tmp/formatted") 2>/dev/null; then
+		rm -rf "$tmp"
+		printf '0'
+		return 0
 	fi
+	diff "$REPO/$path" "$tmp/formatted" | sed -n 's/^< //p' | sort -u >"$tmp/drifted"
+
+	# A file absent from the base is entirely this change's, so all of its drift
+	# is new; otherwise only the lines the diff added count.
+	if git -C "$REPO" show "$base:$path" >/dev/null 2>&1; then
+		git -C "$REPO" diff "$base" -- "$path" 2>/dev/null |
+			grep '^+' | grep -v '^+++' | sed 's/^+//' | sort -u >"$tmp/added"
+		hits="$(comm -12 "$tmp/drifted" "$tmp/added" | wc -l)"
+	else
+		hits="$(wc -l <"$tmp/drifted")"
+	fi
+
 	rm -rf "$tmp"
-	return "$result"
+	printf '%s' "$hits"
+	return 0
 }
 
 check_format() {
-	local formattable=""
-	local path
+	local path count=0 unclean="" inherited=""
+	local formattable
 	for path in "$@"; do
 		case "$path" in
-		*.md | *.json | *.toml | *.yaml | *.yml) formattable="$formattable $path" ;;
+		*.md | *.json | *.toml | *.yaml | *.yml)
+			formattable[$count]="$path"
+			count=$((count + 1))
+			;;
 		esac
 	done
-	if [[ -z "$formattable" ]]; then
+	if [[ "$count" -eq 0 ]]; then
 		skip "no formattable files touched — dprint not invoked (a bare list formats the repo)"
 		return 0
 	fi
@@ -242,19 +267,20 @@ check_format() {
 		skip "no dprint.json at the repository root"
 		return 0
 	fi
-	local unclean="" inherited="" path
-	for path in $formattable; do
+	local added
+	for path in "${formattable[@]}"; do
 		if (cd "$REPO" && dprint check "$path" >/dev/null 2>&1); then
 			continue
 		fi
-		if base_unformatted "$path"; then
-			inherited="$inherited $path"
-		else
+		added="$(new_drift_lines "$path")"
+		if [[ "$added" -gt 0 ]]; then
 			unclean="$unclean $path"
+		else
+			inherited="$inherited $path"
 		fi
 	done
 	if [[ -n "$inherited" ]]; then
-		skip "already unformatted before this change, left alone:$inherited"
+		skip "already unformatted before this change, no new drift added:$inherited"
 	fi
 	if [[ -n "$unclean" ]]; then
 		bad "dprint check failed — run: dprint fmt$unclean"
@@ -286,9 +312,20 @@ check_focused_tests() {
 check_restore_by_checkout() {
 	local path hits status=0
 	for path in "$@"; do
-		hits="$(code_lines "$REPO/$path" | grep -E '^[0-9]+:[[:space:]]*(.*(;|&&)[[:space:]]*)?git (checkout --|restore )' || true)"
+		# Any spelling that discards working-tree state, wherever it sits on the
+		# line — in a shell file a bare command is already execution, elsewhere it
+		# counts only next to something that runs it, so a command a test merely
+		# asserts about is not mistaken for one it performs.
+		local discard exec_verb
+		discard="git[[:space:]]+(checkout|restore)([[:space:]]+[^[:space:]\"']+)*[[:space:]]+--[[:space:]]|git[[:space:]]+(stash|clean)([[:space:]]|\$)"
+		exec_verb='(execSync|execFileSync|execFile|spawnSync|spawn|exec|system|Bun\.\$|\$`|(sh|bash)[[:space:]]+-c)'
+		if is_shell_file "$REPO/$path"; then
+			hits="$(code_lines "$REPO/$path" | grep -E "$discard" || true)"
+		else
+			hits="$(code_lines "$REPO/$path" | grep -E "$discard" | grep -E "$exec_verb" || true)"
+		fi
 		if [[ -n "$hits" ]]; then
-			bad "$path restores with git — a shared clone loses other sessions' work; use scripts/mutate"
+			bad "$path discards working-tree state with git — a shared clone loses other sessions' work; use scripts/mutate"
 			status=1
 		fi
 	done
@@ -301,9 +338,20 @@ check_restore_by_checkout() {
 check_bare_dprint() {
 	local path hits status=0
 	for path in "$@"; do
-		hits="$(code_lines "$REPO/$path" | grep -E 'dprint (fmt|check)[[:space:]]*$' || true)"
+		# Prose may quote the defect; only executable files can commit it.
+		case "$path" in
+		*.md) continue ;;
+		esac
+		# Nothing after the subcommand, or nothing but whole-word expansions that
+		# can each be empty — both reformat the whole repository. An expansion
+		# carrying a literal path segment ("$REPO/moon.yml") names a real file.
+		local expansion
+		expansion='("\$\{?[A-Za-z_@*][A-Za-z0-9_]*\}?"|\$\{?[A-Za-z_@*][A-Za-z0-9_]*\}?)'
+		hits="$(code_lines "$REPO/$path" |
+			grep -E "dprint[[:space:]]+(fmt|check)([[:space:]]+$expansion)*[[:space:]]*(\\\\)?\$" ||
+			true)"
 		if [[ -n "$hits" ]]; then
-			bad "$path runs dprint with no file list — that formats the whole repo"
+			bad "$path runs dprint with no guaranteed file list — an empty list formats the whole repo"
 			status=1
 		fi
 	done
@@ -326,7 +374,7 @@ check_negative_path() {
 		if ! grep -qE "spawn(Sync)?\(\[?'bun'|spawn(Sync)?\(\[?\"bun\"" "$REPO/$path"; then
 			continue
 		fi
-		if grep -q -- '--no-install' "$REPO/$path"; then
+		if code_lines "$REPO/$path" | grep -q -- '--no-install'; then
 			continue
 		fi
 		bad "$path asserts a missing dependency but spawns bun with auto-install live — pass --no-install"
@@ -348,13 +396,15 @@ check_real_home() {
 		if ! code_lines "$REPO/$path" | grep -qE 'install\.sh|AGENTKIT_HOME'; then
 			continue
 		fi
-		if ! grep -q '\.\.\.process\.env' "$REPO/$path"; then
+		# Inheriting the parent environment is the commoner shape because it takes
+		# no typing at all: a spawn with no env option at all still gets real HOME.
+		if ! code_lines "$REPO/$path" | grep -qE '(spawn|spawnSync|exec|execSync|execFile|execFileSync)[[:space:]]*\('; then
 			continue
 		fi
-		if grep -qE '\bHOME:' "$REPO/$path"; then
+		if code_lines "$REPO/$path" | grep -qE '\bHOME[[:space:]]*:'; then
 			continue
 		fi
-		bad "$path spawns an installer with the inherited environment — it writes the real \$HOME"
+		bad "$path spawns an installer without overriding HOME — it writes the real \$HOME"
 		status=1
 	done
 	if [[ "$status" -eq 0 ]]; then
@@ -363,48 +413,54 @@ check_real_home() {
 	return 0
 }
 
-PATHS="$(touched_paths)"
-EXISTING=""
-SHELL_FILES=""
-for candidate in $PATHS; do
-	if [[ -f "$REPO/$candidate" ]]; then
-		EXISTING="$EXISTING $candidate"
-		if is_shell_file "$REPO/$candidate"; then
-			SHELL_FILES="$SHELL_FILES $REPO/$candidate"
-		fi
+# "I could not work out what changed" is not "nothing changed": an unresolvable
+# base would otherwise produce an empty set and a green gate.
+if [[ -z "$PATHS_FROM" ]]; then
+	if ! git -C "$REPO" rev-parse --verify --quiet "$BASE^{commit}" >/dev/null 2>&1; then
+		printf 'preflight: cannot resolve --base %s in %s — refusing to report a clean gate\n' \
+			"$BASE" "$REPO" >&2
+		exit 1
 	fi
-done
+fi
 
-if [[ -z "$EXISTING" ]]; then
+EXISTING_COUNT=0
+SHELL_COUNT=0
+while IFS= read -r candidate; do
+	if [[ -z "$candidate" || ! -f "$REPO/$candidate" ]]; then
+		continue
+	fi
+	EXISTING[$EXISTING_COUNT]="$candidate"
+	EXISTING_COUNT=$((EXISTING_COUNT + 1))
+	if is_shell_file "$REPO/$candidate"; then
+		SHELL_FILES[$SHELL_COUNT]="$REPO/$candidate"
+		SHELL_COUNT=$((SHELL_COUNT + 1))
+	fi
+done <<EOF
+$(touched_paths)
+EOF
+
+if [[ "$EXISTING_COUNT" -eq 0 ]]; then
 	printf 'preflight: no touched files against %s — nothing to check\n' "$BASE" >&2
 	exit 0
 fi
 
-printf 'preflight: %s file(s) touched against %s\n\n' "$(printf '%s' "$EXISTING" | wc -w)" "$BASE"
+printf 'preflight: %s file(s) touched against %s\n\n' "$EXISTING_COUNT" "$BASE"
 
-# shellcheck disable=SC2086
-if [[ -n "$SHELL_FILES" ]]; then
-	check_bash_syntax $SHELL_FILES
-	check_bash_status $SHELL_FILES
-	check_shellcheck $SHELL_FILES
+if [[ "$SHELL_COUNT" -gt 0 ]]; then
+	check_bash_syntax "${SHELL_FILES[@]}"
+	check_bash_status "${SHELL_FILES[@]}"
+	check_shellcheck "${SHELL_FILES[@]}"
 else
 	skip "no shell files touched"
 fi
 
-# shellcheck disable=SC2086
-check_mirror $EXISTING
-# shellcheck disable=SC2086
-check_format $EXISTING
-# shellcheck disable=SC2086
-check_focused_tests $EXISTING
-# shellcheck disable=SC2086
-check_restore_by_checkout $EXISTING
-# shellcheck disable=SC2086
-check_bare_dprint $EXISTING
-# shellcheck disable=SC2086
-check_real_home $EXISTING
-# shellcheck disable=SC2086
-check_negative_path $EXISTING
+check_mirror "${EXISTING[@]}"
+check_format "${EXISTING[@]}"
+check_focused_tests "${EXISTING[@]}"
+check_restore_by_checkout "${EXISTING[@]}"
+check_bare_dprint "${EXISTING[@]}"
+check_real_home "${EXISTING[@]}"
+check_negative_path "${EXISTING[@]}"
 check_routing
 check_slice
 

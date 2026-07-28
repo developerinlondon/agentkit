@@ -28,6 +28,33 @@ function preflight(paths: string[], extra: string[] = []): ReturnType<typeof spa
 
 const SHELL_PREAMBLE = ['#!/usr/bin/env bash', 'set -euo pipefail'];
 
+function git(...args: string[]): void {
+  const result = spawnSync('git', ['-C', root, ...args], { encoding: 'utf-8' });
+  expect(result.status, result.stderr).toBe(0);
+}
+
+function commitBase(): void {
+  git('init', '-q');
+  git('config', 'user.email', 'test@example.com');
+  git('config', 'user.name', 'test');
+  git('add', '-A');
+  git('commit', '-qm', 'base');
+}
+
+function fixtureRepo(files: Record<string, string>): void {
+  cpSync(join(REPO, 'dprint.json'), join(root, 'dprint.json'));
+  for (const [name, body] of Object.entries(files)) write(name, body);
+  commitBase();
+}
+
+function preflightAt(base: string, paths: string[]): ReturnType<typeof spawnSync> {
+  const list = join(root, '.touched');
+  writeFileSync(list, `${paths.join('\n')}\n`);
+  return spawnSync('bash', [PREFLIGHT, '--repo', root, '--base', base, '--paths-from', list], {
+    encoding: 'utf-8',
+  });
+}
+
 function shellScript(lines: string[]): string {
   return [...SHELL_PREAMBLE, ...lines, ''].join('\n');
 }
@@ -148,6 +175,19 @@ describe('conditional-and status leaks', () => {
     const asCode = lines.filter((line) => !line.includes('<<-TXT') && line.trim() !== 'TXT');
     expect(statusCheck(...asCode).stdout).toContain('[soft-gate]');
     expect(statusCheck(...asCode).status).toBe(1);
+  });
+
+  test('a scan that could not run exits 2, distinct from findings', () => {
+    const clean = statusCheck('printf ok');
+    const findings = statusCheck('f() {', '\tdeclared "$1" && printf ok', '}', 'f x');
+    const failed = spawnSync('bash', [STATUS_CHECK, join(root, 'no-such-file.sh')], {
+      encoding: 'utf-8',
+    });
+
+    expect(clean.status).toBe(0);
+    expect(findings.status).toBe(1);
+    expect(failed.status).toBe(2);
+    expect(failed.stderr).toContain('scan failed');
   });
 
   test('preflight fails on a planted tail, and passes once it is repaired', () => {
@@ -274,7 +314,7 @@ describe('pattern checks', () => {
 
     const result = preflight(['scripts/probe.sh']);
 
-    expect(result.stdout).toContain('restores with git');
+    expect(result.stdout).toContain('discards working-tree state');
     expect(result.status).toBe(1);
   });
 
@@ -331,6 +371,87 @@ describe('pattern checks', () => {
     expect(result.status).toBe(0);
   });
 
+  test('a restore run from a test file is caught whatever the spelling', () => {
+    const restore = ['git', 'checkout', '--', 'src/thing.ts'].join(' ');
+    for (const line of [`execSync("${restore}");`, `await $\`${restore}\`;`, `spawnSync('bash', ['-c', '${restore}']);`]) {
+      write('tests/a.test.ts', `${line}\n`);
+      const result = preflight(['tests/a.test.ts']);
+      expect(result.stdout, line).toContain('discards working-tree state');
+      expect(result.status, line).toBe(1);
+    }
+  });
+
+  test('the other discard spellings are caught in a shell file', () => {
+    for (const line of ['git checkout HEAD -- src/thing.ts', 'git stash --keep-index', 'git clean -fd']) {
+      write('scripts/probe.sh', shellScript([line]));
+      const result = preflight(['scripts/probe.sh']);
+      expect(result.stdout, line).toContain('discards working-tree state');
+      expect(result.status, line).toBe(1);
+    }
+  });
+
+  test('a git command a test only asserts about is not a restore', () => {
+    write('tests/a.test.ts', ["expect(runHook(clone, 'git stash push -q -m wip')).not.toContain('deny');", ''].join('\n'));
+
+    const result = preflight(['tests/a.test.ts']);
+
+    expect(result.stdout).toContain('no git-checkout restores');
+    expect(result.status).toBe(0);
+  });
+
+  test('dprint with an empty or variable file list fails', () => {
+    for (const line of ['dprint fmt', 'FILES=""; dprint fmt $FILES', 'dprint fmt "$@"', 'dprint check ${LIST}']) {
+      write('scripts/probe.sh', shellScript([line]));
+      const result = preflight(['scripts/probe.sh']);
+      expect(result.stdout, line).toContain('no guaranteed file list');
+      expect(result.status, line).toBe(1);
+    }
+  });
+
+  test('dprint with a real path is left alone', () => {
+    write('scripts/probe.sh', shellScript(['dprint fmt README.md', 'dprint check "$REPO/moon.yml"']));
+
+    const result = preflight(['scripts/probe.sh']);
+
+    expect(result.stdout).toContain('no bare dprint invocations');
+    expect(result.status).toBe(0);
+  });
+
+  test('an installer spawned with no env option at all is caught', () => {
+    write('tests/inst.test.ts', ["spawnSync('bash', [join(REPO, 'install.sh')], { encoding: 'utf-8' });", ''].join('\n'));
+
+    const result = preflight(['tests/inst.test.ts']);
+
+    expect(result.stdout).toContain('writes the real $HOME');
+    expect(result.status).toBe(1);
+  });
+
+  test('--no-install mentioned only in a comment does not silence the check', () => {
+    write(
+      'tests/q.test.ts',
+      [
+        "const r = spawnSync('bun', [s]);",
+        "expect(r.stderr).toContain('Cannot find package');",
+        '// note: we deliberately do NOT pass --no-install here',
+        '',
+      ].join('\n'),
+    );
+
+    const result = preflight(['tests/q.test.ts']);
+
+    expect(result.stdout).toContain('auto-install live');
+    expect(result.status).toBe(1);
+  });
+
+  test('a touched path containing a space is still checked', () => {
+    write('tests/a b.test.ts', "test.only('x', () => {});\n");
+
+    const result = preflight(['tests/a b.test.ts']);
+
+    expect(result.stdout).toContain('focused or skipped test');
+    expect(result.status).toBe(1);
+  });
+
   test('a git restore quoted as fixture data is not a restore', () => {
     write('tests/demo.test.ts', ['const fixture = "git checkout -- src/thing.ts";', 'export default fixture;', ''].join('\n'));
 
@@ -345,7 +466,7 @@ describe('pattern checks', () => {
 
     const result = preflight(['scripts/probe.sh']);
 
-    expect(result.stdout).toContain('no file list');
+    expect(result.stdout).toContain('no guaranteed file list');
     expect(result.status).toBe(1);
   });
 
@@ -383,36 +504,118 @@ describe('pattern checks', () => {
   });
 });
 
-describe('formatting', () => {
-  const UNFORMATTED = '{"a":1,"b":2}\n';
+describe('a sub-checker that cannot run', () => {
+  // preflight resolves bash-status-check next to itself, so a stubbed copy of
+  // the scripts directory is the only way to make the child fail for real.
+  function withChecker(body: string): ReturnType<typeof spawnSync> {
+    const bin = join(root, 'scripts');
+    mkdirSync(join(bin, 'lib'), { recursive: true });
+    cpSync(PREFLIGHT, join(bin, 'preflight'));
+    cpSync(join(REPO, 'scripts', 'lib', 'test-verdict.sh'), join(bin, 'lib', 'test-verdict.sh'));
+    writeFileSync(join(bin, 'bash-status-check'), body);
+    chmodSync(join(bin, 'bash-status-check'), 0o755);
 
-  function git(...args: string[]): void {
-    const result = spawnSync('git', ['-C', root, ...args], { encoding: 'utf-8' });
-    expect(result.status, result.stderr).toBe(0);
+    write('hooks/leak.sh', shellScript(['f() {', '\tdeclared "$1" && printf ok', '}', 'f x']));
+    const list = join(root, '.touched');
+    writeFileSync(list, 'hooks/leak.sh\n');
+    return spawnSync('bash', [join(bin, 'preflight'), '--repo', root, '--paths-from', list], {
+      encoding: 'utf-8',
+    });
   }
 
-  test('drift that predates the change is left alone, but new drift fails', () => {
-    cpSync(join(REPO, 'dprint.json'), join(root, 'dprint.json'));
-    write('inherited.json', UNFORMATTED);
-    git('init', '-q');
-    git('config', 'user.email', 'test@example.com');
-    git('config', 'user.name', 'test');
-    git('add', '-A');
-    git('commit', '-qm', 'base');
+  test('a crashing checker fails the gate instead of reading as clean', () => {
+    const result = withChecker(shellScript(['awk "{{{" "$@"']));
 
-    write('added.json', UNFORMATTED);
+    expect(result.stdout).toContain('could not run');
+    expect(result.stdout).not.toContain('no conditional-and status leaks');
+    expect(result.status).toBe(1);
+  });
+
+  test('a checker that exits 1 saying nothing is a fault, not a finding', () => {
+    const result = withChecker(shellScript(['exit 1']));
+
+    expect(result.stdout).toContain('could not run');
+    expect(result.status).toBe(1);
+  });
+
+  test('a checker that cannot be executed fails the gate', () => {
+    const result = withChecker(shellScript(['exit 0']));
+    chmodSync(join(root, 'scripts', 'bash-status-check'), 0o000);
     const list = join(root, '.touched');
-    writeFileSync(list, 'inherited.json\nadded.json\n');
-    const result = spawnSync(
+    const denied = spawnSync(
       'bash',
-      [PREFLIGHT, '--repo', root, '--base', 'HEAD', '--paths-from', list],
+      [join(root, 'scripts', 'preflight'), '--repo', root, '--paths-from', list],
       { encoding: 'utf-8' },
     );
+    chmodSync(join(root, 'scripts', 'bash-status-check'), 0o755);
+
+    expect(result.stdout).toContain('no conditional-and status leaks');
+    expect(denied.stdout).toContain('could not run');
+    expect(denied.status).toBe(1);
+  });
+});
+
+describe('base resolution', () => {
+  test('an unresolvable base fails rather than reporting nothing to check', () => {
+    write('a.txt', 'x\n');
+    commitBase();
+
+    const result = spawnSync('bash', [PREFLIGHT, '--repo', root, '--base', 'origin/does-not-exist'], {
+      encoding: 'utf-8',
+    });
+
+    expect(result.stderr).toContain('cannot resolve --base');
+    expect(result.stderr).not.toContain('nothing to check');
+    expect(result.status).toBe(1);
+  });
+
+  test('a resolvable base with no changes still passes', () => {
+    write('a.txt', 'x\n');
+    commitBase();
+
+    const result = spawnSync('bash', [PREFLIGHT, '--repo', root, '--base', 'HEAD'], {
+      encoding: 'utf-8',
+    });
+
+    expect(result.stderr).toContain('nothing to check');
+    expect(result.status).toBe(0);
+  });
+});
+
+describe('formatting', () => {
+  const UNFORMATTED = '{"a":1,"b":2}\n';
+  const DRIFTED = '{"a":1}\n';
+  const MORE_DRIFT = '{"a":1,"b":2,"c":[3,4],"WHOLE_NEW_MESS":true}\n';
+
+  test('drift that predates the change is left alone, but new drift fails', () => {
+    fixtureRepo({ 'inherited.json': UNFORMATTED });
+    write('added.json', UNFORMATTED);
+
+    const result = preflightAt('HEAD', ['inherited.json', 'added.json']);
 
     expect(result.stdout).toContain('already unformatted before this change');
     expect(result.stdout).toContain('inherited.json');
     expect(result.stdout).toContain('dprint fmt added.json');
     expect(result.status).toBe(1);
+  });
+
+  test('new drift piled onto an already-drifted file still fails', () => {
+    fixtureRepo({ 'drifted.json': DRIFTED });
+    write('drifted.json', MORE_DRIFT);
+
+    const result = preflightAt('HEAD', ['drifted.json']);
+
+    expect(result.stdout).toContain('dprint fmt drifted.json');
+    expect(result.status).toBe(1);
+  });
+
+  test('an untouched already-drifted file is still left alone', () => {
+    fixtureRepo({ 'drifted.json': DRIFTED });
+
+    const result = preflightAt('HEAD', ['drifted.json']);
+
+    expect(result.stdout).toContain('no new drift added');
+    expect(result.status).toBe(0);
   });
 });
 

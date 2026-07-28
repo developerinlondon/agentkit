@@ -135,12 +135,15 @@ BACKUP="$SCRATCH/$(basename "$FILE")"
 cp "$FILE" "$BACKUP"
 BEFORE="$(digest "$FILE")"
 
+# The copy itself can fail — a read-only target, a full disk — so it runs in a
+# condition rather than as a bare statement that set -e would abort the trap on,
+# leaving the file mutated and the exit code reading as a verdict. The scratch
+# copy survives a failed restore: it is the only remaining good copy.
 restore() {
 	local status=$?
-	cp "$BACKUP" "$FILE"
-	if [[ "$(digest "$FILE")" != "$BEFORE" ]]; then
-		printf 'mutate: RESTORE FAILED — %s does not match its pre-mutation digest\n' "$FILE" >&2
-		rm -rf "$SCRATCH"
+	if ! cp "$BACKUP" "$FILE" 2>/dev/null || [[ "$(digest "$FILE")" != "$BEFORE" ]]; then
+		printf 'mutate: RESTORE FAILED — %s does not match its pre-mutation digest; backup kept at %s\n' \
+			"$FILE" "$BACKUP" >&2
 		exit 3
 	fi
 	rm -rf "$SCRATCH"

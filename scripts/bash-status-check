@@ -161,7 +161,18 @@ END {
 }
 '
 
-if awk "$SCAN" "$@"; then
-	exit 0
-fi
-exit 1
+set +e
+awk "$SCAN" "$@"
+SCAN_STATUS=$?
+set -e
+
+# A scan that could not run is not a clean scan: findings exit 1, everything
+# else exits 2 so a caller can tell "nothing found" from "nothing looked".
+case "$SCAN_STATUS" in
+0) exit 0 ;;
+1) exit 1 ;;
+*)
+	printf 'bash-status-check: scan failed (exit %d)\n' "$SCAN_STATUS" >&2
+	exit 2
+	;;
+esac

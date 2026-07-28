@@ -104,11 +104,10 @@ here:
 Either one turns an assertion that a command fails into an assertion that it
 succeeds, and the test still reports green.
 
-**Seen as.** A missing-dependency case that passed on a clean CI runner in
-130 ms at exit 0 — the workflow's own earlier install step had populated the
-global cache, so the negative path never occurred. It passed on three developer
-machines too, but for the other reason: an unrelated `node_modules` above the
-scratch root. Agreement across machines was not evidence, because all of them
+**Seen as.** A missing-dependency case that passed on a clean CI runner without
+the negative path ever occurring — the workflow's own earlier install step had
+populated the global cache. It passed on developer machines too, but for the
+other reason: an unrelated `node_modules` above the scratch root. Agreement across machines was not evidence, because all of them
 shared a fallback rather than the behaviour under test. Note that the ordinary
 fixture idiom — `mkdtempSync(join(tmpdir(), …))` — puts the scratch tree under
 `/tmp`, which on a developer host may already carry such an ancestor.
