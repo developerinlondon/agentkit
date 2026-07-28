@@ -1,0 +1,71 @@
+# Copy to .github/workflows/brief-pages.yml in the repo that owns the brief.
+# Set INTELLIGENCE_DIR to the directory holding brief.yaml + ledger.yaml, and
+# pin AGENTKIT_REF to a tag so a page rebuild cannot change with upstream.
+# Repository settings → Pages → Source must be set to "GitHub Actions".
+name: Publish brief to Pages
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+  pages: write
+
+# Deployments queue instead of cancelling: a half-published page is worse than
+# a late one.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Render and deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    env:
+      AGENTKIT: ${{ runner.temp }}/agentkit
+      AGENTKIT_REF: main
+      INTELLIGENCE_DIR: intelligence
+    steps:
+      - name: Check out the brief
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+
+      - name: Fetch the agentkit skills
+        run: |
+          git clone --depth 1 --branch "$AGENTKIT_REF" \
+            https://github.com/developerinlondon/agentkit "$AGENTKIT"
+          cd "$AGENTKIT/skills/publish-page" && bun install
+
+      - name: Validate the evidence
+        run: |
+          bun "$AGENTKIT/skills/product-intelligence/scripts/validate.ts" \
+            "$INTELLIGENCE_DIR/brief.yaml" "$INTELLIGENCE_DIR/ledger.yaml"
+
+      - name: Render the page
+        run: |
+          mkdir -p public
+          RENDER="$AGENTKIT/skills/product-intelligence/scripts/render.ts"
+          bun "$RENDER" "$INTELLIGENCE_DIR" --out public/brief-page.md
+          bun "$RENDER" "$INTELLIGENCE_DIR" --html --out public/index.html
+
+      - name: Configure Pages
+        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+
+      - name: Upload the rendered directory
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: public
+
+      - name: Deploy to Pages
+        id: deployment
+        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5.0.0
