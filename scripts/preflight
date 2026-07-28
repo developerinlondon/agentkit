@@ -126,12 +126,20 @@ check_bash_status() {
 	return 0
 }
 
+# Runs at shellcheck's default severity, info included, deliberately: SC2016 and
+# SC1091 are info-level and both name real mistakes — a variable that will not
+# expand, and a sourced file whose contents were never analysed. Raising the
+# threshold to warning would buy a quieter gate by not looking.
+#
+# SCRIPTDIR resolves each `# shellcheck source=` directive against the file being
+# checked rather than the caller's working directory, so the sourced libraries
+# are followed instead of reported as unreadable.
 check_shellcheck() {
 	if ! command -v shellcheck >/dev/null 2>&1; then
 		skip "shellcheck not installed — bash-status-check still covers the status-leak class"
 		return 0
 	fi
-	if ! shellcheck -x "$@"; then
+	if ! shellcheck -x --source-path=SCRIPTDIR "$@"; then
 		bad "shellcheck reported findings"
 		return 0
 	fi
@@ -176,14 +184,14 @@ groups_readable() {
 # plugins-cc also holds plugins that are not group mirrors of skills/ at all, so
 # only a declared group's plugin maps back to a source skill.
 is_group_plugin() {
-	local plugin="$1" group
-	for group in $(
+	local plugin="$1" declared
+	for declared in $(
 		SKILL_GROUPS_FILE="$REPO/skills/GROUPS"
 		# shellcheck source=../lib/skill-groups.sh
 		source "$REPO/lib/skill-groups.sh"
 		declared_groups
 	); do
-		if [[ "$plugin" == "$(plugin_for_group "$group")" ]]; then
+		if [[ "$plugin" == "$(plugin_for_group "$declared")" ]]; then
 			return 0
 		fi
 	done
@@ -332,7 +340,7 @@ check_format() {
 	for path in "$@"; do
 		case "$path" in
 		*.md | *.json | *.toml | *.yaml | *.yml)
-			formattable[$count]="$path"
+			formattable[count]="$path"
 			count=$((count + 1))
 			;;
 		esac
@@ -497,6 +505,7 @@ check_restore_by_checkout() {
 		discard="$discard"'|git[[:space:]]+restore[[:space:]]+[^-[:space:]]'
 		discard="$discard"'|git[[:space:]]+(stash|clean)([[:space:]]|$)'
 		exec_verb='(^|[^A-Za-z])(execSync|execFileSync|execFile|spawnSync|spawn|exec|system)[[:space:]]*\('
+		# shellcheck disable=SC2016  # regex literal: $ is an anchor, not expansion.
 		exec_verb="$exec_verb"'|Bun\.\$|(^|[[:space:]])\$([[:space:]]|$)|(sh|bash)[[:space:]]+-c'
 		if is_shell_file "$REPO/$path"; then
 			hits="$(printf '%s\n' "$flat" | grep -E "$discard" || true)"
@@ -545,7 +554,7 @@ check_negative_path() {
 	local path status=0
 	for path in "$@"; do
 		case "$path" in
-		tests/*.ts | tests/*/*.ts) ;;
+		tests/*.ts) ;;
 		*) continue ;;
 		esac
 		if ! grep -qiE 'cannot find (package|module)' "$REPO/$path"; then
@@ -570,7 +579,7 @@ check_real_home() {
 	local path status=0
 	for path in "$@"; do
 		case "$path" in
-		tests/*.ts | tests/*/*.ts) ;;
+		tests/*.ts) ;;
 		*) continue ;;
 		esac
 		if ! code_lines "$REPO/$path" | grep -qE 'install\.sh|AGENTKIT_HOME'; then
@@ -609,10 +618,10 @@ while IFS= read -r candidate; do
 	if [[ -z "$candidate" || ! -f "$REPO/$candidate" ]]; then
 		continue
 	fi
-	EXISTING[$EXISTING_COUNT]="$candidate"
+	EXISTING[EXISTING_COUNT]="$candidate"
 	EXISTING_COUNT=$((EXISTING_COUNT + 1))
 	if is_shell_file "$REPO/$candidate"; then
-		SHELL_FILES[$SHELL_COUNT]="$REPO/$candidate"
+		SHELL_FILES[SHELL_COUNT]="$REPO/$candidate"
 		SHELL_COUNT=$((SHELL_COUNT + 1))
 	fi
 done <<EOF

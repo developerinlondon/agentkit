@@ -18,8 +18,8 @@ usage() {
 		'usage: bash-status-check FILE...' \
 		'' \
 		'Reports conditional-and compounds that silently drop a failure:' \
-		'  tail-leak  a function or script ending in `cond && action`' \
-		'  soft-gate  `cmd && echo ...` — a check whose failure branch is nothing' \
+		'  tail-leak  a function or script ending in: cond && action' \
+		'  soft-gate  cmd && echo ... — a check whose failure branch is nothing' \
 		'' \
 		'Exits 1 when any leak is found, 0 when the files are clean.' >&2
 	exit "$status"
@@ -32,6 +32,7 @@ if [[ $# -eq 0 ]]; then
 	usage 2
 fi
 
+# shellcheck disable=SC2016  # awk program: $1 and $2 are awk fields, not shell.
 SCAN='
 function trim(s) {
 	sub(/^[ \t]+/, "", s)
