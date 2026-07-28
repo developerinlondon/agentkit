@@ -12,7 +12,20 @@ diagram is five identical boxes with different names, it has said nothing.
 Method inspired by coleam00/excalidraw-diagram-skill; text and tooling here are
 original.
 
-## 1 — Decide the depth
+## 1 — Classify, then decide the depth
+
+**Open `references/selection.md` and copy the notation recipe for the type you
+land on.** It defines the three axes, crosses altitude against relationship
+into the named type, and holds the recipes — crow's-foot cardinality, C4
+boundary semantics, trust zones — that make the figure correct rather than
+merely tidy. Write the classification line first:
+
+`altitude / relationship / audience → type`
+
+Generic boxes-and-arrows is what comes out when this step was skipped, and a
+figure that mixes two altitudes is misclassified rather than thorough. In the
+sketch register a correct glyph teaches more than any icon. Then set the depth,
+which the audience term drives:
 
 - **Conceptual**: mental models, philosophies, quick overviews. Abstract shapes
   and relationships are enough.
@@ -25,8 +38,9 @@ original.
 
 ## 2 — Map each concept to a structural pattern
 
-Pick the shape that behaves like the concept. In one diagram, no two major
-concepts should reuse the same pattern.
+The type from step 1 fixes the notation; this table picks the shape for each
+concept drawn inside it. Pick the shape that behaves like the concept. In one
+diagram, no two major concepts should reuse the same pattern.
 
 | Concept behaves like…       | Draw it as…                                                |
 | --------------------------- | ---------------------------------------------------------- |
@@ -155,6 +169,9 @@ needs a local Chromium — set `AGENTKIT_CHROMIUM` if it isn't auto-found.)
 
 - **Depth**: researched real names/formats? evidence artifacts present
   (technical)? multi-zoom present (large)? teaches something concrete?
+- **Type**: classification line written? notation of that type correct —
+  cardinality glyph at the end touching its entity, boundaries drawn by trust
+  not by team, exactly one altitude in the figure?
 - **Concept**: structure would still communicate with labels removed? shows
   what prose could not? every major concept a different pattern? no uniform
   card grid anywhere?
