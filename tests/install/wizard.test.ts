@@ -23,8 +23,24 @@ const promptMarker = '? [y/N]';
 // second, so a run still alive after this was waiting for a keystroke.
 const hangTimeoutMs = 20_000;
 
+// The gate names the environment that suppresses the wizard, and this reads
+// that same declaration rather than keeping a second copy: the two drifting
+// apart is what broke CI, where the runner exports CI=true into the suite and
+// silently turned every interactive assertion into an unattended install.
+// Missing means renamed, and a scrub that quietly covers nothing is worse than
+// no scrub, so it throws rather than returning an empty list.
+function promptSuppressingEnv(): string[] {
+  const declaration = /^PROMPT_SUPPRESSING_ENV="([^"]*)"$/m.exec(
+    readFileSync(installScript, 'utf-8'),
+  );
+  if (!declaration) {
+    throw new Error('install.sh no longer declares PROMPT_SUPPRESSING_ENV');
+  }
+  return declaration[1].split(/\s+/).filter(Boolean);
+}
+
 function installEnv(home: string) {
-  return {
+  const env: Record<string, string | undefined> = {
     ...process.env,
     AGENTKIT_PLATFORM: 'linux',
     HOME: home,
@@ -32,6 +48,13 @@ function installEnv(home: string) {
     AGENTKIT_HOME: join(home, '.agentkit'),
     CODEX_HOME: join(home, '.codex'),
   };
+  // Inherited suppression would also make the tests that assert *no* prompt
+  // pass for the wrong reason — proving the runner's environment rather than
+  // the descriptor, flag or persistence gate each of them exists to pin.
+  for (const name of promptSuppressingEnv()) {
+    delete env[name];
+  }
+  return env;
 }
 
 const baseArgs = ['--global', '--no-session-scope'];

@@ -82,9 +82,12 @@ EXTRA_GROUPS=""
 DROP_GROUPS=""
 ALL_GROUPS=false
 PROMPT=true
-if [[ -n "${AGENTKIT_SKIP_PROMPT:-}" ]]; then
-	PROMPT=false
-fi
+# Environment that makes a run unattended whatever is attached to it. Declared
+# as one list because it is also what a test asserting the prompt fires has to
+# clear from its own environment — a CI runner exports CI to everything it
+# starts, so a second copy of these names would drift and silence the wizard
+# in exactly the place it is being tested.
+PROMPT_SUPPRESSING_ENV="CI AGENTKIT_SKIP_PROMPT"
 while [[ $# -gt 0 ]]; do
 	case "$1" in
 	-h | --help) usage ;;
@@ -196,6 +199,16 @@ group_dropped() {
 	return 1
 }
 
+prompt_suppressed_by_env() {
+	local name
+	for name in $PROMPT_SUPPRESSING_ENV; do
+		if [[ -n "${!name:-}" ]]; then
+			return 0
+		fi
+	done
+	return 1
+}
+
 # An unanswered question does not degrade to a decline, it stops the install
 # until something kills it, so every condition here fails towards silence.
 should_prompt_for_groups() {
@@ -207,7 +220,9 @@ should_prompt_for_groups() {
 	[[ -t 0 && -t 1 ]] || return 1
 	# A terminal is not evidence of a person. Docker executors, `docker run -it`
 	# and Jenkins all hand a job a pty with nobody behind it.
-	[[ -z "${CI:-}" ]] || return 1
+	if prompt_suppressed_by_env; then
+		return 1
+	fi
 	[[ "$PROMPT" == true ]] || return 1
 	[[ "$ALL_GROUPS" == false ]] || return 1
 	[[ -z "$EXTRA_GROUPS" && -z "$DROP_GROUPS" ]] || return 1
