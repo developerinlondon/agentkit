@@ -45,6 +45,10 @@ function bare(s,   t) {
 	t = s
 	gsub(/\$\([^)]*\)/, "", t)
 	gsub(/`[^`]*`/, "", t)
+	# A single-quoted span is one argument, not shell syntax: an awk or sed
+	# program carrying && is data the shell never evaluates. Erasing only the
+	# contents keeps a real operator outside the quotes visible.
+	gsub(/\047[^\047]*\047/, " ", t)
 	return t
 }
 
@@ -53,6 +57,10 @@ function tail_leak(s,   t) {
 	if (t !~ /&&/) return 0
 	if (t ~ /\|\|/) return 0
 	if (t ~ /^(if|elif|while|until|return|exit|case)([ \t]|$)/) return 0
+	# A tail that is wholly one test is a predicate, not a guarded action: it has
+	# no second command whose failure could be swallowed, and callers consume it
+	# with if/!/||. The leak needs `cond && action`.
+	if (t ~ /^(\[\[.*\]\]|\[.*\]|test[ \t].*)[ \t]*$/) return 0
 	return 1
 }
 
