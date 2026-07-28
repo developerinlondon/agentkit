@@ -183,9 +183,10 @@ one ledger**: acquire each source into the same output directory (the
 
 The moment two origins share a kind, locators of that kind must name their
 origin — `repo:server:README.md:12`, `gh:cli:releases/v2.3.0`,
-`site:docs:/quickstart` — and the validator rejects plain ones as ambiguous.
-With at most one origin per kind, plain locators stay valid, so
-single-source briefs are unaffected. Cross-origin contradictions (the site
+`site:docs:/quickstart`, `doc:contracts:msa.pdf#p3` — and the validator
+rejects plain ones as ambiguous. With at most one origin per kind, plain
+locators stay valid, so single-source briefs are unaffected. Origin ids are
+one namespace across kinds: a handle names exactly one source. Cross-origin contradictions (the site
 promising what no repo implements) are exactly what the single shared
 ledger exists to surface.
 

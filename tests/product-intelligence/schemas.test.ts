@@ -48,7 +48,9 @@ describe('product-intelligence schemas', () => {
   for (const [name, message] of Object.entries(expectedFailures)) {
     test(`rejects ${name} for the right reason`, () => {
       const errors = validateFile(invalid(name));
-      expect(errors.length, errors.join('\n')).toBeGreaterThan(0);
+      // Exactly one: a second error means the fixture breaks two rules and
+      // the pinned message could pass for the wrong one.
+      expect(errors, errors.join('\n')).toHaveLength(1);
       expect(errors.join('\n')).toContain(message);
     });
   }

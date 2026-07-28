@@ -207,7 +207,10 @@ function checkOrigins(brief: Record<string, Json>, ledger: Json | undefined, err
   const seen = new Set<string>();
   for (const origin of origins) {
     if (!origin.id || !origin.kind) continue;
-    if (seen.has(origin.id)) errors.push(`brief.subject.origins: duplicate origin id '${origin.id}'`);
+    if (seen.has(origin.id)) {
+      errors.push(`brief.subject.origins: duplicate origin id '${origin.id}'`);
+      continue;
+    }
     seen.add(origin.id);
     idsByKind.set(origin.kind, [...(idsByKind.get(origin.kind) ?? []), origin.id]);
   }
