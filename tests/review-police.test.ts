@@ -347,6 +347,20 @@ describe('review-police: the hook itself cannot fail open', () => {
     expect(res.status).toBe(0);
   });
 
+  test('writes portable UTC audit timestamps with BSD or GNU date', () => {
+    const audit = join(home, '.agentkit', 'review-audit.log');
+    rmSync(audit, { force: true });
+    record(passing);
+
+    const res = runBare({});
+
+    expect(res.status, res.stderr).toBe(0);
+    expect(res.stderr).toBe('');
+    expect(readFileSync(audit, 'utf-8')).toMatch(
+      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z\tPASS\t/,
+    );
+  });
+
   test('a missing jq denies rather than dying', () => {
     record(passing);
     const stub = mkdtempSync(join(tmpdir(), 'nojq-'));
@@ -693,6 +707,92 @@ describe('review-police: bypasses found in adversarial review', () => {
       const out = runHook(cmd);
       expect(out, cmd).toContain('"deny"');
       expect(out, cmd).toContain('direct REST merge');
+    }
+  });
+
+  test('GraphQL merge mutations cannot hide in file-backed API payloads', () => {
+    record(passing);
+    const jsonPayload = join(repo, 'merge-payload.json');
+    const escapedJsonPayload = join(repo, 'escaped-merge-payload.json');
+    const queryPayload = join(repo, 'merge-query.graphql');
+    writeFileSync(
+      jsonPayload,
+      JSON.stringify({
+        query: 'mutation { mergePullRequest(input: { pullRequestId: "x" }) { clientMutationId } }',
+      }),
+    );
+    writeFileSync(
+      escapedJsonPayload,
+      '{"query":"mutation { merge\\u0050ullRequest(input: { pullRequestId: \\"x\\" }) { clientMutationId } }"}\n',
+    );
+    writeFileSync(
+      queryPayload,
+      'mutation { mergeRequestAccept(input: { iid: "12" }) { errors } }\n',
+    );
+
+    for (const cmd of [
+      `gh api graphql --input ${jsonPayload}`,
+      `gh api graphql --input=${jsonPayload}`,
+      `gh api graphql --input ${escapedJsonPayload}`,
+      `gh api graphql -F query=@${queryPayload}`,
+      `gh api graphql --field=query=@${queryPayload}`,
+    ]) {
+      const out = runHook(cmd);
+      expect(out, cmd).toContain('"deny"');
+      expect(out, cmd).toContain('indirect GraphQL API payload');
+    }
+  });
+
+  test('opaque stdin-backed GraphQL API payloads fail closed', () => {
+    record(passing);
+    const jsonPayload = join(repo, 'stdin-merge-payload.json');
+    writeFileSync(
+      jsonPayload,
+      JSON.stringify({
+        query: 'mutation { mergePullRequest(input: { pullRequestId: "x" }) { clientMutationId } }',
+      }),
+    );
+
+    for (const cmd of [
+      `gh api graphql --input - < ${jsonPayload}`,
+      `gh api graphql --input /dev/stdin < ${jsonPayload}`,
+      `cat ${jsonPayload} | gh api graphql --input -`,
+      `gh api graphql -F query=@- < ${jsonPayload}`,
+    ]) {
+      const out = runHook(cmd);
+      expect(out, cmd).toContain('"deny"');
+      expect(out, cmd).toContain('indirect GraphQL API payload');
+    }
+  });
+
+  test('file-backed read-only GraphQL requests also fail closed against payload swaps', () => {
+    record(passing);
+    const jsonPayload = join(repo, 'safe-payload.json');
+    const queryPayload = join(repo, 'safe-query.graphql');
+    writeFileSync(
+      jsonPayload,
+      JSON.stringify({ query: 'query { viewer { login } }', variables: {} }),
+    );
+    writeFileSync(queryPayload, 'query { viewer { login } }\n');
+
+    for (const cmd of [
+      `gh api graphql --input ${jsonPayload}`,
+      `gh api graphql -F query=@${queryPayload}`,
+    ]) {
+      const out = runHook(cmd);
+      expect(out, cmd).toContain('"deny"');
+      expect(out, cmd).toContain('can change after this check');
+    }
+  });
+
+  test('safe inline GraphQL queries and ordinary API requests remain allowed', () => {
+    record(passing);
+    for (const cmd of [
+      "gh api graphql -f 'query=query { viewer { login } }'",
+      "gh api graphql -F 'query=query { viewer { login } }'",
+      'gh api repos/owner/repo',
+    ]) {
+      expect(runHook(cmd), cmd).toBe('');
     }
   });
 

@@ -152,9 +152,13 @@ print("\n".join(expand(raw)))
 # survivable, aborting the gate is not.
 AUDIT="${HOME:-/tmp}/.agentkit/review-audit.log"
 
+audit_timestamp() {
+	date -u '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || printf '%s' 'timestamp-unavailable'
+}
+
 deny() {
 	mkdir -p "$(dirname "$AUDIT")" 2>/dev/null || true
-	printf '%s\tDENY\tsession=%s\t%s\n' "$(date -Is)" "$SESSION" "${1//$'\n'/ }" >>"$AUDIT" 2>/dev/null || true
+	printf '%s\tDENY\tsession=%s\t%s\n' "$(audit_timestamp)" "$SESSION" "${1//$'\n'/ }" >>"$AUDIT" 2>/dev/null || true
 	agentkit_deny_json "$1"
 	exit 0
 }
@@ -193,6 +197,60 @@ tok_match() { printf '%s' "$COMMAND" | grep -qiE -- "$1"; }
 # The token following the first occurrence of a given token.
 after() { printf '%s' "$COMMAND" | awk -v k="$1" 'p { print; exit } $0 == k { p = 1 }'; }
 
+# `gh api graphql` can take its request body from a file or stdin. The mutation
+# name then never appears in RAW_COMMAND/COMMAND, and inspecting the current
+# file bytes is not enough: the same shell call or another process can replace
+# them before the CLI reads them. Deny every indirect GraphQL body. Inline
+# read-only queries remain available because their immutable text is in the
+# command the hook actually checks.
+graphql_payload_indirect=0
+
+scan_graphql_payload_refs() {
+	local token=""
+	local expect_input=0
+	local expect_field=0
+
+	while IFS= read -r token; do
+		if [[ $expect_input -eq 1 ]]; then
+			graphql_payload_indirect=1
+			expect_input=0
+			continue
+		fi
+		if [[ $expect_field -eq 1 ]]; then
+			if [[ "$token" == query=@* ]]; then
+				graphql_payload_indirect=1
+			fi
+			expect_field=0
+			continue
+		fi
+
+		case "$token" in
+		--input)
+			expect_input=1
+			;;
+		--input=*)
+			graphql_payload_indirect=1
+			;;
+		-F | --field)
+			expect_field=1
+			;;
+		-Fquery=@*)
+			graphql_payload_indirect=1
+			;;
+		-F=query=@*)
+			graphql_payload_indirect=1
+			;;
+		--field=query=@*)
+			graphql_payload_indirect=1
+			;;
+		esac
+	done <<<"$COMMAND"
+
+	if [[ $expect_input -eq 1 ]]; then
+		graphql_payload_indirect=1
+	fi
+}
+
 # --- Is this a merge attempt? ---------------------------------------------
 # Subcommands are separate tokens, so flags and their arguments no longer need
 # tolerating in a regex — `glab -R o/r mr merge` and `glab mr --repo o/r merge`
@@ -229,6 +287,21 @@ fi
 if tok_match 'mergeRequestAccept|mergePullRequest'; then
 	is_merge=1
 	direct_api_merge=1
+fi
+# File/stdin-backed GraphQL requests are mutable after the hook checks them.
+# Keep ordinary inline queries allowed, but fail closed on every indirect body.
+graphql_api=0
+if has api && tok_match '(^|/)graphql([?#].*)?$'; then
+	if has_basename gh || has_basename glab; then graphql_api=1; fi
+fi
+if [[ $graphql_api -eq 1 ]]; then
+	scan_graphql_payload_refs
+	if [[ $graphql_payload_indirect -eq 1 ]]; then
+		deny "BLOCKED: an indirect GraphQL API payload can change after this check and may hide a merge mutation.
+
+Use an inline read-only query whose complete text is visible in this command.
+Use 'gh pr merge' / 'glab mr merge' for merges so review evidence is checked."
+	fi
 fi
 # Split-variable form: the URL is assembled at runtime. What separates that from
 # prose is not an interpolation — `$(…)`, backticks, `$1` and a string built
@@ -662,7 +735,7 @@ if [[ -n "$POLICY_ENTRY" ]]; then
 			CONSENT_QUOTE=$(jq -r '.user_consent.quote // empty' "$RECORD")
 			mkdir -p "$(dirname "$AUDIT")" 2>/dev/null || true
 			printf '%s\tCONSENT-OVERRIDE\tsession=%s\tbranch=%s\tsha=%s\tquote=%s\n' \
-				"$(date -Is)" "$SESSION" "$BRANCH" "$HEAD_SHA" "${CONSENT_QUOTE//$'\n'/ }" \
+				"$(audit_timestamp)" "$SESSION" "$BRANCH" "$HEAD_SHA" "${CONSENT_QUOTE//$'\n'/ }" \
 				>>"$AUDIT" 2>/dev/null || true
 			exit 0
 			;;
@@ -674,7 +747,7 @@ if [[ -n "$POLICY_ENTRY" ]]; then
 
 	mkdir -p "$(dirname "$AUDIT")" 2>/dev/null || true
 	printf '%s\tPASS-STRICT\tsession=%s\tbranch=%s\tsha=%s\ttarget=%s\n' \
-		"$(date -Is)" "$SESSION" "$BRANCH" "$HEAD_SHA" "$TARGET_SHA" \
+		"$(audit_timestamp)" "$SESSION" "$BRANCH" "$HEAD_SHA" "$TARGET_SHA" \
 		>>"$AUDIT" 2>/dev/null || true
 	exit 0
 fi
@@ -710,7 +783,7 @@ if [[ -n "$BLOCKING" || "$VERDICT" != "pass" ]]; then
 	if [[ "$CONSENT" == "true" && -n "$CONSENT_QUOTE" ]]; then
 		mkdir -p "$(dirname "$AUDIT")" 2>/dev/null || true
 		printf '%s\tCONSENT-OVERRIDE\tsession=%s\tbranch=%s\tsha=%s\tquote=%s\n' \
-			"$(date -Is)" "$SESSION" "$BRANCH" "$HEAD_SHA" "${CONSENT_QUOTE//$'\n'/ }" \
+			"$(audit_timestamp)" "$SESSION" "$BRANCH" "$HEAD_SHA" "${CONSENT_QUOTE//$'\n'/ }" \
 			>>"$AUDIT" 2>/dev/null || true
 		exit 0
 	fi
@@ -739,6 +812,6 @@ Fabricating that consent is forging the user's approval — don't."
 fi
 
 mkdir -p "$(dirname "$AUDIT")" 2>/dev/null || true
-printf '%s\tPASS\tsession=%s\tbranch=%s\tsha=%s\n' "$(date -Is)" "$SESSION" "$BRANCH" "$HEAD_SHA" \
+printf '%s\tPASS\tsession=%s\tbranch=%s\tsha=%s\n' "$(audit_timestamp)" "$SESSION" "$BRANCH" "$HEAD_SHA" \
 	>>"$AUDIT" 2>/dev/null || true
 exit 0
