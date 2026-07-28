@@ -4,6 +4,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -91,7 +92,9 @@ describe('Claude Code and Codex hook wiring', () => {
       expect(codexHooks.hooks.PreToolUse).toHaveLength(2);
       for (const group of codexHooks.hooks.PreToolUse) {
         expect(group.hooks).toHaveLength(1);
-        expect(group.hooks[0].command).toContain(join(codexDir, 'hooks', 'review-police.sh'));
+        expect(group.hooks[0].command).toContain(
+          `'${realpathSync(join(codexDir, 'hooks'))}'/review-police.sh`,
+        );
         expect(group.hooks[0].command).not.toContain('__AGENTKIT_CODEX_HOOKS_ROOT__');
       }
       for (const path of [
