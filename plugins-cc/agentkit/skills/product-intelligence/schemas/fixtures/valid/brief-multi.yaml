@@ -1,0 +1,39 @@
+brief_version: "1.0"
+subject:
+  name: acme-platform
+  homepage: https://acme.example
+  one_liner: Server plus CLI sold and documented as one product.
+  origins:
+    - id: server
+      kind: repo
+      target: acme/server
+    - id: cli
+      kind: repo
+      target: acme/cli
+    - id: www
+      kind: site
+      target: https://acme.example
+evidence:
+  ledger: ledger-multi.yaml
+  acquired_at: "2026-07-28"
+  acquisition:
+    - tool: repomix --remote
+      target: acme/server
+      retrieved_at: "2026-07-28"
+    - tool: repomix --remote
+      target: acme/cli
+      retrieved_at: "2026-07-28"
+    - tool: advertools
+      target: https://acme.example
+      retrieved_at: "2026-07-28"
+positioning:
+  target_customer: platform teams
+  need: one product surface across server and CLI
+  category: developer platform
+  claims: [C-003]
+site_inventory:
+  - locator: "site:/pricing"
+    page_type: pricing
+    disposition: keep
+    rationale: states the single-license model plainly
+    claims: [C-003]

@@ -36,6 +36,28 @@
           "description": "What the product is in one sentence, from a user's point of view — not the architecture.",
           "type": "string",
           "minLength": 1
+        },
+        "origins": {
+          "description": "Every source the product spans, for subjects wider than one repo and one site. Once two origins share a kind, locators of that kind must name their origin: 'repo:<id>:README.md:12', 'site:<id>:/pricing', 'gh:<id>:releases/v1.0'. With at most one origin per kind, plain locators stay valid.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "kind", "target"],
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "description": "Short handle used inside locators.",
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]*$"
+              },
+              "kind": { "enum": ["site", "repo", "docset"] },
+              "target": {
+                "description": "What was acquired: a URL, owner/repo, or document set name.",
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
         }
       }
     },

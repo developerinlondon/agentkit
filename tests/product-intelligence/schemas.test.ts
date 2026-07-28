@@ -30,6 +30,8 @@ const expectedFailures: Record<string, string> = {
   'brief-disposition-without-rationale.yaml': 'requires a rationale',
   'brief-missing-subject-name.yaml': "missing required field 'name'",
   'brief-dangling-ledger.yaml': 'not found',
+  'brief-multi-origin-unqualified.yaml': 'must name its origin',
+  'brief-origin-duplicate-id.yaml': 'duplicate origin id',
 };
 
 describe('product-intelligence schemas', () => {
@@ -46,7 +48,9 @@ describe('product-intelligence schemas', () => {
   for (const [name, message] of Object.entries(expectedFailures)) {
     test(`rejects ${name} for the right reason`, () => {
       const errors = validateFile(invalid(name));
-      expect(errors.length, errors.join('\n')).toBeGreaterThan(0);
+      // Exactly one: a second error means the fixture breaks two rules and
+      // the pinned message could pass for the wrong one.
+      expect(errors, errors.join('\n')).toHaveLength(1);
       expect(errors.join('\n')).toContain(message);
     });
   }

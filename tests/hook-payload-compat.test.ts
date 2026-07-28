@@ -85,6 +85,15 @@ describe('hook payload compat (Claude + Grok)', () => {
     expect(stdout).toMatch(/bun/i);
   });
 
+  test('pages-police denies a raw Pages API write on Grok camelCase', () => {
+    const { stdout } = runHook('pages-police.sh', {
+      toolName: 'run_terminal_command',
+      toolInput: { command: 'curl -X PUT --data @p.html https://pages.agentkit.sbs/api/pages/abc' },
+    });
+    expect(isDeny(stdout)).toBe(true);
+    expect(stdout).toMatch(/publish\.ts/);
+  });
+
   const describeResource = canBound ? describe : describe.skip;
   describeResource('resource-police', () => {
     test('denies unbounded cargo build on Grok camelCase', () => {
