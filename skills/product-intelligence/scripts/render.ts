@@ -10,6 +10,12 @@ import { join } from 'node:path';
 
 type Dict = Record<string, any>;
 
+// GFM autolinks a bare URL, www host or email with no link syntax at all, which
+// would let a crawled source place a live outbound link on the page and swallow
+// a following escape into the link text. These zero-width positions take a
+// backslash, which the renderer resolves away, so the reader sees the original.
+const AUTOLINK = /(?<=https?|ftp|mailto)(?=:)|(?<=www)(?=\.)|(?=@)/gi;
+
 const ENTITY: Record<string, string> = {
   '&': '&amp;',
   '<': '&lt;',
@@ -55,12 +61,7 @@ function mdEsc(value: unknown): string {
     .replace(/[\\`*_[\]()!~#]/g, '\\$&')
     .replace(/^([-+=])/gm, '\\$1')
     .replace(/^(\d+)([.)])/gm, '$1\\$2')
-    // GFM autolinks a bare URL before an escape resolves, which both swallows
-    // the backslash into the link text and lets a crawled source place a live
-    // outbound link on the page. Splitting the trigger defuses both; the
-    // escape resolves away, so the reader still sees the original characters.
-    .replace(/\b(https?|ftp|mailto)(?=:)/gi, '$&\\')
-    .replace(/\bwww(?=\.)/gi, '$&\\');
+    .replace(AUTOLINK, '\\');
   return esc(neutral);
 }
 
@@ -229,33 +230,16 @@ function cannotVerify(brief: Dict): string {
 // parser decides later and across lines — a scheme survives as an entity or a
 // split reference. Fence interiors stay untouched: marked escapes them.
 function sanitizeFindings(body: string): string {
-  const out: string[] = [];
-  let fence = '';
-  for (const line of body.split('\n')) {
-    const run = line.match(/^ {0,3}(`{3,}|~{3,})(.*)$/);
-    if (fence) {
-      out.push(line);
-      if (run && run[1][0] === fence[0] && run[1].length >= fence.length && run[2].trim() === '') {
-        fence = '';
-      }
-      continue;
-    }
-    if (run && !(run[1][0] === '`' && run[2].includes('`'))) {
-      fence = run[1];
-      out.push(line);
-      continue;
-    }
-    out.push(
-      line
-        .replace(/&(?![a-zA-Z][a-zA-Z0-9]{1,31};|#\d{1,7};|#[xX][0-9a-fA-F]{1,6};)/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/[[\]]/g, '\\$&'),
-    );
-  }
-  // An unclosed fence is an ordinary authoring slip, and findings sit above the
-  // evidence: left open it renders every claim, anchor and quote below as code.
-  if (fence) out.push(fence);
-  return out.join('\n');
+  const escaped = body
+    // Backslash FIRST: an input `\[` would otherwise pair with the backslash
+    // added below, and the brackets would go back to being live link syntax.
+    .replace(/\\/g, '\\\\')
+    .replace(/[[\]()<]/g, '\\$&')
+    .replace(AUTOLINK, '\\');
+  // Not a trust boundary — every line is escaped either way — but an unclosed
+  // fence would still render the evidence section below it as code.
+  const runs = escaped.match(/^ {0,3}(`{3,}|~{3,})/gm) ?? [];
+  return runs.length % 2 === 0 ? escaped : `${escaped}\n${runs[runs.length - 1].trim()}`;
 }
 
 function findings(dir: string): string {

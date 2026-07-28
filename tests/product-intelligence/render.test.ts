@@ -406,9 +406,27 @@ describe('renderBrief', () => {
     expect(out).not.toContain('| a | b |');
   });
 
-  test('raw HTML in findings.md is inert, fenced code is untouched', () => {
-    // findings.md quotes crawled sources, so a payload copied into it must
-    // not execute on the published page.
+  // Everything the analyze pass wrote lands between its heading and the next
+  // section; only that span carries untrusted content.
+  function findingsSection(out: string): string {
+    const start = out.indexOf('## What the analyze pass flagged');
+    expect(start).toBeGreaterThan(-1);
+    const rest = out.slice(start + 1);
+    const end = rest.indexOf('\n## ');
+    return end === -1 ? rest : rest.slice(0, end);
+  }
+
+  // A character is inert only when an ODD number of backslashes precedes it:
+  // an even run is a literal backslash followed by live syntax.
+  function expectEscaped(section: string, chars: string) {
+    for (const m of section.matchAll(new RegExp(`(\\\\*)([${chars}])`, 'g'))) {
+      expect(m[1].length % 2, `${m[2]} after ${m[1].length} backslashes`).toBe(1);
+    }
+  }
+
+  test('raw HTML in findings.md cannot form a tag, fenced or not', () => {
+    // Fences are not a trust boundary: content is escaped either way, so a
+    // fence the parser disagrees about cannot hand anything through live.
     writeFileSync(
       join(scratch, 'findings.md'),
       [
@@ -419,14 +437,13 @@ describe('renderBrief', () => {
         '<script>alert(1)</script>',
         '',
         '```html',
-        '<kbd>fence stays raw</kbd>',
+        '<img src=x onerror=alert(1)>',
         '```',
       ].join('\n'),
     );
-    const out = withArtifacts(journalBrief());
-    expect(out).not.toContain('<script');
-    expect(out).toContain('&lt;script>');
-    expect(out).toContain('<kbd>fence stays raw</kbd>');
+    const section = findingsSection(withArtifacts(journalBrief()));
+    expectEscaped(section, '<');
+    expect(section).toContain('### Contradictions');
   });
 
   // Judging destinations means re-deciding, per line and before entity
@@ -445,14 +462,18 @@ describe('renderBrief', () => {
         'javascript:alert(1)',
         'Split paren [c4](',
         'javascript:alert(1))',
-        'Ordinary [pricing](https://example.com/pricing).',
+        // A backslash already in the input pairs with an injected one, handing
+        // the brackets back to the parser as live syntax.
+        'Pre-escaped \\[c5\\](javascript:alert(1)).',
+        'Bare https://evil.example and www.evil.example and a@evil.example.',
+        'Raw <img src=x onerror=alert(1)> and <javascript:alert(1)>.',
       ].join('\n'),
     );
-    const out = withArtifacts(journalBrief());
-    for (const label of ['click', 'c1', 'c2', 'c3', 'c4', 'pricing']) {
-      expect(out, label).toContain(`\\[${label}\\]`);
-    }
-    expect(out).not.toMatch(/[^\\]\[[^\]]*\]\(/);
+    const section = findingsSection(withArtifacts(journalBrief()));
+    expectEscaped(section, '[\\]()<');
+    expect(section).toContain('https\\://evil.example');
+    expect(section).toContain('www\\.evil.example');
+    expect(section).toContain('a\\@evil.example');
   });
 
   // Both controls below are security-load-bearing and were unasserted:
@@ -481,16 +502,14 @@ describe('renderBrief', () => {
     expect(out).toContain('constructor');
   });
 
-  test('a backtick in a fence info string does not open a fence', () => {
-    // CommonMark forbids a backtick in a backtick fence's info string, so this
-    // opens no fence — treating it as one would pass the HTML below through raw.
+  test('fence confusion cannot hand content through unescaped', () => {
+    // CommonMark forbids a backtick in a backtick fence's info string, so the
+    // parser opens no fence here even though the line looks like one.
     writeFileSync(
       join(scratch, 'findings.md'),
       ['# Findings', '', '```js`weird', '<img src=x onerror=alert(1)>', '```'].join('\n'),
     );
-    const out = withArtifacts(journalBrief());
-    expect(out).not.toContain('<img');
-    expect(out).toContain('&lt;img');
+    expectEscaped(findingsSection(withArtifacts(journalBrief())), '<');
   });
 
   test('contradictions get their own section and per-claim markers', () => {
