@@ -52,11 +52,19 @@ validate_skill_groups() {
 		echo "ERROR: missing $SKILL_GROUPS_FILE — cannot resolve skill groups." >&2
 		return 1
 	fi
-	local group
+	local group orphan
+	# A membership line that lost its group name would otherwise fall through to
+	# core, shipping that skill to everyone by default.
+	orphan="$(awk '$1 != "group" && $1 !~ /^#/ && NF == 1 { print $1 }' "$SKILL_GROUPS_FILE")"
+	if [[ -n "$orphan" ]]; then
+		echo "ERROR: $SKILL_GROUPS_FILE has membership lines without a group: $orphan" >&2
+		return 1
+	fi
 	for group in $(assigned_groups); do
 		if ! group_declared "$group"; then
 			echo "ERROR: $SKILL_GROUPS_FILE assigns skills to undeclared group '$group'." >&2
 			return 1
 		fi
 	done
+	return 0
 }

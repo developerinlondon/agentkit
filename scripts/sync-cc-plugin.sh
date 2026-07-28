@@ -122,8 +122,11 @@ echo "[sync] portable hook tools -> plugins-cc/agentkit/tools/"
 # Fail loudly if the result is an invalid plugin (best-effort: needs claude CLI).
 if command -v claude &>/dev/null; then
 	for group in $(declared_groups); do
-		claude plugin validate "$(plugin_dir_for "$group")" &&
-			echo "[sync] $(group_plugin_id "$group") manifest valid"
+		if ! claude plugin validate "$(plugin_dir_for "$group")"; then
+			echo "[sync] ERROR: $(group_plugin_id "$group") is not a valid plugin." >&2
+			exit 1
+		fi
+		echo "[sync] $(group_plugin_id "$group") manifest valid"
 	done
 fi
 

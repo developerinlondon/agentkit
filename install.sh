@@ -18,6 +18,9 @@ Options:
                        are declared in skills/GROUPS; every unlisted skill is
                        in the always-installed `core` group.
                          --with product   product-intelligence, product-review
+  --without <group>    Drop a group from the selection and from the remembered
+                       set (repeatable). Skills already installed are left in
+                       place; `core` cannot be dropped.
   --all                Install every declared skill group. A global install
                        remembers the chosen groups in ~/.agentkit/groups, so a
                        later bare `install.sh --global` upgrades the same set
@@ -71,6 +74,7 @@ AGENTKIT_HOME="${AGENTKIT_HOME:-$HOME/.agentkit}"
 CLAUDE_PLUGIN=false
 SESSION_SCOPE=true
 EXTRA_GROUPS=""
+DROP_GROUPS=""
 ALL_GROUPS=false
 while [[ $# -gt 0 ]]; do
 	case "$1" in
@@ -87,12 +91,21 @@ while [[ $# -gt 0 ]]; do
 		EXTRA_GROUPS="${EXTRA_GROUPS:+$EXTRA_GROUPS }$1"
 		;;
 	--with=*) EXTRA_GROUPS="${EXTRA_GROUPS:+$EXTRA_GROUPS }${1#--with=}" ;;
+	--without)
+		shift
+		if [[ $# -eq 0 ]]; then
+			echo "ERROR: --without requires a group name (e.g. --without product)." >&2
+			exit 1
+		fi
+		DROP_GROUPS="${DROP_GROUPS:+$DROP_GROUPS }$1"
+		;;
+	--without=*) DROP_GROUPS="${DROP_GROUPS:+$DROP_GROUPS }${1#--without=}" ;;
 	--all) ALL_GROUPS=true ;;
 	# Without this, a typo'd flag is captured as the target directory and the
 	# install silently does something other than what was asked for.
 	-*)
 		echo "ERROR: unknown option '$1'." >&2
-		usage 2
+		usage 2 >&2
 		;;
 	*) TARGET_DIR="$1" ;;
 	esac
@@ -117,11 +130,18 @@ group_selected() {
 	return 1
 }
 
-for requested_group in $EXTRA_GROUPS; do
+for requested_group in $EXTRA_GROUPS $DROP_GROUPS; do
 	if ! group_declared "$requested_group"; then
 		echo "ERROR: unknown skill group '$requested_group'." >&2
 		echo "       Declared groups: $(declared_groups | tr '\n' ' ')" >&2
 		exit 1
+	fi
+done
+
+for requested_group in $DROP_GROUPS; do
+	if [[ "$requested_group" == core ]]; then
+		echo "ERROR: the core group cannot be deselected." >&2
+		exit 2
 	fi
 done
 
@@ -134,9 +154,16 @@ read_persisted_groups() {
 	local entry
 	while read -r entry _; do
 		case "$entry" in '' | '#'*) continue ;; esac
-		# A group dropped from the manifest must not resurrect a stale selection.
-		group_declared "$entry" && printf '%s\n' "$entry"
+		# A stale entry must not resurrect a selection, and must not decide the
+		# loop's exit status: as the tail, a bare `cond && action` returning 1
+		# kills the whole install under set -e with nothing printed.
+		if group_declared "$entry"; then
+			printf '%s\n' "$entry"
+		else
+			echo "[groups] Ignoring unknown group in $GROUPS_STATE_FILE: $entry" >&2
+		fi
 	done <"$GROUPS_STATE_FILE"
+	return 0
 }
 
 write_persisted_groups() {
@@ -152,6 +179,13 @@ write_persisted_groups() {
 	} >"$GROUPS_STATE_FILE"
 }
 
+group_dropped() {
+	case " $DROP_GROUPS " in
+	*" $1 "*) return 0 ;;
+	esac
+	return 1
+}
+
 select_groups() {
 	local candidates group
 	if [[ "$ALL_GROUPS" == true ]]; then
@@ -162,8 +196,10 @@ select_groups() {
 
 	SELECTED_GROUPS="core"
 	for group in $candidates; do
+		if group_dropped "$group"; then continue; fi
 		group_selected "$group" || SELECTED_GROUPS="$SELECTED_GROUPS $group"
 	done
+	return 0
 }
 
 select_groups

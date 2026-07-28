@@ -182,10 +182,12 @@ the plugin generator, and the tests all read it rather than hard-coding names.
 ```
 
 A global install records the chosen groups in `~/.agentkit/groups`, so a later bare
-`install.sh --global` upgrades the same set with no flags to remember — flags add to that set
-rather than replacing it. Delete a line from that file to stop selecting a group. Skills
-already installed from an unselected group are kept and refreshed, so an upgrade never removes
-a skill you are using. Project installs take groups per invocation and persist nothing.
+`install.sh --global` upgrades the same set with no flags to remember — `--with` adds to that
+set rather than replacing it, and `--without <group>` drops one (`core` cannot be dropped). An
+unknown group left in that file is reported and ignored rather than taken as a selection.
+Skills already installed from an unselected group are kept and refreshed: deselection changes
+what is chosen, never what is on disk, so an upgrade never removes a skill you are using.
+Project installs take groups per invocation and persist nothing.
 
 Each group also ships as its own Claude Code plugin, generated from the same manifest by
 `scripts/sync-cc-plugin.sh`: `agentkit` for core, `agentkit-<group>` for the rest (so

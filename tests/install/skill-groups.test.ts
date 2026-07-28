@@ -186,7 +186,9 @@ describe('skill group selection', () => {
         // do something other than what was asked for.
         expect(result.status, `${flag} must be rejected`).toBe(2);
         expect(result.stderr).toContain(`unknown option '${flag}'`);
-        expect(result.stdout).toContain('Usage: ./install.sh');
+        // The diagnostic and the usage it refers to belong on the same stream.
+        expect(result.stderr).toContain('Usage: ./install.sh');
+        expect(result.stdout).not.toContain('Usage: ./install.sh');
       }
       expect(existsSync(join(home, '.agentkit', 'skills'))).toBe(false);
     } finally {
@@ -203,6 +205,64 @@ describe('skill group selection', () => {
       expect(result.stdout).toContain('Skill groups:    core product\n');
       expect(readFileSync(join(home, '.agentkit', 'groups'), 'utf-8').match(/^product$/gm))
         .toHaveLength(1);
+    } finally {
+      rmSync(home, { force: true, recursive: true });
+    }
+  }, globalInstallTimeoutMs);
+
+  test('a stale group in the persisted file is skipped, not fatal', () => {
+    const home = mkdtempSync(join(tmpdir(), 'agentkit-groups-'));
+
+    try {
+      mkdirSync(join(home, '.agentkit'), { recursive: true });
+      // Last-line position matters: as the read loop's tail, an undeclared
+      // entry used to decide the loop's exit status and kill the install.
+      writeFileSync(join(home, '.agentkit', 'groups'), 'product\nlegacy-gone\n');
+
+      const result = install(home);
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.stdout.length).toBeGreaterThan(0);
+      expect(result.stderr).toContain('Ignoring unknown group');
+      expect(result.stderr).toContain('legacy-gone');
+      // The valid entry on the earlier line still selects its group.
+      expect(result.stdout).toContain('Skill groups:    core product');
+      expect(existsSync(join(canonSkill(home, 'product-review'), 'SKILL.md'))).toBe(true);
+    } finally {
+      rmSync(home, { force: true, recursive: true });
+    }
+  }, globalInstallTimeoutMs);
+
+  test('--without drops a group from the selection and the remembered set', () => {
+    const home = mkdtempSync(join(tmpdir(), 'agentkit-groups-'));
+
+    try {
+      expect(install(home, ['--with', 'product']).status).toBe(0);
+
+      const dropped = install(home, ['--without', 'product']);
+      expect(dropped.status, dropped.stderr).toBe(0);
+      expect(dropped.stdout).toContain('Skill groups:    core\n');
+      expect(readFileSync(join(home, '.agentkit', 'groups'), 'utf-8')).not.toContain('product');
+
+      // Deselection changes what is chosen, never what is on disk: the
+      // installer removes nothing it previously installed.
+      expect(dropped.stdout).toContain(
+        "[skills] Keeping installed (group 'product' not selected): product-review",
+      );
+      // It sticks: the next bare upgrade does not resurrect it.
+      const after = install(home);
+      expect(after.stdout).toContain('Skill groups:    core\n');
+    } finally {
+      rmSync(home, { force: true, recursive: true });
+    }
+  }, globalInstallTimeoutMs);
+
+  test('--without core is refused', () => {
+    const home = mkdtempSync(join(tmpdir(), 'agentkit-groups-'));
+
+    try {
+      const result = install(home, ['--without', 'core']);
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain('core group cannot be deselected');
     } finally {
       rmSync(home, { force: true, recursive: true });
     }
