@@ -28,6 +28,12 @@
       "source": "./plugins-cc/infra-tools",
       "description": "Read-only helm / tofu / git tools for infrastructure investigation, exposed as a typed MCP server. Renders charts, previews plans, and reads git history — never applies or mutates. Requires `bun` on PATH.",
       "version": "0.1.0"
+    },
+    {
+      "name": "agentkit-product",
+      "source": "./plugins-cc/agentkit-product",
+      "description": "Product-model skills: evidence-backed briefs and product review",
+      "version": "0.3.0"
     }
   ]
 }

@@ -164,7 +164,9 @@ tasks:
 
   test('runs slice coverage validation for every project change', () => {
     const moon = readFileSync(join(repoRoot, 'moon.yml'), 'utf-8');
-    const task = moonBlock(moon, '  check-test-slices:', '\n  test-hooks:');
+    // Ends at whichever task comes next: the invariant is that this one
+    // declares no inputs, not that a particular task follows it.
+    const task = moonBlock(moon, '  check-test-slices:', '\n\n  test-');
     expect(task).not.toContain('\n    inputs:');
   });
 

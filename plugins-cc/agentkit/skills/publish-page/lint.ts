@@ -8,7 +8,7 @@ export interface LintResult {
   warnings: string[];
 }
 
-const EXCALIDRAW_MARK = "svg-source:excalidraw";
+const SOURCE_MARK = /svg-source:(?:excalidraw|d2)/g;
 const CONTAINER_RE = /<(?:div|section|figure)\b[^>]*class\s*=\s*["']([^"']*)["'][^>]*>/gi;
 const TAG_RE = /<(\/?)(?:div|section|figure)\b/gi;
 const NEARBY = 900;
@@ -57,7 +57,7 @@ function isWrapped(before: string, css: string): boolean {
 
 export function lintFigures(html: string, allowBareSvg = false): LintResult {
   const result: LintResult = { errors: [], warnings: [] };
-  const marks = [...html.matchAll(new RegExp(EXCALIDRAW_MARK, "g"))].map((m) => m.index ?? 0);
+  const marks = [...html.matchAll(SOURCE_MARK)].map((m) => m.index ?? 0);
   if (marks.length === 0) return result;
 
   const css = styleBlocks(html);
@@ -72,7 +72,7 @@ export function lintFigures(html: string, allowBareSvg = false): LintResult {
   for (const at of marks) {
     if (!isWrapped(html.slice(Math.max(0, at - NEARBY * 8), at), css)) {
       result.errors.push(
-        "excalidraw SVG published outside a .figure island — wrap it in "
+        "baked SVG published outside a .figure island — wrap it in "
           + '<div class="figure">…<div class="figcaption">…</div></div>, or style its container '
           + "with background: var(--diagram-bg) so it stays legible in both themes "
           + "(--allow-bare-svg overrides)",
