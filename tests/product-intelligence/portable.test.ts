@@ -50,7 +50,13 @@ function skillTree(name: string, options: { deps: boolean; sentinel?: string }):
 
 function renderCli(root: string, args: string[], env: Record<string, string> = {}) {
   const script = join(root, 'skills', 'product-intelligence', 'scripts', 'render.ts');
-  return spawnSync('bun', [script, ...args], { encoding: 'utf-8', env: { ...process.env, ...env } });
+  // --no-install: bun's runtime auto-install can satisfy `marked` from the
+  // global cache when the scratch tree has no node_modules ancestry — which
+  // silently un-simulates the missing-dependencies case on a clean machine.
+  return spawnSync('bun', ['--no-install', script, ...args], {
+    encoding: 'utf-8',
+    env: { ...process.env, ...env },
+  });
 }
 
 // Attribute values only. A verbatim quote in the evidence may well contain a
