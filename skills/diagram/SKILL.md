@@ -56,6 +56,18 @@ unchanged — read the PNG, never the SVG. Vendor logos are never recoloured or
 theme-filtered; that is why D2 output is exempt from the page's light-mode
 inversion.
 
+Azure and GCP icons are vendor-licensed, so none are committed. Fetch a pack
+once, on the machine that needs it, then use `@azure:…` / `@gcp:…` like any
+other icon:
+
+```bash
+bun <skill-dir>/scripts/fetch-icons.ts azure --accept-terms
+```
+
+The fetch is opt-in — no install step runs it — and prints the vendor's terms
+unless `--accept-terms` is given. Referencing an unfetched pack fails the render
+naming this command. See `references/VENDOR-LICENSES.md`.
+
 Steps 2–6 below are the sketch register's. A technical figure leaves here and
 follows `references/technical-register.md` end to end — authoring rules,
 notation conventions, the icon manifest, the trademark rule and how the SVG is
