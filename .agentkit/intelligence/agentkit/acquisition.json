@@ -8,5 +8,10 @@
     "tool": "repomix --remote",
     "target": "developerinlondon/agentkit",
     "retrieved_at": "2026-07-28"
+  },
+  {
+    "tool": "repomix --remote",
+    "target": "https://gitlab.com/agentkit/agentkit-pages",
+    "retrieved_at": "2026-07-28"
   }
 ]

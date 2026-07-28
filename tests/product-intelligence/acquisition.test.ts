@@ -232,7 +232,7 @@ describe('acquire.ts CLI', () => {
     expect(result.code, result.err).toBe(0);
     expect(readFileSync(join(scratch, 'runner-argv'), 'utf-8').trim()).toBe(
       '--profile default -- repomix --remote owner/repo --style json --include '
-        + `README*,readme*,docs/**,doc/**,CHANGELOG*,CHANGES*,*.md -o ${join(outDir, 'repo.json')}`,
+        + `README*,readme*,docs/**,doc/**,CHANGELOG*,CHANGES*,*.md -o ${join(outDir, 'repo-owner_repo.json')}`,
     );
     const entries = JSON.parse(readFileSync(join(outDir, 'acquisition.json'), 'utf-8'));
     expect(entries).toHaveLength(1);
@@ -272,13 +272,13 @@ describe('acquire.ts CLI', () => {
     expect(() => readFileSync(join(scratch, 'runner-ran'))).toThrow();
   });
 
-  test('gh lane writes the three evidence files', () => {
+  test('gh lane writes per-target evidence files so two origins cannot clobber each other', () => {
     fakeExecutable('gh', `printf '{"lane":"%s"}' "$2"`);
     const outDir = join(scratch, 'out');
     const result = runCli('gh', 'owner/repo', '--out', outDir);
     expect(result.code, result.err).toBe(0);
-    expect(readFileSync(join(outDir, 'gh-meta.json'), 'utf-8')).toContain('repos/owner/repo');
-    expect(readFileSync(join(outDir, 'gh-releases.json'), 'utf-8')).toContain('releases');
+    expect(readFileSync(join(outDir, 'gh-owner_repo-meta.json'), 'utf-8')).toContain('repos/owner/repo');
+    expect(readFileSync(join(outDir, 'gh-owner_repo-releases.json'), 'utf-8')).toContain('releases');
     const entries = JSON.parse(readFileSync(join(outDir, 'acquisition.json'), 'utf-8'));
     expect(entries[0].tool).toBe('gh api');
   });

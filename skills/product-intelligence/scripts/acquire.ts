@@ -93,8 +93,14 @@ async function acquireSite(target: string, outDir: string): Promise<void> {
   stamp(outDir, 'advertools', target, argv);
 }
 
+// Multi-origin subjects acquire several repos into one directory; a fixed
+// filename would let the second pack silently clobber the first.
+function targetSlug(target: string): string {
+  return target.replace(/^https?:\/\//, '').replace(/\.git$/, '').replace(/[^\w.-]+/g, '_');
+}
+
 async function acquireRepo(target: string, outDir: string): Promise<void> {
-  const argv = [...runnerPrefix(), ...repomixArgs(target, join(outDir, 'repo.json'))];
+  const argv = [...runnerPrefix(), ...repomixArgs(target, join(outDir, `repo-${targetSlug(target)}.json`))];
   // owner/repo shorthand resolves to github.com; a full URL names its own
   // host and gets the same SSRF check as every other lane.
   if (target.startsWith('https://')) await assertHostAllowed(new URL(target).hostname);
@@ -105,9 +111,9 @@ async function acquireRepo(target: string, outDir: string): Promise<void> {
 function acquireGh(target: string, outDir: string): void {
   if (!OWNER_REPO.test(target)) throw new Error(`refusing gh target '${target}': expected owner/repo`);
   const lanes: [string, string[]][] = [
-    ['gh-meta.json', ['gh', 'api', `repos/${target}`]],
-    ['gh-releases.json', ['gh', 'api', `repos/${target}/releases?per_page=20`]],
-    ['gh-readme.md', ['gh', 'api', `repos/${target}/readme`, '-H', 'Accept: application/vnd.github.raw']],
+    [`gh-${targetSlug(target)}-meta.json`, ['gh', 'api', `repos/${target}`]],
+    [`gh-${targetSlug(target)}-releases.json`, ['gh', 'api', `repos/${target}/releases?per_page=20`]],
+    [`gh-${targetSlug(target)}-readme.md`, ['gh', 'api', `repos/${target}/readme`, '-H', 'Accept: application/vnd.github.raw']],
   ];
   for (const [file, argv] of lanes) {
     const result = Bun.spawnSync(argv, { stdout: 'pipe', stderr: 'inherit' });

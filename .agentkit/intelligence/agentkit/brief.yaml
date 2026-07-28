@@ -3,6 +3,13 @@ subject:
   name: agentkit
   repo: github.com/developerinlondon/agentkit
   one_liner: Reusable skills, rules and police hooks that make several AI coding agents behave like one disciplined team.
+  origins:
+    - id: kit
+      kind: repo
+      target: developerinlondon/agentkit
+    - id: pages
+      kind: repo
+      target: https://gitlab.com/agentkit/agentkit-pages
 evidence:
   ledger: ledger.yaml
   acquired_at: "2026-07-28"
@@ -12,6 +19,9 @@ evidence:
       retrieved_at: "2026-07-28"
     - tool: repomix --remote
       target: developerinlondon/agentkit
+      retrieved_at: "2026-07-28"
+    - tool: repomix --remote
+      target: https://gitlab.com/agentkit/agentkit-pages
       retrieved_at: "2026-07-28"
 positioning:
   target_customer: operators running multiple AI coding agents
@@ -30,6 +40,10 @@ value_map:
     value: agents cannot silently skip the discipline
     proof: attempt a forbidden action and watch the hook refuse it
     claims: [C-003]
+  - attribute: agent-published pages with git as the source of truth
+    value: agents can ship shareable reports whose history survives the serving layer
+    proof: delete the served copy and re-seed it from the pages repository
+    claims: [C-009, C-010]
 cannot_verify:
   - what: the website surface (agentkit.sbs)
     why: the site lane needs advertools/trafilatura, which are not installed on this host
