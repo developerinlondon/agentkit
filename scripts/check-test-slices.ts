@@ -33,6 +33,7 @@ export const TEST_SLICES = {
     'tests/install/manifest-readers.test.ts',
     'tests/install/plugin-scripts.test.ts',
     'tests/install/skill-groups.test.ts',
+    'tests/install/wizard.test.ts',
   ],
   integrations: ['tests/infra-tools-mcp.test.ts', 'tests/test-slices.test.ts'],
   product: [

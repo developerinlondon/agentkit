@@ -181,6 +181,11 @@ the plugin generator, and the tests all read it rather than hard-coding names.
 ./agentkit/install.sh --global --all            # every declared group
 ```
 
+Run bare on a terminal with nothing remembered yet, the installer asks about each optional
+group rather than quietly settling for `core`: answer `y` to add one, and anything else —
+including a bare enter — declines it. A pipe, a CI runner, any group flag, or a selection
+already remembered skips the question, so scripted installs stay unattended.
+
 A global install records the chosen groups in `~/.agentkit/groups`, so a later bare
 `install.sh --global` upgrades the same set with no flags to remember — `--with` adds to that
 set rather than replacing it, and `--without <group>` drops one (`core` cannot be dropped). An

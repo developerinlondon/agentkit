@@ -18,6 +18,9 @@ Options:
                        are declared in skills/GROUPS; every unlisted skill is
                        in the always-installed `core` group.
                          --with product   product-intelligence, product-review
+                       Run on a terminal with no group flags and nothing
+                       remembered yet, the installer asks about each optional
+                       group instead; every other run is unattended.
   --without <group>    Drop a group from the selection and from the remembered
                        set (repeatable). Skills already installed are left in
                        place; `core` cannot be dropped.
@@ -186,6 +189,46 @@ group_dropped() {
 	return 1
 }
 
+# The installer is unattended everywhere except a bare terminal run, so the
+# question is asked only where someone is there to answer it: a pipe, CI, any
+# group flag, or a remembered selection all leave the run exactly as scripted.
+should_prompt_for_groups() {
+	[[ -t 0 ]] || return 1
+	[[ "$ALL_GROUPS" == false ]] || return 1
+	[[ -z "$EXTRA_GROUPS" && -z "$DROP_GROUPS" ]] || return 1
+	# Only a global install has somewhere to remember an answer; where the file
+	# exists the question was already put, and an empty one means "core only".
+	if [[ "$GLOBAL" == true && -f "$GROUPS_STATE_FILE" ]]; then
+		return 1
+	fi
+	return 0
+}
+
+prompt_for_groups() {
+	local group description reply header=false
+	for group in $(declared_groups); do
+		if [[ "$group" == core ]]; then continue; fi
+		if [[ "$header" == false ]]; then
+			echo "[groups] Optional skill groups — core installs either way."
+			header=true
+		fi
+		description="$(group_description "$group")"
+		echo "[groups]   $group: $description"
+		printf '[groups]   Install %s? [y/N] ' "$group"
+		# A closed terminal answers nothing; taking the default beats looping on
+		# an empty read or aborting an install that is otherwise fine.
+		if ! read -r reply; then
+			reply=""
+			echo ""
+		fi
+		case "$reply" in
+		[yY] | [yY][eE][sS]) EXTRA_GROUPS="${EXTRA_GROUPS:+$EXTRA_GROUPS }$group" ;;
+		esac
+	done
+	if [[ "$header" == true ]]; then echo ""; fi
+	return 0
+}
+
 select_groups() {
 	local candidates group
 	if [[ "$ALL_GROUPS" == true ]]; then
@@ -201,6 +244,10 @@ select_groups() {
 	done
 	return 0
 }
+
+if should_prompt_for_groups; then
+	prompt_for_groups
+fi
 
 select_groups
 
