@@ -373,6 +373,22 @@ describe('renderBrief', () => {
     expect(out).not.toContain('href="#c-999"');
   });
 
+  // The pair used to round-trip through a '|'-joined dedupe key, so an id
+  // carrying one recovered no claim and the row rendered from undefined.
+  test('a claim id containing the old dedupe delimiter still renders its row', () => {
+    const out = withArtifacts(
+      journalBrief(),
+      ledgerWith(
+        [...claim('A|B', 'first side', 'observed', 'high'), '    contradicts: ["C|D"]'],
+        claim('C|D', 'second side', 'observed', 'high'),
+      ),
+    );
+    expect(out).toContain('## Unresolved contradictions');
+    expect(out).toContain('says **first side**');
+    expect(out).toContain('says **second side**');
+    expect(out).not.toContain('****');
+  });
+
   test('a pipe in free text cannot split a table row', () => {
     const out = withArtifacts(
       minimalBrief([

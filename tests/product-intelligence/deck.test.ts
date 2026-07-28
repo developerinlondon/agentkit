@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { renderDeck } from '../../skills/product-intelligence/scripts/render.ts';
+import { splitSlides } from '../../skills/publish-page/slides.ts';
 import {
   claim,
   FIELDS,
@@ -29,16 +30,11 @@ afterEach(() => {
   rmSync(scratch, { force: true, recursive: true });
 });
 
-// publish-page cuts slides on a line that is exactly `---`. Splitting the same
-// way here is the point: a deck that reads correctly under a different rule
-// than the publisher's would ship broken.
+// The publisher's own splitter, not a copy of it: a local one that agreed
+// today is how a deck ships reading correctly under a rule the publisher does
+// not apply.
 function slides(md: string): string[] {
-  const out: string[][] = [[]];
-  for (const line of md.split('\n')) {
-    if (line.trim() === '---') out.push([]);
-    else out[out.length - 1].push(line);
-  }
-  return out.map((s) => s.join('\n').trim());
+  return splitSlides(md).map((s) => s.trim());
 }
 
 function count(haystack: string, needle: RegExp): number {
@@ -56,6 +52,13 @@ describe('renderDeck', () => {
     );
     return renderDeck(scratch);
   }
+
+  function withFindings(...lines: string[]): string {
+    writeFileSync(join(scratch, 'findings.md'), lines.join('\n'));
+    return withArtifacts(journalBrief());
+  }
+
+  const section = (out: string, heading: string) => slides(out).find((s) => s.includes(heading))!;
 
   test('the title slide carries the full cover anatomy', () => {
     const [cover] = slides(deck());
@@ -116,6 +119,21 @@ describe('renderDeck', () => {
     expect(count(cover, /<div class="stat[ "]/g)).toBe(4);
   });
 
+  // Ids used to round-trip through a '|'-joined dedupe key, so an id carrying
+  // one came back as two ids matching no claim and the rail crashed on it.
+  test('a claim id containing the old dedupe delimiter still renders its pair', () => {
+    const out = withArtifacts(
+      minimalBrief(''),
+      ledgerWith(
+        [...claim('A|B', 'first side', 'observed', 'high'), '    contradicts: ["C|D"]'],
+        claim('C|D', 'second side', 'observed', 'high'),
+      ),
+    );
+    const rail = section(out, 'Unresolved contradictions');
+    expect(rail).toContain('<strong>first side</strong> — versus second side');
+    expect(rail).toContain('<span class="when">A&#124;B · C&#124;D</span>');
+  });
+
   test('one claim and no conflicts reads in the singular with no empty cells', () => {
     const [cover] = slides(withArtifacts(minimalBrief(''), ledgerWith(claim('C-001', 'S.', 'observed', 'high'))));
     expect(cover).toContain('<div class="lbl">claim</div>');
@@ -171,6 +189,9 @@ describe('renderDeck', () => {
     expect(counts(7)).toEqual([4, 3]);
     expect(counts(6)).toEqual([3, 3]);
     expect(counts(9)).toEqual([3, 3, 3]);
+    // Threes and fours both strand one here; a four up front absorbs it.
+    expect(counts(13)).toEqual([4, 3, 3, 3]);
+    expect(counts(25)).toEqual([4, 3, 3, 3, 3, 3, 3, 3]);
   });
 
   test('legend rails stay within the six-row cap', () => {
@@ -342,6 +363,21 @@ describe('renderDeck', () => {
     }
   });
 
+  // Per SITE, not per field: a field reaching several sites is covered by
+  // whichever one the sweep above happens to hit, so an escaper dropped at any
+  // single site left the whole suite green.
+  test.each([
+    ['claim id in the slide kicker', /<div class="kicker">&lt;script&gt;claimid&lt;\/script&gt;/],
+    ['contradiction rail statement', /<li class="rail red"><strong>&lt;script&gt;statement&lt;\/script&gt;/],
+    ['contradiction rail counter-statement', /versus &lt;script&gt;statementb&lt;\/script&gt;/],
+    ['contradiction rail ids', /<span class="when">&lt;script&gt;claimid&lt;\/script&gt;/],
+    ['origin rail id', /<li class="rail hot"><strong>&lt;script&gt;originid&lt;\/script&gt;/],
+    ['origin rail kind', /<\/strong> — &lt;script&gt;originkind&lt;\/script&gt;/],
+    ['origin rail target', /<code>&lt;script&gt;origintarget&lt;\/script&gt;/],
+  ] as Array<[string, RegExp]>)('%s escapes at the site, not merely somewhere', (_site, at) => {
+    expect(withArtifacts(hostileBrief(), hostileLedger())).toMatch(at);
+  });
+
   // The full-slot fixture never reaches the cover fallbacks, the claim chips or
   // the single-origin provenance rails.
   test('metadata, chips and fallback branches are escaped too', () => {
@@ -400,23 +436,49 @@ describe('renderDeck', () => {
   // The analyze pass owns its file's block structure, and a lone `---` there
   // would otherwise cut the author's prose into slides of its own.
   test('a rule in findings.md cannot mint a slide', () => {
-    writeFileSync(
-      join(scratch, 'findings.md'),
-      ['# Findings', '', '## Gaps', '', 'before', '', '---', '', 'after'].join('\n'),
-    );
-    const out = withArtifacts(journalBrief());
-    const gaps = slides(out).find((s) => s.includes('## Gaps'))!;
+    const gaps = section(withFindings('# Findings', '', '## Gaps', '', 'before', '', '---', '', 'after'), '## Gaps');
     expect(gaps).toContain('before');
     expect(gaps).toContain('after');
     expect(gaps).toContain('\\---');
   });
 
+  // trim() spans the whole Unicode whitespace set and the publisher cuts on
+  // trim(), so a guard with a narrower idea of whitespace let a crawled NBSP
+  // mint a slide carrying none of our own structure.
+  test.each([
+    ['NBSP', '\u00a0'],
+    ['vertical tab', '\u000b'],
+    ['form feed', '\u000c'],
+    ['thin space', '\u2009'],
+    ['BOM', '\ufeff'],
+  ])('a rule prefixed with a %s cannot mint a slide either', (_name, space) => {
+    const out = withFindings('# Findings', '', '## Gaps', '', 'before', '', `${space}---`, '', 'after');
+    const gaps = section(out, '## Gaps');
+    expect(gaps).toContain('before');
+    expect(gaps).toContain('after');
+    expect(gaps).toContain('\\---');
+  });
+
+  // The publisher never splits inside a fence, so escaping there buys nothing
+  // and the reader sees the backslash: a code block resolves no escape.
+  test('a rule inside a code fence reaches the reader as the author typed it', () => {
+    const out = withFindings('# Findings', '', '## Repro', '', '```sh', 'git log --oneline', '---', '```', '', 'tail');
+    const repro = section(out, '## Repro');
+    expect(repro).toContain('git log --oneline\n---\n```');
+    expect(repro).not.toContain('\\---');
+    expect(repro).toContain('tail');
+  });
+
+  // Only the file's first line is dropped as its title. A later one reached the
+  // slide as an h1, and publish-page adopts the first h1 as the page title.
+  test('a heading past the first line cannot stack an h1 on a slide', () => {
+    const out = withFindings('# Findings', '', '## Gaps', '', 'text', '', '# Hijacked Deck Title', '', 'more');
+    expect(out).not.toMatch(/^#\s+(.+)$/m);
+    expect(out).toContain('### Hijacked Deck Title');
+  });
+
   test('each findings section becomes its own slide', () => {
-    writeFileSync(
-      join(scratch, 'findings.md'),
-      ['# Findings', '', 'intro line', '', '## Gaps', '', 'g', '', '## Risks', '', 'r'].join('\n'),
-    );
-    const out = withArtifacts(journalBrief());
+    const out = withFindings('# Findings', '', 'intro line', '', '## Gaps', '', 'g', '', '## Risks', '', 'r');
     expect(out).toContain('## What the analyze pass flagged');
     expect(out).toContain('## Gaps');
     expect(out).toContain('## Risks');
@@ -426,9 +488,8 @@ describe('renderDeck', () => {
   });
 
   test('raw HTML and link syntax in findings.md stay inert on a slide', () => {
-    writeFileSync(
-      join(scratch, 'findings.md'),
-      [
+    const slide = section(
+      withFindings(
         '# Findings',
         '',
         '## Risks',
@@ -437,9 +498,9 @@ describe('renderDeck', () => {
         'Plain [click](javascript:alert(1)).',
         'Pre-escaped \\[c5\\](javascript:alert(1)).',
         'Bare https://evil.example and www.evil.example and a@evil.example.',
-      ].join('\n'),
+      ),
+      '## Risks',
     );
-    const slide = slides(withArtifacts(journalBrief())).find((s) => s.includes('## Risks'))!;
     // Only what the analyze pass wrote is untrusted; the kicker and the h2
     // above it are ours, and their markup is not the author's to escape.
     const risks = slide.slice(slide.indexOf('## Risks') + '## Risks'.length);

@@ -19,7 +19,7 @@ export const claim = (
   confidence: string,
   sources: string[][] = [],
 ) => [
-  `  - id: ${id}`,
+  `  - id: ${JSON.stringify(id)}`,
   `    statement: ${JSON.stringify(statement)}`,
   `    class: ${cls}`,
   `    confidence: ${confidence}`,
@@ -42,7 +42,8 @@ export const FIELDS = [
   'js_situation', 'js_motivation', 'js_outcome', 'wf_name', 'wf_step',
   'wf_description', 'si_locator', 'si_title', 'si_page_type', 'si_disposition',
   'si_rationale', 'cv_what', 'cv_why', 'statement', 'quote', 'locator',
-  'acq_tool', 'acq_target', 'origin_kind', 'generated_at', 'generated_by',
+  'acq_tool', 'acq_target', 'origin_id', 'origin_kind', 'origin_target',
+  'claim_id', 'claim_id_b', 'statement_b', 'generated_at', 'generated_by',
 ] as const;
 
 // The marker itself must survive escaping unchanged, so it carries no markdown
@@ -61,7 +62,9 @@ export function hostileBrief(): string {
     `  name: ${y('name')}`,
     `  one_liner: ${y('one_liner')}`,
     '  origins:',
-    `    - { id: og, kind: ${y('origin_kind')}, target: t }`,
+    `    - id: ${y('origin_id')}`,
+    `      kind: ${y('origin_kind')}`,
+    `      target: ${y('origin_target')}`,
     'evidence:',
     '  ledger: ledger.yaml',
     '  acquisition:',
@@ -102,8 +105,12 @@ export function hostileLedger(): string {
     `generated_by: ${y('generated_by')}`,
     `generated_at: ${y('generated_at')}`,
     'claims:',
-    ...claim('C-001', payload('statement'), 'observed', 'high', [
+    // Two claims in conflict: with one, the contradiction renderers never see
+    // hostile input at all and their escaping is asserted by nothing.
+    ...claim(payload('claim_id'), payload('statement'), 'observed', 'high', [
       src(payload('locator'), payload('quote'), 'supports'),
     ]),
+    `    contradicts: [${y('claim_id_b')}]`,
+    ...claim(payload('claim_id_b'), payload('statement_b'), 'observed', 'high'),
   ].join('\n');
 }

@@ -7,6 +7,9 @@
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+// The deck lands in publish-page's slide grammar, so the rule for what cuts a
+// slide is read from the publisher rather than restated here.
+import { outsideFences, slideBreaks } from '../../publish-page/slides.ts';
 
 type Dict = Record<string, any>;
 
@@ -209,23 +212,30 @@ function siteInventory(brief: Dict): string {
   return `## Public surface, page by page\n\n| page | type | verdict | why |\n| --- | --- | --- | --- |\n${body}\n`;
 }
 
-// A dangling or self-referential target would render an empty bold span and
-// a dead anchor. renderBrief validates nothing, so unvalidated input reaches
-// here; drop the pair rather than print a broken row.
+// A dangling or self-referential target would render an empty bold span and a
+// dead anchor. renderBrief validates nothing, so unvalidated input reaches
+// here; drop the pair rather than print a broken row. Dedupe runs on positions,
+// never on ids joined by a delimiter: an id carrying that delimiter split back
+// into two ids matching no claim, and the consumers dereferenced undefined.
 function contradictionPairs(ledger: Dict): Array<[Dict, Dict]> {
   const claims = (ledger.claims ?? []) as Dict[];
-  const byId = new Map(claims.map((c) => [c.id, c]));
-  const pairs = new Set<string>();
-  for (const c of claims) {
+  const indexById = new Map<string, number>();
+  claims.forEach((c, i) => indexById.set(c.id, i));
+  const seen = new Set<string>();
+  const pairs: Array<[Dict, Dict]> = [];
+  for (const [self, c] of claims.entries()) {
     for (const other of (c.contradicts ?? []) as string[]) {
-      if (other === c.id || !byId.has(other)) continue;
-      pairs.add([c.id, other].sort().join('|'));
+      const target = indexById.get(other);
+      if (other === c.id || target === undefined || target === self) continue;
+      const key = self < target ? `${self}:${target}` : `${target}:${self}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      // Ordered by id so a pair reads the same whichever side declared it.
+      const [one, two] = [c, claims[target]];
+      pairs.push(String(one.id) <= String(two.id) ? [one, two] : [two, one]);
     }
   }
-  return [...pairs].map((pair) => {
-    const [a, b] = pair.split('|');
-    return [byId.get(a) as Dict, byId.get(b) as Dict];
-  });
+  return pairs;
 }
 
 function contradictions(ledger: Dict): string {
@@ -452,10 +462,14 @@ function positioningSlide(brief: Dict): string {
 }
 
 // Groups of three, widened to four when three would strand a single card. Four
-// is the theme's column cap, so nothing here may widen past it.
+// is the theme's column cap. When both sizes strand one (13, 25, …) a single
+// four up front leaves a multiple of three behind it.
 function cardGroups(rows: Dict[]): Dict[][] {
   if (rows.length === 0) return [];
-  return chunk(rows, rows.length <= 4 ? rows.length : rows.length % 3 === 1 ? 4 : 3);
+  if (rows.length <= 4) return [rows];
+  if (rows.length % 3 !== 1) return chunk(rows, 3);
+  if (rows.length % 4 !== 1) return chunk(rows, 4);
+  return [rows.slice(0, 4), ...chunk(rows.slice(4), 3)];
 }
 
 // An uncited card says so: a blank eyebrow reads as a styling slip rather than
@@ -636,13 +650,23 @@ function provenanceSlides(brief: Dict, ledger: Dict): string[] {
   });
 }
 
-// publish-page splits slides on a lone `---`, so an analyze-pass file could
-// otherwise mint slides of its own. The backslash resolves away, leaving the
-// hyphens the author typed. It lands inside fences too — the same trade the
-// doc pipeline already takes rather than run a second fence scanner that
-// disagrees with the one splitting the page.
+// Only the file's own first line is dropped as its title; a later `# ` would
+// reach a slide as an h1 above the slide's own h2, and publish-page adopts the
+// first h1 it finds as the page title whenever --title is omitted.
+function demoteHeadings(body: string): string {
+  const lines = body.split('\n');
+  const open = outsideFences(lines);
+  return lines.map((line, i) => (open[i] ? line.replace(/^# /, '### ') : line)).join('\n');
+}
+
+// An analyze-pass file could otherwise mint slides of its own. The backslash
+// resolves away, leaving the hyphens the author typed. Which lines cut a slide
+// is the publisher's call, asked of the publisher: fence interiors are already
+// safe there, so escaping them would be visible damage for nothing.
 function neutralizeSlideBreaks(body: string): string {
-  return body.replace(/^[ \t]*---[ \t]*$/gm, '\\---');
+  const lines = body.split('\n');
+  const breaks = slideBreaks(lines);
+  return lines.map((line, i) => (breaks[i] ? '\\---' : line)).join('\n');
 }
 
 // Last, as in the doc: the analyze pass owns this file's block structure, so an
@@ -651,10 +675,11 @@ function neutralizeSlideBreaks(body: string): string {
 function findingsSlides(dir: string): string[] {
   const path = join(dir, 'findings.md');
   if (!existsSync(path)) return [];
-  const body = readFileSync(path, 'utf-8')
-    .replace(/\r\n?/g, '\n')
-    .replace(/^# .*\n/, '')
-    .trim();
+  const body = demoteHeadings(
+    readFileSync(path, 'utf-8')
+      .replace(/\r\n?/g, '\n')
+      .replace(/^# .*\n/, ''),
+  ).trim();
   return body.split(/^## /m).flatMap((section, i) => {
     const [head, ...rest] = section.split('\n');
     const heading = i === 0 ? 'What the analyze pass flagged' : head;
