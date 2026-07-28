@@ -40,6 +40,13 @@ describe('standalone tool installation', () => {
       expect(readFileSync(pathReviewGate, 'utf-8')).toBe(readFileSync(claudeReviewGate, 'utf-8'));
       expect(statSync(pathReviewGate).mode & 0o111).not.toBe(0);
       expect(statSync(claudeReviewGate).mode & 0o111).not.toBe(0);
+      const pathReviewProfile = join(home, '.local', 'bin', 'review-profile');
+      const claudeReviewProfile = join(home, '.claude', 'tools', 'review-profile');
+      expect(readFileSync(pathReviewProfile, 'utf-8')).toBe(
+        readFileSync(claudeReviewProfile, 'utf-8'),
+      );
+      expect(statSync(pathReviewProfile).mode & 0o111).not.toBe(0);
+      expect(statSync(claudeReviewProfile).mode & 0o111).not.toBe(0);
       expect(result.stdout).toContain(`PATH tools:      ${join(home, '.local', 'bin')}/`);
       expect(existsSync(join(home, '.config', 'opencode', 'plugins', 'resource-police.ts'))).toBe(
         true,
@@ -59,6 +66,13 @@ describe('standalone tool installation', () => {
   test('ships the evidence validator inside the one-shot Claude plugin', () => {
     const source = readFileSync(join(repoRoot, 'tools', 'review-gate'), 'utf-8');
     const bundled = join(repoRoot, 'plugins-cc', 'agentkit', 'tools', 'review-gate');
+    expect(readFileSync(bundled, 'utf-8')).toBe(source);
+    expect(statSync(bundled).mode & 0o111).not.toBe(0);
+  });
+
+  test('ships the review profile resolver inside the one-shot Claude plugin', () => {
+    const source = readFileSync(join(repoRoot, 'tools', 'review-profile'), 'utf-8');
+    const bundled = join(repoRoot, 'plugins-cc', 'agentkit', 'tools', 'review-profile');
     expect(readFileSync(bundled, 'utf-8')).toBe(source);
     expect(statSync(bundled).mode & 0o111).not.toBe(0);
   });

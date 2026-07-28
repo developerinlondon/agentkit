@@ -1,0 +1,302 @@
+#!/usr/bin/env bash
+# Resolve AgentKit's review workflow for one task. This selects orchestration
+# effort; target-owned .agentkit/review-policy.json remains the merge authority.
+set -euo pipefail
+
+PROFILE_ARG=""
+RISK="standard"
+REPO="."
+RELEASE=false
+USER_FACING=false
+
+fail() {
+	printf 'review-profile: %s\n' "$1" >&2
+	exit 2
+}
+
+usage() {
+	local status="${1:-2}"
+	printf '%s\n' \
+		'usage: review-profile [--profile fast|balanced|strict]' \
+		'  [--risk trivial|standard|critical] [--release] [--user-facing]' \
+		'  [--repo PATH]' >&2
+	exit "$status"
+}
+
+while [[ $# -gt 0 ]]; do
+	case "$1" in
+	--profile)
+		[[ $# -ge 2 ]] || usage
+		PROFILE_ARG="$2"
+		shift 2
+		;;
+	--risk)
+		[[ $# -ge 2 ]] || usage
+		RISK="$2"
+		shift 2
+		;;
+	--repo)
+		[[ $# -ge 2 ]] || usage
+		REPO="$2"
+		shift 2
+		;;
+	--release)
+		RELEASE=true
+		shift
+		;;
+	--user-facing)
+		USER_FACING=true
+		shift
+		;;
+	--help)
+		usage 0
+		;;
+	*) usage ;;
+	esac
+done
+
+case "$RISK" in
+trivial | standard | critical) ;;
+*) fail "invalid risk '$RISK' (expected trivial, standard, or critical)" ;;
+esac
+
+command -v jq >/dev/null 2>&1 || fail 'jq is required'
+REPO_ROOT=$(git -C "$REPO" rev-parse --show-toplevel 2>/dev/null || true)
+if [[ -z "$REPO_ROOT" ]]; then
+	REPO_ROOT=$(cd "$REPO" 2>/dev/null && pwd -P) || fail "repository path is unreadable: $REPO"
+fi
+
+GLOBAL_CONFIG=""
+if [[ -n "${XDG_CONFIG_HOME:-}" ]]; then
+	GLOBAL_CONFIG="$XDG_CONFIG_HOME/agentkit/config.yaml"
+elif [[ -n "${HOME:-}" ]]; then
+	GLOBAL_CONFIG="$HOME/.config/agentkit/config.yaml"
+fi
+REPO_CONFIG="$REPO_ROOT/.agentkit/config.yaml"
+
+parse_config() {
+	local file="$1"
+	[[ -f "$file" ]] || return 0
+	awk '
+    function trim(value) {
+      sub(/^[[:space:]]+/, "", value)
+      sub(/[[:space:]]+$/, "", value)
+      return value
+    }
+    /^[[:space:]]*(#.*)?$/ { next }
+    /^[^[:space:]]/ {
+      if ($0 ~ /^review:/ && $0 !~ /^review:[[:space:]]*(#.*)?$/) {
+        print "__ERROR__\tunsupported review section syntax on line " NR
+        in_review = 0
+        next
+      }
+      in_review = ($0 ~ /^review:[[:space:]]*(#.*)?$/)
+      next
+    }
+    in_review {
+      line = $0
+      sub(/^[[:space:]]+/, "", line)
+      if (line !~ /^[a-z][a-z-]*:[[:space:]]*/) {
+        print "__ERROR__\tunsupported syntax on line " NR
+        next
+      }
+      key = line
+      sub(/:.*/, "", key)
+      value = line
+      sub(/^[^:]*:[[:space:]]*/, "", value)
+      sub(/[[:space:]]+#.*$/, "", value)
+      value = trim(value)
+      if ((substr(value, 1, 1) == "\"" && substr(value, length(value), 1) == "\"") ||
+          (substr(value, 1, 1) == "\047" && substr(value, length(value), 1) == "\047")) {
+        value = substr(value, 2, length(value) - 2)
+      }
+      if (value == "") {
+        print "__ERROR__\tempty value for " key " on line " NR
+      } else if (seen[key]++) {
+        print "__ERROR__\tduplicate key " key " on line " NR
+      } else {
+        print key "\t" value
+      }
+    }
+  ' "$file"
+}
+
+GLOBAL_PARSED=""
+REPO_PARSED=""
+if [[ -n "$GLOBAL_CONFIG" ]]; then
+	GLOBAL_PARSED=$(parse_config "$GLOBAL_CONFIG")
+fi
+REPO_PARSED=$(parse_config "$REPO_CONFIG")
+
+check_parse_errors() {
+	local parsed="$1"
+	local label="$2"
+	local message
+	message=$(printf '%s\n' "$parsed" | awk -F '\t' '$1 == "__ERROR__" { print $2; exit }')
+	[[ -z "$message" ]] || fail "$label: $message"
+}
+check_parse_errors "$GLOBAL_PARSED" 'global review config'
+check_parse_errors "$REPO_PARSED" 'repository review config'
+
+profile_from() {
+	printf '%s\n' "$1" | awk -F '\t' '$1 == "profile" { print $2 }'
+}
+
+PROFILE="balanced"
+GLOBAL_PROFILE=$(profile_from "$GLOBAL_PARSED")
+REPO_PROFILE=$(profile_from "$REPO_PARSED")
+[[ -z "$GLOBAL_PROFILE" ]] || PROFILE="$GLOBAL_PROFILE"
+[[ -z "$REPO_PROFILE" ]] || PROFILE="$REPO_PROFILE"
+[[ -z "${AGENTKIT_REVIEW_PROFILE:-}" ]] || PROFILE="$AGENTKIT_REVIEW_PROFILE"
+[[ -z "$PROFILE_ARG" ]] || PROFILE="$PROFILE_ARG"
+
+preset() {
+	case "$PROFILE" in
+	fast)
+		PRIMARY_REVIEW=nontrivial
+		SPECIALIST_REVIEW=never
+		PRODUCT_REVIEW=release
+		CI_EVIDENCE=reuse
+		LOCAL_CHECKS=affected
+		EVIDENCE_NOTE=critical
+		;;
+	balanced)
+		PRIMARY_REVIEW=nontrivial
+		SPECIALIST_REVIEW=critical
+		PRODUCT_REVIEW=triggered
+		CI_EVIDENCE=reuse
+		LOCAL_CHECKS=affected
+		EVIDENCE_NOTE=always
+		;;
+	strict)
+		PRIMARY_REVIEW=always
+		SPECIALIST_REVIEW=always
+		PRODUCT_REVIEW=always
+		CI_EVIDENCE=rerun
+		LOCAL_CHECKS=full
+		EVIDENCE_NOTE=always
+		;;
+	*) fail "invalid profile '$PROFILE' (expected fast, balanced, or strict)" ;;
+	esac
+}
+preset
+
+set_value() {
+	local key="$1"
+	local value="$2"
+	local label="$3"
+	case "$key" in
+	profile)
+		case "$value" in fast | balanced | strict) ;; *) fail "$label profile: invalid value '$value'" ;; esac
+		;;
+	primary-review)
+		case "$value" in nontrivial | always) PRIMARY_REVIEW="$value" ;; *) fail "$label primary-review: invalid value '$value'" ;; esac
+		;;
+	specialist-review)
+		case "$value" in never | critical | always) SPECIALIST_REVIEW="$value" ;; *) fail "$label specialist-review: invalid value '$value'" ;; esac
+		;;
+	product-review)
+		case "$value" in never | release | triggered | always) PRODUCT_REVIEW="$value" ;; *) fail "$label product-review: invalid value '$value'" ;; esac
+		;;
+	ci-evidence)
+		case "$value" in reuse | rerun) CI_EVIDENCE="$value" ;; *) fail "$label ci-evidence: invalid value '$value'" ;; esac
+		;;
+	local-checks)
+		case "$value" in affected | full) LOCAL_CHECKS="$value" ;; *) fail "$label local-checks: invalid value '$value'" ;; esac
+		;;
+	evidence-note)
+		case "$value" in critical | always) EVIDENCE_NOTE="$value" ;; *) fail "$label evidence-note: invalid value '$value'" ;; esac
+		;;
+	__ERROR__ | '') ;;
+	*) fail "$label: unknown review key '$key'" ;;
+	esac
+}
+
+apply_config() {
+	local parsed="$1"
+	local label="$2"
+	local key value
+	while IFS=$'\t' read -r key value; do
+		[[ -z "$key" ]] || set_value "$key" "$value" "$label"
+	done <<<"$parsed"
+}
+apply_config "$GLOBAL_PARSED" 'global review config'
+apply_config "$REPO_PARSED" 'repository review config'
+
+PRIMARY_REQUIRED=false
+SPECIALIST_REQUIRED=false
+PRODUCT_REQUIRED=false
+EVIDENCE_REQUIRED=false
+[[ "$PRIMARY_REVIEW" == "always" || "$RISK" != "trivial" ]] && PRIMARY_REQUIRED=true
+[[ "$SPECIALIST_REVIEW" == "always" || ( "$SPECIALIST_REVIEW" == "critical" && "$RISK" == "critical" ) ]] && SPECIALIST_REQUIRED=true
+if [[ "$PRODUCT_REVIEW" == "always" ||
+	( "$PRODUCT_REVIEW" == "release" && "$RELEASE" == true ) ||
+	( "$PRODUCT_REVIEW" == "triggered" &&
+		( "$RISK" == "critical" || "$RELEASE" == true || "$USER_FACING" == true ) ) ]]; then
+	PRODUCT_REQUIRED=true
+fi
+[[ "$EVIDENCE_NOTE" == "always" || "$RISK" == "critical" ]] && EVIDENCE_REQUIRED=true
+
+RERUN_CI=false
+FULL_LOCAL_CHECKS=false
+[[ "$CI_EVIDENCE" == "rerun" ]] && RERUN_CI=true
+[[ "$LOCAL_CHECKS" == "full" ]] && FULL_LOCAL_CHECKS=true
+WORKTREE_POLICY_PRESENT=false
+[[ -f "$REPO_ROOT/.agentkit/review-policy.json" ]] && WORKTREE_POLICY_PRESENT=true
+
+RESULT=$(jq -cn \
+	--arg profile "$PROFILE" \
+	--arg risk "$RISK" \
+	--argjson release "$RELEASE" \
+	--argjson user_facing "$USER_FACING" \
+	--argjson worktree_policy_present "$WORKTREE_POLICY_PRESENT" \
+	--arg primary "$PRIMARY_REVIEW" \
+	--arg specialist "$SPECIALIST_REVIEW" \
+	--arg product "$PRODUCT_REVIEW" \
+	--arg ci "$CI_EVIDENCE" \
+	--arg local_checks "$LOCAL_CHECKS" \
+	--arg evidence "$EVIDENCE_NOTE" \
+	--argjson primary_required "$PRIMARY_REQUIRED" \
+	--argjson specialist_required "$SPECIALIST_REQUIRED" \
+	--argjson product_required "$PRODUCT_REQUIRED" \
+	--argjson rerun_ci "$RERUN_CI" \
+	--argjson full_local_checks "$FULL_LOCAL_CHECKS" \
+	--argjson evidence_required "$EVIDENCE_REQUIRED" '
+  {
+    schema_version: 1,
+    profile: $profile,
+    context: {
+      risk: $risk,
+      release: $release,
+      user_facing: $user_facing,
+      target_policy_authoritative: true,
+      worktree_policy_present: $worktree_policy_present
+    },
+    settings: {
+      primary_review: $primary,
+      specialist_review: $specialist,
+      product_review: $product,
+      ci_evidence: $ci,
+      local_checks: $local_checks,
+      evidence_note: $evidence
+    },
+    required: {
+      primary_review: $primary_required,
+      specialist_review: $specialist_required,
+      product_review: $product_required,
+      rerun_ci: $rerun_ci,
+      full_local_checks: $full_local_checks,
+      evidence_note: $evidence_required
+    }
+  }
+')
+
+AUDIT="${HOME:-/tmp}/.agentkit/review-audit.log"
+mkdir -p "${AUDIT%/*}" 2>/dev/null || true
+printf '%s\tPROFILE\tprofile=%s\trisk=%s\trelease=%s\tuser_facing=%s\tprimary=%s\tspecialist=%s\tproduct=%s\tci=%s\tlocal=%s\tevidence=%s\tworktree_policy=%s\n' \
+	"$(date -u '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || printf 'timestamp-unavailable')" \
+	"$PROFILE" "$RISK" "$RELEASE" "$USER_FACING" "$PRIMARY_REQUIRED" "$SPECIALIST_REQUIRED" \
+	"$PRODUCT_REQUIRED" "$CI_EVIDENCE" "$LOCAL_CHECKS" "$EVIDENCE_REQUIRED" "$WORKTREE_POLICY_PRESENT" \
+	>>"$AUDIT" 2>/dev/null || true
+
+printf '%s\n' "$RESULT"

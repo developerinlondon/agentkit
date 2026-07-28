@@ -76,6 +76,7 @@ describe('test slice routing', () => {
   test('discovers installed runtime roots and executable entrypoints', () => {
     const root = mkdtempSync(join(tmpdir(), 'agentkit-production-discovery-'));
     const runtimeFiles = [
+      '.agentkit/config.yaml',
       '.agentkit/review-policy.json',
       '.claude-plugin/marketplace.json',
       'config.example.yaml',

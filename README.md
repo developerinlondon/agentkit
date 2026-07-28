@@ -97,7 +97,8 @@ Hooks, skills, and tools ship as Claude Code plugins (ADR #45 — the generic un
 skills, hook scripts — are the source of truth; plugins are convenience wrappers). Add the
 marketplace once, then install. The **agentkit** plugin is the recommended Claude bundle: a single
 `claude plugin install agentkit` gives you the enforcement hooks, the skills, the portable
-`review-gate`, the Linux-only bounded runner, and **both** MCP toolchains (assay + infra-tools).
+`review-gate`, `review-profile`, the Linux-only bounded runner, and **both** MCP toolchains
+(assay + infra-tools).
 Resource execution additionally requires a
 configured systemd user manager and the host-provisioned `agent-work.slice`. The
 granular **assay** and **infra-tools** plugins remain for à-la-carte installs.
@@ -113,11 +114,11 @@ claude plugin install assay
 claude plugin install infra-tools
 ```
 
-| Plugin          | Provides                                                                                                                                                                                                                                                                                                                           | Source                                                                                        |
-| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| **agentkit**    | Claude bundle: enforcement police hooks, skills, portable `tools/review-gate`, Linux-only `tools/bounded-run`, and both MCP toolchains. Hooks need `jq`, `git`, `awk`, and `cat`; MCPs need `bun` and `assay`. Linux bounded execution additionally needs cgroup v2, a systemd user manager, and a provisioned `agent-work.slice`. | local `plugins-cc/agentkit/`                                                                  |
-| **assay**       | Gated Lua infra toolkit (`assay_run` + `assay_context`) — Kubernetes, ArgoCD, Vault, Prometheus, GitLab, AWS, … through one read-only/approval-gated tool. Requires the `assay` binary on PATH.                                                                                                                                    | vendored from [developerinlondon/assay](https://github.com/developerinlondon/assay) `plugin/` |
-| **infra-tools** | Read-only helm / tofu / git tools (`helm_template`/`helm_list`/`helm_get_values`, `tofu_plan`/`tofu_show`/`tofu_state_list`, `git_log`/`git_diff`/`git_status`/`git_clone_ro`) as a typed MCP server — render charts, preview plans, read git history. Never applies or mutates. Requires `bun` on PATH.                           | local `plugins-cc/infra-tools/`                                                               |
+| Plugin          | Provides                                                                                                                                                                                                                                                                                                                                     | Source                                                                                        |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| **agentkit**    | Claude bundle: enforcement police hooks, skills, portable review tools, Linux-only `tools/bounded-run`, and both MCP toolchains. Hooks and review tools need `jq`, `git`, `awk`, and `cat`; MCPs need `bun` and `assay`. Linux bounded execution additionally needs cgroup v2, a systemd user manager, and a provisioned `agent-work.slice`. | local `plugins-cc/agentkit/`                                                                  |
+| **assay**       | Gated Lua infra toolkit (`assay_run` + `assay_context`) — Kubernetes, ArgoCD, Vault, Prometheus, GitLab, AWS, … through one read-only/approval-gated tool. Requires the `assay` binary on PATH.                                                                                                                                              | vendored from [developerinlondon/assay](https://github.com/developerinlondon/assay) `plugin/` |
+| **infra-tools** | Read-only helm / tofu / git tools (`helm_template`/`helm_list`/`helm_get_values`, `tofu_plan`/`tofu_show`/`tofu_state_list`, `git_log`/`git_diff`/`git_status`/`git_clone_ro`) as a typed MCP server — render charts, preview plans, read git history. Never applies or mutates. Requires `bun` on PATH.                                     | local `plugins-cc/infra-tools/`                                                               |
 
 **Not in the plugin: the always-on rules and instructions.** Claude Code plugins cannot inject
 always-on global context, so the glob-loaded `rules/` and the `instructions/*.md` global prompts
@@ -150,12 +151,12 @@ git clone git@github.com:developerinlondon/agentkit.git
 `~/.agentkit/{skills,rules,instructions,hooks,tools}`. Each client then gets **per-name**
 symlinks into that root (never a second full copy):
 
-| Client      | Adapter                                                                                          |
-| ----------- | ------------------------------------------------------------------------------------------------ |
-| OpenCode    | `~/.agents/skills\|rules\|instructions` → `~/.agentkit/…`                                        |
-| Claude Code | `~/.claude/skills\|hooks\|tools` → `~/.agentkit/…` (settings still point at `~/.claude/hooks`)   |
-| Grok CLI    | `~/.grok/skills\|rules` → `~/.agentkit/…`; instructions also as `~/.grok/rules/*.md` (always-on) |
-| Codex CLI   | policies, prompts, review hooks, and validator under `$CODEX_HOME` or `~/.codex/`               |
+| Client      | Adapter                                                                                             |
+| ----------- | --------------------------------------------------------------------------------------------------- |
+| OpenCode    | `~/.agents/skills\|rules\|instructions` → `~/.agentkit/…`                                           |
+| Claude Code | `~/.claude/skills\|hooks\|tools` → `~/.agentkit/…` (settings still point at `~/.claude/hooks`)      |
+| Grok CLI    | `~/.grok/skills\|rules` → `~/.agentkit/…`; instructions also as `~/.grok/rules/*.md` (always-on)    |
+| Codex CLI   | policies, prompts, review hooks, validator, and profile resolver under `$CODEX_HOME` or `~/.codex/` |
 
 Per-name links mean non-agentkit siblings stay put — OMC skills under `~/.claude/skills/`,
 Grok builtins under `~/.grok/skills/`, etc. OpenCode plugins still install as real files under
@@ -230,6 +231,7 @@ On Linux, global installs place the bounded runner on `~/.local/bin/` and preser
 | ---------------------- | ------------------------------------------------------------------------------------ |
 | **bounded-run**        | Linux-only direct-argv workload runner for the bounded `agent-work.slice` service    |
 | **review-gate**        | Portable strict review-policy and evidence-record validator used by `review-police`  |
+| **review-profile**     | Resolves configurable review lanes and verification effort for the current task      |
 | **fix-ascii-boxes.py** | Fixes ASCII box-drawing alignment in markdown files, handles nested boxes inside-out |
 
 `bounded-run` fails closed unless the aggregate slice matches its expected limits (default
@@ -261,12 +263,54 @@ Agentkit uses a YAML config file at `~/.config/agentkit/config.yaml` (respects `
 The installer creates a default config from `config.example.yaml` on first run.
 
 ```yaml
+review:
+  profile: balanced
+
 git-police:
   branch-protection:
     allowed-repos:
       - brain
       - my-notes
 ```
+
+### review
+
+Run `review-profile --repo . --risk trivial|standard|critical` before final verification and add
+`--release` or `--user-facing` when applicable. It emits the resolved settings and Boolean lane
+decisions as JSON. `AGENTKIT_REVIEW_PROFILE` or `--profile` provides a session/task override.
+
+| Profile    | Primary review      | Specialist review | Product review                    | CI evidence | Local checks |
+| ---------- | ------------------- | ----------------- | --------------------------------- | ----------- | ------------ |
+| `fast`     | non-trivial changes | never             | releases                          | reuse       | affected     |
+| `balanced` | non-trivial changes | critical changes  | critical, release, or user-facing | reuse       | affected     |
+| `strict`   | every change        | every change      | every change                      | rerun       | full         |
+
+The default is `balanced`: one exact-head adversarial review for ordinary code work, with extra
+lanes only when risk or product exposure justifies them. `fast` does not mean unreviewed ordinary
+code; it removes the second specialist lane and narrows product review. `strict` preserves the
+maximal workflow.
+
+Tune any preset with these keys under `review:`:
+
+| Setting             | Values                                    | Meaning                                                            |
+| ------------------- | ----------------------------------------- | ------------------------------------------------------------------ |
+| `primary-review`    | `nontrivial`, `always`                    | When the exact-head diff review runs                               |
+| `specialist-review` | `never`, `critical`, `always`             | When a second independent specialist runs                          |
+| `product-review`    | `never`, `release`, `triggered`, `always` | `triggered` means critical, release, or user-facing                |
+| `ci-evidence`       | `reuse`, `rerun`                          | Reuse passed CI bound to the exact source SHA or repeat it locally |
+| `local-checks`      | `affected`, `full`                        | Final local verification scope                                     |
+| `evidence-note`     | `critical`, `always`                      | When to post a combined durable evidence note                      |
+
+Configuration precedence is command-line profile, `AGENTKIT_REVIEW_PROFILE`, repository profile,
+global profile, then `balanced`. Granular global overrides apply after the preset and repository
+overrides apply last. Put repository overrides in `.agentkit/config.yaml`; put machine defaults in
+`~/.config/agentkit/config.yaml`.
+
+These settings choose workflow effort only. The exact target commit's
+`.agentkit/review-policy.json`, protected CI, and forge approvals remain authoritative and can
+require checks, product coverage, analyses, or evidence that a local profile would otherwise omit.
+Profile activations and merge-gate duration are recorded without repository paths or commands in
+`~/.agentkit/review-audit.log`.
 
 ### git-police.branch-protection.allowed-repos
 

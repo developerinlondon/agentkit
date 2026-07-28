@@ -16,6 +16,10 @@ const resourceSafeExecution = readFileSync(
   'utf-8',
 );
 const codingDiscipline = readFileSync(join(instructionsDir, 'coding-discipline.md'), 'utf-8');
+const testDrivenDevelopment = readFileSync(
+  join(skillsDir, 'test-driven-development', 'SKILL.md'),
+  'utf-8',
+);
 
 describe('review disciplines', () => {
   test('keeps evidence checks in the review workflow', () => {
@@ -67,5 +71,20 @@ describe('review disciplines', () => {
     expect(codingDiscipline).toContain('temporary, task-owned worktree');
     expect(codingDiscipline).toMatch(/do not keep a permanent worktrees directory/i);
     expect(codingDiscipline).not.toContain('code that no longer exists anywhere else');
+  });
+
+  test('resolves configurable review effort without weakening target policy', () => {
+    expect(autonomousWorkflow).toContain('review-profile');
+    expect(autonomousWorkflow).toContain('$CLAUDE_PLUGIN_ROOT/tools/review-profile');
+    expect(autonomousWorkflow).toMatch(/target-owned\s+review policy is authoritative/i);
+    expect(autonomousWorkflow).toMatch(/freeze.*source head/i);
+    expect(autonomousWorkflow).toMatch(/exact-SHA CI evidence/i);
+    expect(reviewerDispatch).toMatch(/do not rerun.*exact-SHA CI/i);
+  });
+
+  test('uses focused TDD checks during iteration and one authoritative final run', () => {
+    expect(testDrivenDevelopment).toMatch(/focused.*RED.*GREEN/is);
+    expect(testDrivenDevelopment).toMatch(/full.*exact.*head/is);
+    expect(testDrivenDevelopment).not.toContain('Run the FULL test suite (not just the new test)');
   });
 });

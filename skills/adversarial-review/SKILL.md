@@ -38,7 +38,10 @@ executed or computed ground truth is.
    computation, trace, probe, or source reference; otherwise mark it
    `unverified`. An analogy requires an explicit point-of-difference analysis.
 5. Execute the smallest deterministic checks that can kill each hypothesis.
-   Use the project's resource-safe execution boundary for heavy checks.
+   Reuse checks already passed by CI against the exact reviewed source SHA;
+   rerun only when evidence is missing, inconsistent, or the resolved profile
+   requires it. Use the project's resource-safe execution boundary for heavy
+   checks.
 6. Compare the independent trace with the maker's narrative only after the trace
    exists. Record every disagreement.
 

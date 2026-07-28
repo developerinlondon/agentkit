@@ -33,6 +33,9 @@ Do not include:
    decisive checks.
 4. Require a concrete failing input or replayable trace for every finding.
 5. Honor an empty result by listing attempted falsifications and evidence.
+6. Do not rerun exact-SHA CI checks that already passed unless their evidence is
+   missing or inconsistent, or the resolved review profile requires a rerun.
+   Prefer novel checks that can falsify the change.
 
 ## Output format
 

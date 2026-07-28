@@ -4,9 +4,9 @@
 summary: >-
   Cross-platform enforcement hooks (git, MR, package, resource, review,
   formatting and comment discipline), agent skills, two MCP servers, and a
-  portable evidence validator plus a Linux-only memory-and-CPU-bounded command
-  runner. The full installer supports global and project-local use; the Claude
-  Code plugin is a separate bundle.
+  portable evidence validator, configurable review-profile resolver, and a
+  Linux-only memory-and-CPU-bounded command runner. The full installer supports
+  global and project-local use; the Claude Code plugin is a separate bundle.
 
 surfaces:
   - name: test-suite
@@ -51,14 +51,23 @@ surfaces:
       arguments. The validator performs structural and semantic consistency
       checks; it does not claim reviewer identity or evidence truth.
 
+  - name: review-profile
+    kind: cli
+    run: tools/review-profile --help
+    expect: |
+      Exits successfully and documents the fast, balanced, and strict profiles,
+      task risk, release/user-facing context, and repository selection. A normal
+      invocation emits JSON with the selected lanes and check scope. Local
+      configuration cannot weaken target-owned review policy.
+
   - name: codex-review-hook
     kind: cli
     run: codex --version
     expect: |
       A global or project install creates a Codex `PreToolUse` hook manifest
       with Bash and MCP merge routes, preserves unrelated hooks, and packages
-      `review-police`, its fail-closed supervisor, input helper, and
-      `review-gate` under the same `.codex` root. After the user trusts the
+      `review-police`, its fail-closed supervisor, input helper, `review-gate`,
+      and `review-profile` under the same `.codex` root. After the user trusts the
       changed definition with `/hooks`, a direct REST/GraphQL/MCP merge is
       denied and a forge CLI merge must satisfy the same exact-context evidence
       policy as Claude Code.

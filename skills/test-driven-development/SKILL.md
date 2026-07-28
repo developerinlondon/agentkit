@@ -41,7 +41,7 @@ TDD applies to ALL code changes:
 
 ### Step 2: Verify RED
 
-- Run the test suite
+- Run the narrowest focused test that demonstrates the behavior
 - Confirm the new test FAILS
 - Confirm it fails for the RIGHT REASON (missing function, wrong return value — not a syntax error)
 - If the test passes immediately, it's not testing new behavior — rewrite it
@@ -54,15 +54,28 @@ TDD applies to ALL code changes:
 
 ### Step 4: Verify GREEN
 
-- Run the FULL test suite (not just the new test)
-- ALL tests must pass — new AND existing
+- Run the focused RED test plus the affected regression slice
+- All selected tests must pass — new AND existing
 - If existing tests break, fix the implementation, not the tests
 
 ### Step 5: Refactor
 
 - Clean up duplication, improve names, extract helpers
-- Run tests after EVERY refactor step to ensure nothing breaks
+- Run the focused tests after every refactor step to ensure nothing breaks
 - This is where you improve code quality — not during GREEN
+
+### Final-head verification
+
+RED and GREEN are fast feedback loops, so keep their checks focused. Before
+freezing the source head, resolve review effort with `review-profile`. Run the
+affected suite for `local-checks: affected`, or the full suite for
+`local-checks: full` and whenever target policy requires it.
+
+Run any required full suite once on the final exact head, not after every GREEN
+or refactor. Passed CI bound to that exact SHA is authoritative evidence when
+the profile selects `ci-evidence: reuse`; repeat it locally only when evidence
+is missing or inconsistent, or `ci-evidence: rerun` is selected. A later commit
+invalidates the result and requires final-head verification again.
 
 ## Anti-Patterns (BLOCKING violations)
 

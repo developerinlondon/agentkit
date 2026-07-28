@@ -57,6 +57,32 @@ and logs every pass and override to `~/.agentkit/review-audit.log`. Only
 forge-side required approvals actually prevent a merge. Never describe this
 gate as something it is not.
 
+### Resolve review effort before final verification
+
+Run `review-profile --repo . --risk trivial|standard|critical`, adding
+`--release` and `--user-facing` when applicable. The default `balanced` profile
+uses one exact-head adversarial review for ordinary non-trivial work. A second
+specialist is risk-triggered, and product review is triggered by critical risk,
+a release, or a user-facing change. `fast` narrows the optional lanes; `strict`
+preserves the maximal workflow. Follow the resolver's `required` decisions.
+Use the command from `PATH` after a global install. A Claude plugin-only install
+uses `$CLAUDE_PLUGIN_ROOT/tools/review-profile`; a project install can use
+`.claude/tools/review-profile` or `.codex/tools/review-profile`.
+
+Global settings live under `review:` in
+`~/.config/agentkit/config.yaml`; repository overrides live in
+`.agentkit/config.yaml`. `AGENTKIT_REVIEW_PROFILE` and `--profile` are explicit
+session/task overrides. These settings control orchestration only. Target-owned
+review policy is authoritative and may require checks, product coverage,
+analyses, or evidence that the selected profile would otherwise omit.
+
+Complete changelog, formatting, focused tests, typechecks, and other
+deterministic preflight before you freeze the source head. Push that final head,
+then start its required review lanes and CI concurrently. Any later commit
+invalidates every source-head-bound result. If CI passed against that exact SHA
+and the profile selects `ci-evidence: reuse`, cite the exact-SHA CI evidence;
+do not repeat the same suite locally. Novel falsification probes still run.
+
 1. **Review completes before the merge starts.** Never dispatch a reviewer and
    merge while it works — a verdict that lands after the code is on main
    protects nobody.
@@ -124,18 +150,21 @@ Tier can rise during work and never falls.
 - **Maker:** default to one capable worker. Return the diff plus a claims list;
   every behavioral or quantitative claim is computed/probed or explicitly
   `unverified`.
-- **Adversary:** use the `adversarial-review` skill on every non-trivial change.
-  Trace from primary artifacts before reading maker narrative. A finding counts
-  only with a concrete failing input or replayable trace.
-- **Product lane:** when target policy requires product coverage, run
-  `product-review` separately. Diff correctness does not certify installation or
-  operation.
+- **Adversary:** run the primary `adversarial-review` lane when selected by the
+  resolved profile (every non-trivial change by default). Add a separate
+  specialist only when selected by risk or policy. Trace from primary artifacts
+  before reading maker narrative. A finding counts only with a concrete failing
+  input or replayable trace.
+- **Product lane:** run `product-review` separately when selected by the profile
+  or required by target policy. Diff correctness does not certify installation
+  or operation.
 - **Evidence:** explicitly disposition failure trace, analogy differences,
   mechanically enumerated pattern sweep, new assumptions, and artifact lifetime.
   `not_applicable` needs a reason and only satisfies policy where allowed.
-- **Gate:** run deterministic checks and validate the strict record. The stored
-  verdict must equal the result derived from lanes, findings, checks, claims, and
-  analyses.
+- **Gate:** satisfy target-policy checks on the frozen head and validate the
+  strict record. Reuse passed exact-SHA CI evidence unless the profile requests
+  a rerun. The stored verdict must equal the result derived from lanes,
+  findings, checks, claims, and analyses.
 - **External:** critical work still requires authenticated human or
   different-family review plus protected deterministic checks. The local record
   cannot manufacture either property.
@@ -157,8 +186,9 @@ broken-looking install, missing packaging, a setup step that lives only in
 someone's head. Those reach the user untouched no matter how many diff rounds
 you run.
 
-For anything a person installs or operates, run the **product-review** skill as
-a separate pass: build it, run it, use it, from a cold start. It reads
+When the resolved profile selects the product lane—or target policy requires
+it—run the **product-review** skill as a separate pass: build it, run it, use it,
+from a cold start. It reads
 `.agentkit/product.yaml` and refuses rather than guessing when that is absent.
 When the two lenses disagree on severity, the user-facing consequence wins —
 internally correct code that cannot be used is still broken.
