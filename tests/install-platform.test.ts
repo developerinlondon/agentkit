@@ -69,6 +69,7 @@ function createFixture(): Fixture {
     true,
   );
   writeFixtureFile(join(repo, 'tools', 'review-gate'), '#!/usr/bin/env bash\n', true);
+  writeFixtureFile(join(repo, 'tools', 'review-profile'), '#!/usr/bin/env bash\n', true);
   writeFixtureFile(
     join(repo, 'policies', 'codex', 'resource-police.rules'),
     '# agentkit:platform linux # local cgroup containment\n',
@@ -140,6 +141,7 @@ describe('platform-aware artifact installation', () => {
         expect(existsSync(join(codex, 'hooks', 'fail-closed-hook.sh'))).toBe(true);
         expect(existsSync(join(codex, 'hooks', 'lib', 'hook-input.sh'))).toBe(true);
         expect(existsSync(join(codex, 'tools', 'review-gate'))).toBe(true);
+        expect(existsSync(join(codex, 'tools', 'review-profile'))).toBe(true);
         expect(readFileSync(join(codex, 'hooks.json'), 'utf-8')).not.toContain(
           '__AGENTKIT_CODEX_HOOKS_ROOT__',
         );
@@ -176,6 +178,7 @@ describe('platform-aware artifact installation', () => {
         expect(existsSync(join(policies, 'delegation-police.rules'))).toBe(true);
         expect(existsSync(join(codex, 'hooks', 'review-police.sh'))).toBe(true);
         expect(existsSync(join(codex, 'tools', 'review-gate'))).toBe(true);
+        expect(existsSync(join(codex, 'tools', 'review-profile'))).toBe(true);
         if (global) {
           for (const base of [
             join(fixture.home, '.agentkit', 'tools'),

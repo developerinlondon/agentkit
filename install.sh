@@ -677,7 +677,7 @@ install_codex_review_hooks() {
 	local codex_dir="$1"
 	local hooks_dir="$codex_dir/hooks"
 	local tools_dir="$codex_dir/tools"
-	local hook_name source
+	local hook_name source tool_name
 
 	if ! command -v jq >/dev/null 2>&1; then
 		echo "[codex] ERROR: jq is required to install the Codex review hook." >&2
@@ -702,12 +702,15 @@ install_codex_review_hooks() {
 		return 1
 	fi
 	cp "$REPO_DIR/hooks/claude/lib/hook-input.sh" "$hooks_dir/lib/hook-input.sh"
-	if [[ ! -f "$REPO_DIR/tools/review-gate" ]]; then
-		echo "[codex] ERROR: missing review-gate validator." >&2
-		return 1
-	fi
-	cp "$REPO_DIR/tools/review-gate" "$tools_dir/review-gate"
-	chmod +x "$tools_dir/review-gate"
+	for tool_name in review-gate review-profile; do
+		source="$REPO_DIR/tools/$tool_name"
+		if [[ ! -f "$source" ]]; then
+			echo "[codex] ERROR: missing review tool: $tool_name" >&2
+			return 1
+		fi
+		cp "$source" "$tools_dir/$tool_name"
+		chmod +x "$tools_dir/$tool_name"
+	done
 
 	merge_codex_hooks "$codex_dir/hooks.json" "$hooks_dir"
 	echo "[codex] Review or re-trust the AgentKit hooks with /hooks in a new Codex session."

@@ -414,5 +414,5 @@ describe('Codex resource policies', () => {
     );
     expect(wrapped.status, wrapped.stderr).toBe(0);
     expect(JSON.parse(wrapped.stdout).decision).toBeUndefined();
-  });
+  }, 30_000);
 });

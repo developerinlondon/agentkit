@@ -39,7 +39,7 @@ echo "[sync] skills/* -> plugins-cc/agentkit/skills/"
 
 # Portable tools used by bundled hooks. Keep this allowlist explicit: other
 # top-level tools are not necessarily plugin-facing commands.
-for tool in bounded-run review-gate; do
+for tool in bounded-run review-gate review-profile; do
 	cp "$REPO_DIR/tools/$tool" "$PLUGIN_DIR/tools/$tool"
 	chmod +x "$PLUGIN_DIR/tools/$tool"
 done

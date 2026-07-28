@@ -11,6 +11,7 @@ fileGroups:
     - 'scripts/check-test-slices.ts'
 
   criticalInputs:
+    - '.agentkit/config.yaml'
     - '.agentkit/product.yaml'
     - '.agentkit/review-policy.json'
     - '.claude-plugin/marketplace.json'
@@ -18,6 +19,7 @@ fileGroups:
     - '.moon/**/*'
     - '.prototools'
     - 'bun.lock'
+    - 'config.example.yaml'
     - 'docs/review-process.md'
     - 'hooks/**/*'
     - 'install.sh'
@@ -31,7 +33,9 @@ fileGroups:
     - 'plugins-cc/agentkit/skills/adversarial-review/**/*'
     - 'plugins-cc/agentkit/skills/autonomous-workflow/**/*'
     - 'plugins-cc/agentkit/skills/product-review/**/*'
+    - 'plugins-cc/agentkit/skills/test-driven-development/**/*'
     - 'plugins-cc/agentkit/tools/review-gate'
+    - 'plugins-cc/agentkit/tools/review-profile'
     - 'policies/**/*'
     - 'scripts/check-test-slices.ts'
     - 'scripts/product-command'
@@ -39,6 +43,7 @@ fileGroups:
     - 'skills/adversarial-review/**/*'
     - 'skills/autonomous-workflow/**/*'
     - 'skills/product-review/**/*'
+    - 'skills/test-driven-development/**/*'
     - 'tests/agentkit-plugin.test.ts'
     - 'tests/codex-review-hooks.test.ts'
     - 'tests/hook-supervisor.test.ts'
@@ -47,8 +52,10 @@ fileGroups:
     - 'tests/review-disciplines.test.ts'
     - 'tests/review-gate.test.ts'
     - 'tests/review-police.test.ts'
+    - 'tests/review-profile.test.ts'
     - 'tests/test-slices.test.ts'
     - 'tools/review-gate'
+    - 'tools/review-profile'
 
   hookInputs:
     - '.claude-plugin/**/*'
@@ -126,7 +133,9 @@ fileGroups:
     - 'tools/bounded-run'
 
   reviewInputs:
+    - '.agentkit/config.yaml'
     - '.agentkit/review-policy.json'
+    - 'config.example.yaml'
     - 'hooks/claude/fail-closed-hook.sh'
     - 'hooks/claude/review-police.sh'
     - 'hooks/codex/**/*'
@@ -136,18 +145,23 @@ fileGroups:
     - 'plugins-cc/agentkit/skills/adversarial-review/**/*'
     - 'plugins-cc/agentkit/skills/autonomous-workflow/**/*'
     - 'plugins-cc/agentkit/skills/product-review/**/*'
+    - 'plugins-cc/agentkit/skills/test-driven-development/**/*'
     - 'plugins-cc/agentkit/tools/review-gate'
+    - 'plugins-cc/agentkit/tools/review-profile'
     - 'scripts/product-command'
     - 'skills/adversarial-review/**/*'
     - 'skills/autonomous-workflow/**/*'
     - 'skills/product-review/**/*'
+    - 'skills/test-driven-development/**/*'
     - 'tests/codex-review-hooks.test.ts'
     - 'tests/probe-cases.txt'
     - 'tests/product-command.test.ts'
     - 'tests/review-disciplines.test.ts'
     - 'tests/review-gate.test.ts'
     - 'tests/review-police.test.ts'
+    - 'tests/review-profile.test.ts'
     - 'tools/review-gate'
+    - 'tools/review-profile'
 
   sessionInputs:
     - 'install.sh'

@@ -357,7 +357,7 @@ describe('review-police: the hook itself cannot fail open', () => {
     expect(res.status, res.stderr).toBe(0);
     expect(res.stderr).toBe('');
     expect(readFileSync(audit, 'utf-8')).toMatch(
-      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z\tPASS\t/,
+      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z\tPASS\t.*\tgate_seconds=\d+$/m,
     );
   });
 
@@ -409,6 +409,11 @@ describe('review-police: intended semantics', () => {
 
   test('allows a clean pass for the exact head', () => {
     record(passing);
+    expect(runHook(MERGE)).toBe('');
+  });
+
+  test('accepts case-insensitive legacy pass verdicts', () => {
+    record({ ...passing, verdict: 'PASS' });
     expect(runHook(MERGE)).toBe('');
   });
 

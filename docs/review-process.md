@@ -53,6 +53,38 @@ binding stale.
 Branch slugs replace `/` with `__`. Context fields inside v2 prevent a colliding
 filename from authorising a different repository or change.
 
+## Configurable workflow profiles
+
+`review-profile --repo . --risk trivial|standard|critical` resolves how much
+review work to schedule. Add `--release` or `--user-facing` for those contexts.
+The resolver is orchestration guidance; it cannot lower requirements from the
+exact target commit's policy, protected CI, or forge approvals.
+
+| Profile    | Primary          | Specialist | Product                                | CI evidence | Local checks |
+| ---------- | ---------------- | ---------- | -------------------------------------- | ----------- | ------------ |
+| `fast`     | non-trivial work | never      | releases                               | reuse       | affected     |
+| `balanced` | non-trivial work | critical   | critical, release, or user-facing work | reuse       | affected     |
+| `strict`   | always           | always     | always                                 | rerun       | full         |
+
+The machine default is configured under `review:` in
+`~/.config/agentkit/config.yaml`; a repository may override it in
+`.agentkit/config.yaml`. Profile selection precedence is CLI, the
+`AGENTKIT_REVIEW_PROFILE` environment variable, repository, global, then the
+`balanced` default. Granular global values apply after the preset and granular
+repository values apply last.
+
+Run deterministic preflight before freezing and pushing the final source head.
+After that freeze, start required reviewer lanes and CI concurrently; do not
+merge until all required results pass. Reuse a passed CI result bound to the
+exact source SHA when configured. A source commit invalidates every earlier
+review and CI result. Write one combined redacted evidence packet rather than a
+separate durable note per lane.
+
+Each resolver invocation appends a `PROFILE` row to
+`~/.agentkit/review-audit.log`. Merge decisions append `gate_seconds`, allowing
+profile activation and gate latency to be measured without recording repository
+paths, commands, or source content.
+
 ## Strict v2 record
 
 ```json
@@ -184,30 +216,32 @@ becomes a valid deny response before Claude reaches its fail-open timeout.
 
 Deterministic checks scale with the trusted target policy:
 
-| Minimum tier | Required local check                                | CI behavior                                   |
-| ------------ | --------------------------------------------------- | --------------------------------------------- |
-| Standard     | `scripts/product-command default -- moon ci`         | affected Moon slices on Linux and macOS       |
-| Critical     | `scripts/product-command default -- bun test`        | full suite inside both affected platform jobs |
-| Main/nightly | n/a                                                 | full hosted Linux and macOS matrix             |
+| Minimum tier | Required local check                          | CI behavior                                   |
+| ------------ | --------------------------------------------- | --------------------------------------------- |
+| Standard     | `scripts/product-command default -- moon ci`  | affected Moon slices on Linux and macOS       |
+| Critical     | `scripts/product-command default -- bun test` | full suite inside both affected platform jobs |
+| Main/nightly | n/a                                           | full hosted Linux and macOS matrix            |
 
 Moon derives affected tasks from explicit inputs. A separate routing check mechanically scans
 every `tests/**/*.test.ts` file and fails if any test belongs to zero or multiple slices. Changes
 to the routing, CI, enforcement hooks, or review governance are critical and therefore ratchet
 back to the full suite.
 
-Use the `adversarial-review` skill for plan and implementation refutation. Feed
+Use the `adversarial-review` skill when the resolved profile selects it. Feed
 it primary artifacts and a mechanically complete candidate set, not the
 orchestrator's conclusion or another reviewer's verdict. It traces before
 reading maker narrative and reports only findings backed by concrete failing
 inputs or replayable traces.
 
-For user-facing/installable changes, run `product-review` as a separate lane.
+When selected by the profile or required by target policy, run
+`product-review` as a separate lane.
 Product coverage and verdict are separate: `partial` describes how much was
 exercised; it does not itself mean pass.
 
-Post the redacted claims, checks, analyses, attempted falsifications, findings,
-and remaining uncertainty to the PR/MR. The local record's `evidence_ref` points
-there. Do not include secrets, tokens, or personal data.
+Post one combined packet of redacted claims, checks, analyses, attempted
+falsifications, findings, and remaining uncertainty to the PR/MR. The local
+record's `evidence_ref` points there. Do not include secrets, tokens, or personal
+data.
 
 ## Legacy v1
 

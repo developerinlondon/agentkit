@@ -191,7 +191,7 @@ describe('agentkit plugin skills', () => {
 
 describe('agentkit plugin tools', () => {
   test('bundles the portable tools and keeps them executable', () => {
-    for (const tool of ['bounded-run', 'review-gate']) {
+    for (const tool of ['bounded-run', 'review-gate', 'review-profile']) {
       const bundled = join(pluginDir, 'tools', tool);
       expect(readFileSync(bundled, 'utf-8')).toBe(
         readFileSync(join(repoRoot, 'tools', tool), 'utf-8'),
