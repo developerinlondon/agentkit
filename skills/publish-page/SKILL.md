@@ -46,7 +46,8 @@ auto-inverts baked diagrams) — never re-explain or re-style these basics. Also
 agent action needed: a **dark/light theme toggle** (persisted; mermaid
 re-renders on flip), a **TOC dot rail** with smooth scrolling on docs with ≥3
 `h2` sections, one persistent **deck nav bar** (progress, slide counter,
-prev/next, toggle) with arrow/space/Home/End keys and swipe,
+prev/next, toggle) with arrow/space/Home/End keys and swipe (backward swipe
+may be claimed by the browser's history gesture),
 **click-to-expand** on every `.figure`, and **hover lift/glow** on every card
 and diagram node. Add `data-tip="text"` to any node for a hover tooltip.
 
@@ -149,7 +150,7 @@ product.
 
 ### Decks — the slide grammar
 
-Slides split on `---` lines. One idea per slide: a slide carries a kicker, an
+One idea per slide: a slide carries a kicker, an
 `h2`, and **one** of the shapes below. If it needs two, it is two slides.
 
 **Title slide** — mono kicker, two-tone headline (first phrase ink, second
@@ -186,7 +187,8 @@ second headline above the cover's own `h1`.
 | Metadata about the slide's subject   | `.chips`           | —         |
 
 **Column cards** — 2–4 peers, each with a mono eyebrow label, a heading, and a
-tight body. `.cols-3`/`.cols-4` collapse to two columns under 62rem:
+tight body. `.cols-3`/`.cols-4` collapse to two columns under 62rem, one
+under 40rem:
 
 ```html
 <div class="cards cols-3">
@@ -222,8 +224,8 @@ three in one list — a rail per row with a unique colour groups nothing.
 **Colour is structural, not typographic.** The rail, the swatch, and the node
 border carry colour; row text stays ink/muted in both themes. Light-mode amber
 clears 4.5:1 on `--navy` and the white `--card` but misses it on the
-`--navy-deep` and `--accent-soft` grounds (4.26:1 / 4.07:1), so it is a rail
-colour only, never body text.
+`--navy-deep`, `--accent-soft` and `--code-bg` grounds (4.26:1 / 4.07:1 /
+4.29:1), so it is a rail colour only, never body text.
 
 Every doc component above works inside a slide. Heavy diagrams get their own
 slide with nothing but a kicker and an `h2` above them.
