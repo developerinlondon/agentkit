@@ -1,0 +1,4 @@
+group core Core group
+group product Product group
+product-review product
+product-review core
