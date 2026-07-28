@@ -271,6 +271,7 @@ describe('review-gate strict evidence validation', () => {
     }).trim();
 
     for (const path of [
+      '.agentkit/config.yaml',
       '.agentkit/product.yaml',
       '.github/workflows/ci.yml',
       '.moon/workspace.yml',
@@ -280,9 +281,11 @@ describe('review-gate strict evidence validation', () => {
       'package.json',
       'bun.lock',
       'plugins-cc/agentkit/.claude-plugin/plugin.json',
+      'plugins-cc/agentkit/tools/review-profile',
       'skills/adversarial-review/SKILL.md',
       'skills/autonomous-workflow/SKILL.md',
       'skills/product-review/SKILL.md',
+      'skills/test-driven-development/SKILL.md',
       'instructions/coding-discipline.md',
       'docs/review-process.md',
       'tests/review-gate.test.ts',
@@ -296,6 +299,8 @@ describe('review-gate strict evidence validation', () => {
       'tests/test-slices.test.ts',
       'scripts/check-test-slices.ts',
       'scripts/product-command',
+      'tools/review-profile',
+      'config.example.yaml',
     ]) {
       writePaths([path]);
       const body = criticalRecord();

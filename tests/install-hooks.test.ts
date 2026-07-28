@@ -101,6 +101,7 @@ describe('Claude Code and Codex hook wiring', () => {
         join(codexDir, 'hooks', 'fail-closed-hook.sh'),
         join(codexDir, 'hooks', 'review-police.sh'),
         join(codexDir, 'tools', 'review-gate'),
+        join(codexDir, 'tools', 'review-profile'),
       ]) {
         expect(existsSync(path), path).toBe(true);
         expect(statSync(path).mode & 0o111, path).not.toBe(0);
@@ -190,6 +191,7 @@ describe('Claude Code and Codex hook wiring', () => {
       expect(existsSync(join(codexHome, 'hooks.json'))).toBe(true);
       expect(existsSync(join(codexHome, 'config.toml'))).toBe(true);
       expect(existsSync(join(codexHome, 'hooks', 'review-police.sh'))).toBe(true);
+      expect(existsSync(join(codexHome, 'tools', 'review-profile'))).toBe(true);
       expect(existsSync(join(home, '.codex', 'hooks.json'))).toBe(false);
       expect(existsSync(join(home, '.codex', 'config.toml'))).toBe(false);
     } finally {

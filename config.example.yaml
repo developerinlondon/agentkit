@@ -8,6 +8,24 @@
 #   AGENTKIT_SKIP_HOOKS=coding-police
 #   AGENTKIT_SKIP_HOOKS=all
 
+# Review effort controls orchestration, not merge authority. A repository's
+# target-owned .agentkit/review-policy.json can require stricter evidence and
+# cannot be weakened here. Repositories may override this section in
+# .agentkit/config.yaml.
+review:
+  # fast: primary review for non-trivial work; specialist/product only on narrow triggers
+  # balanced: one primary review by default; extra lanes for critical/user-facing/release work
+  # strict: primary + specialist + product lanes, full local checks, and CI reruns
+  profile: balanced
+
+  # Granular overrides. Delete a key to inherit the selected profile.
+  # primary-review: nontrivial
+  # specialist-review: critical
+  # product-review: triggered
+  # ci-evidence: reuse
+  # local-checks: affected
+  # evidence-note: always
+
 git-police:
   branch-protection:
     # Repos where direct commits/pushes to main/master are allowed.

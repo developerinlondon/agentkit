@@ -25,6 +25,7 @@
 # The gate resolves the change's real source and target from the forge. Strict
 # policy comes only from the target Git object, never the source checkout.
 set -euo pipefail
+SECONDS=0
 
 # A hook that DIES emits no decision, and the harness reads silence as ALLOW —
 # so every abort path here is a fail-open. Two were reachable from the
@@ -158,7 +159,7 @@ audit_timestamp() {
 
 deny() {
 	mkdir -p "$(dirname "$AUDIT")" 2>/dev/null || true
-	printf '%s\tDENY\tsession=%s\t%s\n' "$(audit_timestamp)" "$SESSION" "${1//$'\n'/ }" >>"$AUDIT" 2>/dev/null || true
+	printf '%s\tDENY\tsession=%s\t%s\tgate_seconds=%s\n' "$(audit_timestamp)" "$SESSION" "${1//$'\n'/ }" "$SECONDS" >>"$AUDIT" 2>/dev/null || true
 	agentkit_deny_json "$1"
 	exit 0
 }
@@ -786,8 +787,8 @@ if [[ -n "$POLICY_ENTRY" ]]; then
 		CONSENT_OVERRIDE:*)
 			CONSENT_QUOTE=$(jq -r '.user_consent.quote // empty' "$RECORD")
 			mkdir -p "$(dirname "$AUDIT")" 2>/dev/null || true
-			printf '%s\tCONSENT-OVERRIDE\tsession=%s\tbranch=%s\tsha=%s\tquote=%s\n' \
-				"$(audit_timestamp)" "$SESSION" "$BRANCH" "$HEAD_SHA" "${CONSENT_QUOTE//$'\n'/ }" \
+			printf '%s\tCONSENT-OVERRIDE\tsession=%s\tbranch=%s\tsha=%s\tquote=%s\tgate_seconds=%s\n' \
+				"$(audit_timestamp)" "$SESSION" "$BRANCH" "$HEAD_SHA" "${CONSENT_QUOTE//$'\n'/ }" "$SECONDS" \
 				>>"$AUDIT" 2>/dev/null || true
 			exit 0
 			;;
@@ -798,8 +799,8 @@ if [[ -n "$POLICY_ENTRY" ]]; then
 	fi
 
 	mkdir -p "$(dirname "$AUDIT")" 2>/dev/null || true
-	printf '%s\tPASS-STRICT\tsession=%s\tbranch=%s\tsha=%s\ttarget=%s\n' \
-		"$(audit_timestamp)" "$SESSION" "$BRANCH" "$HEAD_SHA" "$TARGET_SHA" \
+	printf '%s\tPASS-STRICT\tsession=%s\tbranch=%s\tsha=%s\ttarget=%s\tgate_seconds=%s\n' \
+		"$(audit_timestamp)" "$SESSION" "$BRANCH" "$HEAD_SHA" "$TARGET_SHA" "$SECONDS" \
 		>>"$AUDIT" 2>/dev/null || true
 	exit 0
 fi
@@ -827,15 +828,15 @@ BLOCKING=$(jq -r '
     | "  - \(.severity | ascii_upcase): \(.summary // "(no summary)")"
   ] | join("\n")' "$RECORD" 2>/dev/null || true)
 
-VERDICT=$(jq -r '.verdict // "blocked"' "$RECORD" 2>/dev/null || echo blocked)
+VERDICT=$(jq -r '.verdict // "blocked" | ascii_downcase' "$RECORD" 2>/dev/null || echo blocked)
 CONSENT=$(jq -r '.user_consent.granted // false' "$RECORD" 2>/dev/null || echo false)
 CONSENT_QUOTE=$(jq -r '.user_consent.quote // empty' "$RECORD" 2>/dev/null || true)
 
 if [[ -n "$BLOCKING" || "$VERDICT" != "pass" ]]; then
 	if [[ "$CONSENT" == "true" && -n "$CONSENT_QUOTE" ]]; then
 		mkdir -p "$(dirname "$AUDIT")" 2>/dev/null || true
-		printf '%s\tCONSENT-OVERRIDE\tsession=%s\tbranch=%s\tsha=%s\tquote=%s\n' \
-			"$(audit_timestamp)" "$SESSION" "$BRANCH" "$HEAD_SHA" "${CONSENT_QUOTE//$'\n'/ }" \
+		printf '%s\tCONSENT-OVERRIDE\tsession=%s\tbranch=%s\tsha=%s\tquote=%s\tgate_seconds=%s\n' \
+			"$(audit_timestamp)" "$SESSION" "$BRANCH" "$HEAD_SHA" "${CONSENT_QUOTE//$'\n'/ }" "$SECONDS" \
 			>>"$AUDIT" 2>/dev/null || true
 		exit 0
 	fi
@@ -864,6 +865,6 @@ Fabricating that consent is forging the user's approval — don't."
 fi
 
 mkdir -p "$(dirname "$AUDIT")" 2>/dev/null || true
-printf '%s\tPASS\tsession=%s\tbranch=%s\tsha=%s\n' "$(audit_timestamp)" "$SESSION" "$BRANCH" "$HEAD_SHA" \
+printf '%s\tPASS\tsession=%s\tbranch=%s\tsha=%s\tgate_seconds=%s\n' "$(audit_timestamp)" "$SESSION" "$BRANCH" "$HEAD_SHA" "$SECONDS" \
 	>>"$AUDIT" 2>/dev/null || true
 exit 0

@@ -81,6 +81,7 @@ describe('portable product command', () => {
     const product = readFileSync(join(repoRoot, '.agentkit', 'product.yaml'), 'utf-8');
     expect(product).toContain('build: scripts/product-command default -- bun install');
     expect(product).toContain('verify: scripts/product-command default -- bun test');
+    expect(product).toContain('run: tools/review-profile --help');
     expect(product).toContain('run: scripts/product-command default -- echo ok');
     expect(product).toContain(
       'run: scripts/product-command default -- bun plugins-cc/agentkit/server/index.ts',

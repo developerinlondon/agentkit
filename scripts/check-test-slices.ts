@@ -46,6 +46,7 @@ export const TEST_SLICES = {
     'tests/review-disciplines.test.ts',
     'tests/review-gate.test.ts',
     'tests/review-police.test.ts',
+    'tests/review-profile.test.ts',
   ],
   session: ['tests/session/agent-session.test.ts', 'tests/session/install-session-slice.test.ts'],
 } as const;
@@ -68,6 +69,7 @@ const productionRoots = [
   'tools',
 ] as const;
 const productionFiles = new Set([
+  '.agentkit/config.yaml',
   '.agentkit/product.yaml',
   '.agentkit/review-policy.json',
   'config.example.yaml',

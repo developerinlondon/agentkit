@@ -150,6 +150,7 @@ from being reported as the same thing.
 ## Scope
 
 Product review does NOT replace diff review — it adds the lens diff review
-structurally cannot have. Run both. When they disagree about severity, the
-user-facing consequence wins: code that is internally correct but unusable is
-still broken.
+structurally cannot have. Run it when the resolved review profile selects the
+product lane or target policy requires it. When the lanes disagree about
+severity, the user-facing consequence wins: code that is internally correct
+but unusable is still broken.
