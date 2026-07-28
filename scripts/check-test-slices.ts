@@ -45,6 +45,7 @@ export const TEST_SLICES = {
     'tests/product-intelligence/schemas.test.ts',
     'tests/publish-page/deck-template.test.ts',
     'tests/publish-page/lint.test.ts',
+    'tests/publish-page/mermaid-runtime.test.ts',
     'tests/publish-page/pages-police.test.ts',
   ],
   resources: [

@@ -55,7 +55,7 @@ jobs:
         run: |
           mkdir -p public
           RENDER="$AGENTKIT/skills/product-intelligence/scripts/render.ts"
-          bun "$RENDER" "$INTELLIGENCE_DIR" --out public/brief-page.md
+          bun "$RENDER" "$INTELLIGENCE_DIR" --out public/brief-page.html
           bun "$RENDER" "$INTELLIGENCE_DIR" --html --out public/index.html
 
       - name: Configure Pages
