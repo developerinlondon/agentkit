@@ -5,6 +5,9 @@ import { basename, join, relative } from 'node:path';
 export const TEST_SLICES = {
   diagram: [
     'tests/diagram/d2-svg.test.ts',
+    'tests/diagram/extract-cli.test.ts',
+    'tests/diagram/extract-model.test.ts',
+    'tests/diagram/extract-sources.test.ts',
     'tests/diagram/icons.test.ts',
     'tests/diagram/render.test.ts',
   ],

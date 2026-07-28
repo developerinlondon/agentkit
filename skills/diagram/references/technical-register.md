@@ -24,6 +24,81 @@ bun skills/diagram/scripts/d2-render.ts \
 | `--label`           | filename | becomes `aria-label`; match the figcaption                             |
 | `--keep-background` | off      | keeps D2's own backdrop instead of the figure island's                 |
 
+## Derive before you author
+
+**Do not hand-write D2 for a system whose shape a tool can already read.** The
+four notations below all have a deterministic extractor: it reads the project's
+own artefacts and emits D2 for this register. Your job is choosing the scope —
+which subtree, which schema, which namespace — never authoring the graph.
+
+The difference is not effort, it is truth. A hand-authored ERD records what you
+remembered about the schema; a derived one records the schema. The same holds
+for a module graph, a state file and a manifest directory: every node, edge and
+label below traces to a line in the source.
+
+```bash
+depcruise --no-config --output-type json 'src/**/*.ts' \
+  | bun skills/diagram/scripts/extract.ts deps --focus src --out modules.d2
+bun skills/diagram/scripts/d2-render.ts --in modules.d2 --out modules.svg --png modules.png
+```
+
+`extract.ts` reads `--in FILE` or stdin, writes `--out FILE` or stdout, and
+never runs the upstream tool for you — so a captured JSON works as well as a
+live one, and nothing here needs credentials.
+
+| Extractor | Input                               | Produces            | Scope levers                              |
+| --------- | ----------------------------------- | ------------------- | ----------------------------------------- |
+| `deps`    | `depcruise --output-type json`      | C4 component        | `--focus`, `--group-depth`, `--externals` |
+| `schema`  | `tbls out -t json <dsn>`            | ERD                 | `--tables`                                |
+| `infra`   | `tofu show -json`                   | deployment topology | `--group-by type`, `--no-reduce`          |
+| `k8s`     | manifests, or `kubectl get -o json` | deployment topology | `--namespace`, `--config`                 |
+
+All four take `--title`, `--direction` and `--max-nodes`. None of the upstream
+tools is bundled: install the one you need, or feed the extractor a JSON file
+someone else captured.
+
+### The density budget is enforced, not suggested
+
+A derived graph does not know when to stop. Each extractor refuses to emit more
+than **12 nodes** and names the lever that narrows the scope, because SKILL.md's
+answer to a figure past its budget is _split, don't shrink_. Raising
+`--max-nodes` is a deliberate act; reaching for it twice means the figure is
+carrying two arguments.
+
+### What each one derives
+
+- **`deps`** groups modules by directory at `--group-depth` and aggregates the
+  imports between groups, so the node count follows the altitude you asked for
+  rather than the file count. A pair of groups importing each other is drawn
+  bold: a layering cycle is the one thing a module graph exists to expose.
+  Core modules and packages are dropped unless `--externals` asks for them, and
+  each package is one node however many of its files were imported.
+- **`schema`** turns tbls tables into `sql_table` shapes with the real column
+  types and `PK`/`FK`/`UNQ` badges, and turns tbls relations into crow's-foot
+  edges attached to the specific columns. Required versus optional comes from
+  the foreign key's nullability, which is why the derived ERD is more accurate
+  than the one you would have drawn.
+- **`infra`** reads addresses, types, providers and `depends_on`; modules
+  become nested containers and counted resources collapse to `×N`. State
+  records every ancestor a resource waited on, so edges a longer path already
+  implies are dropped — pass `--no-reduce` to see the raw dump. **No attribute
+  value is ever read**: `tofu show -json` embeds secrets in plain text, and a
+  diagram must not become a way to publish state.
+- **`k8s`** reads YAML manifests, a Helm/kustomize render, or a live
+  `kubectl get -o json`. Namespaces become the boundary; service selectors,
+  ingress backends, volume claims and env references become the edges; the
+  container image picks the icon. It needs no cluster, which is the point — a
+  repository's `k8s/` directory is enough.
+
+### What cannot be derived, and must not be faked
+
+A manifest does not declare that one service calls another. `k8s` recovers that
+edge only where an env value names a Service by a whole DNS label, and takes
+the protocol from the value's URL scheme; a name buried inside a longer word is
+not evidence and produces no edge. Everything else about runtime behaviour —
+call order, retry paths, failure modes — is a **behavioral** row, belongs in
+the sketch register, and no extractor will invent it.
+
 ## 1 — Render, LOOK, fix
 
 Same mandatory loop as the sketch register, for the same reason: **an agent
