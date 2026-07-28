@@ -7,6 +7,7 @@ export const TEST_SLICES = {
     'tests/diagram/d2-svg.test.ts',
     'tests/diagram/icons.test.ts',
     'tests/diagram/render.test.ts',
+    'tests/diagram/vendor-icons.test.ts',
   ],
   hooks: [
     'tests/agentkit-plugin.test.ts',

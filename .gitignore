@@ -2,6 +2,13 @@ node_modules/
 .omc/
 .moon/cache/
 
+# Vendor icon packs (Azure, GCP) are licensed by the vendor, not CC0, and may not
+# be redistributed — they are fetched per machine and default to a path outside
+# any checkout. This entry is a backstop for a redirected install root: a
+# committed pack would put vendor-licensed artwork into every clone.
+skills/diagram/assets/vendor-icons/
+vendor-icons/
+
 # Review records are intentionally LOCAL. Committing one moves HEAD, which
 # stales the record against the branch it reviews — the gate would then deny
 # its own merge and invite regenerating records to suit, the exact loop the
