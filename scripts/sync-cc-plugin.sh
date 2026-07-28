@@ -62,6 +62,26 @@ for skill in "$REPO_DIR"/skills/*/; do
 done
 echo "[sync] skills/* -> plugins-cc/<plugin>/skills/ (by group)"
 
+# A skill may import a dependency-free module from a skill in another group.
+# Groups install as separate plugins, so that module has to ride along or the
+# relative import escapes the plugin boundary and the shipped script cannot
+# load at all. Runs after the copy above, whose prune drops it first, so a
+# repeat sync lands on the same tree.
+carry_leaf() {
+	local leaf="$1" consumer="$2" owner_group consumer_group dest
+	owner_group="$(skill_group "${leaf%%/*}")"
+	consumer_group="$(skill_group "$consumer")"
+	if [[ "$owner_group" == "$consumer_group" ]]; then
+		return 0
+	fi
+	dest="$(plugin_dir_for "$consumer_group")/skills/$leaf"
+	mkdir -p "$(dirname "$dest")"
+	cp "$REPO_DIR/skills/$leaf" "$dest"
+	echo "[sync] carried skills/$leaf -> $(group_plugin_id "$consumer_group")"
+}
+
+carry_leaf publish-page/slides.ts product-intelligence
+
 # Group plugins other than core carry skills only; core keeps its hand-written
 # manifest because it also wires hooks, tools, and MCP servers.
 for group in $(declared_groups); do

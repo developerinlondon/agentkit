@@ -4,6 +4,18 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { renderBrief } from '../../skills/product-intelligence/scripts/render.ts';
+import {
+  claim,
+  FIELDS,
+  hostileBrief,
+  hostileLedger,
+  journalBrief,
+  ledgerWith,
+  marker,
+  minimalBrief,
+  payload,
+  src,
+} from './fixtures.ts';
 
 const repoRoot = dirname(dirname(import.meta.dir));
 const skillRoot = join(repoRoot, 'skills', 'product-intelligence');
@@ -47,31 +59,6 @@ describe('renderBrief', () => {
     );
     return renderBrief(scratch);
   }
-
-  const minimalBrief = (extra: string) =>
-    ["brief_version: '1.0'", 'subject: { name: acme }', 'evidence: { ledger: ledger.yaml }', extra].join('\n');
-
-  const journalBrief = () => minimalBrief('positioning: { category: journal }');
-
-  function ledgerWith(...claims: string[][]): string {
-    const head = ["ledger_version: '1.0'", 'generated_by: t', "generated_at: '2026-07-28'", 'claims:'];
-    return [...head, ...claims.flat()].join('\n');
-  }
-
-  const claim = (id: string, statement: string, cls: string, confidence: string, sources: string[][] = []) => [
-    `  - id: ${id}`,
-    `    statement: ${JSON.stringify(statement)}`,
-    `    class: ${cls}`,
-    `    confidence: ${confidence}`,
-    ...(sources.length ? ['    sources:', ...sources.flat()] : []),
-  ];
-
-  const src = (locator: string, quote: string, stance: string) => [
-    `      - locator: ${JSON.stringify(locator)}`,
-    `        quote: ${JSON.stringify(quote)}`,
-    `        stance: ${stance}`,
-    "        as_of: '2026-07-28'",
-  ];
 
   test('hostile quotes and fields cannot inject markup into the page', () => {
     // Quotes are verbatim excerpts from crawled sources; the published page's
@@ -122,75 +109,8 @@ describe('renderBrief', () => {
     expect(out).toContain('\\*only\\* $5 for 2\\*3 items -- see \\`config.yaml\\`');
   });
 
-  // One payload per untrusted field: a sampled test lets a refactor reopen
-  // the injection on every field it does not sample. Each field carries a
-  // distinct marker so a surviving escape gap names itself.
-  const FIELDS = [
-    'name', 'one_liner', 'category', 'target_customer', 'need', 'key_benefit',
-    'alternative', 'differentiation', 'vm_attribute', 'vm_value', 'vm_proof',
-    'js_situation', 'js_motivation', 'js_outcome', 'wf_name', 'wf_step',
-    'wf_description', 'si_locator', 'si_title', 'si_page_type', 'si_disposition',
-    'si_rationale', 'cv_what', 'cv_why', 'statement', 'quote', 'locator',
-    'acq_tool', 'acq_target', 'origin_kind', 'generated_at',
-  ] as const;
-
-  // The marker itself must survive escaping unchanged, so it carries no
-  // markdown metacharacter of its own.
-  const marker = (field: string) => field.replace(/_/g, '');
-  const payload = (field: string) =>
-    `<script>${marker(field)}</script>[x](javascript:alert(1))\n\n## forged ${marker(field)}`;
-
   test('no untrusted field can inject markup, links or headings', () => {
-    const y = (v: string) => JSON.stringify(payload(v));
-    const brief = [
-      "brief_version: '1.0'",
-      'subject:',
-      `  name: ${y('name')}`,
-      `  one_liner: ${y('one_liner')}`,
-      '  origins:',
-      `    - { id: og, kind: ${y('origin_kind')}, target: t }`,
-      'evidence:',
-      '  ledger: ledger.yaml',
-      '  acquisition:',
-      `    - tool: ${y('acq_tool')}`,
-      `      target: ${y('acq_target')}`,
-      "      retrieved_at: '2026-07-28'",
-      'positioning:',
-      ...(['category', 'target_customer', 'need', 'key_benefit', 'alternative', 'differentiation'] as const)
-        .map((k) => `  ${k}: ${y(k)}`),
-      'value_map:',
-      `  - attribute: ${y('vm_attribute')}`,
-      `    value: ${y('vm_value')}`,
-      `    proof: ${y('vm_proof')}`,
-      'job_stories:',
-      `  - situation: ${y('js_situation')}`,
-      `    motivation: ${y('js_motivation')}`,
-      `    outcome: ${y('js_outcome')}`,
-      'workflows:',
-      `  - name: ${y('wf_name')}`,
-      '    steps:',
-      `      - step: ${y('wf_step')}`,
-      `        description: ${y('wf_description')}`,
-      'site_inventory:',
-      `  - locator: ${y('si_locator')}`,
-      `    title: ${y('si_title')}`,
-      `    page_type: ${y('si_page_type')}`,
-      `    disposition: ${y('si_disposition')}`,
-      `    rationale: ${y('si_rationale')}`,
-      'cannot_verify:',
-      `  - what: ${y('cv_what')}`,
-      `    why: ${y('cv_why')}`,
-    ].join('\n');
-    const hostileLedger = [
-      "ledger_version: '1.0'",
-      'generated_by: t',
-      `generated_at: ${y('generated_at')}`,
-      'claims:',
-      ...claim('C-001', payload('statement'), 'observed', 'high', [
-        src(payload('locator'), payload('quote'), 'supports'),
-      ]),
-    ].join('\n');
-    const out = withArtifacts(brief, hostileLedger);
+    const out = withArtifacts(hostileBrief(), hostileLedger());
 
     expect(out).not.toContain('<script');
     expect(out).not.toContain('](javascript:');
@@ -451,6 +371,22 @@ describe('renderBrief', () => {
     expect(out).not.toContain('## Unresolved contradictions');
     expect(out).not.toContain('****');
     expect(out).not.toContain('href="#c-999"');
+  });
+
+  // The pair used to round-trip through a '|'-joined dedupe key, so an id
+  // carrying one recovered no claim and the row rendered from undefined.
+  test('a claim id containing the old dedupe delimiter still renders its row', () => {
+    const out = withArtifacts(
+      journalBrief(),
+      ledgerWith(
+        [...claim('A|B', 'first side', 'observed', 'high'), '    contradicts: ["C|D"]'],
+        claim('C|D', 'second side', 'observed', 'high'),
+      ),
+    );
+    expect(out).toContain('## Unresolved contradictions');
+    expect(out).toContain('says **first side**');
+    expect(out).toContain('says **second side**');
+    expect(out).not.toContain('****');
   });
 
   test('a pipe in free text cannot split a table row', () => {

@@ -6,30 +6,16 @@ import { marked } from "marked";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+// The slide rule lives in a module of its own because renderers that must not
+// pull in marked — the product-intelligence markdown lane — neutralise their
+// output against the very same scanner this file splits with.
+export { splitSlides } from "./slides.ts";
+import { splitSlides } from "./slides.ts";
 
 export function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c] as string
   );
-}
-
-// Split markdown into slides on `---` lines, ignoring YAML frontmatter and
-// `---` inside fenced code blocks — a naive regex split cuts fences in half.
-export function splitSlides(md: string): string[] {
-  let lines = md.split("\n");
-  if (lines[0]?.trim() === "---") {
-    const close = lines.findIndex((l, i) => i > 0 && l.trim() === "---");
-    if (close > 0) lines = lines.slice(close + 1);
-  }
-  const slides: string[][] = [[]];
-  let fence: string | null = null;
-  for (const line of lines) {
-    const open = line.match(/^\s*(```|~~~)/)?.[1];
-    if (open) fence = fence === open ? null : fence ?? open;
-    if (!fence && line.trim() === "---") slides.push([]);
-    else slides[slides.length - 1].push(line);
-  }
-  return slides.map((s) => s.join("\n"));
 }
 
 export function bundledThemePath(template: string): string {
