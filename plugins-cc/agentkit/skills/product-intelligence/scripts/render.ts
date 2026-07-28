@@ -33,10 +33,11 @@ const ENTITY: Record<string, string> = {
 // Markdown containers — table rows, list items, HTML blocks — are
 // line-structured: a newline ends the row or block and a blank line lets
 // crawled text continue at document level, minting headings that read as the
-// analyst's own. source() splits a quote into lines first, so multi-line
+// analyst's own. A lone CR counts: marked's lexer normalises it to LF, so CRCR
+// is a blank line. source() splits a quote into lines first, so multi-line
 // quotes keep their shape.
 function collapse(value: unknown): string {
-  return String(value ?? '').replace(/\s*\r?\n\s*/g, ' ');
+  return String(value ?? '').replace(/\s*[\r\n]\s*/g, ' ');
 }
 
 // The pipe is entity-encoded so escaped text cannot split a GFM table cell.
@@ -44,14 +45,15 @@ function esc(value: unknown): string {
   return collapse(value).replace(/[&<>"'|]/g, (c) => ENTITY[c] as string);
 }
 
-// Text inside a raw-HTML island, where a backslash would display literally.
-// Entity-encoding the metacharacters keeps the island inert under any renderer.
-// ONE pass over the source: encoding after esc() would re-encode the hashes in
-// the entities esc() just produced, and an apostrophe would reach the reader as
-// entity text.
+// Text inside a raw-HTML island. Entity-encoding the metacharacters keeps the
+// island inert under any renderer; the backslash is in the set because left
+// literal, a trailing one pairs with the `<` of the island's closing tag and
+// marked's escape tokenizer eats the tag. ONE pass over the source: encoding
+// after esc() would re-encode the hashes in entities esc() just produced, and
+// an apostrophe would reach the reader as entity text.
 function escText(value: unknown): string {
   return collapse(value)
-    .replace(/[&<>"'|[\]()*_`~#!]/g, (c) => ENTITY[c] ?? `&#${c.charCodeAt(0)};`)
+    .replace(/[\\&<>"'|[\]()*_`~#!]/g, (c) => ENTITY[c] ?? `&#${c.charCodeAt(0)};`)
     // After the pass above, so its own entity output is not re-encoded.
     .replace(AUTOLINK_CHAR, (c) => `&#${c.charCodeAt(0)};`);
 }
@@ -104,7 +106,11 @@ function header(brief: Dict, ledger: Dict): string {
     subject.repo ? chip('Repo', subject.repo) : '',
     subject.homepage ? chip('Site', subject.homepage) : '',
     chip('Evidence', count),
-    brief.evidence?.acquired_at ? chip('Acquired', brief.evidence.acquired_at) : '',
+    brief.evidence?.acquired_at
+      ? chip('Acquired', brief.evidence.acquired_at)
+      : ledger.generated_at
+      ? chip('Generated', ledger.generated_at)
+      : '',
     (subject.origins?.length ?? 0) > 1
       ? chip('Origins', subject.origins.map((o: Dict) => o.id).join(' + '))
       : '',
@@ -272,7 +278,7 @@ function source(s: Dict): string {
   // letting a crawled source dictate the document. The trailing break keeps
   // the source's own line structure, which consecutive blockquote lines would
   // otherwise reflow into one run-on paragraph.
-  const lines = String(s.quote ?? '').split('\n');
+  const lines = String(s.quote ?? '').split(/\r\n?|\n/);
   const quoted = lines
     .map((l, i) => `> ${mdEsc(l)}${i < lines.length - 1 ? '<br />' : ''}`)
     .join('\n');
@@ -302,9 +308,20 @@ function evidence(brief: Dict, ledger: Dict): string {
       : `> _No source — this claim is ${mdEsc(c.class)}, carried as such rather than dressed up._`;
     return `<span id="${escText(c.id).toLowerCase()}"></span>**${mdEsc(c.id)}** ${badge} — ${mdEsc(c.statement)}${derived}${conflict}\n\n${body}`;
   }).join('\n\n');
+  const origins = ((brief.subject?.origins ?? []) as Dict[])
+    .map((o) => `**${mdEsc(o.id)}** (${mdEsc(o.kind)}) ${code(o.target)}`).join(' · ');
   const acq = ((brief.evidence?.acquisition ?? []) as Dict[])
     .map((a) => `${code(a.tool)} → ${mdEsc(a.target)} (${mdEsc(a.retrieved_at)})`).join(' · ');
-  const provenance = acq ? `\nAcquired with: ${acq}.\n` : '';
+  const generated = [
+    ledger.generated_by ? `by ${code(ledger.generated_by)}` : '',
+    ledger.generated_at ? `at ${mdEsc(ledger.generated_at)}` : '',
+  ].filter(Boolean).join(' ');
+  const trail = [
+    origins ? `Origins: ${origins}.` : '',
+    acq ? `Acquired with: ${acq}.` : '',
+    generated ? `Ledger generated ${generated}.` : '',
+  ].filter(Boolean).join('\n\n');
+  const provenance = trail ? `\n${trail}\n` : '';
   return `## The evidence, claim by claim\n\n${blocks}\n${provenance}`;
 }
 
