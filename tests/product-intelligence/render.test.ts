@@ -334,6 +334,34 @@ describe('renderBrief', () => {
     expect(out).not.toContain('$5/mo<br />');
   });
 
+  // marked's whole GFM autolink surface: http/https/ftp case-insensitively,
+  // lowercase www., and an email whose local part may end in a dot. Every
+  // untrusted field must defuse all of them, whichever escaper it uses — the
+  // badge reaches inline-HTML context, where the inline lexer still runs.
+  const AUTOLINKABLE = [
+    'https://evil.example/x',
+    'HTTP://evil.example/x',
+    'FtP://evil.example/x',
+    'www.evil.example',
+    'foo.@evil.example',
+  ] as const;
+
+  test.each(AUTOLINKABLE)('no field turns %s into a link', (url) => {
+    const out = withArtifacts(
+      minimalBrief(`positioning: { category: ${JSON.stringify(`a ${url} b`)} }`),
+      ledgerWith(claim('C-001', `s ${url}`, `observed ${url}`, `high ${url}`, [
+        src('site:/a', `q ${url}`, 'supports'),
+      ])),
+    );
+    // Defused either by a backslash (markdown contexts) or by an entity
+    // (raw-HTML islands, where a backslash would display literally).
+    for (const m of out.matchAll(/(https?|ftp):\/\//gi)) {
+      expect(out.slice(Math.max(0, m.index - 1), m.index), `bare ${m[0]}`).toBe('\\');
+    }
+    expect(out).not.toMatch(/(?<![\\;])www\./i);
+    expect(out).not.toMatch(/(?<![\\;])@evil/);
+  });
+
   test('a quoted URL does not become a live link or grow a backslash', () => {
     const out = withArtifacts(
       journalBrief(),

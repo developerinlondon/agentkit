@@ -16,6 +16,11 @@ type Dict = Record<string, any>;
 // backslash, which the renderer resolves away, so the reader sees the original.
 const AUTOLINK = /(?<=https?|ftp|mailto)(?=:)|(?<=www)(?=\.)|(?=@)/gi;
 
+// Same triggers, consumed rather than straddled, for contexts that cannot use a
+// backslash: entity-encoding the character stops the match in a markdown
+// context and still displays as itself inside a raw-HTML island.
+const AUTOLINK_CHAR = /(?<=https?|ftp|mailto):|(?<=www)\.|@/gi;
+
 const ENTITY: Record<string, string> = {
   '&': '&amp;',
   '<': '&lt;',
@@ -45,10 +50,10 @@ function esc(value: unknown): string {
 // the entities esc() just produced, and an apostrophe would reach the reader as
 // entity text.
 function escText(value: unknown): string {
-  return collapse(value).replace(
-    /[&<>"'|[\]()*_`~#!]/g,
-    (c) => ENTITY[c] ?? `&#${c.charCodeAt(0)};`,
-  );
+  return collapse(value)
+    .replace(/[&<>"'|[\]()*_`~#!]/g, (c) => ENTITY[c] ?? `&#${c.charCodeAt(0)};`)
+    // After the pass above, so its own entity output is not re-encoded.
+    .replace(AUTOLINK_CHAR, (c) => `&#${c.charCodeAt(0)};`);
 }
 
 // Free text landing in a markdown context (headings, bold, blockquotes,
