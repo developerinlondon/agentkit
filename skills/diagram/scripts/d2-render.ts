@@ -2,9 +2,17 @@
 // Renders a .d2 file to a self-contained, house-themed SVG plus a PNG twin.
 
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { expandIconRefs, IconError } from "./icons.ts";
 import {
   applyHouseAttributes,
@@ -74,6 +82,11 @@ let svg: string;
 try {
   const staged = join(work, basename(input));
   writeFileSync(staged, expanded.source);
+  for (const icon of expanded.staged) {
+    const dest = join(work, icon.rel);
+    mkdirSync(dirname(dest), { recursive: true });
+    copyFileSync(icon.src, dest);
+  }
   const rendered = join(work, "out.svg");
   const d2Args = [
     "--omit-version",

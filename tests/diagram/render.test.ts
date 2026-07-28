@@ -42,7 +42,16 @@ function withTemp<T>(fn: (dir: string) => T): T {
   }
 }
 
-const available = Bun.spawnSync({ cmd: ['d2', '--version'] }).exitCode === 0;
+// Bun.spawnSync throws ENOENT for a missing executable rather than reporting a
+// non-zero exit, which would crash this file instead of skipping it.
+const available = Bun.which('d2') !== null;
+if (!available) {
+  console.error(
+    `SKIPPED tests/diagram/render.test.ts: no d2 on PATH — the render, icon-embedding, `
+      + `self-containment and committed-example cases did NOT run. This skill pins d2 `
+      + `v${D2_PIN}; CI installs it in .github/workflows/ci.yml.`,
+  );
+}
 
 describe('d2 version pin', () => {
   test('a mismatched d2 is refused, naming the pin and where to get it', () => {
@@ -80,6 +89,17 @@ describe('d2 version pin', () => {
     withTemp((dir) => {
       expect(run(dir, ['--in', join(dir, 'nope.d2')]).stderr).toContain('no such file');
     });
+  });
+
+  test('every CI job that runs the suite installs exactly the pinned d2', () => {
+    // A job without the install step skips the render tests silently; one that
+    // installs a different build hits the wrapper's refusal instead of testing.
+    const ci = readFileSync(join(import.meta.dir, '../../.github/workflows/ci.yml'), 'utf-8');
+    const installed = [...ci.matchAll(/install-d2\s*\n\s*with:\s*\n\s*version:\s*(\S+)/g)].map((m) => m[1]);
+    const suiteRuns = [...ci.matchAll(/moon (?:ci|run) agentkit:test-full/g)].length;
+    expect(suiteRuns).toBeGreaterThan(0);
+    expect(installed.length).toBe(suiteRuns);
+    for (const version of installed) expect(version).toBe(D2_PIN);
   });
 });
 

@@ -6,7 +6,7 @@ on:
     branches:
       - main
   schedule:
-    - cron: '17 4 * * 1'
+    - cron: "17 4 * * 1"
   workflow_dispatch:
 
 permissions:
@@ -45,6 +45,11 @@ jobs:
 
       - name: Install dependencies from the lockfile
         run: bun install --frozen-lockfile
+
+      - name: Install the pinned d2 renderer
+        uses: ./.github/actions/install-d2
+        with:
+          version: 0.7.1
 
       - name: Validate test slice coverage
         run: bun run test:slices
@@ -91,6 +96,11 @@ jobs:
 
       - name: Install dependencies from the lockfile
         run: bun install --frozen-lockfile
+
+      - name: Install the pinned d2 renderer
+        uses: ./.github/actions/install-d2
+        with:
+          version: 0.7.1
 
       - name: Run complete suite
         run: moon run agentkit:test-full

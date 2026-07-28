@@ -28,24 +28,46 @@ function suggest(key: string, keys: string[]): string {
   return near.length ? ` — did you mean ${near.join(", ")}?` : "";
 }
 
-export function resolveIcon(key: string, dir = assetsDir): string {
+export function lookupIcon(key: string, dir = assetsDir): { file: string; path: string } {
   const m = manifest(dir);
   const record = m[key];
   if (!record) throw new IconError(`unknown icon "${key}"${suggest(key, Object.keys(m))}`);
   const path = join(dir, record.file);
   if (!existsSync(path)) throw new IconError(`icon "${key}" maps to missing file ${record.file}`);
-  return path;
+  return { file: record.file, path };
+}
+
+export function resolveIcon(key: string, dir = assetsDir): string {
+  return lookupIcon(key, dir).path;
 }
 
 // `@key` keeps authored .d2 free of machine-specific paths; d2 only accepts a
 // real path or URL, so the reference is expanded just before rendering.
 const ICON_REF = /^(\s*icon\s*:\s*)@([A-Za-z0-9 ._:-]+?)\s*$/gm;
 
-export function expandIconRefs(source: string, dir = assetsDir): { source: string; count: number } {
+export const STAGE_SUBDIR = "icons";
+
+export interface StagedIcon {
+  rel: string;
+  src: string;
+}
+
+// d2 salts every generated element id from the source text it compiles, so an
+// absolute path in that text makes the render depend on where the repo sits.
+// The referenced icons are copied beside the staged source under their manifest
+// path instead, leaving the hash a function of authored content alone.
+export function expandIconRefs(
+  source: string,
+  dir = assetsDir,
+): { source: string; count: number; staged: StagedIcon[] } {
   let count = 0;
+  const staged = new Map<string, string>();
   const expanded = source.replace(ICON_REF, (_match, prefix: string, key: string) => {
     count += 1;
-    return `${prefix}${resolveIcon(key.trim(), dir)}`;
+    const { file, path } = lookupIcon(key.trim(), dir);
+    const rel = `${STAGE_SUBDIR}/${file}`;
+    staged.set(rel, path);
+    return `${prefix}${rel}`;
   });
-  return { source: expanded, count };
+  return { source: expanded, count, staged: [...staged].map(([rel, src]) => ({ rel, src })) };
 }
