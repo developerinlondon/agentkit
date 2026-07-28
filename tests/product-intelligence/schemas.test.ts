@@ -32,6 +32,12 @@ const expectedFailures: Record<string, string> = {
   'brief-dangling-ledger.yaml': 'not found',
   'brief-multi-origin-unqualified.yaml': 'must name its origin',
   'brief-origin-duplicate-id.yaml': 'duplicate origin id',
+  'product-duplicate-part-id.yaml': "duplicate part id 'engine'",
+  'product-unknown-part-kind.yaml': 'must be one of',
+  'product-missing-part-target.yaml': "missing required field 'target'",
+  'product-dangling-evidence.yaml': 'not found relative to the declaration',
+  'part-of-missing-part.yaml': "missing required field 'part'",
+  'part-of-unslugged-id.yaml': 'does not match pattern',
 };
 
 describe('product-intelligence schemas', () => {
@@ -61,8 +67,8 @@ describe('worked examples', () => {
   const dirs = () =>
     readdirSync(examples, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name);
 
-  test('ships the three evidence situations, each schema-valid', () => {
-    expect(dirs().sort()).toEqual(['mixed', 'repo-only', 'website-only']);
+  test('ships the three evidence situations plus the composition example, each schema-valid', () => {
+    expect(dirs().sort()).toEqual(['composition', 'mixed', 'repo-only', 'website-only']);
     for (const name of dirs()) {
       expect(validateFile(join(examples, name, 'brief.yaml')), name).toEqual([]);
     }

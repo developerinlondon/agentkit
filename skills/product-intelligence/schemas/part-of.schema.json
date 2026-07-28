@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentkit.sbs/schemas/product-intelligence/part-of.schema.json",
+  "title": "Component part-of marker",
+  "description": "The back-pointer a component repo carries to the product it belongs to. It lives as a `part_of` key inside the component's existing `.agentkit/product.yaml`, alongside the surfaces product-review reads; the validator checks this block and leaves the rest of that file to product-review. Deliberately minimal: it names the product repo and this component's part id, and nothing that would drift from the declaration those two resolve to.",
+  "type": "object",
+  "required": ["product_repo", "part"],
+  "additionalProperties": false,
+  "properties": {
+    "product_repo": {
+      "description": "Locator of the product repo holding the product.yaml declaration — a clone URL or owner/repo. Following it is how a reader gets from one component to the whole product.",
+      "type": "string",
+      "minLength": 1
+    },
+    "part": {
+      "description": "This component's id in that declaration's composition.parts[]. The two must agree; a marker naming a part the declaration does not list points at nothing.",
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*$"
+    },
+    "product": {
+      "description": "Product name, repeated here so a reader offline — or without access to a private product repo — still knows what this is part of. Optional because it is derivable; duplicated because the derivation needs network and permission.",
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}
