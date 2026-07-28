@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { basename, join } from 'node:path';
+import { pluginIdFor, readSkillGroups, skillsInGroup } from '../scripts/skill-groups';
 
 // The comprehensive "agentkit" Claude Code plugin bundles, in one install:
 //   - the enforcement police hooks (wired via hooks/hooks.json),
@@ -140,7 +141,7 @@ describe('agentkit plugin MCP servers', () => {
 });
 
 describe('agentkit plugin skills', () => {
-  test('ships the agentkit skills, each with a SKILL.md', () => {
+  test('ships the core agentkit skills, each with a SKILL.md', () => {
     const expectedSkills = [
       'autonomous-workflow',
       'adversarial-review',
@@ -148,8 +149,6 @@ describe('agentkit plugin skills', () => {
       'documentation',
       'gitops-master',
       'issue-raiser',
-      'product-intelligence',
-      'product-review',
       'project-planning',
       'resource-safe-execution',
       'test-driven-development',
@@ -160,6 +159,42 @@ describe('agentkit plugin skills', () => {
     }
   });
 
+  test('gives every declared group its own plugin, generated from the manifest', () => {
+    const manifest = readSkillGroups(repoRoot);
+    expect(manifest.groups.map((group) => group.id)).toContain('core');
+
+    for (const group of manifest.groups) {
+      const dir = join(repoRoot, 'plugins-cc', pluginIdFor(group.id));
+      const plugin = JSON.parse(readFileSync(join(dir, '.claude-plugin', 'plugin.json'), 'utf-8'));
+      expect(plugin.name, `${group.id} plugin name`).toBe(pluginIdFor(group.id));
+      // A skill lands in exactly one plugin; two copies is a double listing in
+      // Claude Code and a second copy to rot.
+      expect(readdirSync(join(dir, 'skills')).sort()).toEqual(
+        skillsInGroup(manifest, repoRoot, group.id),
+      );
+    }
+  });
+
+  test('lists every generated group plugin in the marketplace', () => {
+    const manifest = readSkillGroups(repoRoot);
+    const marketplace = JSON.parse(
+      readFileSync(join(repoRoot, '.claude-plugin', 'marketplace.json'), 'utf-8'),
+    );
+    const byName = new Map<string, any>(
+      marketplace.plugins.map((plugin: any) => [plugin.name, plugin]),
+    );
+
+    for (const group of manifest.groups) {
+      const id = pluginIdFor(group.id);
+      const entry = byName.get(id);
+      expect(entry, `${id} is published in the marketplace`).toBeDefined();
+      expect(entry.source).toBe(`./plugins-cc/${id}`);
+    }
+    // Third-party sources are not ours to regenerate.
+    expect(byName.has('assay')).toBe(true);
+    expect(byName.has('infra-tools')).toBe(true);
+  });
+
   test('keeps every skill byte-identical between skills/ and the plugin mirror', () => {
     // The hooks had this check; the skills did not — and they drifted. The
     // top-level copy of autonomous-workflow was missing the whole review-gate
@@ -167,28 +202,26 @@ describe('agentkit plugin skills', () => {
     // nobody diffed them. Two copies with no mechanical check is one rotting
     // copy waiting to be read by someone.
     const sourceSkills = join(repoRoot, 'skills');
-    // skills/ also holds the GROUPS manifest, which is installer metadata:
-    // the plugin bundles every skill, so it has nothing to select on.
-    const names = readdirSync(sourceSkills, { withFileTypes: true })
-      .filter((entry) => entry.isDirectory())
-      .map((entry) => entry.name)
-      .sort();
-    expect(readdirSync(join(pluginDir, 'skills')).sort()).toEqual(names);
+    const manifest = readSkillGroups(repoRoot);
     // Recursive: some skills carry a references/ subdirectory, and a nested
     // file that drifts is exactly as misleading as a top-level one.
     const filesUnder = (dir: string, prefix = ''): string[] =>
       readdirSync(join(dir, prefix), { withFileTypes: true }).flatMap((e) =>
         e.isDirectory() ? filesUnder(dir, join(prefix, e.name)) : [join(prefix, e.name)]
       );
-    for (const name of names) {
-      const files = filesUnder(join(sourceSkills, name)).sort();
-      expect(filesUnder(join(pluginDir, 'skills', name)).sort(), `${name}: file list differs`)
-        .toEqual(files);
-      for (const file of files) {
-        expect(
-          readFileSync(join(pluginDir, 'skills', name, file), 'utf-8'),
-          `${name}/${file} differs between skills/ and the plugin mirror`,
-        ).toBe(readFileSync(join(sourceSkills, name, file), 'utf-8'));
+
+    for (const group of manifest.groups) {
+      const groupDir = join(repoRoot, 'plugins-cc', pluginIdFor(group.id), 'skills');
+      for (const name of skillsInGroup(manifest, repoRoot, group.id)) {
+        const files = filesUnder(join(sourceSkills, name)).sort();
+        expect(filesUnder(join(groupDir, name)).sort(), `${name}: file list differs`)
+          .toEqual(files);
+        for (const file of files) {
+          expect(
+            readFileSync(join(groupDir, name, file), 'utf-8'),
+            `${name}/${file} differs between skills/ and the plugin mirror`,
+          ).toBe(readFileSync(join(sourceSkills, name, file), 'utf-8'));
+        }
       }
     }
   });
@@ -212,8 +245,12 @@ describe('marketplace lists the agentkit plugin', () => {
       readFileSync(join(repoRoot, '.claude-plugin', 'marketplace.json'), 'utf-8'),
     );
     const names = marketplace.plugins.map((p: { name: string }) => p.name);
-    // Recommended one-shot first, then the à-la-carte plugins.
-    expect(names).toEqual(['agentkit', 'assay', 'infra-tools']);
+    // Recommended one-shot first, then the à-la-carte plugins, then the
+    // manifest-generated group plugins appended by sync-cc-plugin.sh.
+    const generated = readSkillGroups(repoRoot).groups
+      .filter((group) => group.id !== 'core')
+      .map((group) => pluginIdFor(group.id));
+    expect(names).toEqual(['agentkit', 'assay', 'infra-tools', ...generated]);
 
     const agentkit = marketplace.plugins.find((p: { name: string }) => p.name === 'agentkit');
     expect(agentkit.source).toBe('./plugins-cc/agentkit');

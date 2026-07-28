@@ -1,4 +1,12 @@
-# <skill> <group>. A skill not listed here belongs to `core` and installs by
-# default; a listed skill installs only with `install.sh --with <group>`.
+# Skill install groups. Two record types, whitespace separated:
+#   group <id> <description>   declares a group; the description is what an
+#                              installer, a plugin manifest, or a picker shows
+#   <skill> <group>            puts a skill in a declared group
+# A skill with no record belongs to `core`, which always installs.
+# Adding a group is a `group` line plus its membership lines — nothing else.
+
+group core Enforcement, review, planning, and workflow skills for everyday use
+group product Product-model skills: evidence-backed briefs and product review
+
 product-intelligence product
 product-review product

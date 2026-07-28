@@ -14,7 +14,9 @@ import { spawnSync } from 'node:child_process';
 
 const repoRoot = dirname(import.meta.dir);
 const installSource = readFileSync(join(repoRoot, 'install.sh'), 'utf-8');
-const functionStart = installSource.indexOf('install_claude_plugin() {');
+// Plugin ids come from the group manifest, so the helpers that resolve them
+// belong to the unit under test.
+const functionStart = installSource.indexOf('plugin_is_installed() {');
 const functionEnd = installSource.indexOf('\n# ─── User Config', functionStart);
 const installFunction = installSource.slice(functionStart, functionEnd);
 const globalMain = installSource.indexOf('# ─── Main: Global Install');
@@ -29,6 +31,8 @@ function runPluginInstall(
   operationExit = 0,
   postInstallState = '[{"id":"agentkit@agentkit","scope":"user","enabled":true}]',
   marketplaceUpdateExit = 0,
+  selectedGroups = 'core',
+  initialState?: string,
 ) {
   const home = mkdtempSync(join(tmpdir(), 'agentkit-plugin-install-'));
   homes.push(home);
@@ -60,8 +64,7 @@ if [ "$1 $2 $3" = "plugin list --json" ]; then
   fi
   exit 0
 fi
-if [ "$1 $2 $3" = "plugin install agentkit@agentkit" ] ||
-   [ "$1 $2 $3" = "plugin update agentkit@agentkit" ]; then
+if [ "$1 $2" = "plugin install" ] || [ "$1 $2" = "plugin update" ]; then
   exit "$CLAUDE_OPERATION_EXIT"
 fi
 `,
@@ -72,7 +75,7 @@ fi
     'bash',
     [
       '-c',
-      `set -euo pipefail\nREPO_DIR="$1"\n${installFunction}\nif install_claude_plugin; then exit 0; else exit $?; fi`,
+      `set -euo pipefail\nREPO_DIR="$1"\nsource "$1/lib/skill-groups.sh"\nSELECTED_GROUPS="${selectedGroups}"\ngroup_selected() { case " $SELECTED_GROUPS " in *" $1 "*) return 0 ;; esac; return 1; }\n${installFunction}\nif install_claude_plugin; then exit 0; else exit $?; fi`,
       'bash',
       repoRoot,
     ],
@@ -84,9 +87,8 @@ fi
         CLAUDE_LIST_COUNT: listCount,
         CLAUDE_MARKETPLACE_UPDATE_EXIT: String(marketplaceUpdateExit),
         CLAUDE_OPERATION_EXIT: String(operationExit),
-        CLAUDE_PLUGIN_LIST_JSON: installed
-          ? '[{"id":"agentkit@agentkit","scope":"user"}]'
-          : '[]',
+        CLAUDE_PLUGIN_LIST_JSON: initialState
+          ?? (installed ? '[{"id":"agentkit@agentkit","scope":"user"}]' : '[]'),
         CLAUDE_POST_INSTALL_JSON: postInstallState,
         HOME: home,
         PATH: `${bin}:${process.env.PATH}`,
@@ -95,6 +97,22 @@ fi
   );
 
   return { calls: readFileSync(log, 'utf-8').trim().split('\n'), result };
+}
+
+const groupPluginState = (ids: string[]) =>
+  JSON.stringify(ids.map((id) => ({ id, scope: 'user', enabled: true })));
+
+function runGroupPluginInstall(selectedGroups: string, productAlreadyInstalled = false) {
+  const ids = ['agentkit@agentkit', 'agentkit-product@agentkit'];
+  return runPluginInstall(
+    false,
+    false,
+    0,
+    groupPluginState(ids),
+    0,
+    selectedGroups,
+    productAlreadyInstalled ? groupPluginState(['agentkit-product@agentkit']) : undefined,
+  );
 }
 
 function runExplicitPluginCallerFailure() {
@@ -178,6 +196,22 @@ describe('Claude plugin install lifecycle', () => {
     expect(result.status).toBe(1);
     expect(result.stderr).toContain('not enabled after installation');
     expect(result.stdout).not.toContain('Plugin ready');
+  });
+
+  test('installs one plugin per selected group', () => {
+    const { calls, result } = runGroupPluginInstall('core product');
+    expect(result.status, result.stderr).toBe(0);
+    expect(calls).toContain('plugin install agentkit@agentkit');
+    expect(calls).toContain('plugin install agentkit-product@agentkit');
+  });
+
+  test('updates an installed group plugin the current flags did not select', () => {
+    const { calls, result } = runGroupPluginInstall('core', true);
+    expect(result.status, result.stderr).toBe(0);
+    // Same promise as a retained skill: an upgrade must not abandon what the
+    // user already has installed.
+    expect(calls).toContain('plugin update agentkit-product@agentkit');
+    expect(calls).not.toContain('plugin install agentkit-product@agentkit');
   });
 
   test('explicit plugin mode propagates lifecycle failure without installing manual hooks', () => {

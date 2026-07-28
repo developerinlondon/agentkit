@@ -18,6 +18,10 @@ Options:
                        are declared in skills/GROUPS; every unlisted skill is
                        in the always-installed `core` group.
                          --with product   product-intelligence, product-review
+  --all                Install every declared skill group. A global install
+                       remembers the chosen groups in ~/.agentkit/groups, so a
+                       later bare `install.sh --global` upgrades the same set
+                       without re-passing flags.
   --claude-plugin      Global only: install Claude Code bits as the agentkit
                        plugin (marketplace add + plugin install) INSTEAD of
                        copying hooks/skills and merging settings.json. The two
@@ -67,6 +71,7 @@ AGENTKIT_HOME="${AGENTKIT_HOME:-$HOME/.agentkit}"
 CLAUDE_PLUGIN=false
 SESSION_SCOPE=true
 EXTRA_GROUPS=""
+ALL_GROUPS=false
 while [[ $# -gt 0 ]]; do
 	case "$1" in
 	-h | --help) usage ;;
@@ -82,6 +87,7 @@ while [[ $# -gt 0 ]]; do
 		EXTRA_GROUPS="${EXTRA_GROUPS:+$EXTRA_GROUPS }$1"
 		;;
 	--with=*) EXTRA_GROUPS="${EXTRA_GROUPS:+$EXTRA_GROUPS }${1#--with=}" ;;
+	--all) ALL_GROUPS=true ;;
 	*) TARGET_DIR="$1" ;;
 	esac
 	shift
@@ -94,27 +100,9 @@ fi
 
 # ─── Shared: Skill Groups ────────────────────────────────────────────────────
 
-SKILL_GROUPS_FILE="$REPO_DIR/skills/GROUPS"
-if [[ ! -f "$SKILL_GROUPS_FILE" ]]; then
-	echo "ERROR: missing $SKILL_GROUPS_FILE — cannot resolve skill groups." >&2
-	exit 1
-fi
-
-declared_groups() {
-	awk '$1 !~ /^#/ && NF >= 2 { print $2 }' "$SKILL_GROUPS_FILE" | sort -u
-}
-
-skill_group() {
-	local name="$1" entry group
-	while read -r entry group _; do
-		case "$entry" in '' | '#'*) continue ;; esac
-		if [[ "$entry" == "$name" && -n "$group" ]]; then
-			printf '%s' "$group"
-			return 0
-		fi
-	done <"$SKILL_GROUPS_FILE"
-	printf 'core'
-}
+# shellcheck source=lib/skill-groups.sh
+source "$REPO_DIR/lib/skill-groups.sh"
+validate_skill_groups || exit 1
 
 group_selected() {
 	case " $SELECTED_GROUPS " in
@@ -124,13 +112,55 @@ group_selected() {
 }
 
 for requested_group in $EXTRA_GROUPS; do
-	if [[ "$requested_group" != core ]] && ! declared_groups | grep -Fxq "$requested_group"; then
+	if ! group_declared "$requested_group"; then
 		echo "ERROR: unknown skill group '$requested_group'." >&2
-		echo "       Declared groups: core $(declared_groups | tr '\n' ' ')" >&2
+		echo "       Declared groups: $(declared_groups | tr '\n' ' ')" >&2
 		exit 1
 	fi
 done
-SELECTED_GROUPS="core${EXTRA_GROUPS:+ $EXTRA_GROUPS}"
+
+# Selection persists in the shared root so a later bare `install.sh --global`
+# upgrades the same set of groups without re-passing flags.
+GROUPS_STATE_FILE="$AGENTKIT_HOME/groups"
+
+read_persisted_groups() {
+	[[ "$GLOBAL" == true && -f "$GROUPS_STATE_FILE" ]] || return 0
+	local entry
+	while read -r entry _; do
+		case "$entry" in '' | '#'*) continue ;; esac
+		# A group dropped from the manifest must not resurrect a stale selection.
+		group_declared "$entry" && printf '%s\n' "$entry"
+	done <"$GROUPS_STATE_FILE"
+}
+
+write_persisted_groups() {
+	[[ "$GLOBAL" == true ]] || return 0
+	local group
+	mkdir -p "$(dirname "$GROUPS_STATE_FILE")"
+	{
+		echo "# Skill groups chosen at install time; a bare install.sh --global keeps them."
+		echo "# Delete a line to stop installing that group (installed skills are left alone)."
+		for group in $SELECTED_GROUPS; do
+			[[ "$group" == core ]] || echo "$group"
+		done
+	} >"$GROUPS_STATE_FILE"
+}
+
+select_groups() {
+	local candidates group
+	if [[ "$ALL_GROUPS" == true ]]; then
+		candidates="$(declared_groups)"
+	else
+		candidates="core $EXTRA_GROUPS $(read_persisted_groups)"
+	fi
+
+	SELECTED_GROUPS="core"
+	for group in $candidates; do
+		group_selected "$group" || SELECTED_GROUPS="$SELECTED_GROUPS $group"
+	done
+}
+
+select_groups
 
 # shellcheck source=lib/install-platform.sh
 source "$REPO_DIR/lib/install-platform.sh"
@@ -937,6 +967,40 @@ install_codex_skills() {
 
 # ─── Claude Code: Plugin-Mode Install ────────────────────────────────────────
 
+plugin_is_installed() {
+	printf '%s' "$2" |
+		jq -e --arg id "$1" '.[] | select(.id == $id and .scope == "user")' >/dev/null
+}
+
+# An unselected group whose plugin is already installed is still updated — the
+# plugin-mode counterpart of keeping an already-installed skill.
+claude_plugin_targets() {
+	local installed="$1" group id
+	for group in $(declared_groups); do
+		id="$(group_plugin_id "$group")@agentkit"
+		if group_selected "$group" || plugin_is_installed "$id" "$installed"; then
+			printf '%s\n' "$id"
+		fi
+	done
+}
+
+ensure_claude_plugin() {
+	local id="$1" installed="$2"
+	if plugin_is_installed "$id" "$installed"; then
+		echo "[claude] Updating plugin: $id"
+		if ! claude plugin update "$id"; then
+			echo "[claude] ERROR: failed to update $id." >&2
+			return 1
+		fi
+	else
+		echo "[claude] Installing plugin: $id"
+		if ! claude plugin install "$id"; then
+			echo "[claude] ERROR: failed to install $id." >&2
+			return 1
+		fi
+	fi
+}
+
 install_claude_plugin() {
 	if ! command -v claude &>/dev/null; then
 		echo "[claude] WARNING: claude CLI not found — cannot install the plugin."
@@ -966,20 +1030,11 @@ install_claude_plugin() {
 		return 1
 	fi
 
-	if printf '%s' "$installed_plugins" |
-		jq -e '.[] | select(.id == "agentkit@agentkit" and .scope == "user")' >/dev/null; then
-		echo "[claude] Updating plugin: agentkit@agentkit"
-		if ! claude plugin update agentkit@agentkit; then
-			echo "[claude] ERROR: failed to update agentkit@agentkit." >&2
-			return 1
-		fi
-	else
-		echo "[claude] Installing plugin: agentkit@agentkit"
-		if ! claude plugin install agentkit@agentkit; then
-			echo "[claude] ERROR: failed to install agentkit@agentkit." >&2
-			return 1
-		fi
-	fi
+	local targets plugin_id
+	targets="$(claude_plugin_targets "$installed_plugins")"
+	for plugin_id in $targets; do
+		ensure_claude_plugin "$plugin_id" "$installed_plugins" || return 1
+	done
 
 	local ready_plugins
 	if ! ready_plugins="$(claude plugin list --json)"; then
@@ -990,11 +1045,13 @@ install_claude_plugin() {
 		echo "[claude] ERROR: post-install plugin state was malformed." >&2
 		return 1
 	fi
-	if ! printf '%s' "$ready_plugins" |
-		jq -e '.[] | select(.id == "agentkit@agentkit" and .scope == "user" and .enabled == true)' >/dev/null; then
-		echo "[claude] ERROR: agentkit@agentkit is not enabled after installation or update." >&2
-		return 1
-	fi
+	for plugin_id in $targets; do
+		if ! printf '%s' "$ready_plugins" | jq -e --arg id "$plugin_id" \
+			'.[] | select(.id == $id and .scope == "user" and .enabled == true)' >/dev/null; then
+			echo "[claude] ERROR: $plugin_id is not enabled after installation or update." >&2
+			return 1
+		fi
+	done
 
 	# A leftover manual install would run every hook twice (settings.json +
 	# the plugin's hooks.json) — warn loudly, never edit user settings.
@@ -1040,6 +1097,8 @@ if [[ "$GLOBAL" == true ]]; then
 	# ── Config ──
 	echo "--- Config ---"
 	install_config
+	write_persisted_groups
+	echo "[groups] Selected: $SELECTED_GROUPS ($GROUPS_STATE_FILE)"
 	echo ""
 
 	# ── Shared content root (single copy) ──
@@ -1091,7 +1150,7 @@ if [[ "$GLOBAL" == true ]]; then
 	CLAUDE_SETTINGS="$HOME/.claude/settings.json"
 	if [[ "$CLAUDE_PLUGIN" == true ]]; then
 		install_claude_plugin
-		CLAUDE_MODE="plugin (agentkit@agentkit)"
+		CLAUDE_MODE="plugin (one per selected group: $SELECTED_GROUPS)"
 		echo ""
 	else
 		CLAUDE_MODE="manual (hooks via $CLAUDE_HOOKS → $HOOKS_CANON, settings $CLAUDE_SETTINGS)"

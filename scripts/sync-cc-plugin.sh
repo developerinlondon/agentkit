@@ -7,6 +7,16 @@ set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PLUGIN_DIR="$REPO_DIR/plugins-cc/agentkit"
+MARKETPLACE="$REPO_DIR/.claude-plugin/marketplace.json"
+
+# shellcheck source=../lib/skill-groups.sh
+source "$REPO_DIR/lib/skill-groups.sh"
+validate_skill_groups || exit 1
+
+if ! command -v jq >/dev/null 2>&1; then
+	echo "[sync] ERROR: jq is required to generate per-group plugin manifests." >&2
+	exit 1
+fi
 
 # Hooks: copy scripts only — hooks.json (the plugin's wiring) is plugin-owned.
 for hook in "$REPO_DIR"/hooks/claude/*.sh; do
@@ -22,20 +32,84 @@ if [[ -d "$REPO_DIR/hooks/claude/lib" ]]; then
 	echo "[sync] hooks/claude/lib -> plugins-cc/agentkit/hooks/lib/"
 fi
 
-# Skills: full mirror — remove skills that no longer exist at top level.
-for plugin_skill in "$PLUGIN_DIR"/skills/*/; do
-	name="$(basename "$plugin_skill")"
-	if [[ ! -d "$REPO_DIR/skills/$name" ]]; then
-		echo "[sync] removing dropped skill: $name"
-		rm -rf "$plugin_skill"
-	fi
+# Skills: one plugin per declared group, membership straight from the manifest.
+# A skill that changed group must leave its old plugin, or it ships twice.
+plugin_dir_for() {
+	printf '%s/plugins-cc/%s' "$REPO_DIR" "$(group_plugin_id "$1")"
+}
+
+for group in $(declared_groups); do
+	mkdir -p "$(plugin_dir_for "$group")/skills"
 done
+
+for group in $(declared_groups); do
+	group_dir="$(plugin_dir_for "$group")"
+	for plugin_skill in "$group_dir"/skills/*/; do
+		[[ -d "$plugin_skill" ]] || continue
+		name="$(basename "$plugin_skill")"
+		if [[ ! -d "$REPO_DIR/skills/$name" ]] || [[ "$(skill_group "$name")" != "$group" ]]; then
+			echo "[sync] removing from $(group_plugin_id "$group"): $name"
+			rm -rf "$plugin_skill"
+		fi
+	done
+done
+
 for skill in "$REPO_DIR"/skills/*/; do
 	name="$(basename "$skill")"
-	rm -rf "$PLUGIN_DIR/skills/$name"
-	cp -r "$skill" "$PLUGIN_DIR/skills/$name"
+	group_dir="$(plugin_dir_for "$(skill_group "$name")")"
+	rm -rf "$group_dir/skills/$name"
+	cp -r "$skill" "$group_dir/skills/$name"
 done
-echo "[sync] skills/* -> plugins-cc/agentkit/skills/"
+echo "[sync] skills/* -> plugins-cc/<plugin>/skills/ (by group)"
+
+# Group plugins other than core carry skills only; core keeps its hand-written
+# manifest because it also wires hooks, tools, and MCP servers.
+for group in $(declared_groups); do
+	[[ "$group" == core ]] && continue
+	plugin_id="$(group_plugin_id "$group")"
+	group_dir="$(plugin_dir_for "$group")"
+	mkdir -p "$group_dir/.claude-plugin"
+	jq --arg name "$plugin_id" --arg description "$(group_description "$group")" '{
+		"$schema": .["$schema"],
+		name: $name,
+		version: .version,
+		description: $description,
+		author: .author,
+		skills: "./skills/"
+	}' "$PLUGIN_DIR/.claude-plugin/plugin.json" >"$group_dir/.claude-plugin/plugin.json"
+	echo "[sync] generated $plugin_id plugin manifest"
+done
+
+# Drop plugin trees for groups the manifest no longer declares.
+for stale in "$REPO_DIR"/plugins-cc/agentkit-*/; do
+	[[ -d "$stale" ]] || continue
+	stale_id="$(basename "$stale")"
+	if ! group_declared "${stale_id#agentkit-}"; then
+		echo "[sync] removing dropped group plugin: $stale_id"
+		rm -rf "$stale"
+	fi
+done
+
+# Marketplace: generated group entries are owned by this script; the core
+# agentkit entry and third-party sources (assay, infra-tools) are not touched.
+marketplace_entries="$(
+	for group in $(declared_groups); do
+		[[ "$group" == core ]] && continue
+		plugin_id="$(group_plugin_id "$group")"
+		jq -n --arg name "$plugin_id" \
+			--arg source "./plugins-cc/$plugin_id" \
+			--arg description "$(group_description "$group")" \
+			--arg version "$(jq -r .version "$PLUGIN_DIR/.claude-plugin/plugin.json")" \
+			'{name: $name, source: $source, description: $description, version: $version}'
+	done | jq -s '.'
+)"
+jq --argjson generated "$marketplace_entries" '
+	.plugins = (
+		[.plugins[] | select(.name | startswith("agentkit-") | not)] + $generated
+	)
+' "$MARKETPLACE" >"$MARKETPLACE.tmp"
+mv "$MARKETPLACE.tmp" "$MARKETPLACE"
+echo "[sync] group plugins -> .claude-plugin/marketplace.json"
 
 # Portable tools used by bundled hooks. Keep this allowlist explicit: other
 # top-level tools are not necessarily plugin-facing commands.
@@ -47,10 +121,13 @@ echo "[sync] portable hook tools -> plugins-cc/agentkit/tools/"
 
 # Fail loudly if the result is an invalid plugin (best-effort: needs claude CLI).
 if command -v claude &>/dev/null; then
-	claude plugin validate "$PLUGIN_DIR" && echo "[sync] plugin manifest valid"
+	for group in $(declared_groups); do
+		claude plugin validate "$(plugin_dir_for "$group")" &&
+			echo "[sync] $(group_plugin_id "$group") manifest valid"
+	done
 fi
 
-if ! git -C "$REPO_DIR" diff --quiet -- plugins-cc/agentkit; then
+if ! git -C "$REPO_DIR" diff --quiet -- plugins-cc; then
 	echo "[sync] plugin updated — review and commit the changes"
 else
 	echo "[sync] plugin already in sync"

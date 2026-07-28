@@ -112,13 +112,17 @@ claude plugin install agentkit
 # Or à-la-carte — just one toolchain
 claude plugin install assay
 claude plugin install infra-tools
+
+# Opt-in skill groups ship as their own plugins
+claude plugin install agentkit-product
 ```
 
-| Plugin          | Provides                                                                                                                                                                                                                                                                                                                                     | Source                                                                                        |
-| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| **agentkit**    | Claude bundle: enforcement police hooks, skills, portable review tools, Linux-only `tools/bounded-run`, and both MCP toolchains. Hooks and review tools need `jq`, `git`, `awk`, and `cat`; MCPs need `bun` and `assay`. Linux bounded execution additionally needs cgroup v2, a systemd user manager, and a provisioned `agent-work.slice`. | local `plugins-cc/agentkit/`                                                                  |
-| **assay**       | Gated Lua infra toolkit (`assay_run` + `assay_context`) — Kubernetes, ArgoCD, Vault, Prometheus, GitLab, AWS, … through one read-only/approval-gated tool. Requires the `assay` binary on PATH.                                                                                                                                              | vendored from [developerinlondon/assay](https://github.com/developerinlondon/assay) `plugin/` |
-| **infra-tools** | Read-only helm / tofu / git tools (`helm_template`/`helm_list`/`helm_get_values`, `tofu_plan`/`tofu_show`/`tofu_state_list`, `git_log`/`git_diff`/`git_status`/`git_clone_ro`) as a typed MCP server — render charts, preview plans, read git history. Never applies or mutates. Requires `bun` on PATH.                                     | local `plugins-cc/infra-tools/`                                                               |
+| Plugin               | Provides                                                                                                                                                                                                                                                                                                                                     | Source                                                                                        |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| **agentkit**         | Claude bundle: enforcement police hooks, skills, portable review tools, Linux-only `tools/bounded-run`, and both MCP toolchains. Hooks and review tools need `jq`, `git`, `awk`, and `cat`; MCPs need `bun` and `assay`. Linux bounded execution additionally needs cgroup v2, a systemd user manager, and a provisioned `agent-work.slice`. | local `plugins-cc/agentkit/`                                                                  |
+| **agentkit-product** | The `product` skill group: product-intelligence and product-review. Generated from `skills/GROUPS` — one plugin per declared group, `agentkit` being the core one.                                                                                                                                                                           | local `plugins-cc/agentkit-product/`                                                          |
+| **assay**            | Gated Lua infra toolkit (`assay_run` + `assay_context`) — Kubernetes, ArgoCD, Vault, Prometheus, GitLab, AWS, … through one read-only/approval-gated tool. Requires the `assay` binary on PATH.                                                                                                                                              | vendored from [developerinlondon/assay](https://github.com/developerinlondon/assay) `plugin/` |
+| **infra-tools**      | Read-only helm / tofu / git tools (`helm_template`/`helm_list`/`helm_get_values`, `tofu_plan`/`tofu_show`/`tofu_state_list`, `git_log`/`git_diff`/`git_status`/`git_clone_ro`) as a typed MCP server — render charts, preview plans, read git history. Never applies or mutates. Requires `bun` on PATH.                                     | local `plugins-cc/infra-tools/`                                                               |
 
 **Not in the plugin: the always-on rules and instructions.** Claude Code plugins cannot inject
 always-on global context, so the glob-loaded `rules/` and the `instructions/*.md` global prompts
@@ -167,16 +171,26 @@ Grok builtins under `~/.grok/skills/`, etc. OpenCode plugins still install as re
 
 Override the shared root with `AGENTKIT_HOME=/path` if needed.
 
-**Skill groups.** `skills/GROUPS` assigns skills to install groups; anything unlisted is in
-`core` and installs by default. Opt into the rest per install:
+**Skill groups.** `skills/GROUPS` declares the groups and their membership; a skill with no
+entry is in `core`, which always installs. Adding a group is a manifest entry — the installer,
+the plugin generator, and the tests all read it rather than hard-coding names.
 
 ```bash
+./agentkit/install.sh --global                  # core only (or whatever you chose last time)
 ./agentkit/install.sh --global --with product   # + product-intelligence, product-review
+./agentkit/install.sh --global --all            # every declared group
 ```
 
-An unselected skill that is already installed is kept and refreshed, so an upgrade never
-removes a skill you are using. The Claude Code plugin (`--claude-plugin`, or the marketplace)
-bundles every group — groups shape the `install.sh` surface, not the plugin.
+A global install records the chosen groups in `~/.agentkit/groups`, so a later bare
+`install.sh --global` upgrades the same set with no flags to remember — flags add to that set
+rather than replacing it. Delete a line from that file to stop selecting a group. Skills
+already installed from an unselected group are kept and refreshed, so an upgrade never removes
+a skill you are using. Project installs take groups per invocation and persist nothing.
+
+Each group also ships as its own Claude Code plugin, generated from the same manifest by
+`scripts/sync-cc-plugin.sh`: `agentkit` for core, `agentkit-<group>` for the rest (so
+`agentkit-product`). In `--claude-plugin` mode the installer installs one plugin per selected
+group, and updates a group plugin you already have even when this run did not select it.
 
 The installer detects `linux`, `darwin`, or `unknown`; `AGENTKIT_PLATFORM` may override detection
 with one of those exact values for controlled packaging and tests. Artifacts carrying an

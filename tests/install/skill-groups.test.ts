@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { readSkillGroups, skillsInGroup } from '../../scripts/skill-groups';
 
 const repoRoot = dirname(dirname(import.meta.dir));
 const installScript = join(repoRoot, 'install.sh');
@@ -112,17 +113,77 @@ describe('skill group selection', () => {
     }
   }, globalInstallTimeoutMs);
 
-  test('every group named in skills/GROUPS refers to a skill that exists', () => {
-    const manifest = readFileSync(join(repoRoot, 'skills', 'GROUPS'), 'utf-8');
-    const entries = manifest
-      .split('\n')
-      .filter((line) => line.trim() !== '' && !line.startsWith('#'))
-      .map((line) => line.trim().split(/\s+/));
+  test('--all installs every declared group', () => {
+    const home = mkdtempSync(join(tmpdir(), 'agentkit-groups-'));
 
-    expect(entries.length).toBeGreaterThan(0);
-    for (const [name, group] of entries) {
-      expect(group, `${name} needs a group`).toBeTruthy();
-      expect(existsSync(join(repoRoot, 'skills', name!, 'SKILL.md')), `${name} exists`).toBe(true);
+    try {
+      const result = install(home, ['--all']);
+      expect(result.status, result.stderr).toBe(0);
+
+      const manifest = readSkillGroups(repoRoot);
+      for (const group of manifest.groups) {
+        for (const skill of skillsInGroup(manifest, repoRoot, group.id)) {
+          expect(existsSync(join(canonSkill(home, skill), 'SKILL.md')), `${skill} installed`).toBe(
+            true,
+          );
+        }
+      }
+    } finally {
+      rmSync(home, { force: true, recursive: true });
+    }
+  }, globalInstallTimeoutMs);
+
+  test('a later bare install keeps the groups chosen once', () => {
+    const home = mkdtempSync(join(tmpdir(), 'agentkit-groups-'));
+
+    try {
+      expect(install(home, ['--with', 'product']).status).toBe(0);
+      expect(readFileSync(join(home, '.agentkit', 'groups'), 'utf-8')).toContain('product');
+
+      // The automation story: one command forever, no flags to remember.
+      const upgrade = install(home);
+      expect(upgrade.status, upgrade.stderr).toBe(0);
+      expect(upgrade.stdout).toContain('Skill groups:    core product');
+      expect(existsSync(join(canonSkill(home, 'product-intelligence'), 'SKILL.md'))).toBe(true);
+      // Retention is not what carried it: the Codex prompt is regenerated from
+      // the selection, and a merely-retained group would not produce one.
+      expect(existsSync(join(home, '.codex', 'prompts', 'product-review.md'))).toBe(true);
+    } finally {
+      rmSync(home, { force: true, recursive: true });
+    }
+  }, globalInstallTimeoutMs);
+
+  test('dropping a group from the persisted file stops selecting it', () => {
+    const home = mkdtempSync(join(tmpdir(), 'agentkit-groups-'));
+
+    try {
+      expect(install(home, ['--with', 'product']).status).toBe(0);
+      writeFileSync(join(home, '.agentkit', 'groups'), '');
+
+      const upgrade = install(home);
+      expect(upgrade.status, upgrade.stderr).toBe(0);
+      expect(upgrade.stdout).toContain('Skill groups:    core\n');
+      expect(upgrade.stdout).toContain(
+        "[skills] Keeping installed (group 'product' not selected): product-review",
+      );
+    } finally {
+      rmSync(home, { force: true, recursive: true });
+    }
+  }, globalInstallTimeoutMs);
+
+  test('the manifest declares every group it uses and names real skills', () => {
+    const manifest = readSkillGroups(repoRoot);
+    const declared = new Set(manifest.groups.map((group) => group.id));
+
+    expect(declared.has('core')).toBe(true);
+    for (const group of manifest.groups) {
+      // A wizard and the plugin generator both render this; an empty one ships
+      // a plugin with a blank description.
+      expect(group.description.length, `${group.id} needs a description`).toBeGreaterThan(0);
+    }
+    for (const [skill, group] of Object.entries(manifest.membership)) {
+      expect(declared.has(group), `${skill} is in undeclared group ${group}`).toBe(true);
+      expect(existsSync(join(repoRoot, 'skills', skill, 'SKILL.md')), `${skill} exists`).toBe(true);
     }
   });
 });
