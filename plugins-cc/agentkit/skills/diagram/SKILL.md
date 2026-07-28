@@ -12,7 +12,23 @@ diagram is five identical boxes with different names, it has said nothing.
 Method inspired by coleam00/excalidraw-diagram-skill; text and tooling here are
 original.
 
-## 1 — Decide the depth
+## 1 — Classify, then decide the depth
+
+Before authoring anything, write one line:
+
+`altitude / relationship / audience → type`
+
+Altitude is the zoom (business capability → system context → container →
+component → code/data), relationship is what the edges mean (structural,
+behavioral, data, deployment, comparison, quantitative), audience is who reads
+it and what they do next. `references/selection.md` crosses the two into the
+named type, the notation that type requires (crow's-foot cardinality, C4
+boundary semantics, trust zones), and the phrases that select it. Generic
+boxes-and-arrows is what comes out when this step was skipped, and a figure
+that mixes two altitudes is misclassified rather than thorough.
+
+The classified type's notation is not decoration — in the sketch register a
+correct glyph teaches more than any icon. Then set the depth:
 
 - **Conceptual**: mental models, philosophies, quick overviews. Abstract shapes
   and relationships are enough.
@@ -25,8 +41,9 @@ original.
 
 ## 2 — Map each concept to a structural pattern
 
-Pick the shape that behaves like the concept. In one diagram, no two major
-concepts should reuse the same pattern.
+The type from step 1 fixes the notation; this table picks the shape for each
+concept drawn inside it. Pick the shape that behaves like the concept. In one
+diagram, no two major concepts should reuse the same pattern.
 
 | Concept behaves like…       | Draw it as…                                                |
 | --------------------------- | ---------------------------------------------------------- |
@@ -155,6 +172,9 @@ needs a local Chromium — set `AGENTKIT_CHROMIUM` if it isn't auto-found.)
 
 - **Depth**: researched real names/formats? evidence artifacts present
   (technical)? multi-zoom present (large)? teaches something concrete?
+- **Type**: classification line written? notation of that type correct —
+  cardinality glyph at the end touching its entity, boundaries drawn by trust
+  not by team, exactly one altitude in the figure?
 - **Concept**: structure would still communicate with labels removed? shows
   what prose could not? every major concept a different pattern? no uniform
   card grid anywhere?
