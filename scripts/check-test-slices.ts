@@ -25,6 +25,8 @@ export const TEST_SLICES = {
     'tests/install-prompt.test.ts',
     'tests/install-shared-root.test.ts',
     'tests/install-tools.test.ts',
+    'tests/install/manifest-readers.test.ts',
+    'tests/install/skill-groups.test.ts',
   ],
   integrations: ['tests/infra-tools-mcp.test.ts', 'tests/test-slices.test.ts'],
   product: [
