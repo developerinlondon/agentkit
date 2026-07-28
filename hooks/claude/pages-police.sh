@@ -26,7 +26,7 @@ if echo "$COMMAND" | grep -qE '/api/pages'; then
     API_WRITE=1
   fi
   # httpie/xh take the method as a bare word: `http PUT …/api/pages/x`.
-  if echo "$COMMAND" | grep -qE '(^|[[:space:];&|])(http|xh)[[:space:]]' \
+  if echo "$COMMAND" | grep -qE '(^|[[:space:];&|"'"'"'])(http|xh)[[:space:]]' \
     && echo "$COMMAND" | grep -qE '\b(PUT|POST|DELETE)\b'; then
     API_WRITE=1
   fi

@@ -10,8 +10,7 @@ export interface LintResult {
 
 const EXCALIDRAW_MARK = "svg-source:excalidraw";
 const CONTAINER_RE = /<(?:div|section|figure)\b[^>]*class\s*=\s*["']([^"']*)["'][^>]*>/gi;
-const TAG_OPEN_RE = /<(?:div|section|figure)\b/gi;
-const TAG_CLOSE_RE = /<\/(?:div|section|figure)>/gi;
+const TAG_RE = /<(\/?)(?:div|section|figure)\b/gi;
 const NEARBY = 900;
 
 function styleBlocks(html: string): string {
@@ -28,12 +27,16 @@ function classHasDiagramBg(cls: string, css: string): boolean {
   return rule.test(css);
 }
 
-// The container only covers the mark while it is still open: as many closes
-// as opens after its own tag means the island ended before the diagram began.
+// The container only covers the mark while it is still open. Depth must be
+// walked in order — a close followed by a sibling open has equal totals but
+// the island is already over.
 function stillOpen(between: string): boolean {
-  const opens = [...between.matchAll(TAG_OPEN_RE)].length;
-  const closes = [...between.matchAll(TAG_CLOSE_RE)].length;
-  return closes <= opens;
+  let depth = 0;
+  for (const tag of between.matchAll(TAG_RE)) {
+    depth += tag[1] === "/" ? -1 : 1;
+    if (depth < 0) return false;
+  }
+  return true;
 }
 
 function isWrapped(before: string, css: string): boolean {

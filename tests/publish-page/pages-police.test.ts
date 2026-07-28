@@ -24,6 +24,7 @@ describe('pages-police: direct API writes', () => {
     'wget --method=PUT --body-file=p.html http://127.0.0.1:8787/api/pages/abc',
     'http PUT pages.agentkit.sbs/api/pages/abc < page.html',
     'xh DELETE pages.agentkit.sbs/api/pages/abc',
+    'sh -c "http PUT pages.agentkit.sbs/api/pages/abc < page.html"',
   ];
   for (const command of denied) {
     test(`denies: ${command.slice(0, 60)}`, () => {

@@ -59,6 +59,13 @@ describe('publish-page figure lint', () => {
     expect(lintFigures(html).errors).toHaveLength(1);
   });
 
+  test('a closed .figure followed by a sibling wrapper div does not cover it either', () => {
+    // Totals-based depth counting read close+open as still-open; the walk
+    // must be ordered.
+    const html = `<div class="figure">old</div><div class="wrap">${SVG}</div>`;
+    expect(lintFigures(html).errors).toHaveLength(1);
+  });
+
   test('an unstyled inner div inside an open .figure still counts as wrapped', () => {
     const html = `<div class="figure"><div class="inner">${SVG}</div></div>`;
     expect(lintFigures(html).errors).toEqual([]);
