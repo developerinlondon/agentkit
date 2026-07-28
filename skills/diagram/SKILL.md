@@ -76,21 +76,22 @@ comprehensive diagram exceeds a single response's output budget and truncates):
 4. After the last zone: re-read the whole file — bindings valid both ends,
    spacing balanced, every referenced id exists.
 
-Palette: match the destination. For AgentKit Pages author the **navy palette
-only** — baked SVGs sit on a navy island in BOTH page themes, there is no light
-variant to produce, and a light-palette diagram would be invisible on it:
-strokes `#dce7f5`, muted `#8fa8c7`, accents `#34d3a6` / `#e8b444`, fills
-transparent or `#102847`, background transparent. For READMEs/light surfaces:
+Palette: match the destination. For AgentKit Pages author the **dark house
+palette only** — the page derives the light-theme rendering itself
+(invert + hue-rotate on `svg[role="img"]`), so there is still exactly one
+variant to produce and it must be the dark one: strokes `#eeeeee`, muted
+`#8f959f`, accents `#5b96e0` (blue) / `#f5a742` (amber), fills transparent
+or `#1b1d22`, background transparent. For READMEs/light surfaces:
 near-black strokes with classic pastel fills (`#a5d8ff`, `#b2f2bb`, `#ffec99`).
 
-Contrast rules (worst case is the light end of the figure glow, `#0f2a4d`):
+Contrast rules (worst case is the light end of the figure glow, `#182233`):
 
-- Red `#e06c5f` is a stroke color, not a text color — 4.4:1 misses AA. Use it
+- Red `#e06c75` is a stroke color, not a text color — 4.4:1 misses AA. Use it
   at strokeWidth ≥2 on shapes/arrows, or on text only at 16 px+.
 - Decoration never shares the hue of the text it decorates: underlines and
-  strikethroughs under colored text use muted `#8fa8c7` or are dropped — gold
-  under gold reads as a smear. Prefer size and weight over decoration.
-- Text on a filled panel takes the neutral ink `#dce7f5`, never the fill's own
+  strikethroughs under colored text use muted `#8f959f` or are dropped — amber
+  under amber reads as a smear. Prefer size and weight over decoration.
+- Text on a filled panel takes the neutral ink `#eeeeee`, never the fill's own
   color family; reserve the accent for a single data value.
 - Two semantic colors adjacent at the same size need a legend (≥14 px), placed
   inside the zone it explains.

@@ -13,21 +13,21 @@
 <style>
   /* AgentKit Pages house deck theme — dark navy default, light via toggle. */
   :root {
-    --navy: #0a1c38; --navy-deep: #071224; --card: #102847; --code-bg: #0d2140;
-    --line: #1e3a5f; --ink: #dce7f5; --muted: #8fa8c7;
-    --accent: #34d3a6; --accent-soft: #0d2f3a; --gold: #e8b444; --red: #e06c5f;
-    --fig-glow: #0f2a4d; --node-hi: #173562; --node-lo: #0c2140; --node-border: #2e4f7e;
-    --tile-side: #061021;
-    /* Ground for baked-palette diagram SVGs (excalidraw); stays navy in both
-       themes so light-stroked art survives light mode. */
-    --diagram-bg: #071224;
+    --navy: #131417; --navy-deep: #0a0a0c; --card: #1b1d22; --code-bg: #16181c;
+    --line: #2a2d34; --ink: #eeeeee; --muted: #8f959f;
+    --accent: #5b96e0; --accent-soft: #152438; --gold: #f5a742; --red: #e06c75;
+    --fig-glow: #182233; --node-hi: #232733; --node-lo: #16181f; --node-border: #3a4150;
+    --tile-side: #050506;
+    /* Ground for baked-palette diagram SVGs (excalidraw); flips with the
+       theme — light mode also inverts the SVG art itself. */
+    --diagram-bg: #0e0f12;
   }
   html[data-theme="light"] {
-    --navy: #f2f6fa; --navy-deep: #e6edf5; --card: #ffffff; --code-bg: #e9eff6;
-    --line: #cfdae6; --ink: #16202c; --muted: #5b6b7c;
-    --accent: #0c8f6c; --accent-soft: #ddf1ea; --gold: #a97b10; --red: #bb4335;
-    --fig-glow: #dde8f3; --node-hi: #ffffff; --node-lo: #eef4fa; --node-border: #b9c9da;
-    --tile-side: #c4d2e0;
+    --navy: #f8f9fb; --navy-deep: #eef0f4; --card: #ffffff; --code-bg: #eef1f5;
+    --line: #d5dae2; --ink: #1a1a1a; --muted: #5f6672;
+    --accent: #2d64ba; --accent-soft: #e3ecf8; --gold: #9a7418; --red: #d1383d;
+    --diagram-bg: #eef0f4; --fig-glow: #e4e9f1; --node-hi: #ffffff; --node-lo: #f0f3f7; --node-border: #c3cbd6;
+    --tile-side: #c9d0da;
   }
   * { box-sizing: border-box; }
   html, body { height: 100%; }
@@ -89,11 +89,10 @@
   .figcaption strong { color: var(--accent); font-weight: 600; }
   .figure pre.mermaid { background: none; border: 0; margin: 0; }
 
-  /* Baked-palette diagram SVGs keep a navy island in light mode (their strokes
-     are authored for a dark ground). Mermaid and HTML diagrams adapt via vars. */
-  html[data-theme="light"] .figure > svg:not(.edges),
-  html[data-theme="light"] .figure > p > svg:not(.edges) {
-    background: var(--diagram-bg); border-radius: 10px; padding: 0.6rem;
+  /* Baked-palette diagram SVGs are authored navy-only; light mode derives a
+     light rendering with a double flip — see the doc theme for rationale. */
+  html[data-theme="light"] svg[role="img"]:not(.edges) {
+    filter: invert(0.93) hue-rotate(180deg);
   }
   @media print {
     .figure > svg:not(.edges), .figure > p > svg:not(.edges) {

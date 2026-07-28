@@ -39,9 +39,10 @@ bun <skill-dir>/publish.ts --name <name> --delete    # remove a page you publish
 ## Page design — the house style is built in
 
 Pages should look designed, not dumped. The doc/deck themes carry the house
-identity automatically (**dark navy** ground `#071224→#0a1c38`, ink `#dce7f5`,
-green accent `#34d3a6`, gold `#e8b444`, panels `#102847`, lines `#1e3a5f`,
-mono eyebrows) — never re-explain or re-style these basics. Also automatic, no
+identity automatically (**deep neutral** ground `#0a0a0c→#131417`, ink `#eeeeee`,
+blue accent `#5b96e0`, amber `#f5a742`, panels `#1b1d22`, lines `#2a2d34`,
+mono eyebrows; light mode goes white-ground with a deep-blue accent and
+auto-inverts baked diagrams) — never re-explain or re-style these basics. Also automatic, no
 agent action needed: a **dark/light theme toggle** (persisted; mermaid
 re-renders on flip), a **TOC dot rail** with smooth scrolling on docs with ≥3
 `h2` sections, prev/next **nav buttons** on decks, and **hover lift/glow** on
@@ -100,7 +101,7 @@ sequence/state diagram with the `diagram` skill instead.
   - **System/architecture topology** → the isometric kit (the standout look):
     `<div class="iso"><div class="iso-node hot"><div class="tile"><div class="side"></div><div class="top"><div class="glyph">SVG</div></div></div><div class="tag">name</div></div>…</div>`
     Variants `.hot` (green) / `.gold` for emphasis. Draw each glyph as a simple
-    inline 24×24 SVG outline icon (stroke `#8fa8c7`, or `#34d3a6`/`#e8b444` on
+    inline 24×24 SVG outline icon (stroke `#8f959f`, or `#5b96e0`/`#f5a742` on
     emphasized nodes, stroke-width 1.5, fill none) matching the node's meaning —
     a database cylinder, a globe, a cloud, a terminal chevron, a bot face.
   - **Drawn connectors (draw.io-style)**: give nodes `id="n1"` etc. and declare
@@ -112,7 +113,7 @@ sequence/state diagram with the `diagram` skill instead.
   - **Pipelines/flows with descriptions** → the premium flat kit:
     `<div class="arch"><div class="arch-row"><div class="arch-node hot"><svg class="ic">…</svg><div class="nm">Name</div><div class="ds">detail</div></div></div><div class="arch-join">edge label</div>…</div>`
   - **Sequences, state machines, dense graphs, gantt** → mermaid fences (the
-    runtime is auto-inlined, themed to the navy palette; costs ~3.4 MB of the
+    runtime is auto-inlined, themed to the house palette; costs ~3.4 MB of the
     5 MB cap, leaving ~1.4 MB for content):
     ````
     <div class="figure">
@@ -144,7 +145,7 @@ sequence/state diagram with the `diagram` skill instead.
 All of these work inside markdown files — markdown passes raw HTML through.
 Decks: one idea per slide, kicker + h2 + a few bullets or one diagram/card grid;
 put heavy diagrams on their own slide. Raw pages: full freedom, but reuse the
-navy tokens above so pages feel like one product.
+house tokens above so pages feel like one product.
 
 ## Requirements and behavior
 
@@ -175,7 +176,7 @@ navy tokens above so pages feel like one product.
 - Errors are loud; fix and re-run. Do not fall back to pasting the content into
   chat without saying the publish failed.
 - Publish refuses a baked (excalidraw) SVG that is not inside a `.figure`
-  island or a container styled with `var(--diagram-bg)` — a navy-palette
+  island or a container styled with `var(--diagram-bg)` — a dark-palette
   diagram on a page-supplied light background is illegible in both themes.
   `--allow-bare-svg` overrides when a raw page really owns its background —
   the pages-police hook blocks that flag unless the user approved it
