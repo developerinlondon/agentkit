@@ -22,6 +22,9 @@ jobs:
     if: github.event_name == 'pull_request'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
+    env:
+      MOON_BASE: ${{ github.event.pull_request.base.sha }}
+      MOON_HEAD: ${{ github.event.pull_request.head.sha }}
     strategy:
       fail-fast: false
       matrix:
@@ -46,10 +49,21 @@ jobs:
       - name: Validate test slice coverage
         run: bun run test:slices
 
+      - name: Select critical or affected test mode
+        id: test-mode
+        run: |
+          if moon query affected | jq -e '.tasks | has("agentkit:test-full")' >/dev/null; then
+            echo 'mode=full' >> "$GITHUB_OUTPUT"
+          else
+            echo 'mode=affected' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run full suite for critical changes
+        if: steps.test-mode.outputs.mode == 'full'
+        run: moon ci agentkit:test-full
+
       - name: Run affected Moon tasks
-        env:
-          MOON_BASE: ${{ github.event.pull_request.base.sha }}
-          MOON_HEAD: ${{ github.event.pull_request.head.sha }}
+        if: steps.test-mode.outputs.mode == 'affected'
         run: moon ci
 
   full:
