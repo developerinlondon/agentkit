@@ -2,13 +2,9 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { IconError, type IconRecord, lookupVendorIcon, splitVendorKey } from "./vendor-packs.ts";
 
-export interface IconRecord {
-  set: string;
-  name: string;
-  file: string;
-  license: string;
-}
+export { IconError, type IconRecord };
 
 export const assetsDir = join(import.meta.dir, "..", "assets", "iconify");
 
@@ -21,8 +17,6 @@ export function manifest(dir = assetsDir): Record<string, IconRecord> {
   return loaded;
 }
 
-export class IconError extends Error {}
-
 function suggest(key: string, keys: string[]): string {
   const near = keys.filter((k) => k.includes(key) || key.includes(k.split(":").pop() ?? k)).slice(0, 5);
   return near.length ? ` — did you mean ${near.join(", ")}?` : "";
@@ -31,10 +25,14 @@ function suggest(key: string, keys: string[]): string {
 export function lookupIcon(key: string, dir = assetsDir): { file: string; path: string } {
   const m = manifest(dir);
   const record = m[key];
-  if (!record) throw new IconError(`unknown icon "${key}"${suggest(key, Object.keys(m))}`);
-  const path = join(dir, record.file);
-  if (!existsSync(path)) throw new IconError(`icon "${key}" maps to missing file ${record.file}`);
-  return { file: record.file, path };
+  if (record) {
+    const path = join(dir, record.file);
+    if (!existsSync(path)) throw new IconError(`icon "${key}" maps to missing file ${record.file}`);
+    return { file: record.file, path };
+  }
+  const vendor = splitVendorKey(key);
+  if (vendor) return lookupVendorIcon(vendor.pack, vendor.name);
+  throw new IconError(`unknown icon "${key}"${suggest(key, Object.keys(m))}`);
 }
 
 export function resolveIcon(key: string, dir = assetsDir): string {
@@ -43,7 +41,7 @@ export function resolveIcon(key: string, dir = assetsDir): string {
 
 // `@key` keeps authored .d2 free of machine-specific paths; d2 only accepts a
 // real path or URL, so the reference is expanded just before rendering.
-const ICON_REF = /^(\s*icon\s*:\s*)@([A-Za-z0-9 ._:-]+?)\s*$/gm;
+const ICON_REF = /^(\s*icon\s*:\s*)@([A-Za-z0-9 ._:/-]+?)\s*$/gm;
 
 export const STAGE_SUBDIR = "icons";
 

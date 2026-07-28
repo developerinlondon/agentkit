@@ -1,0 +1,81 @@
+{
+  "azure": {
+    "title": "Microsoft Azure architecture icons",
+    "vendor": "Microsoft",
+    "license": "Microsoft Azure icon terms of use (proprietary; no SPDX identifier)",
+    "landingUrl": "https://learn.microsoft.com/en-us/azure/architecture/icons/",
+    "termsUrl": "https://learn.microsoft.com/en-us/azure/architecture/icons/",
+    "grant": "express",
+    "terms": [
+      "Microsoft permits the use of these icons in architectural diagrams, training materials, or documentation. You may copy, distribute, and display the icons only for the permitted use unless granted explicit permission by Microsoft. Microsoft reserves all other rights.",
+      "Don't crop, flip, or rotate icons.",
+      "Don't distort or change icon shape in any way.",
+      "Don't use Microsoft product icons to represent your product or service.",
+      "Icons may not be cropped, flipped or rotated, and their shape may not be distorted or changed. (Azure_Icons_FAQ.pdf)"
+    ],
+    "archives": [
+      {
+        "url": "https://arch-center.azureedge.net/icons/Azure_Public_Service_Icons_V24.zip",
+        "sha256": "921594ccd1bf3d9c0a1bd7b6d924e050551a59342f2b353bb74bdcf761c35141",
+        "bytes": 1033184
+      }
+    ],
+    "nameStrip": [
+      "^\\d+-icon-service-"
+    ],
+    "categorySkip": [
+      "Azure_Public_Service_Icons",
+      "Icons"
+    ],
+    "keepFiles": [
+      "Microsoft_Terms_of_Use.pdf",
+      "Azure_Icons_FAQ.pdf"
+    ]
+  },
+  "gcp": {
+    "title": "Google Cloud product and category icons",
+    "vendor": "Google",
+    "license": "No licence granted — Google publishes this set with no terms of use",
+    "landingUrl": "https://cloud.google.com/icons",
+    "termsUrl": "https://partnermarketinghub.withgoogle.com/brands/google/trademarks-and-terms/trademark-guidelines-for-proper-usage/",
+    "grant": "absent",
+    "terms": [
+      "Google states no licence, terms of use, permission or attribution requirement for this icon set. The library page reads in full: \"Welcome to the official library for Google Cloud product icons. Here you can find the Google Cloud product icons you need for your diagrams, technical documentation, and more.\" No archive contains a LICENSE or README, and every page of the accompanying overview PDF is stamped \"Google Cloud Proprietary & Confidential\".",
+      "The nearest governing text is Google's trademark guidance: \"Don't remove, distort, or alter any element of a Google Brand Feature. You may not modify Google Brand Features by hyphenation or combination, or by shortening, abbreviating, or creating acronyms.\"",
+      "\"Use only Google-approved artwork when using Google's logos.\"",
+      "Because no permission is granted, this pack is fetched from Google's own endpoint onto your machine and is never redistributed. Satisfy yourself that your use is permitted before relying on it."
+    ],
+    "archives": [
+      {
+        "url": "https://services.google.com/fh/files/misc/core-products-icons.zip",
+        "sha256": "6531a10f58bc599c24d9a455d81dd757c1a03c3c43da9cddf639b859c1c1eece",
+        "bytes": 318678,
+        "label": "core"
+      },
+      {
+        "url": "https://services.google.com/fh/files/misc/category-icons.zip",
+        "sha256": "e5bc3abd3527dc2500e9bff7f15870783e2c764129c49b7cd4c1b4e105345002",
+        "bytes": 795968,
+        "label": "category"
+      },
+      {
+        "url": "https://services.google.com/fh/files/misc/google-cloud-legacy-icons.zip",
+        "sha256": "a6d9d7921758042538b462f03cf64614c2cebd96743b3ed63580a769fc7de3e9",
+        "bytes": 2268104,
+        "label": "legacy"
+      }
+    ],
+    "nameStrip": [
+      "-512-color-rgb$",
+      "-512-color$",
+      "-512$"
+    ],
+    "categorySkip": [
+      "Unique Icons",
+      "Category Icons",
+      "SVG"
+    ],
+    "keepFiles": [],
+    "nameFrom": "dir"
+  }
+}

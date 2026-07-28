@@ -1,0 +1,645 @@
+#!/usr/bin/env bun
+// Opt-in fetch of vendor-licensed icon packs into a local, uncommitted tree.
+// Never run from a bare install: fetching is an acceptance of vendor terms the
+// installing user has to make, so it is a deliberate per-pack invocation.
+
+import { createHash } from "node:crypto";
+import { execFileSync } from "node:child_process";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { basename, dirname, join, relative, sep } from "node:path";
+import { fileURLToPath } from "node:url";
+import {
+  FETCH_SCRIPT,
+  type IconRecord,
+  type PackArchive,
+  packDir,
+  packs,
+  registryPath,
+  type VendorPack,
+  vendorRoot,
+} from "./vendor-packs.ts";
+
+function fail(msg: string): never {
+  console.error(`fetch-icons: ${msg}`);
+  process.exit(1);
+}
+
+function arg(name: string): string | undefined {
+  const i = process.argv.indexOf(`--${name}`);
+  const v = i > 0 ? process.argv[i + 1] : undefined;
+  if (v?.startsWith("--")) fail(`--${name} is missing its value`);
+  return v;
+}
+
+function flag(name: string): boolean {
+  return process.argv.includes(`--${name}`);
+}
+
+export function slugify(stem: string, strips: string[] = []): string {
+  let s = stem;
+  for (const pattern of strips) s = s.replace(new RegExp(pattern), "");
+  // No camel-case splitting: vendor names are already space-, underscore- or
+  // hyphen-separated, and splitting on case turns "IoT Hub" into "io-t-hub".
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+}
+
+export interface Limits {
+  archiveBytes: number;
+  unpackedBytes: number;
+  entries: number;
+  listBytes: number;
+}
+
+// The checksum pins content, not resources: the whole body must be read before
+// the hash can judge it, so a ceiling is the only thing standing between a
+// substituted endpoint and memory or disk exhaustion. The largest real archive
+// is 2.3 MB, so these are generous by two orders of magnitude. listBytes must
+// stay above what `entries` worth of listing can print, or the listing dies of
+// ENOBUFS before the entry ceiling can report anything.
+export const DEFAULT_LIMITS: Limits = {
+  archiveBytes: 64 * 1024 * 1024,
+  unpackedBytes: 256 * 1024 * 1024,
+  entries: 20_000,
+  listBytes: 128 * 1024 * 1024,
+};
+
+// A ceiling reachable only by building a fixture as big as the ceiling is a
+// ceiling nothing ever tests. Lowering them is for that; it is not a user knob.
+export function limits(): Limits {
+  const raw = process.env.AGENTKIT_DIAGRAM_TEST_LIMITS;
+  if (!raw) return DEFAULT_LIMITS;
+  const over: Partial<Limits> = {};
+  for (const pair of raw.split(",")) {
+    const [key, value] = pair.split("=").map((s) => s?.trim());
+    if (key && value && Object.hasOwn(DEFAULT_LIMITS, key)) {
+      over[key as keyof Limits] = Number(value);
+    }
+  }
+  return { ...DEFAULT_LIMITS, ...over };
+}
+
+export class ArchiveError extends Error {}
+
+function tooBig(what: string, found: number, cap: number, url: string): string {
+  return `${what} for ${url} is ${found} bytes, over the ${cap}-byte ceiling — nothing was installed.`
+    + ` A vendor icon archive is a few megabytes; this is not one.`;
+}
+
+// file: exists for offline fixtures and must be asked for, so that a registry
+// override cannot quietly turn a fetch into a read of an arbitrary local path.
+function checkScheme(url: string, what: string): void {
+  if (url.startsWith("https:")) return;
+  if (url.startsWith("file:") && process.env.AGENTKIT_DIAGRAM_ALLOW_LOCAL_PACKS === "1") return;
+  fail(
+    `${what} ${url} is not https — vendor archives are fetched over https only`
+      + ` (set AGENTKIT_DIAGRAM_ALLOW_LOCAL_PACKS=1 to allow a local file: archive)`,
+  );
+}
+
+async function readArchive(url: string): Promise<Buffer> {
+  checkScheme(url, "archive url");
+  if (url.startsWith("file:")) {
+    const buf = readFileSync(fileURLToPath(url));
+    const cap = limits().archiveBytes;
+    if (buf.length > cap) fail(tooBig("archive", buf.length, cap, url));
+    return buf;
+  }
+  const res = await fetch(url, { redirect: "follow" });
+  if (!res.ok) {
+    fail(
+      `${url} returned HTTP ${res.status} ${res.statusText} — the vendor moved or withdrew the archive;`
+        + ` check ${url.split("/").slice(0, 3).join("/")} and re-pin assets/vendor-packs.json`,
+    );
+  }
+  checkScheme(res.url, "archive url after redirect");
+  const declared = Number(res.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > limits().archiveBytes) {
+    fail(tooBig("declared archive size", declared, limits().archiveBytes, url));
+  }
+  return await readBounded(res, url);
+}
+
+// Content-Length is advisory and absent on a chunked response, so the budget is
+// enforced against the bytes actually arriving and the transfer is cancelled the
+// moment it is exceeded.
+async function readBounded(res: Response, url: string): Promise<Buffer> {
+  const reader = res.body?.getReader() ?? fail(`${url} returned no response body`);
+  const cap = limits().archiveBytes;
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.length;
+    if (total > cap) {
+      await reader.cancel();
+      fail(tooBig("archive", total, cap, url));
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks);
+}
+
+function sha256(buf: Buffer): string {
+  return createHash("sha256").update(buf).digest("hex");
+}
+
+// A vendor re-release changes the bytes under a URL we do not control. Accepting
+// a changed archive silently would ship whatever the vendor swapped in — the
+// pin exists precisely to make that a decision someone makes on purpose.
+function verifyPin(archive: PackArchive, buf: Buffer): void {
+  const found = sha256(buf);
+  if (found === archive.sha256) return;
+  fail(
+    `checksum mismatch for ${archive.url}\n`
+      + `  pinned:   ${archive.sha256}\n`
+      + `  received: ${found} (${buf.length} bytes)\n`
+      + `The vendor re-released this archive, or the download was tampered with. Nothing was installed.\n`
+      + `To adopt the new release: verify the archive is genuinely the vendor's, re-read its terms at the\n`
+      + `pack's termsUrl, then set sha256 to ${found} in skills/diagram/assets/vendor-packs.json.`,
+  );
+}
+
+interface ArchiveEntry {
+  mode: string;
+  bytes: number;
+  name: string;
+}
+
+// `unzip -Z` names the type, the uncompressed size and the path of every entry
+// before a single byte is written, which is the only point at which a hostile
+// entry can be refused rather than cleaned up after.
+// The permission field is 10 characters for a unix-attribute archive and 7 for
+// a DOS-attribute one (which is what both real vendor archives are), so only its
+// first character — the type — can be relied on. The `2.0`/`3.0` version field
+// is what separates an entry line from the listing's own header.
+const LISTING = /^(\S+)\s+\d+\.\d+\s+\S+\s+(\d+)\s+\S+\s+\S+\s+\S+\s+\S+\s+(.*)$/;
+
+// `?` is an entry whose type bits say nothing, which some zip writers emit for
+// ordinary files. It is allowed because unzip has nothing to act on either and
+// extracts it as a regular file — a symlink is always typed `l`.
+const EXTRACTABLE = new Set(["-", "d", "?"]);
+
+export function parseListing(raw: string): ArchiveEntry[] {
+  const entries: ArchiveEntry[] = [];
+  for (const line of raw.split("\n")) {
+    const m = LISTING.exec(line);
+    if (m) entries.push({ mode: m[1]!, bytes: Number(m[2]), name: m[3]! });
+  }
+  // A listing this parser cannot read must not read as an empty archive, which
+  // would wave every later check through on nothing.
+  const declared = /number of entries:\s*(\d+)/.exec(raw);
+  if (!declared) throw new ArchiveError(`could not read the entry count from the archive listing`);
+  if (entries.length !== Number(declared[1])) {
+    throw new ArchiveError(
+      `archive listing parsed ${entries.length} of ${declared[1]} entries — refusing to screen an`
+        + ` archive this cannot fully read`,
+    );
+  }
+  return entries;
+}
+
+function listArchive(zip: string): ArchiveEntry[] {
+  let raw: string;
+  const cap = limits().listBytes;
+  try {
+    raw = execFileSync("unzip", ["-Z", zip], { encoding: "utf8", stdio: "pipe", maxBuffer: cap });
+  } catch (e) {
+    const err = e as { code?: string; stderr?: Buffer; message: string };
+    // Without an explicit maxBuffer this is where an archive with a few thousand
+    // entries died — reason-less, and before the entry ceiling could name it.
+    if (err.code === "ENOBUFS") {
+      fail(
+        `the archive listing exceeded the ${cap}-byte buffer, so its entries could not be screened`
+          + ` — nothing was installed.`,
+      );
+    }
+    fail(`could not list the archive: ${(err.stderr?.toString() ?? err.message).trim()}`);
+  }
+  return parseListing(raw);
+}
+
+export function screenArchive(entries: ArchiveEntry[], url: string): void {
+  const cap = limits();
+  if (entries.length > cap.entries) {
+    throw new ArchiveError(
+      `${url} holds ${entries.length} entries, over the ${cap.entries} ceiling — nothing was installed.`,
+    );
+  }
+  const unpacked = entries.reduce((n, e) => n + e.bytes, 0);
+  if (unpacked > cap.unpackedBytes) {
+    throw new ArchiveError(tooBig("unpacked archive size", unpacked, cap.unpackedBytes, url));
+  }
+  for (const e of entries) {
+    // Refused before extraction rather than skipped after: a symlink is not a
+    // thing an icon archive legitimately contains, and copying one dereferences
+    // it into whatever the local filesystem holds at that path.
+    if (!EXTRACTABLE.has(e.mode[0]!)) {
+      throw new ArchiveError(`${url} contains a non-regular entry (${e.mode}) at "${e.name}" — nothing was installed.`);
+    }
+    if (e.name.startsWith("/") || /^[A-Za-z]:/.test(e.name) || e.name.split(/[/\\]/).includes("..")) {
+      throw new ArchiveError(`${url} contains an entry that escapes its root: "${e.name}" — nothing was installed.`);
+    }
+  }
+}
+
+function unzipTo(buf: Buffer, dest: string, url: string): void {
+  const zip = join(dest, "archive.zip");
+  mkdirSync(dest, { recursive: true });
+  writeFileSync(zip, buf);
+  try {
+    screenArchive(listArchive(zip), url);
+  } catch (e) {
+    if (e instanceof ArchiveError) fail(e.message);
+    throw e;
+  }
+  const out = join(dest, "tree");
+  mkdirSync(out, { recursive: true });
+  try {
+    execFileSync("unzip", ["-q", "-o", zip, "-d", out], { stdio: "pipe" });
+  } catch (e) {
+    const err = e as { stderr?: Buffer; message: string };
+    fail(`unzip failed: ${(err.stderr?.toString() ?? err.message).trim()}`);
+  }
+  rmSync(zip, { force: true });
+}
+
+function svgFiles(root: string): string[] {
+  const found: string[] = [];
+  const walk = (dir: string): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (entry.name === "__MACOSX" || entry.name.startsWith(".")) continue;
+      const abs = join(dir, entry.name);
+      if (entry.isDirectory()) walk(abs);
+      else if (entry.isFile() && entry.name.endsWith(".svg")) found.push(abs);
+    }
+  };
+  walk(root);
+  return found.sort();
+}
+
+interface Candidate {
+  abs: string;
+  slug: string;
+  qualifier: string;
+  digest: string;
+}
+
+function candidateFor(abs: string, root: string, info: VendorPack, label: string): Candidate {
+  const parts = relative(root, abs).split(sep);
+  const stem = basename(abs, ".svg");
+  const skip = new Set(info.categorySkip ?? []);
+  const dirs = parts.slice(0, -1).filter((d) => !skip.has(d));
+  const nameSource = info.nameFrom === "dir" ? (dirs.at(-1) ?? stem) : stem;
+  const slug = slugify(nameSource, info.nameStrip);
+  const qualifier = info.nameFrom === "dir" ? label : slugify(dirs.at(-1) ?? label);
+  return { abs, slug, qualifier: qualifier || label, digest: sha256(readFileSync(abs)) };
+}
+
+interface Rejected {
+  file: string;
+  why: string;
+}
+
+// XML predefines five entities; the rest are HTML's, which an SVG living in an
+// HTML document may still use. Only those that can disguise reference syntax
+// need decoding — the screening copy is not required to be a faithful render.
+const ENTITIES: Record<string, string> = {
+  amp: "&",
+  lt: "<",
+  gt: ">",
+  quot: '"',
+  apos: "'",
+  sol: "/",
+  colon: ":",
+  lpar: "(",
+  rpar: ")",
+  num: "#",
+  period: ".",
+  semi: ";",
+  tab: "\t",
+  newline: "\n",
+  nbsp: " ",
+  commat: "@",
+};
+
+function codePoint(n: number): string {
+  return Number.isFinite(n) && n >= 0 && n <= 0x10ffff ? String.fromCodePoint(n) : "";
+}
+
+function decodeEntities(text: string): string {
+  return text
+    .replace(/&#x([0-9a-f]+);/gi, (_m, hex: string) => codePoint(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_m, dec: string) => codePoint(parseInt(dec, 10)))
+    .replace(/&([a-z]+);/gi, (whole, name: string) => ENTITIES[name.toLowerCase()] ?? whole);
+}
+
+// Screening an as-authored SVG means screening one spelling of it. The same
+// reference survives entity encoding, case changes and whitespace the parsers
+// ignore, so the checks run against a copy with all of that flattened out —
+// decoded to a fixed point, since `&amp;#x2f;` is two layers deep.
+export function normalizeForScreen(svg: string): string {
+  let text = svg;
+  for (let round = 0; round < 5; round += 1) {
+    const next = decodeEntities(text);
+    if (next === text) break;
+    text = next;
+  }
+  return text
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .replace(/\s*=\s*/g, "=")
+    .replace(/url\s*\(\s*/g, "url(")
+    .replace(/\s*\)/g, ")");
+}
+
+function targets(text: string): string[] {
+  const out: string[] = [];
+  for (const m of text.matchAll(/(?:xlink:)?href=("([^"]*)"|'([^']*)'|([^\s>]*))/g)) {
+    out.push(m[2] ?? m[3] ?? m[4] ?? "");
+  }
+  for (const m of text.matchAll(/url\(("([^"]*)"|'([^']*)'|([^)]*))\)/g)) {
+    out.push(m[2] ?? m[3] ?? m[4] ?? "");
+  }
+  return out.map((t) => t.trim()).filter((t) => t !== "");
+}
+
+// An absolute or scheme-relative URL is legitimate in exactly one place — a
+// namespace declaration, which names a vocabulary rather than fetching it. Every
+// other appearance, including one hiding in xml:base, is refused. Checked over
+// the whole document rather than per attribute so an attribute nobody thought of
+// cannot carry one.
+function externalUrls(text: string): boolean {
+  const inert = text
+    .replace(/xmlns(:[a-z0-9_.-]+)?="[^"]*"/g, "")
+    .replace(/data:[^"'\s)>]*/g, "");
+  return /(?:[a-z][a-z0-9+.-]*:)?\/\//.test(inert);
+}
+
+// Vendor archives are not curated for embedding. An icon carrying active
+// content or an external reference would travel into every rendered diagram, so
+// it disqualifies the pack rather than being quietly dropped; a merely
+// malformed icon is skipped and named.
+const ACTIVE_CONTENT: Array<{ why: string; pattern: RegExp }> = [
+  { why: "a <script> element", pattern: /<script/ },
+  { why: "a <foreignObject> element", pattern: /<foreignobject/ },
+  { why: "an inline event handler", pattern: /[\s"';]on[a-z]+=/ },
+  { why: "an @import rule", pattern: /@import/ },
+];
+
+// A reference target passes only if it points inside this document (`#`) or
+// carries its own bytes (`data:`). Stating what is allowed rather than listing
+// what is not is the whole point: the list of ways to spell a fetch is open,
+// the list of things an icon may legitimately reference is two items long.
+export function screenSvg(svg: string): { ok: boolean; why?: string; fatal?: boolean } {
+  if (!svg.includes("<svg")) return { ok: false, why: "not an SVG document" };
+  const text = normalizeForScreen(svg);
+  for (const { why, pattern } of ACTIVE_CONTENT) {
+    if (pattern.test(text)) return { ok: false, why, fatal: true };
+  }
+  const offsite = targets(text).filter((t) => !t.startsWith("#") && !t.startsWith("data:"));
+  if (offsite.length > 0) return { ok: false, why: `an off-document reference (${offsite[0]})`, fatal: true };
+  if (externalUrls(text)) return { ok: false, why: "an absolute or scheme-relative URL", fatal: true };
+  if (!/viewbox=/.test(text)) return { ok: false, why: "no viewBox — d2 cannot scale it" };
+  return { ok: true };
+}
+
+interface Built {
+  records: Record<string, IconRecord>;
+  copies: Array<{ from: string; to: string }>;
+  skipped: Rejected[];
+  ambiguous: string[];
+}
+
+function build(pack: string, info: VendorPack, extracted: Array<{ root: string; label: string }>): Built {
+  const records: Record<string, IconRecord> = {};
+  const copies: Array<{ from: string; to: string }> = [];
+  const skipped: Rejected[] = [];
+  const ambiguous = new Set<string>();
+  // slug -> artwork digest -> the key it was stored under. Keyed by digest and
+  // not merely by "whoever claimed the bare name" so that two identical copies
+  // still collapse when a third, different icon sorts ahead of them.
+  const seen = new Map<string, Map<string, string>>();
+
+  for (const { root, label } of extracted) {
+    for (const abs of svgFiles(root)) {
+      const verdict = screenSvg(readFileSync(abs, "utf8"));
+      if (!verdict.ok) {
+        if (verdict.fatal) {
+          fail(
+            `${relative(root, abs)} in pack "${pack}" carries ${verdict.why}. Nothing was installed —`
+              + ` an icon that reaches the network or runs script must not be embedded in a diagram.`,
+          );
+        }
+        skipped.push({ file: relative(root, abs), why: verdict.why ?? "unusable" });
+        continue;
+      }
+      const c = candidateFor(abs, root, info, label);
+      const variants = seen.get(c.slug) ?? new Map<string, string>();
+      if (variants.has(c.digest)) continue; // the same artwork filed twice by the vendor
+      const qualified = `${c.qualifier}/${c.slug}`;
+      let key = qualified;
+      if (records[key]) {
+        // Two different icons under one qualified name: only the vendor's own
+        // full stem still separates them.
+        key = `${c.qualifier}/${slugify(basename(c.abs, ".svg"))}`;
+        if (records[key]) fail(`pack "${pack}": ${relative(root, abs)} collides with an icon already registered as ${key}`);
+      }
+      const record: IconRecord = { set: pack, name: c.slug, file: `${key}.svg`, license: info.license };
+      records[key] = record;
+      copies.push({ from: abs, to: `${key}.svg` });
+      if (variants.size === 0) records[c.slug] = record;
+      else ambiguous.add(c.slug);
+      variants.set(c.digest, key);
+      seen.set(c.slug, variants);
+    }
+  }
+  return { records, copies, skipped, ambiguous: [...ambiguous].sort() };
+}
+
+function notice(info: VendorPack, count: number): string {
+  return [
+    `${info.title}`,
+    ``,
+    `Vendor:   ${info.vendor}`,
+    `Source:   ${info.landingUrl}`,
+    `Terms:    ${info.termsUrl}`,
+    `Licence:  ${info.license}`,
+    ``,
+    info.grant === "absent"
+      ? `NO LICENCE IS GRANTED FOR THIS ARTWORK. It was fetched from the vendor's own`
+        + `\nendpoint onto this machine and must not be redistributed.`
+      : `This artwork is licensed by the vendor, NOT by AgentKit, and is not covered by`
+        + `\nthis repository's licence. It must not be redistributed.`,
+    ``,
+    `Terms, verbatim:`,
+    ...info.terms.map((t) => `\n  ${t}`),
+    ``,
+    `Archives fetched:`,
+    ...info.archives.map((a) => `  ${a.url}\n    sha256 ${a.sha256}`),
+    ``,
+    `${count} icon(s) extracted verbatim by ${FETCH_SCRIPT}. Vendor logos are`,
+    `trademarks of their respective owners, reproduced unmodified for nominative`,
+    `identification only. They must never be recoloured, cropped, rotated,`,
+    `distorted, or theme-filtered.`,
+    ``,
+  ].join("\n");
+}
+
+function printTerms(pack: string, info: VendorPack): void {
+  console.log(`\n${info.title} — ${info.vendor}`);
+  console.log(`  Licence: ${info.license}`);
+  console.log(`  Terms:   ${info.termsUrl}`);
+  if (info.grant === "absent") {
+    console.log(`  WARNING: the vendor grants no licence for this set. Read the terms before fetching.`);
+  }
+  for (const t of info.terms) console.log(`\n  ${t}`);
+  const bytes = info.archives.reduce((n, a) => n + (a.bytes ?? 0), 0);
+  console.log(`\n  ${info.archives.length} archive(s), ~${Math.round(bytes / 1024)} KiB, from:`);
+  for (const a of info.archives) console.log(`    ${a.url}`);
+  console.log(`\nRe-run with --accept-terms to fetch:\n  bun ${FETCH_SCRIPT} ${pack} --accept-terms\n`);
+}
+
+function listPacks(registry: Record<string, VendorPack>, root: string): void {
+  console.log(`vendor icon packs (registry: ${registryPath()})`);
+  console.log(`install root: ${root}  [override with AGENTKIT_DIAGRAM_VENDOR_ICONS]\n`);
+  for (const [id, info] of Object.entries(registry)) {
+    const state = existsSync(join(packDir(id, root), "manifest.json")) ? "installed" : "not installed";
+    console.log(`  ${id.padEnd(8)} ${state.padEnd(14)} ${info.title}`);
+  }
+  console.log(`\nfetch one with: bun ${FETCH_SCRIPT} <pack> --accept-terms`);
+}
+
+function listIcons(pack: string, root: string, filter?: string): void {
+  const path = join(packDir(pack, root), "manifest.json");
+  if (!existsSync(path)) fail(`pack "${pack}" is not installed — bun ${FETCH_SCRIPT} ${pack} --accept-terms`);
+  const m: Record<string, IconRecord> = JSON.parse(readFileSync(path, "utf8"));
+  const keys = Object.keys(m).filter((k) => !filter || k.includes(filter)).sort();
+  for (const k of keys) console.log(`@${pack}:${k}`);
+  console.log(`\n${keys.length} key(s)${filter ? ` matching "${filter}"` : ""} in pack "${pack}"`);
+}
+
+async function main(): Promise<void> {
+  const registry = packs(arg("registry") ?? registryPath());
+  const root = arg("root") ?? vendorRoot();
+  const pack = process.argv.slice(2).find((a) => !a.startsWith("--") && Object.hasOwn(registry, a));
+
+  if (!pack) {
+    const named = process.argv.slice(2).find((a) => !a.startsWith("--"));
+    if (named) {
+      console.error(`fetch-icons: no vendor pack "${named}" — known packs: ${Object.keys(registry).join(", ")}\n`);
+    }
+    listPacks(registry, root);
+    process.exit(named ? 1 : 0);
+  }
+  const info = registry[pack]!;
+
+  if (flag("list")) return listIcons(pack, root, arg("filter"));
+  if (!flag("accept-terms")) {
+    printTerms(pack, info);
+    process.exit(2);
+  }
+
+  const dest = packDir(pack, root);
+  const stamp = join(dest, "fetched.json");
+  const pins = info.archives.map((a) => a.sha256);
+  if (!flag("force") && existsSync(stamp)) {
+    const prev = JSON.parse(readFileSync(stamp, "utf8"));
+    if (JSON.stringify(prev.pins) === JSON.stringify(pins)) {
+      console.log(`${pack}: already installed at ${dest} (${prev.icons} icons) — pass --force to refetch`);
+      return;
+    }
+  }
+
+  const work = mkdtempSync(join(tmpdir(), `fetch-icons-${pack}-`));
+  try {
+    const extracted: Array<{ root: string; label: string }> = [];
+    for (const [i, archive] of info.archives.entries()) {
+      const label = archive.label ?? (info.archives.length > 1 ? slugify(basename(new URL(archive.url).pathname, ".zip")) : pack);
+      console.log(`${pack}: fetching ${archive.url}`);
+      const buf = await readArchive(archive.url);
+      verifyPin(archive, buf);
+      const into = join(work, `a${i}`);
+      unzipTo(buf, into, archive.url);
+      extracted.push({ root: join(into, "tree"), label });
+    }
+
+    const built = build(pack, info, extracted);
+    const staging = join(work, "staged");
+    for (const copy of built.copies) {
+      const target = join(staging, copy.to);
+      mkdirSync(dirname(target), { recursive: true });
+      copyFileSync(copy.from, target);
+    }
+    const count = built.copies.length;
+    writeFileSync(join(staging, "manifest.json"), JSON.stringify(sortKeys(built.records), null, 2) + "\n");
+    writeFileSync(join(staging, "NOTICE"), notice(info, count));
+    writeFileSync(
+      join(staging, "fetched.json"),
+      JSON.stringify({ pack, pins, icons: count, fetchedAt: new Date().toISOString() }, null, 2) + "\n",
+    );
+    for (const keep of info.keepFiles ?? []) {
+      for (const { root: tree } of extracted) {
+        const hit = findByName(tree, keep);
+        if (hit) copyFileSync(hit, join(staging, basename(hit)));
+      }
+    }
+
+    // Swapped in whole: a half-written tree would resolve some icons and not
+    // others, which reads as a missing icon rather than an interrupted fetch.
+    rmSync(dest, { recursive: true, force: true });
+    mkdirSync(dirname(dest), { recursive: true });
+    renameSync(staging, dest);
+    report(pack, dest, count, built);
+  } finally {
+    rmSync(work, { recursive: true, force: true });
+  }
+}
+
+function report(pack: string, dest: string, count: number, built: Built): void {
+  console.log(`${pack}: ${count} icons -> ${dest}`);
+  if (built.skipped.length > 0) {
+    console.log(`${pack}: skipped ${built.skipped.length} unusable file(s):`);
+    for (const s of built.skipped.slice(0, 5)) console.log(`  ${s.file} — ${s.why}`);
+    if (built.skipped.length > 5) console.log(`  …and ${built.skipped.length - 5} more`);
+  }
+  if (built.ambiguous.length > 0) {
+    console.log(
+      `${pack}: ${built.ambiguous.length} name(s) exist more than once with different artwork; the bare`
+        + ` name resolves to the first and the others are reachable only qualified —`
+        + ` ${built.ambiguous.slice(0, 5).join(", ")}`,
+    );
+  }
+  console.log(`${pack}: reference an icon as @${pack}:<name>; list them with bun ${FETCH_SCRIPT} ${pack} --list`);
+}
+
+function sortKeys(records: Record<string, IconRecord>): Record<string, IconRecord> {
+  return Object.fromEntries(Object.entries(records).sort(([a], [b]) => a.localeCompare(b)));
+}
+
+// Only a regular file: copyFileSync dereferences, so a symlink named like a
+// kept terms file would copy whatever local path it points at into the pack.
+// screenArchive already refuses symlinked entries; this is the second lock.
+function findByName(dir: string, name: string): string | undefined {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const abs = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      const hit = findByName(abs, name);
+      if (hit) return hit;
+    } else if (entry.name === name && entry.isFile()) return abs;
+  }
+  return undefined;
+}
+
+if (import.meta.main) await main();
