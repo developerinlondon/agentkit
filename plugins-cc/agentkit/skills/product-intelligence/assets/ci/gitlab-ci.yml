@@ -1,0 +1,28 @@
+# Copy to .gitlab-ci.yml in the repo that owns the brief (or `include:` it).
+# Set INTELLIGENCE_DIR to the directory holding brief.yaml + ledger.yaml, and
+# pin AGENTKIT_REF to a tag so a page rebuild cannot change with upstream.
+#
+# The literal job name `pages` plus an explicit `public/` artifact is the form
+# every GitLab version accepts; `pages: true` on a freely named job needs 17.9+.
+variables:
+  AGENTKIT_REF: main
+  AGENTKIT_REPO: https://github.com/developerinlondon/agentkit
+  INTELLIGENCE_DIR: intelligence
+
+pages:
+  stage: deploy
+  image: oven/bun:1
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  before_script:
+    - command -v git >/dev/null || (apt-get update && apt-get install -y --no-install-recommends git)
+    - git clone --depth 1 --branch "$AGENTKIT_REF" "$AGENTKIT_REPO" /tmp/agentkit
+    - cd /tmp/agentkit/skills/publish-page && bun install && cd "$CI_PROJECT_DIR"
+  script:
+    - bun /tmp/agentkit/skills/product-intelligence/scripts/validate.ts "$INTELLIGENCE_DIR/brief.yaml" "$INTELLIGENCE_DIR/ledger.yaml"
+    - mkdir -p public
+    - bun /tmp/agentkit/skills/product-intelligence/scripts/render.ts "$INTELLIGENCE_DIR" --out public/brief-page.md
+    - bun /tmp/agentkit/skills/product-intelligence/scripts/render.ts "$INTELLIGENCE_DIR" --html --out public/index.html
+  artifacts:
+    paths:
+      - public

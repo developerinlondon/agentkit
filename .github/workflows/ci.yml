@@ -6,7 +6,7 @@ on:
     branches:
       - main
   schedule:
-    - cron: '17 4 * * 1'
+    - cron: "17 4 * * 1"
   workflow_dispatch:
 
 permissions:
@@ -45,6 +45,9 @@ jobs:
 
       - name: Install dependencies from the lockfile
         run: bun install --frozen-lockfile
+
+      - name: Install publish-page skill dependencies
+        run: bun install --frozen-lockfile --cwd skills/publish-page
 
       - name: Validate test slice coverage
         run: bun run test:slices
@@ -91,6 +94,9 @@ jobs:
 
       - name: Install dependencies from the lockfile
         run: bun install --frozen-lockfile
+
+      - name: Install publish-page skill dependencies
+        run: bun install --frozen-lockfile --cwd skills/publish-page
 
       - name: Run complete suite
         run: moon run agentkit:test-full

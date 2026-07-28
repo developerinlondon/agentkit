@@ -210,3 +210,46 @@ Re-running against the same subject keeps the section order stable and diffs
 against the previous ledger: new claims, changed sources (`as_of` moved),
 claims whose source disappeared. A vanished source downgrades confidence; it
 does not silently delete the claim.
+
+## Hosting ladder
+
+A brief is only useful once someone can read it. Four rungs, cheapest first —
+climb only as far as the situation needs, and never let the reader's access
+depend on a rung they cannot reach.
+
+| Rung             | What it is                             | Use it when                                                                               |
+| ---------------- | -------------------------------------- | ----------------------------------------------------------------------------------------- |
+| 1 Portable file  | One self-contained `index.html`        | Pages is disabled, the repo is private, the reader is offline or gets it as an attachment |
+| 2 Repo Pages CI  | GitHub or GitLab Pages, built on push  | The brief lives in a repo and should re-publish itself when the evidence changes          |
+| 3 AgentKit Pages | `publish-page` → your own pages worker | You want a URL now, with no repo and no CI                                                |
+| 4 Hosted         | `publish-page` at a hosted endpoint    | Same as rung 3, someone else runs the worker (`AGENTKIT_PAGES_ENDPOINT`)                  |
+
+### Rung 1 — portable file
+
+```sh
+bun skills/product-intelligence/scripts/render.ts <dir> --html --out index.html
+```
+
+Writes `<dir>/index.html` without `--out`. The doc theme's CSS and JS are
+inlined, so the page opens by double-click from `file://` with no server and
+makes **no network request of any kind** — the light/dark toggle, the section
+rail and the anchors all work offline. Same inputs render byte-identical
+output, so a rebuilt page only changes when the evidence does.
+
+One-time on the machine that renders: `cd skills/publish-page && bun install`.
+
+### Rung 2 — Pages CI
+
+Scaffolds in `assets/ci/` — copy one into the repo that owns the brief and set
+`INTELLIGENCE_DIR`:
+
+| File                         | Copy to                             |
+| ---------------------------- | ----------------------------------- |
+| `assets/ci/github-pages.yml` | `.github/workflows/brief-pages.yml` |
+| `assets/ci/gitlab-ci.yml`    | `.gitlab-ci.yml`                    |
+
+Both jobs do the same three things: validate `brief.yaml` + `ledger.yaml`,
+render `brief-page.md` and `index.html` into `public/`, publish that directory.
+Validation runs first on purpose — a dangling claim id fails the build instead
+of publishing a brief whose citations go nowhere. Pin `AGENTKIT_REF` to a tag
+so a rebuild cannot change with upstream.
