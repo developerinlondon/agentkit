@@ -18,8 +18,8 @@ usage() {
 		'usage: bash-status-check FILE...' \
 		'' \
 		'Reports conditional-and compounds that silently drop a failure:' \
-		'  tail-leak  a function or script ending in `cond && action`' \
-		'  soft-gate  `cmd && echo ...` — a check whose failure branch is nothing' \
+		'  tail-leak  a function or script ending in: cond && action' \
+		'  soft-gate  cmd && echo ... — a check whose failure branch is nothing' \
 		'' \
 		'Exits 1 when any leak is found, 0 when the files are clean.' >&2
 	exit "$status"
@@ -32,6 +32,7 @@ if [[ $# -eq 0 ]]; then
 	usage 2
 fi
 
+# shellcheck disable=SC2016  # awk program: $1 and $2 are awk fields, not shell.
 SCAN='
 function trim(s) {
 	sub(/^[ \t]+/, "", s)
@@ -45,6 +46,12 @@ function bare(s,   t) {
 	t = s
 	gsub(/\$\([^)]*\)/, "", t)
 	gsub(/`[^`]*`/, "", t)
+	# A quoted span is one argument, not shell syntax: an awk or sed program
+	# carrying && is data the shell never evaluates. Double-quoted spans go first,
+	# because an apostrophe inside one would otherwise open a single-quote span
+	# that runs to the next apostrophe, swallowing a real operator between them.
+	gsub(/"[^"]*"/, " ", t)
+	gsub(/\047[^\047]*\047/, " ", t)
 	return t
 }
 
@@ -53,6 +60,10 @@ function tail_leak(s,   t) {
 	if (t !~ /&&/) return 0
 	if (t ~ /\|\|/) return 0
 	if (t ~ /^(if|elif|while|until|return|exit|case)([ \t]|$)/) return 0
+	# A tail that is wholly one test is a predicate, not a guarded action: it has
+	# no second command whose failure could be swallowed, and callers consume it
+	# with if/!/||. The leak needs `cond && action`.
+	if (t ~ /^(\[\[.*\]\]|\[.*\]|test[ \t].*)[ \t]*$/) return 0
 	return 1
 }
 
