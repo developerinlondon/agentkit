@@ -371,6 +371,15 @@ doc lane produces — this rung and the published `brief-page.html` alike; the
 3.4 MB mermaid runtime is inlined only when the page actually carries one. The
 deck lane does not share this (see below).
 
+**One caveat to the offline promise.** Everything the renderer emits is inert
+text, but mermaid builds a diagram's labels at runtime and keeps an `<img>` it
+finds in one — its sanitiser strips the event handler, not the element. So a
+quoted label carrying an image tag in a crawled `findings.md` makes the
+portable page fetch that image when it opens. Published pages are covered by
+the endpoint's `default-src 'none'`; a `file://` copy has no such policy. Read
+a diagram in a brief you did not write the way you read any other crawled
+content.
+
 ### Rung 2 — Pages CI
 
 Scaffolds in `assets/ci/` — copy one into the repo that owns the brief and set
