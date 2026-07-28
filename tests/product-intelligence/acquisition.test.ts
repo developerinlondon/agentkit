@@ -14,6 +14,7 @@ import {
   advertoolsArgs,
   repomixArgs,
   runnerPrefix,
+  targetSlug,
 } from '../../skills/product-intelligence/scripts/acquire.ts';
 
 const repoRoot = dirname(dirname(import.meta.dir));
@@ -245,7 +246,7 @@ describe('acquire.ts CLI', () => {
       expectedPlatformInvocation(
         'repomix',
         '--remote owner/repo --style json --include '
-          + `README*,readme*,docs/**,doc/**,CHANGELOG*,CHANGES*,*.md -o ${join(outDir, 'repo.json')}`,
+          + `README*,readme*,docs/**,doc/**,CHANGELOG*,CHANGES*,*.md -o ${join(outDir, 'repo-owner_repo.json')}`,
       ),
     );
     const entries = JSON.parse(readFileSync(join(outDir, 'acquisition.json'), 'utf-8'));
@@ -266,9 +267,30 @@ describe('acquire.ts CLI', () => {
       expectedPlatformInvocation(
         'advertools',
         'crawl https://example.com/ '
-          + `${join(outDir, 'crawl.jl')} --follow-links 1 --custom-settings DEPTH_LIMIT=3 CLOSESPIDER_PAGECOUNT=200`,
+          + `${join(outDir, 'crawl-example.com.jl')} --follow-links 1 --custom-settings DEPTH_LIMIT=3 CLOSESPIDER_PAGECOUNT=200`,
       ),
     );
+  });
+
+  test('targetSlug strips scheme and .git and keeps targets distinct', () => {
+    expect(targetSlug('owner/repo')).toBe('owner_repo');
+    expect(targetSlug('https://gitlab.com/agentkit/agentkit-pages.git')).toBe('gitlab.com_agentkit_agentkit-pages');
+    expect(targetSlug('https://gitlab.com/a/b')).not.toBe(targetSlug('https://gitlab.com/a/c'));
+  });
+
+  test('two repo origins acquired into one directory keep separate packs', () => {
+    // The bug this pins: a fixed repo.json let the second origin's pack
+    // silently clobber the first during a real multi-origin run.
+    process.env.SAFE_FETCH_ALLOW_HOSTS = 'gitlab.com';
+    const invocationPath = join(scratch, 'tool-log');
+    const tool = process.platform === 'linux' ? 'agentkit-run' : 'repomix';
+    fakeExecutable(tool, `printf '%s\\n' "$*" >> '${invocationPath}'`);
+    const outDir = join(scratch, 'out');
+    expect(runCli('repo', 'owner/repo', '--out', outDir).code).toBe(0);
+    expect(runCli('repo', 'https://gitlab.com/other/pages', '--out', outDir).code).toBe(0);
+    const log = readFileSync(invocationPath, 'utf-8');
+    expect(log).toContain('repo-owner_repo.json');
+    expect(log).toContain('repo-gitlab.com_other_pages.json');
   });
 
   test('repo lane refuses a non-public host in URL form', () => {
@@ -289,13 +311,13 @@ describe('acquire.ts CLI', () => {
     expect(() => readFileSync(join(scratch, 'runner-ran'))).toThrow();
   });
 
-  test('gh lane writes the three evidence files', () => {
+  test('gh lane writes per-target evidence files so two origins cannot clobber each other', () => {
     fakeExecutable('gh', `printf '{"lane":"%s"}' "$2"`);
     const outDir = join(scratch, 'out');
     const result = runCli('gh', 'owner/repo', '--out', outDir);
     expect(result.code, result.err).toBe(0);
-    expect(readFileSync(join(outDir, 'gh-meta.json'), 'utf-8')).toContain('repos/owner/repo');
-    expect(readFileSync(join(outDir, 'gh-releases.json'), 'utf-8')).toContain('releases');
+    expect(readFileSync(join(outDir, 'gh-owner_repo-meta.json'), 'utf-8')).toContain('repos/owner/repo');
+    expect(readFileSync(join(outDir, 'gh-owner_repo-releases.json'), 'utf-8')).toContain('releases');
     const entries = JSON.parse(readFileSync(join(outDir, 'acquisition.json'), 'utf-8'));
     expect(entries[0].tool).toBe('gh api');
   });

@@ -10,7 +10,19 @@ node_modules/
 # record of gate decisions.
 .agentkit/reviews/
 
-# ...but NOT the whole directory. `.agentkit/product.yaml` is the opposite kind
-# of artifact: product.yaml and review-policy.json must be COMMITTED, because
-# reviewers and the gate read those contracts from exact repository revisions.
-# Ignoring the directory wholesale would silently disable both contracts.
+# ...but NOT the whole directory. Product and review-policy files must be
+# COMMITTED, because reviewers and the gate read those contracts from exact
+# repository revisions. Ignoring the directory wholesale silently disables
+# both contracts.
+
+# Intelligence runs split the same way: the brief/ledger/findings are dated
+# deliverables (refresh mode diffs against the committed previous ledger),
+# while the raw acquired corpus is re-acquirable bulk — and for third-party
+# subjects, someone else's content wholesale. Allowlist, so unknown corpus
+# shapes stay untracked by default.
+.agentkit/intelligence/*/*
+!.agentkit/intelligence/*/ledger.yaml
+!.agentkit/intelligence/*/brief.yaml
+!.agentkit/intelligence/*/brief.md
+!.agentkit/intelligence/*/findings.md
+!.agentkit/intelligence/*/acquisition.json

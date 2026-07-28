@@ -1,0 +1,105 @@
+ledger_version: "1.0"
+generated_by: product-intelligence
+generated_at: "2026-07-28T07:20:00Z"
+claims:
+  - id: C-001
+    statement: agentkit packages reusable skills, rules, plugins, hooks and tools for multiple AI coding agents.
+    class: observed
+    confidence: high
+    sources:
+      - locator: "repo:kit:README.md:3"
+        quote: "Reusable AI agent skills, rules, plugins, hooks, and tools for OpenCode, Claude Code, Codex CLI, Grok CLI, and other AI coding agents."
+        stance: supports
+        as_of: "2026-07-28"
+  - id: C-002
+    statement: The kit is Apache-2.0 licensed.
+    class: observed
+    confidence: high
+    sources:
+      - locator: "gh:kit:repos/developerinlondon/agentkit#license"
+        quote: '"spdx_id":"Apache-2.0"'
+        stance: supports
+        as_of: "2026-07-28"
+  - id: C-003
+    statement: Behavioral rules ship alongside code, including a consent protocol that forbids acting and asking in the same turn.
+    class: observed
+    confidence: high
+    sources:
+      - locator: "repo:kit:README.md:26"
+        quote: "Stop after asking a question -- never act and ask in the same turn"
+        stance: supports
+        as_of: "2026-07-28"
+  - id: C-004
+    statement: No GitHub releases have been published for the kit.
+    class: observed
+    confidence: high
+    sources:
+      - locator: "gh:kit:repos/developerinlondon/agentkit/releases"
+        quote: "[]"
+        stance: supports
+        as_of: "2026-07-28"
+  - id: C-005
+    statement: Distribution is install-script based rather than versioned releases.
+    class: inferred
+    confidence: moderate
+    derived_from: [C-004]
+    sources:
+      - locator: "repo:kit:README.md:9"
+        quote: "Skills (SKILL.md -- works everywhere via skills.sh)"
+        stance: supports
+        as_of: "2026-07-28"
+  - id: C-006
+    statement: The skill set includes product-intelligence itself, described as evidence-backed briefs with a claim ledger.
+    class: observed
+    confidence: high
+    sources:
+      - locator: "repo:kit:README.md:18"
+        quote: "Evidence-backed product briefs with a claim-by-claim ledger; hardened acquisition"
+        stance: supports
+        as_of: "2026-07-28"
+  - id: C-007
+    statement: The kit repository shows one GitHub star.
+    class: observed
+    confidence: high
+    sources:
+      - locator: "gh:kit:repos/developerinlondon/agentkit#stargazers_count"
+        quote: '"stargazers_count":1'
+        stance: supports
+        as_of: "2026-07-28"
+  - id: C-008
+    statement: External adoption beyond the author is not yet visible in public signals.
+    class: inferred
+    confidence: low
+    derived_from: [C-007, C-004]
+    sources:
+      - locator: "gh:kit:repos/developerinlondon/agentkit#stargazers_count"
+        quote: '"stargazers_count":1'
+        stance: context
+        as_of: "2026-07-28"
+  - id: C-009
+    statement: The product spans a second repository that stores and serves agent-published web pages.
+    class: observed
+    confidence: high
+    sources:
+      - locator: "repo:pages:README.md:3"
+        quote: "Canonical store for [AgentKit Pages](https://agentkit.sbs) — agent-published web pages"
+        stance: supports
+        as_of: "2026-07-28"
+  - id: C-010
+    statement: The pages repository can re-seed the serving layer, making git the source of truth for published pages.
+    class: observed
+    confidence: high
+    sources:
+      - locator: "repo:pages:README.md:7"
+        quote: "source of truth and can re-seed the serving layer at any time."
+        stance: supports
+        as_of: "2026-07-28"
+  - id: C-011
+    statement: Police hooks run as PreToolUse/PostToolUse enforcement inside the agentkit plugin.
+    class: observed
+    confidence: high
+    sources:
+      - locator: "repo:kit:README.md:115"
+        quote: "**enforcement**, however, _is_ bundled: the police hooks (`git-police`, `mr-police`,"
+        stance: supports
+        as_of: "2026-07-28"
