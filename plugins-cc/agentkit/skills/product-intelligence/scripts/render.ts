@@ -10,29 +10,39 @@ import { join } from 'node:path';
 
 type Dict = Record<string, any>;
 
-// Newlines collapse and the pipe becomes an entity because markdown
-// containers — table rows, list items, HTML blocks — are line-structured: a
-// newline ends the row or block and a blank line lets crawled text continue
-// at document level, minting headings that read as the analyst's own.
-// source() splits a quote into lines before escaping, so multi-line quotes
-// keep their shape.
-function esc(value: unknown): string {
-  return String(value ?? '').replace(/\s*\r?\n\s*/g, ' ').replace(
-    /[&<>"'|]/g,
-    (c) =>
-      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;', '|': '&#124;' })[
-        c
-      ] as string,
-  );
+const ENTITY: Record<string, string> = {
+  '&': '&amp;',
+  '<': '&lt;',
+  '>': '&gt;',
+  '"': '&quot;',
+  "'": '&#39;',
+  '|': '&#124;',
+};
+
+// Markdown containers — table rows, list items, HTML blocks — are
+// line-structured: a newline ends the row or block and a blank line lets
+// crawled text continue at document level, minting headings that read as the
+// analyst's own. source() splits a quote into lines first, so multi-line
+// quotes keep their shape.
+function collapse(value: unknown): string {
+  return String(value ?? '').replace(/\s*\r?\n\s*/g, ' ');
 }
 
-// Text inside a raw-HTML island. marked does not run inline markdown inside a
-// block-level HTML block, but that is a property of the consumer, not of this
-// output — entity-encoding the metacharacters makes the island safe under any
-// renderer while displaying the character unchanged. Backslash escaping cannot
-// be used here: it would show as a literal backslash.
+// The pipe is entity-encoded so escaped text cannot split a GFM table cell.
+function esc(value: unknown): string {
+  return collapse(value).replace(/[&<>"'|]/g, (c) => ENTITY[c] as string);
+}
+
+// Text inside a raw-HTML island, where a backslash would display literally.
+// Entity-encoding the metacharacters keeps the island inert under any renderer.
+// ONE pass over the source: encoding after esc() would re-encode the hashes in
+// the entities esc() just produced, and an apostrophe would reach the reader as
+// entity text.
 function escText(value: unknown): string {
-  return esc(value).replace(/[[\]()*_`~#!]/g, (c) => `&#${c.charCodeAt(0)};`);
+  return collapse(value).replace(
+    /[&<>"'|[\]()*_`~#!]/g,
+    (c) => ENTITY[c] ?? `&#${c.charCodeAt(0)};`,
+  );
 }
 
 // Free text landing in a markdown context (headings, bold, blockquotes,
@@ -44,7 +54,13 @@ function mdEsc(value: unknown): string {
   const neutral = String(value ?? '')
     .replace(/[\\`*_[\]()!~#]/g, '\\$&')
     .replace(/^([-+=])/gm, '\\$1')
-    .replace(/^(\d+)([.)])/gm, '$1\\$2');
+    .replace(/^(\d+)([.)])/gm, '$1\\$2')
+    // GFM autolinks a bare URL before an escape resolves, which both swallows
+    // the backslash into the link text and lets a crawled source place a live
+    // outbound link on the page. Splitting the trigger defuses both; the
+    // escape resolves away, so the reader still sees the original characters.
+    .replace(/\b(https?|ftp|mailto)(?=:)/gi, '$&\\')
+    .replace(/\bwww(?=\.)/gi, '$&\\');
   return esc(neutral);
 }
 
@@ -190,7 +206,10 @@ function contradictions(ledger: Dict): string {
     const [a, b] = pair.split('|');
     const one = byId.get(a);
     const two = byId.get(b);
-    return `- ${link(a)} says **${mdEsc(one?.statement)}** — while ${link(b)} says **${mdEsc(two?.statement)}**. `
+    // Statements are written as full sentences, so a blanket period doubles up.
+    const stop = (s: unknown) => (/[.!?]$/.test(String(s ?? '').trim()) ? '' : '.');
+    return `- ${link(a)} says **${mdEsc(one?.statement)}** — `
+      + `while ${link(b)} says **${mdEsc(two?.statement)}**${stop(two?.statement)} `
       + 'Both sources are recorded; neither is silently preferred.';
   }).join('\n');
   return `## Unresolved contradictions\n\n<div class="callout"><strong>Recorded, not reconciled.</strong> The sources disagree and the disagreement is the finding.</div>\n\n${rows}\n`;
@@ -203,12 +222,12 @@ function cannotVerify(brief: Dict): string {
   return `## What we could not verify\n\n<div class="callout"><strong>Said plainly.</strong> Absence of a section above means <em>unknown</em>, never <em>does not exist</em>.</div>\n\n${items}\n`;
 }
 
-// findings.md is authored by the analyze pass but quotes crawled text, so
-// its markdown structure is trusted while raw HTML is not: outside code
-// fences HTML is entity-escaped and javascript:/data:/vbscript: link
-// destinations are defused by escaping the link syntax. Fence interiors stay
-// untouched — marked escapes them wholesale, and an unclosed fence swallows
-// the rest of the file as code there too, so a skipped region is never live.
+// findings.md carries crawled quotes, so its structure is trusted but its
+// inline content is not. Outside code fences, HTML and link syntax are both
+// neutralised: no anchor can form, so no destination needs judging. Filtering
+// destinations instead re-decides per line, before entity decoding, what the
+// parser decides later and across lines — a scheme survives as an entity or a
+// split reference. Fence interiors stay untouched: marked escapes them.
 function sanitizeFindings(body: string): string {
   const out: string[] = [];
   let fence = '';
@@ -230,10 +249,12 @@ function sanitizeFindings(body: string): string {
       line
         .replace(/&(?![a-zA-Z][a-zA-Z0-9]{1,31};|#\d{1,7};|#[xX][0-9a-fA-F]{1,6};)/g, '&amp;')
         .replace(/</g, '&lt;')
-        .replace(/\]\((?=\s*(javascript|data|vbscript)\s*:)/gi, ']\\(')
-        .replace(/^(\s{0,3})\[(?=[^\]]*\]:\s*(javascript|data|vbscript)\s*:)/gi, '$1\\['),
+        .replace(/[[\]]/g, '\\$&'),
     );
   }
+  // An unclosed fence is an ordinary authoring slip, and findings sit above the
+  // evidence: left open it renders every claim, anchor and quote below as code.
+  if (fence) out.push(fence);
   return out.join('\n');
 }
 
@@ -257,9 +278,18 @@ const STANCE_LABEL: Record<string, string> = {
 
 function source(s: Dict): string {
   // Marker on every line: an unmarked second line continues as page prose,
-  // letting a crawled source dictate the document.
-  const quoted = String(s.quote ?? '').split('\n').map((l) => `> ${mdEsc(l)}`).join('\n');
-  const stance = STANCE_LABEL[s.stance] ?? mdEsc(s.stance);
+  // letting a crawled source dictate the document. The trailing break keeps
+  // the source's own line structure, which consecutive blockquote lines would
+  // otherwise reflow into one run-on paragraph.
+  const lines = String(s.quote ?? '').split('\n');
+  const quoted = lines
+    .map((l, i) => `> ${mdEsc(l)}${i < lines.length - 1 ? '<br />' : ''}`)
+    .join('\n');
+  // Own-property lookup: an inherited key such as `constructor` would return a
+  // native function and reach the page without passing an escaper.
+  const stance = Object.prototype.hasOwnProperty.call(STANCE_LABEL, String(s.stance ?? ''))
+    ? STANCE_LABEL[s.stance]
+    : mdEsc(s.stance);
   return `${quoted}\n>\n> — ${stance}, ${code(s.locator)}, as of ${mdEsc(s.as_of)}`;
 }
 

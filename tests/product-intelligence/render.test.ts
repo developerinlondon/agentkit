@@ -294,6 +294,81 @@ describe('renderBrief', () => {
     }
   });
 
+  // The suite asserted payloads stay inert but never that ordinary text
+  // survives, so a double-encoding regression shipped green: an apostrophe
+  // reached the reader as its own entity text.
+  test('benign punctuation reaches the reader unchanged', () => {
+    const out = withArtifacts(
+      [
+        "brief_version: '1.0'",
+        `subject: { name: acme, homepage: "https://team.example/it's-here" }`,
+        'evidence: { ledger: ledger.yaml }',
+        'value_map:',
+        `  - attribute: "keeps your team's notes in git"`,
+        `    value: "they're yours & they outlive it"`,
+        `    proof: "read the team's notes | in any editor"`,
+      ].join('\n'),
+      ledgerWith(claim('C-001', "it's fine", 'observed', 'high')),
+    );
+    expect(out).not.toContain('&&#35;');
+    expect(out).not.toContain('&#38;#');
+    for (const shown of ["team&#39;s", "they&#39;re", "it&#39;s-here", '&#124;']) {
+      expect(out, shown).toContain(shown);
+    }
+    // Each entity appears once — never wrapped in a second encoding.
+    expect(out).not.toMatch(/&#\d+;\d/);
+  });
+
+  test('a multi-line quote keeps its line structure', () => {
+    const out = withArtifacts(
+      journalBrief(),
+      ledgerWith(claim('C-001', 'tiers', 'observed', 'high', [
+        src('site:/p', 'Tiers:\n- Free — up to 5 projects\n- Pro — $5/mo', 'supports'),
+      ])),
+    );
+    // A break on every line but the last: consecutive blockquote lines would
+    // otherwise reflow into one run-on paragraph.
+    expect(out).toContain('> Tiers:<br />');
+    expect(out).toContain('\\- Free — up to 5 projects<br />');
+    expect(out).toContain('\\- Pro — $5/mo\n');
+    expect(out).not.toContain('$5/mo<br />');
+  });
+
+  test('a quoted URL does not become a live link or grow a backslash', () => {
+    const out = withArtifacts(
+      journalBrief(),
+      ledgerWith(claim('C-001', 'linky', 'observed', 'high', [
+        src('site:/p', 'See [docs](https://evil.example) and www.evil.example', 'supports'),
+      ])),
+    );
+    expect(out).toContain('https\\://evil.example');
+    expect(out).toContain('www\\.evil.example');
+  });
+
+  test('an unclosed fence in findings.md cannot swallow the evidence section', () => {
+    writeFileSync(
+      join(scratch, 'findings.md'),
+      ['# Findings', '', '## Gaps', '', '```bash', 'echo oops'].join('\n'),
+    );
+    const out = withArtifacts(journalBrief());
+    expect(out).toContain('## The evidence, claim by claim');
+    // The fence is closed before the evidence begins.
+    const fences = out.slice(0, out.indexOf('## The evidence')).match(/```/g) ?? [];
+    expect(fences.length % 2).toBe(0);
+  });
+
+  test('a statement ending in a period does not double it', () => {
+    const out = withArtifacts(
+      journalBrief(),
+      ledgerWith(
+        [...claim('C-001', 'The README states five projects.', 'observed', 'high'), '    contradicts: [C-002]'],
+        claim('C-002', 'The site states three projects.', 'observed', 'high'),
+      ),
+    );
+    expect(out).not.toContain('..');
+    expect(out).toContain('projects.** Both sources are recorded');
+  });
+
   test('a backtick in a locator cannot break its code element', () => {
     const out = withArtifacts(
       journalBrief(),
@@ -354,23 +429,68 @@ describe('renderBrief', () => {
     expect(out).toContain('<kbd>fence stays raw</kbd>');
   });
 
-  test('active link schemes in findings.md are defused', () => {
+  // Judging destinations means re-deciding, per line and before entity
+  // decoding, what the parser decides later and across lines. Neutralising the
+  // syntax removes the question: these forms all bypassed a destination filter.
+  test('no link syntax in findings.md can form an anchor', () => {
     writeFileSync(
       join(scratch, 'findings.md'),
       [
         '# Findings',
         '',
-        'See [pricing](https://example.com/pricing) and [click](javascript:fetch(1)).',
-        '',
-        '[r]: javascript:alert(1)',
+        'Plain [click](javascript:alert(1)).',
+        'Entity [c1](&#106;avascript:alert(1)).',
+        'Tab [c2](java&Tab;script:alert(1)).',
+        'Split ref [c3]:',
+        'javascript:alert(1)',
+        'Split paren [c4](',
+        'javascript:alert(1))',
+        'Ordinary [pricing](https://example.com/pricing).',
       ].join('\n'),
     );
     const out = withArtifacts(journalBrief());
-    expect(out).not.toContain('](javascript:');
-    expect(out).toContain(']\\(javascript:');
-    expect(out).toContain('\\[r]: javascript:');
-    // Ordinary links keep working.
-    expect(out).toContain('[pricing](https://example.com/pricing)');
+    for (const label of ['click', 'c1', 'c2', 'c3', 'c4', 'pricing']) {
+      expect(out, label).toContain(`\\[${label}\\]`);
+    }
+    expect(out).not.toMatch(/[^\\]\[[^\]]*\]\(/);
+  });
+
+  // Both controls below are security-load-bearing and were unasserted:
+  // removing either left the whole suite green.
+  test('a newline in a table cell cannot start a new block', () => {
+    const out = withArtifacts(
+      minimalBrief([
+        'site_inventory:',
+        '  - locator: site:/a',
+        '    page_type: docs',
+        '    rationale: "keep\\n\\nsecond block"',
+      ].join('\n')),
+    );
+    expect(out).toContain('keep second block');
+    expect(out).not.toMatch(/\|[^|\n]*\n\nsecond/);
+  });
+
+  test('an inherited key is not mistaken for a stance label', () => {
+    const out = withArtifacts(
+      journalBrief(),
+      ledgerWith(claim('C-001', 'inherited', 'observed', 'high', [
+        src('site:/a', 'q', 'constructor'),
+      ])),
+    );
+    expect(out).not.toContain('native code');
+    expect(out).toContain('constructor');
+  });
+
+  test('a backtick in a fence info string does not open a fence', () => {
+    // CommonMark forbids a backtick in a backtick fence's info string, so this
+    // opens no fence — treating it as one would pass the HTML below through raw.
+    writeFileSync(
+      join(scratch, 'findings.md'),
+      ['# Findings', '', '```js`weird', '<img src=x onerror=alert(1)>', '```'].join('\n'),
+    );
+    const out = withArtifacts(journalBrief());
+    expect(out).not.toContain('<img');
+    expect(out).toContain('&lt;img');
   });
 
   test('contradictions get their own section and per-claim markers', () => {
