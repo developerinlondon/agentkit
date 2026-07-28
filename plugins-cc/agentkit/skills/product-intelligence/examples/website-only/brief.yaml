@@ -1,0 +1,49 @@
+brief_version: "1.0"
+subject:
+  name: brewlog
+  homepage: https://brewlog.example
+  one_liner: Journal for dialing in home espresso shots.
+evidence:
+  ledger: ledger.yaml
+  acquired_at: "2026-07-27"
+  acquisition:
+    - tool: advertools
+      target: https://brewlog.example
+      retrieved_at: "2026-07-27"
+    - tool: trafilatura
+      target: https://brewlog.example/pricing
+      retrieved_at: "2026-07-27"
+positioning:
+  target_customer: home coffee enthusiasts
+  need: remembering what changed between shots
+  category: brewing journal
+  key_benefit: every shot's grind, dose, yield and time in one log
+  alternative: notes apps and paper logs
+  differentiation: espresso-specific fields instead of free text
+  claims: [C-003, C-005]
+value_map:
+  - attribute: free plan capped at one journal
+    value: try the full workflow before paying
+    proof: sign up for the free plan and start a journal
+    claims: [C-001]
+site_inventory:
+  - locator: "site:/"
+    page_type: home
+    disposition: keep
+    rationale: states the audience plainly and matches the pricing story
+    claims: [C-003]
+  - locator: "site:/pricing"
+    page_type: pricing
+    disposition: keep
+    rationale: plans and caps are explicit
+    claims: [C-001, C-002]
+  - locator: "site:/features"
+    page_type: product
+    disposition: keep
+    rationale: the field structure is the differentiator and is stated concretely
+    claims: [C-005]
+cannot_verify:
+  - what: anything about the codebase, release cadence or maturity
+    why: no repository is public; only the website was acquired
+  - what: whether a mobile app exists
+    why: no store link, screenshot or app page is reachable from the crawled pages

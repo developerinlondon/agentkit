@@ -1,0 +1,5 @@
+brief_version: "1.0"
+subject:
+  homepage: https://acme-notes.example
+evidence:
+  ledger: ../valid/ledger.yaml

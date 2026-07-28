@@ -1,0 +1,36 @@
+ledger_version: "1.0"
+generated_by: product-intelligence
+generated_at: "2026-07-27T09:30:00Z"
+claims:
+  - id: C-001
+    statement: tidyenv is a CLI that removes unused entries from .env files.
+    class: observed
+    confidence: high
+    sources:
+      - locator: "repo:README.md:1-4"
+        quote: "tidyenv scans your codebase and strips .env entries nothing reads."
+        stance: supports
+        as_of: "2026-07-27"
+  - id: C-002
+    statement: The latest release is v0.9.2, published in June 2026.
+    class: observed
+    confidence: high
+    sources:
+      - locator: "gh:releases/v0.9.2"
+        quote: "v0.9.2 — 2026-06-14"
+        stance: supports
+        as_of: "2026-07-27"
+  - id: C-003
+    statement: The project is pre-1.0 and its interface may still change.
+    class: inferred
+    confidence: high
+    derived_from: [C-002]
+    sources:
+      - locator: "repo:CHANGELOG.md:3-6"
+        quote: "Breaking: renamed --prune to --strip"
+        stance: supports
+        as_of: "2026-07-27"
+  - id: C-004
+    statement: A homebrew formula should be added to ease installation.
+    class: proposed
+    confidence: low

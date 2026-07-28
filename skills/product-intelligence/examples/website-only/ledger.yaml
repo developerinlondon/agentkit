@@ -1,0 +1,54 @@
+ledger_version: "1.0"
+generated_by: product-intelligence
+generated_at: "2026-07-27T09:00:00Z"
+claims:
+  - id: C-001
+    statement: Brewlog offers a free plan capped at one brew journal.
+    class: observed
+    confidence: high
+    sources:
+      - locator: "site:/pricing#plans"
+        quote: "Free — one journal, unlimited entries"
+        stance: supports
+        as_of: "2026-07-27"
+  - id: C-002
+    statement: The paid plan is priced at $6 per month.
+    class: observed
+    confidence: high
+    sources:
+      - locator: "site:/pricing#plans"
+        quote: "Pro — $6/month, unlimited journals"
+        stance: supports
+        as_of: "2026-07-27"
+  - id: C-003
+    statement: Brewlog positions itself for home coffee enthusiasts rather than cafés.
+    class: inferred
+    confidence: moderate
+    derived_from: [C-001]
+    sources:
+      - locator: "site:/"
+        quote: "Dial in your home espresso, one shot at a time"
+        stance: supports
+        as_of: "2026-07-27"
+  - id: C-004
+    statement: Brewlog has a mobile app.
+    class: unverified
+    confidence: low
+  - id: C-005
+    statement: Journal entries record grind, dose, yield and shot time as structured fields.
+    class: observed
+    confidence: high
+    sources:
+      - locator: "site:/features"
+        quote: "Log grind, dose, yield and time for every shot"
+        stance: supports
+        as_of: "2026-07-27"
+  - id: C-006
+    statement: Brewlog claims compatibility with coffee scales, without naming which.
+    class: observed
+    confidence: low
+    sources:
+      - locator: "site:/features"
+        quote: "Works with your favorite scales*"
+        stance: supports
+        as_of: "2026-07-27"

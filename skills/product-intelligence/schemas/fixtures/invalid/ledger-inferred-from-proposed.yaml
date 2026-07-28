@@ -1,0 +1,18 @@
+ledger_version: "1.0"
+generated_by: product-intelligence
+generated_at: "2026-07-27T10:00:00Z"
+claims:
+  - id: C-001
+    statement: A migration guide should be added.
+    class: proposed
+    confidence: low
+  - id: C-002
+    statement: The docs cover migration from CompetitorX.
+    class: inferred
+    confidence: low
+    derived_from: [C-001]
+    sources:
+      - locator: "site:/docs"
+        quote: "Guides"
+        stance: context
+        as_of: "2026-07-25"

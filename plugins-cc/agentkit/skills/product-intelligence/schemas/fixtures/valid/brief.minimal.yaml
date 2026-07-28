@@ -1,0 +1,5 @@
+brief_version: "1.0"
+subject:
+  name: acme-notes
+evidence:
+  ledger: ledger.yaml

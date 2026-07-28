@@ -1,0 +1,56 @@
+brief_version: "1.0"
+subject:
+  name: acme-notes
+  homepage: https://acme-notes.example
+  repo: github.com/acme/acme-notes
+  one_liner: Note-taking app that keeps every note in a plain git repository.
+evidence:
+  ledger: ledger.yaml
+  acquired_at: "2026-07-25"
+  acquisition:
+    - tool: trafilatura
+      target: https://acme-notes.example
+      retrieved_at: "2026-07-25"
+    - tool: repomix --remote
+      target: github.com/acme/acme-notes
+      retrieved_at: "2026-07-25"
+positioning:
+  target_customer: solo developers
+  need: notes that live next to their code
+  category: git-native note-taking app
+  key_benefit: notes are versioned and greppable like source
+  alternative: hosted note SaaS
+  differentiation: works offline against a repository the user already owns
+  claims: [C-003]
+value_map:
+  - attribute: stores notes as plain markdown in git
+    value: no lock-in — notes outlive the product
+    proof: clone the repo and read the notes with any editor
+    claims: [C-002]
+job_stories:
+  - situation: I am deep in a debugging session
+    motivation: I want to capture what I ruled out
+    outcome: I can pick the thread back up tomorrow without re-deriving it
+    claims: [C-003]
+workflows:
+  - name: capture a finding
+    steps:
+      - step: execute
+        description: write the note in the editor alongside the code
+      - step: conclude
+        description: commit lands the note in history with the change it explains
+site_inventory:
+  - locator: "site:/pricing"
+    page_type: pricing
+    title: Plans
+    disposition: revise
+    rationale: the stated free-tier limit contradicts the README
+    claims: [C-001, C-002]
+  - locator: "site:/docs/migrate-from-competitorx"
+    page_type: docs
+    disposition: create
+    rationale: no migration path is documented for the most-cited alternative
+    claims: [C-004]
+cannot_verify:
+  - what: SOC 2 certification claim
+    why: no audit report or trust page is published anywhere reachable
