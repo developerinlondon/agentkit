@@ -80,16 +80,20 @@ Palette: match the destination. For AgentKit Pages author the **dark house
 palette only** — the page derives the light-theme rendering itself
 (invert + hue-rotate on `svg[role="img"]`), so there is still exactly one
 variant to produce and it must be the dark one: strokes `#eeeeee`, muted
-`#8f959f`, accents `#5b96e0` (blue) / `#f5a742` (amber), fills transparent
+`#9aa0aa`, accents `#79a8e7` (blue) / `#f5a742` (amber), fills transparent
 or `#1b1d22`, background transparent. For READMEs/light surfaces:
 near-black strokes with classic pastel fills (`#a5d8ff`, `#b2f2bb`, `#ffec99`).
 
-Contrast rules (worst case is the light end of the figure glow, `#182233`):
+Contrast rules — the governing worst case is the DERIVED light rendering
+(the filter darkens every color; the palette above was tuned so ink, muted
+and both accents stay ≥4.5:1 there — an off-palette color has no such
+guarantee, so check both renderings before keeping one):
 
-- Red `#e06c75` is a stroke color, not a text color — 4.4:1 misses AA. Use it
-  at strokeWidth ≥2 on shapes/arrows, or on text only at 16 px+.
+- Red `#e06c75` is a stroke color, not a text color — its derived light form
+  lands near 3.1:1, the graphics floor. Use it at strokeWidth ≥2 on
+  shapes/arrows, never for text.
 - Decoration never shares the hue of the text it decorates: underlines and
-  strikethroughs under colored text use muted `#8f959f` or are dropped — amber
+  strikethroughs under colored text use muted `#9aa0aa` or are dropped — amber
   under amber reads as a smear. Prefer size and weight over decoration.
 - Text on a filled panel takes the neutral ink `#eeeeee`, never the fill's own
   color family; reserve the accent for a single data value.

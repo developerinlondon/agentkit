@@ -22,7 +22,7 @@ describe('publish-page figure lint', () => {
   });
 
   test('the repaired shape passes: custom container styled with var(--diagram-bg)', () => {
-    const html = `<style>.study .diagram { background: var(--diagram-bg, #071224); overflow: hidden; }</style>
+    const html = `<style>.study .diagram { background: var(--diagram-bg, #0e0f12); overflow: hidden; }</style>
 <div class="study"><div class="diagram">${SVG}</div></div>`;
     expect(lintFigures(html).errors).toEqual([]);
   });

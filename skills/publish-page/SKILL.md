@@ -40,7 +40,7 @@ bun <skill-dir>/publish.ts --name <name> --delete    # remove a page you publish
 
 Pages should look designed, not dumped. The doc/deck themes carry the house
 identity automatically (**deep neutral** ground `#0a0a0c→#131417`, ink `#eeeeee`,
-blue accent `#5b96e0`, amber `#f5a742`, panels `#1b1d22`, lines `#2a2d34`,
+blue accent `#79a8e7`, amber `#f5a742`, panels `#1b1d22`, lines `#2a2d34`,
 mono eyebrows; light mode goes white-ground with a deep-blue accent and
 auto-inverts baked diagrams) — never re-explain or re-style these basics. Also automatic, no
 agent action needed: a **dark/light theme toggle** (persisted; mermaid
@@ -100,8 +100,8 @@ sequence/state diagram with the `diagram` skill instead.
     page; use the kits below for quick supporting visuals.
   - **System/architecture topology** → the isometric kit (the standout look):
     `<div class="iso"><div class="iso-node hot"><div class="tile"><div class="side"></div><div class="top"><div class="glyph">SVG</div></div></div><div class="tag">name</div></div>…</div>`
-    Variants `.hot` (green) / `.gold` for emphasis. Draw each glyph as a simple
-    inline 24×24 SVG outline icon (stroke `#8f959f`, or `#5b96e0`/`#f5a742` on
+    Variants `.hot` (blue) / `.gold` (amber) for emphasis. Draw each glyph as a simple
+    inline 24×24 SVG outline icon (stroke `#9aa0aa`, or `#79a8e7`/`#f5a742` on
     emphasized nodes, stroke-width 1.5, fill none) matching the node's meaning —
     a database cylinder, a globe, a cloud, a terminal chevron, a bot face.
   - **Drawn connectors (draw.io-style)**: give nodes `id="n1"` etc. and declare
@@ -139,7 +139,7 @@ sequence/state diagram with the `diagram` skill instead.
 - **Metadata rows**: `<div class="chips"><span class="chip"><strong>Status</strong> live</span>…</div>`
 - **Pipeline/stage boxes** (when mermaid is overkill):
   `<div class="flow"><div class="frow"><div class="fbox gate"><span class="t">stage</span><span class="d">detail</span></div>…</div><div class="arrow">▼</div>…</div>`
-  — `.fbox` variants: `.gate` (gold), `.ok` (green), `.deny` (red).
+  — `.fbox` variants: `.gate` (amber), `.ok` (blue), `.deny` (red).
 - **Facts with columns**: markdown tables (themed automatically).
 
 All of these work inside markdown files — markdown passes raw HTML through.

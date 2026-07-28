@@ -63,21 +63,21 @@ Fonts: `fontFamily: 1` = hand-drawn (headers, labels — the excalidraw feel),
 
 ## Semantic palettes (stroke / fill pairs — one role, one pair, always)
 
-Navy pages (background transparent, sits on the `.figure` glow):
+Dark house-palette pages (background transparent, sits on the `.figure` glow):
 
 | Role                        | stroke           | fill                                                 |
 | --------------------------- | ---------------- | ---------------------------------------------------- |
 | default / neutral           | `#eeeeee`        | `transparent` or `#1b1d22`                           |
 | start / trigger             | `#f5a742`        | `#2a2410`                                            |
-| end / success / active path | `#5b96e0`        | `#152438`                                            |
+| end / success / active path | `#79a8e7`        | `#152438`                                            |
 | decision (diamond)          | `#f5a742`        | `transparent`                                        |
 | agent / AI                  | `#b197fc`        | `#1d1636`                                            |
-| inactive / future           | `#8f959f` dashed | `transparent`                                        |
+| inactive / future           | `#9aa0aa` dashed | `transparent`                                        |
 | error / removal             | `#e06c75`        | `#2a1512`                                            |
-| evidence panel              | `#2a2d34`        | `#0a0a0c` (mono text `#5b96e0` data, `#eeeeee` code) |
+| evidence panel              | `#2a2d34`        | `#0a0a0c` (mono text `#79a8e7` data, `#eeeeee` code) |
 
 Text hierarchy without boxes (dark house palette): titles `#eeeeee` 20-28px, subtitles
-`#5b96e0` 16px, detail/annotation `#8f959f` 14px (mono evidence may drop to
+`#79a8e7` 16px, detail/annotation `#9aa0aa` 14px (mono evidence may drop to
 13px; nothing below 13px anywhere, legends included).
 
 Light surfaces (READMEs, docs): near-black `#1e1e1e` strokes; fills `#a5d8ff`
@@ -91,4 +91,4 @@ Rules: darker stroke over lighter fill, always; a concept without a role uses
 neutral, never a fresh color. Red `#e06c75` is a stroke/shape color — as text
 only at 16px+. Text inside any filled panel uses the neutral ink, never the
 fill's own color family. Underline/strikethrough decoration never shares the
-hue of the text it decorates — use muted `#8f959f` or drop the decoration.
+hue of the text it decorates — use muted `#9aa0aa` or drop the decoration.
