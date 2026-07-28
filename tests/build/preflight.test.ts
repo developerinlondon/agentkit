@@ -278,6 +278,59 @@ describe('pattern checks', () => {
     expect(result.status).toBe(1);
   });
 
+  test('a missing-dependency test that leaves bun auto-install enabled fails', () => {
+    write(
+      'tests/render.test.ts',
+      [
+        "const result = spawnSync('bun', [script, dir], { encoding: 'utf-8' });",
+        "expect(result.stderr).toContain('Cannot find package');",
+        '',
+      ].join('\n'),
+    );
+
+    const result = preflight(['tests/render.test.ts']);
+
+    expect(result.stdout).toContain('auto-install live');
+    expect(result.status).toBe(1);
+  });
+
+  test('the same test passes once it disables auto-install', () => {
+    write(
+      'tests/render.test.ts',
+      [
+        "const result = spawnSync('bun', ['--no-install', script, dir], { encoding: 'utf-8' });",
+        "expect(result.stderr).toContain('Cannot find package');",
+        '',
+      ].join('\n'),
+    );
+
+    const result = preflight(['tests/render.test.ts']);
+
+    expect(result.stdout).toContain('no negative-path test leaves');
+    expect(result.status).toBe(0);
+  });
+
+  test('a missing-dependency assertion with no bun spawn is left alone', () => {
+    write(
+      'tests/render.test.ts',
+      ["expect(() => load(dir)).toThrow('Cannot find package');", ''].join('\n'),
+    );
+
+    const result = preflight(['tests/render.test.ts']);
+
+    expect(result.stdout).toContain('no negative-path test leaves');
+    expect(result.status).toBe(0);
+  });
+
+  test('a bun spawn that asserts nothing about a missing dependency is left alone', () => {
+    write('tests/render.test.ts', ["const result = spawnSync('bun', [script, dir]);", ''].join('\n'));
+
+    const result = preflight(['tests/render.test.ts']);
+
+    expect(result.stdout).toContain('no negative-path test leaves');
+    expect(result.status).toBe(0);
+  });
+
   test('a git restore quoted as fixture data is not a restore', () => {
     write('tests/demo.test.ts', ['const fixture = "git checkout -- src/thing.ts";', 'export default fixture;', ''].join('\n'));
 

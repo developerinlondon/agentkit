@@ -86,6 +86,40 @@ rather than a passing one. Aim the mutation at the behaviour, not the character 
 a fixture too small to distinguish the mutation makes a weak probe look like a
 strong test.
 
+### A negative path the runtime can still satisfy
+
+**Mechanism.** A test that simulates "the dependency is missing" by building a
+scratch tree without `node_modules` is only honest if the runtime cannot resolve
+the package some other way. Bun has two independent fallbacks, both verified
+here:
+
+- **auto-install.** The default `--install=auto` resolves an import from the
+  global install cache with no `node_modules` anywhere, and writes none into the
+  tree — so nothing on disk records that it happened. `bun --no-install` turns
+  this off.
+- **`node_modules` ancestry.** A `node_modules` directory in _any_ ancestor of
+  the scratch tree resolves the import, and `--no-install` does **not** disable
+  that. Only choosing a scratch root with clean ancestry does.
+
+Either one turns an assertion that a command fails into an assertion that it
+succeeds, and the test still reports green.
+
+**Seen as.** A missing-dependency case that passed on a clean CI runner in
+130 ms at exit 0 — the workflow's own earlier install step had populated the
+global cache, so the negative path never occurred. It passed on three developer
+machines too, but for the other reason: an unrelated `node_modules` above the
+scratch root. Agreement across machines was not evidence, because all of them
+shared a fallback rather than the behaviour under test. Note that the ordinary
+fixture idiom — `mkdtempSync(join(tmpdir(), …))` — puts the scratch tree under
+`/tmp`, which on a developer host may already carry such an ancestor.
+
+**Caught by.** `preflight`'s negative-path check: a test that asserts a
+missing-package failure, spawns bun, and never passes `--no-install`. The
+ancestry half is not statically visible — it depends on where the fixture lands
+at runtime — so a negative-path test should also assert the failure message it
+expects rather than only a non-zero status, and prove itself by failing first
+with the dependency deliberately present.
+
 ### A suite that exits clean without running
 
 **Mechanism.** The runner dies before executing anything — a lock it cannot take,

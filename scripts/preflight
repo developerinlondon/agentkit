@@ -313,6 +313,31 @@ check_bare_dprint() {
 	return 0
 }
 
+check_negative_path() {
+	local path status=0
+	for path in "$@"; do
+		case "$path" in
+		tests/*.ts | tests/*/*.ts) ;;
+		*) continue ;;
+		esac
+		if ! grep -qiE 'cannot find (package|module)' "$REPO/$path"; then
+			continue
+		fi
+		if ! grep -qE "spawn(Sync)?\(\[?'bun'|spawn(Sync)?\(\[?\"bun\"" "$REPO/$path"; then
+			continue
+		fi
+		if grep -q -- '--no-install' "$REPO/$path"; then
+			continue
+		fi
+		bad "$path asserts a missing dependency but spawns bun with auto-install live — pass --no-install"
+		status=1
+	done
+	if [[ "$status" -eq 0 ]]; then
+		ok "no negative-path test leaves bun's auto-install enabled"
+	fi
+	return 0
+}
+
 check_real_home() {
 	local path status=0
 	for path in "$@"; do
@@ -378,6 +403,8 @@ check_restore_by_checkout $EXISTING
 check_bare_dprint $EXISTING
 # shellcheck disable=SC2086
 check_real_home $EXISTING
+# shellcheck disable=SC2086
+check_negative_path $EXISTING
 check_routing
 check_slice
 
