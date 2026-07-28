@@ -143,9 +143,26 @@ check_cross_repo_relative_paths() {
 # that was already too long would otherwise block EVERY later edit to it,
 # unfixably, and Claude Code has no PostToolUse loop guard to stop that.
 baseline_of() {
-  local top rel
-  top=$(git -C "$(dirname "$FILE_PATH")" rev-parse --show-toplevel 2>/dev/null) || return 0
-  rel=${FILE_PATH#"$top"/}
+  local file_dir file_name physical_dir physical_file candidate top rel
+  file_dir=$(dirname -- "$FILE_PATH")
+  file_name=$(basename -- "$FILE_PATH")
+  physical_dir=$(cd "$file_dir" 2>/dev/null && pwd -P) || return 0
+  physical_file="$physical_dir/$file_name"
+  # A case-insensitive filesystem accepts caller casing that Git's tree does
+  # not. Match the existing inode to recover the directory entry's real name.
+  for candidate in "$physical_dir"/* "$physical_dir"/.[!.]* "$physical_dir"/..?*; do
+    [[ -e "$candidate" || -L "$candidate" ]] || continue
+    if [[ "$candidate" -ef "$physical_file" ]]; then
+      physical_file="$candidate"
+      break
+    fi
+  done
+  top=$(git -C "$physical_dir" rev-parse --show-toplevel 2>/dev/null) || return 0
+  top=$(cd "$top" 2>/dev/null && pwd -P) || return 0
+  case "$physical_file" in
+    "$top"/*) rel=${physical_file#"$top"/} ;;
+    *) return 0 ;;
+  esac
   git -C "$top" show "HEAD:$rel" 2>/dev/null || true
 }
 
@@ -153,6 +170,8 @@ baseline_of() {
 check_file_length() {
   local line_count
   line_count=$(wc -l < "$FILE_PATH")
+  line_count=${line_count//[[:space:]]/}
+  [[ "$line_count" =~ ^[0-9]+$ ]] || return 0
   if (( line_count > MAX_FILE_LINES )); then
     local excess=$(( line_count - MAX_FILE_LINES ))
     VIOLATIONS+=("FILE TOO LONG: ${line_count} lines (limit: ${MAX_FILE_LINES}, over by ${excess}). Split this file into smaller modules grouped by functionality. Identify logical boundaries (types, helpers, handlers, constants) and extract them.")

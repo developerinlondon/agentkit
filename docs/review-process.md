@@ -182,6 +182,19 @@ becomes a valid deny response before Claude reaches its fail-open timeout.
 
 ## Reviewer workflow
 
+Deterministic checks scale with the trusted target policy:
+
+| Minimum tier | Required local check                                | CI behavior                                   |
+| ------------ | --------------------------------------------------- | --------------------------------------------- |
+| Standard     | `scripts/product-command default -- moon ci`         | affected Moon slices on Linux and macOS       |
+| Critical     | `scripts/product-command default -- bun test`        | full suite inside both affected platform jobs |
+| Main/nightly | n/a                                                 | full hosted Linux and macOS matrix             |
+
+Moon derives affected tasks from explicit inputs. A separate routing check mechanically scans
+every `tests/**/*.test.ts` file and fails if any test belongs to zero or multiple slices. Changes
+to the routing, CI, enforcement hooks, or review governance are critical and therefore ratchet
+back to the full suite.
+
 Use the `adversarial-review` skill for plan and implementation refutation. Feed
 it primary artifacts and a mechanically complete candidate set, not the
 orchestrator's conclusion or another reviewer's verdict. It traces before
@@ -225,9 +238,9 @@ strict policy.
 - The supervisor closes bounded child failures, not cancellation of the
   supervisor process itself. Local hooks remain defense in depth; protected
   forge checks and approvals are the enforcement boundary.
-- Claude Code and Grok currently invoke this hook. The validator is portable,
-  but Codex and OpenCode runtime registration is separate work; do not claim
-  local interception there yet.
+- Claude Code, Grok, and current Codex installations invoke this hook. Codex
+  treats changed non-managed hook definitions as untrusted until the user
+  reviews them with `/hooks`. OpenCode runtime registration remains separate.
 - Same-family reviewers can share blind spots. Critical work still needs
   deterministic checks and an external human or different-family review at the
   forge boundary.

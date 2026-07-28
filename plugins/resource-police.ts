@@ -129,6 +129,8 @@ function isHeavy(launch: Launch): boolean {
       return /^(build|check|test|clippy)$/i.test(first);
     case 'go':
       return /^(build|test)$/i.test(first);
+    case 'moon':
+      return /^(ci|check|run)$/i.test(first);
     case 'pip':
     case 'pip3':
       return first === 'install';

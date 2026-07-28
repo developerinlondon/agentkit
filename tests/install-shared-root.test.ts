@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  chmodSync,
   existsSync,
   lstatSync,
   mkdtempSync,
@@ -16,6 +17,17 @@ import { spawnSync } from "node:child_process";
 
 const repoRoot = dirname(import.meta.dir);
 const installScript = join(repoRoot, "install.sh");
+const installSource = readFileSync(installScript, "utf-8");
+const installSkillsStart = installSource.indexOf("install_skills() {");
+const installSkillsEnd = installSource.indexOf("\ninstall_rules() {", installSkillsStart);
+const installSkillsFunction = installSource.slice(installSkillsStart, installSkillsEnd);
+// A global install intentionally installs and builds dependency-bearing skills.
+const globalInstallTimeoutMs = 60_000;
+
+function writeExecutable(path: string, content: string): void {
+  writeFileSync(path, content);
+  chmodSync(path, 0o755);
+}
 
 describe("shared ~/.agentkit root + client symlinks", () => {
   test("global install writes one skill tree and links clients by name", () => {
@@ -36,6 +48,7 @@ describe("shared ~/.agentkit root + client symlinks", () => {
           AGENTKIT_HOME: join(home, ".agentkit"),
         },
         encoding: "utf-8",
+        timeout: globalInstallTimeoutMs,
       });
       expect(result.status, result.stderr + "\n" + result.stdout).toBe(0);
 
@@ -95,6 +108,7 @@ describe("shared ~/.agentkit root + client symlinks", () => {
           }),
           encoding: "utf-8",
           env: { ...process.env, HOME: home },
+          timeout: globalInstallTimeoutMs,
         },
       );
       expect(probe.status, probe.stderr + "\n" + probe.stdout).toBe(0);
@@ -106,5 +120,77 @@ describe("shared ~/.agentkit root + client symlinks", () => {
     } finally {
       rmSync(home, { force: true, recursive: true });
     }
-  });
+  }, globalInstallTimeoutMs);
+
+  test("resolves the Bun executable before entering an installed skill directory", () => {
+    const root = mkdtempSync(join(tmpdir(), "agentkit-bun-resolution-"));
+    const fixtureRepo = join(root, "repo");
+    const target = join(root, "installed-skills");
+    const bin = join(root, "bin");
+    const log = join(root, "bun.log");
+    mkdirSync(join(fixtureRepo, "skills", "sample"), { recursive: true });
+    mkdirSync(bin);
+    writeFileSync(
+      join(fixtureRepo, "skills", "sample", "package.json"),
+      '{"scripts":{"build":"bun build"}}\n',
+    );
+    writeFileSync(join(fixtureRepo, "skills", "sample", "SKILL.md"), "# Sample\n");
+
+    const realBun = join(bin, "bun-real");
+    writeExecutable(
+      realBun,
+      `#!/usr/bin/env bash
+printf '%s|%s\\n' "$PWD" "$*" >> "$BUN_CALL_LOG"
+`,
+    );
+    writeExecutable(
+      join(bin, "bun"),
+      `#!/usr/bin/env bash
+if [[ "$PWD" != "$BUN_SHIM_CWD" ]]; then
+  echo "mise: no Bun version configured for $PWD" >&2
+  exit 79
+fi
+if [[ "$1" == "-e" ]]; then
+  printf '%s' "$BUN_REAL_BIN"
+  exit 0
+fi
+exit 80
+`,
+    );
+
+    try {
+      const result = spawnSync(
+        "bash",
+        [
+          "-c",
+          `set -euo pipefail
+REPO_DIR="$1"
+${installSkillsFunction}
+install_skills "$2"`,
+          "bash",
+          fixtureRepo,
+          target,
+        ],
+        {
+          cwd: root,
+          encoding: "utf-8",
+          env: {
+            ...process.env,
+            BUN_CALL_LOG: log,
+            BUN_REAL_BIN: realBun,
+            BUN_SHIM_CWD: fixtureRepo,
+            PATH: `${bin}:${process.env.PATH}`,
+          },
+          timeout: globalInstallTimeoutMs,
+        },
+      );
+
+      expect(result.status, result.stderr).toBe(0);
+      expect(readFileSync(log, "utf-8")).toBe(
+        `${join(target, "sample")}|install --silent\n${join(target, "sample")}|run build\n`,
+      );
+    } finally {
+      rmSync(root, { force: true, recursive: true });
+    }
+  }, globalInstallTimeoutMs);
 });

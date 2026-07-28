@@ -35,7 +35,8 @@ Global install locations:
                (--claude-plugin: agentkit plugin via marketplace instead)
   Grok CLI:    ~/.grok/skills|rules → ~/.agentkit/… (per entry)
                instructions also land as ~/.grok/rules/*.md for always-on load
-  Codex CLI:   ~/.codex/rules/, ~/.codex/prompts/ (skills as /prompts)
+  Codex CLI:   $CODEX_HOME when set, otherwise ~/.codex
+               (rules, prompts, hooks.json, and review gate scripts)
   Executables: ~/.local/bin/ (also mirrored under ~/.agentkit/tools/)
   Prompts:     ~/.agentkit/instructions/*.md (wired into Codex/Claude/OpenCode/Grok)
 
@@ -43,7 +44,7 @@ Project install locations:
   OpenCode:    .opencode/skills/, .opencode/plugins/, .opencode/rules/
   Claude Code: .claude/skills/, .claude/hooks/, .claude/tools/,
                .claude/settings.json (hooks section merged)
-  Codex CLI:   .codex/rules/
+  Codex CLI:   .codex/rules/, .codex/hooks.json, .codex/{hooks,tools}/
 
 Examples:
   ./install.sh --global               # Install for all tools globally
@@ -79,6 +80,10 @@ fi
 source "$REPO_DIR/lib/install-platform.sh"
 PLATFORM="$(detect_platform)"
 validate_platform "$PLATFORM"
+if [[ "$GLOBAL" == true && "$SESSION_SCOPE" == true && "$PLATFORM" != linux ]]; then
+	echo "[shims] Session scoping is Linux-only; skipping on $PLATFORM."
+	SESSION_SCOPE=false
+fi
 
 # ─── Shared: Skills ──────────────────────────────────────────────────────────
 
@@ -120,7 +125,14 @@ link_children() {
 
 install_skills() {
 	local dest="$1"
+	local bun_bin=""
 	mkdir -p "$dest"
+	if command -v bun >/dev/null 2>&1; then
+		# Version-manager shims such as mise resolve from the current directory.
+		# Capture Bun's real executable while still inside the AgentKit checkout;
+		# re-resolving the shim after cd'ing into a copied skill can lose the pin.
+		bun_bin="$(cd "$REPO_DIR" && bun -e 'process.stdout.write(process.execPath)' 2>/dev/null || true)"
+	fi
 
 	for skill_dir in "$REPO_DIR"/skills/*/; do
 		local skill_name
@@ -143,17 +155,17 @@ install_skills() {
 		# Skills that ship runtime dependencies (a package.json) need an install
 		# step: bun does NOT auto-install when a package.json is present.
 		if [[ -f "$target/package.json" ]]; then
-			if command -v bun >/dev/null 2>&1; then
+			if [[ -n "$bun_bin" && -x "$bun_bin" ]]; then
 				echo "[skills] Installing dependencies: $skill_name"
-				(cd "$target" && bun install --silent)
+				(cd "$target" && "$bun_bin" install --silent)
 				# Build-time artifacts (e.g. browser bundles) are gitignored and
 				# produced at install via the skill's own build script.
 				if grep -A3 '"scripts"' "$target/package.json" | grep -q '"build"'; then
 					echo "[skills] Building: $skill_name"
-					(cd "$target" && bun run build >/dev/null)
+					(cd "$target" && "$bun_bin" run build >/dev/null)
 				fi
 			else
-				echo "[skills] WARNING: $skill_name needs 'bun install' in $target (bun not found)"
+				echo "[skills] WARNING: $skill_name needs 'bun install' in $target (usable bun executable not found)"
 			fi
 		fi
 	done
@@ -303,7 +315,7 @@ codex_has_managed_prompt() {
 
 install_codex_prompts() {
 	local instructions_dir="$1"
-	local config_file="$HOME/.codex/config.toml"
+	local config_file="${CODEX_HOME:-$HOME/.codex}/config.toml"
 
 	if [[ -f "$config_file" ]] \
 		&& grep -Eq '^[[:space:]]*developer_instructions[[:space:]]*=' "$config_file" \
@@ -609,6 +621,96 @@ merge_claude_settings() {
 		echo "$hooks_json" | jq '.' >"$settings_file"
 		echo "[claude] Created: $settings_file"
 	fi
+}
+
+# ─── Codex CLI: Review Gate Hook ────────────────────────────────────────────
+
+merge_codex_hooks() {
+	local hooks_file="$1"
+	local hooks_dir="$2"
+	local canonical="$REPO_DIR/hooks/codex/hooks.json"
+
+	if ! command -v jq >/dev/null 2>&1; then
+		echo "[codex] ERROR: jq is required to merge the review hook into $hooks_file" >&2
+		return 1
+	fi
+	if [[ ! -f "$canonical" ]]; then
+		echo "[codex] ERROR: missing $canonical — cannot wire the review gate." >&2
+		return 1
+	fi
+
+	local rendered
+	rendered=$(jq --arg token '__AGENTKIT_CODEX_HOOKS_ROOT__' --arg root "$hooks_dir" '
+    walk(if type == "string" then gsub($token; $root) else . end)
+  ' "$canonical") || return 1
+
+	mkdir -p "$(dirname "$hooks_file")"
+	if [[ -f "$hooks_file" ]]; then
+		jq -e 'type == "object" and ((.hooks // {}) | type == "object")' \
+			"$hooks_file" >/dev/null 2>&1 || {
+			echo "[codex] ERROR: existing hooks file is malformed: $hooks_file" >&2
+			return 1
+		}
+		jq --argjson agentkit "$rendered" '
+      def without_agentkit:
+        map(
+          .hooks = ((.hooks // []) |
+            map(select(((.command // "") | contains("AGENTKIT_HOOK_TARGET=codex")) | not)))
+          | select((.hooks | length) > 0)
+        );
+      .hooks = (.hooks // {})
+      | .hooks.PreToolUse = (
+          ((.hooks.PreToolUse // []) | without_agentkit)
+          + $agentkit.hooks.PreToolUse
+        )
+    ' "$hooks_file" >"${hooks_file}.tmp" || return 1
+		mv "${hooks_file}.tmp" "$hooks_file"
+		echo "[codex] Updated review hooks: $hooks_file"
+	else
+		printf '%s\n' "$rendered" >"$hooks_file"
+		echo "[codex] Created review hooks: $hooks_file"
+	fi
+}
+
+install_codex_review_hooks() {
+	local codex_dir="$1"
+	local hooks_dir="$codex_dir/hooks"
+	local tools_dir="$codex_dir/tools"
+	local hook_name source
+
+	if ! command -v jq >/dev/null 2>&1; then
+		echo "[codex] WARNING: jq not found; skipping Codex review hook wiring."
+		echo "[codex] Install jq and re-run to enable the merge gate."
+		return 0
+	fi
+
+	mkdir -p "$hooks_dir/lib" "$tools_dir"
+	hooks_dir=$(cd "$hooks_dir" && pwd -P)
+	tools_dir=$(cd "$tools_dir" && pwd -P)
+
+	for hook_name in fail-closed-hook.sh review-police.sh; do
+		source="$REPO_DIR/hooks/claude/$hook_name"
+		if [[ ! -f "$source" ]]; then
+			echo "[codex] ERROR: missing review hook: $source" >&2
+			return 1
+		fi
+		cp "$source" "$hooks_dir/$hook_name"
+		chmod +x "$hooks_dir/$hook_name"
+	done
+	if [[ ! -f "$REPO_DIR/hooks/claude/lib/hook-input.sh" ]]; then
+		echo "[codex] ERROR: missing review hook input helper." >&2
+		return 1
+	fi
+	cp "$REPO_DIR/hooks/claude/lib/hook-input.sh" "$hooks_dir/lib/hook-input.sh"
+	if [[ ! -f "$REPO_DIR/tools/review-gate" ]]; then
+		echo "[codex] ERROR: missing review-gate validator." >&2
+		return 1
+	fi
+	cp "$REPO_DIR/tools/review-gate" "$tools_dir/review-gate"
+	chmod +x "$tools_dir/review-gate"
+
+	merge_codex_hooks "$codex_dir/hooks.json" "$hooks_dir"
+	echo "[codex] Review or re-trust the AgentKit hooks with /hooks in a new Codex session."
 }
 
 # ─── Per-Session Resource Shims ──────────────────────────────────────────────
@@ -939,8 +1041,12 @@ if [[ "$GLOBAL" == true ]]; then
 	fi
 
 	# ── Codex CLI ──
-	CODEX_RULES="$HOME/.codex/rules"
-	CODEX_PROMPTS="$HOME/.codex/prompts"
+	CODEX_ROOT="${CODEX_HOME:-$HOME/.codex}"
+	CODEX_RULES="$CODEX_ROOT/rules"
+	CODEX_PROMPTS="$CODEX_ROOT/prompts"
+	echo "--- Codex CLI (review gate hook) ---"
+	install_codex_review_hooks "$CODEX_ROOT"
+	echo ""
 	echo "--- Codex CLI (Starlark policies) ---"
 	install_codex_policies "$CODEX_RULES"
 	echo ""
@@ -962,7 +1068,7 @@ if [[ "$GLOBAL" == true ]]; then
 	echo "  PATH tools:      $PATH_TOOLS/"
 	[[ "$SESSION_SCOPE" == true ]] && echo "  Session shims:   $SESSION_SHIMS/ (prepended to PATH in ~/.bashrc)"
 	echo "  Claude tools:    $CLAUDE_TOOLS/ → $TOOLS_CANON/"
-	echo "  Codex CLI:       $CODEX_RULES/ (auto-loaded), $CODEX_PROMPTS/ (/name prompts)"
+	echo "  Codex CLI:       $CODEX_RULES/ (policies), $CODEX_PROMPTS/ (prompts), $CODEX_ROOT/hooks.json"
 
 # ─── Main: Project Install ───────────────────────────────────────────────────
 
@@ -1007,7 +1113,11 @@ else
 	echo ""
 
 	# ── Codex CLI ──
-	CODEX_RULES="$TARGET_DIR/.codex/rules"
+	CODEX_ROOT="$TARGET_DIR/.codex"
+	CODEX_RULES="$CODEX_ROOT/rules"
+	echo "--- Codex CLI (review gate hook) ---"
+	install_codex_review_hooks "$CODEX_ROOT"
+	echo ""
 	echo "--- Codex CLI (Starlark policies) ---"
 	install_codex_policies "$CODEX_RULES"
 	echo ""
@@ -1020,7 +1130,7 @@ else
 	echo "  OpenCode:    $OPENCODE_PLUGINS/"
 	echo "  Claude Code: $CLAUDE_HOOKS/ (hooks in $CLAUDE_SETTINGS)"
 	echo "  Tools:       $CLAUDE_TOOLS/"
-	echo "  Codex CLI:   $CODEX_RULES/"
+	echo "  Codex CLI:   $CODEX_RULES/, $CODEX_ROOT/hooks.json"
 	echo ""
 	echo "Verify with:"
 	echo "  ls $SKILLS_DEST/"

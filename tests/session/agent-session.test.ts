@@ -6,6 +6,8 @@ import { spawnSync } from 'node:child_process';
 
 const repoRoot = dirname(dirname(import.meta.dir));
 const shim = join(repoRoot, 'tools', 'agent-session');
+const describeLinux = process.platform === 'linux' ? describe : describe.skip;
+const sessionCommandTimeoutMs = 5_000;
 
 let root: string;
 let shimDir: string;
@@ -29,6 +31,7 @@ function run(argv: string[], overrides: Record<string, string> = {}) {
       AGENTKIT_SESSION_SCOPE: '',
       ...overrides,
     },
+    timeout: sessionCommandTimeoutMs,
   });
 }
 
@@ -58,10 +61,16 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  spawnSync('rm', ['-rf', root]);
+  spawnSync('rm', ['-rf', root], { timeout: sessionCommandTimeoutMs });
 });
 
-describe('agent-session', () => {
+describe('agent-session platform contract', () => {
+  test('is installed only on Linux hosts', () => {
+    expect(readFileSync(shim, 'utf8')).toContain('# agentkit:platforms linux');
+  });
+});
+
+describeLinux('agent-session Linux behavior', () => {
   test('scopes the runtime when invoked through a shim symlink', () => {
     const result = run([join(shimDir, 'probecmd'), 'alpha']);
     expect(result.stdout).toContain('real probecmd alpha');
@@ -101,7 +110,11 @@ describe('agent-session', () => {
     const sandbox = join(root, 'sandbox-bin');
     mkdirSync(sandbox);
     for (const util of ['basename', 'dirname', 'readlink', 'id', 'stat']) {
-      const found = spawnSync('command', ['-v', util], { encoding: 'utf8', shell: true }).stdout.trim();
+      const found = spawnSync('command', ['-v', util], {
+        encoding: 'utf8',
+        shell: true,
+        timeout: sessionCommandTimeoutMs,
+      }).stdout.trim();
       symlinkSync(found, join(sandbox, util));
     }
     symlinkSync(join(realDir, 'probecmd'), join(sandbox, 'probecmd'));
@@ -185,6 +198,7 @@ describe('agent-session', () => {
     const probe = (fn: string, value: string) =>
       spawnSync('bash', ['-c', `. '${shim}'; ${fn} '${value}' && echo accept || echo reject`], {
         encoding: 'utf8',
+        timeout: sessionCommandTimeoutMs,
       }).stdout.trim();
 
     for (const good of ['16G', '512M', '1024', 'infinity', '50%', '16 G']) {

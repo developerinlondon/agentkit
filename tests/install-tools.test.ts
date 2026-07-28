@@ -6,6 +6,8 @@ import { spawnSync } from 'node:child_process';
 
 const repoRoot = dirname(import.meta.dir);
 const installScript = join(repoRoot, 'install.sh');
+// A global install intentionally installs and builds dependency-bearing skills.
+const globalInstallTimeoutMs = 60_000;
 
 describe('standalone tool installation', () => {
   test('installs global tools into PATH and preserves the Claude tools mirror', () => {
@@ -21,6 +23,7 @@ describe('standalone tool installation', () => {
           XDG_CONFIG_HOME: join(home, '.config'),
         },
         encoding: 'utf-8',
+        timeout: globalInstallTimeoutMs,
       });
       expect(result.status, result.stderr).toBe(0);
 
@@ -44,7 +47,7 @@ describe('standalone tool installation', () => {
     } finally {
       rmSync(home, { force: true, recursive: true });
     }
-  }, 60_000);
+  }, globalInstallTimeoutMs);
 
   test('ships the runner inside the one-shot Claude plugin', () => {
     const source = readFileSync(join(repoRoot, 'tools', 'bounded-run'), 'utf-8');

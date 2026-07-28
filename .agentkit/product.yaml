@@ -51,6 +51,18 @@ surfaces:
       arguments. The validator performs structural and semantic consistency
       checks; it does not claim reviewer identity or evidence truth.
 
+  - name: codex-review-hook
+    kind: cli
+    run: codex --version
+    expect: |
+      A global or project install creates a Codex `PreToolUse` hook manifest
+      with Bash and MCP merge routes, preserves unrelated hooks, and packages
+      `review-police`, its fail-closed supervisor, input helper, and
+      `review-gate` under the same `.codex` root. After the user trusts the
+      changed definition with `/hooks`, a direct REST/GraphQL/MCP merge is
+      denied and a forge CLI merge must satisfy the same exact-context evidence
+      policy as Claude Code.
+
   - name: platform-command
     kind: cli
     run: scripts/product-command default -- echo ok
@@ -105,3 +117,9 @@ cannot_verify:
     why: >-
       mutates the reviewer's own Claude Code configuration, so it is left to a
       human rather than run automatically.
+  - surface: codex-review-hook
+    what: trusted hook blocking a real Codex tool call
+    why: >-
+      requires installing into and changing the reviewer's Codex configuration,
+      explicitly trusting the hook definition, and driving a live tool call.
+      Installer and payload regressions verify the layer immediately below it.

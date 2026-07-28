@@ -4,7 +4,9 @@
 set -u
 
 deny_supervisor() {
-	printf '%s\n' '{"decision":"deny","reason":"BLOCKED: fail-closed hook supervisor could not complete policy evaluation.","hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"BLOCKED: fail-closed hook supervisor could not complete policy evaluation."}}'
+	local decision="deny"
+	[[ "${AGENTKIT_HOOK_TARGET:-}" == "codex" ]] && decision="block"
+	printf '{"decision":"%s","reason":"BLOCKED: fail-closed hook supervisor could not complete policy evaluation.","hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"BLOCKED: fail-closed hook supervisor could not complete policy evaluation."}}\n' "$decision"
 	exit 0
 }
 
@@ -19,10 +21,11 @@ exec python3 -c '
 import json, os, signal, subprocess, sys
 
 REASON = "BLOCKED: fail-closed hook supervisor could not complete policy evaluation."
+CODEX_TARGET = os.environ.get("AGENTKIT_HOOK_TARGET") == "codex"
 
 def deny():
     body = {
-        "decision": "deny",
+        "decision": "block" if CODEX_TARGET else "deny",
         "reason": REASON,
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",
@@ -98,5 +101,8 @@ specific_deny = isinstance(specific, dict) and specific.get("permissionDecision"
 if parsed.get("decision") != "deny" and not specific_deny:
     deny()
 
+if CODEX_TARGET:
+    parsed["decision"] = "block"
+    output = (json.dumps(parsed, separators=(",", ":")) + "\n").encode("utf-8")
 sys.stdout.buffer.write(output)
 ' "$@"

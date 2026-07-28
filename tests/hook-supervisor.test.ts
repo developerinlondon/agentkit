@@ -17,8 +17,9 @@ function child(body: string): string {
   return path;
 }
 
-function run(path: string, deadline = '1') {
+function run(path: string, deadline = '1', target?: string) {
   return spawnSync('bash', [SUPERVISOR, deadline, path], {
+    env: target ? { ...process.env, AGENTKIT_HOOK_TARGET: target } : process.env,
     input: '{"tool_name":"Bash","tool_input":{"command":"gh pr merge 12"}}',
     encoding: 'utf-8',
     timeout: 4_000,
@@ -39,6 +40,42 @@ describe('fail-closed hook supervisor', () => {
     const denied = run(child(`cat >/dev/null; printf '%s\\n' '${denial}'`));
     expect(denied.status).toBe(0);
     expect(denied.stdout.trim()).toBe(denial);
+  });
+
+  test('normalizes a relayed denial for Codex without dropping its nested denial', () => {
+    const denial = {
+      decision: 'deny',
+      reason: 'fixture',
+      hookSpecificOutput: {
+        hookEventName: 'PreToolUse',
+        permissionDecision: 'deny',
+        permissionDecisionReason: 'fixture',
+      },
+    };
+    const result = run(
+      child(`cat >/dev/null; printf '%s\\n' '${JSON.stringify(denial)}'`),
+      '1',
+      'codex',
+    );
+
+    expect(result.status).toBe(0);
+    expect(JSON.parse(result.stdout)).toEqual({ ...denial, decision: 'block' });
+  });
+
+  test('emits Codex denials from shell and child-process fallback paths', () => {
+    const shellFallback = spawnSync('bash', [SUPERVISOR], {
+      encoding: 'utf-8',
+      env: { ...process.env, AGENTKIT_HOOK_TARGET: 'codex' },
+    });
+    const childFallback = run(child('cat >/dev/null; echo not-json'), '1', 'codex');
+
+    for (const result of [shellFallback, childFallback]) {
+      expect(result.status).toBe(0);
+      const denial = JSON.parse(result.stdout);
+      expect(denial.decision).toBe('block');
+      expect(denial.hookSpecificOutput.permissionDecision).toBe('deny');
+      expect(denial.reason).toContain('fail-closed hook supervisor');
+    }
   });
 
   test('turns timeout, crash, and malformed output into explicit denials', () => {

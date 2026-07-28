@@ -6,6 +6,7 @@ import { spawnSync } from 'node:child_process';
 
 const repoRoot = dirname(import.meta.dir);
 const commandScript = join(repoRoot, 'scripts', 'product-command');
+const commandTimeoutMs = 5_000;
 let root = '';
 
 function executable(name: string, body: string) {
@@ -23,6 +24,7 @@ function invoke(platform: string, profile: string, command: string[]) {
   return spawnSync('bash', ['-c', shell, 'product-command-test', ...command], {
     encoding: 'utf-8',
     env: { ...process.env, PATH: `${root}:/usr/bin:/bin` },
+    timeout: commandTimeoutMs,
   });
 }
 
@@ -56,6 +58,23 @@ describe('portable product command', () => {
 
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout.trim()).toBe('direct:one two');
+  });
+
+  test('executes the requested workload through the script entrypoint', () => {
+    executable('agentkit-run', 'shift 3\nexec "$@"');
+    const workload = executable('workload', "printf 'entrypoint:%s\\n' \"$*\"");
+    const result = spawnSync(
+      'bash',
+      [commandScript, 'default', '--', workload, 'one', 'two'],
+      {
+        encoding: 'utf-8',
+        env: { ...process.env, PATH: `${root}:/usr/bin:/bin` },
+        timeout: commandTimeoutMs,
+      },
+    );
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout.trim()).toBe('entrypoint:one two');
   });
 
   test('keeps every product-review command verbatim and cross-platform', () => {

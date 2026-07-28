@@ -1,6 +1,6 @@
 node_modules/
-bun.lock
 .omc/
+.moon/cache/
 
 # Review records are intentionally LOCAL. Committing one moves HEAD, which
 # stales the record against the branch it reviews — the gate would then deny

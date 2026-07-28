@@ -44,7 +44,7 @@ Reusable AI agent skills, rules, plugins, hooks, and tools for OpenCode, Claude 
 | **pkg-police.ts**      | Enforces bun as package manager — blocks npm, npx, yarn, pnpm commands                                                   |
 | **resource-police.ts** | Requires bounded heavy commands on Linux; blocks delegated and undecidable commands everywhere                           |
 
-### Hooks (Claude Code -- PreToolUse / PostToolUse)
+### Runtime hooks (Claude Code; review gate also installed for Codex)
 
 | Hook                   | Type              | Description                                                                                                                                                                                                                                                                                                                                                                |
 | ---------------------- | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -57,6 +57,14 @@ Reusable AI agent skills, rules, plugins, hooks, and tools for OpenCode, Claude 
 | **chime.sh**           | Notification/Stop | Audible nudge when Claude needs you: springy boing on permission prompts/questions, soft ping when a turn finishes. Mute: `touch ~/.claude/.chime-off` or `CLAUDE_CHIME=0`                                                                                                                                                                                                 |
 | **mr-police.sh**       | PreToolUse        | Blocks opening a new MR while you already have an open MR you authored on the repo — stops unmerged MRs from stacking up                                                                                                                                                                                                                                                   |
 | **review-police.sh**   | PreToolUse        | Allows one standalone `gh pr merge`/`glab mr merge` only when evidence covers the forge's exact source and target; direct REST/GraphQL/MCP and compound/wrapped merges are refused. Strict policy comes from the target commit, risk comes from commit-bound paths, and critical records cannot use local consent. NOT security — forge protections are the trust boundary |
+
+Codex receives the fail-closed `review-police` route through its trusted
+`PreToolUse` hook interface. The installer preserves unrelated entries in
+`$CODEX_HOME/hooks.json` (falling back to `~/.codex/hooks.json`) or
+`<project>/.codex/hooks.json`; open `/hooks` in a new Codex session to review
+and trust the installed definition. Hook merging requires `jq`; without it the
+installer warns and leaves the optional Codex hook unwired. The other Codex
+protections below remain literal command-prefix policies.
 
 ### Policies (Codex CLI -- exec policy)
 
@@ -147,7 +155,7 @@ symlinks into that root (never a second full copy):
 | OpenCode    | `~/.agents/skills\|rules\|instructions` → `~/.agentkit/…`                                        |
 | Claude Code | `~/.claude/skills\|hooks\|tools` → `~/.agentkit/…` (settings still point at `~/.claude/hooks`)   |
 | Grok CLI    | `~/.grok/skills\|rules` → `~/.agentkit/…`; instructions also as `~/.grok/rules/*.md` (always-on) |
-| Codex CLI   | policies/prompts still copied into `~/.codex/` (Starlark + `/prompt` shape differs)              |
+| Codex CLI   | policies, prompts, review hooks, and validator under `$CODEX_HOME` or `~/.codex/`               |
 
 Per-name links mean non-agentkit siblings stay put — OMC skills under `~/.claude/skills/`,
 Grok builtins under `~/.grok/skills/`, etc. OpenCode plugins still install as real files under
@@ -162,8 +170,9 @@ The installer detects `linux`, `darwin`, or `unknown`; `AGENTKIT_PLATFORM` may o
 with one of those exact values for controlled packaging and tests. Artifacts carrying an
 `agentkit:platform` directive are skipped when unsupported, and stale managed copies are removed.
 On non-Linux hosts this omits `bounded-run`, its `agentkit-run` alias, and the Codex heavy-command
-policy. OpenCode still blocks delegated and undecidable commands. The Claude hook does so when
-`jq`, `awk`, and `cat` are available; otherwise it warns and intentionally fails open.
+policy. Linux-only per-session systemd scoping is also skipped. The portable Codex review hook
+remains installed. OpenCode still blocks delegated and undecidable commands. The Claude hook does
+so when `jq`, `awk`, and `cat` are available; otherwise it warns and intentionally fails open.
 
 ### Option 3: Install into a specific project
 
@@ -205,6 +214,10 @@ rules are checked and merge-queue targets are refused because current `gh` impli
 Direct REST/GraphQL/MCP and compound or wrapped merges are denied because their landing context
 cannot be bound safely. Record schemas, bootstrap behavior, evidence obligations, trust limits,
 and consent boundaries:
+
+The same shell gate is wired into Claude Code, Grok's Claude-compatible hook path, and current
+Codex `PreToolUse` hooks. Codex requires an explicit trust review through `/hooks` after the
+definition is installed or changed.
 
 **[docs/review-process.md](./docs/review-process.md)**
 

@@ -272,7 +272,13 @@ describe('review-gate strict evidence validation', () => {
 
     for (const path of [
       '.agentkit/product.yaml',
+      '.github/workflows/ci.yml',
+      '.moon/workspace.yml',
+      '.prototools',
       '.claude-plugin/marketplace.json',
+      'moon.yml',
+      'package.json',
+      'bun.lock',
       'plugins-cc/agentkit/.claude-plugin/plugin.json',
       'skills/adversarial-review/SKILL.md',
       'skills/autonomous-workflow/SKILL.md',
@@ -283,9 +289,13 @@ describe('review-gate strict evidence validation', () => {
       'tests/review-police.test.ts',
       'tests/review-disciplines.test.ts',
       'tests/agentkit-plugin.test.ts',
+      'tests/codex-review-hooks.test.ts',
       'tests/hook-supervisor.test.ts',
       'tests/install-claude-plugin.test.ts',
       'tests/install-tools.test.ts',
+      'tests/test-slices.test.ts',
+      'scripts/check-test-slices.ts',
+      'scripts/product-command',
     ]) {
       writePaths([path]);
       const body = criticalRecord();
@@ -526,5 +536,39 @@ describe('review-gate strict evidence validation', () => {
 
     const result = runGate();
     expect(result.status, output(result)).toBe(0);
+  });
+
+  test('requires affected tests for standard work and reserves the full suite for critical work', () => {
+    const ownPolicy = JSON.parse(
+      readFileSync(join(import.meta.dir, '..', '.agentkit', 'review-policy.json'), 'utf-8'),
+    );
+    writeFileSync(policyPath, JSON.stringify(ownPolicy));
+    policyDigest = execFileSync('git', ['hash-object', '--no-filters', policyPath], {
+      cwd: repo,
+      encoding: 'utf-8',
+    }).trim();
+    writePaths(['README.md']);
+
+    const body = criticalRecord();
+    body.risk = { tier: 'standard', rationale: 'Documentation does not touch a critical zone' };
+    body.checks = [
+      {
+        id: 'affected-tests',
+        command: 'scripts/product-command default -- moon ci',
+        status: 'pass',
+        exit_code: 0,
+        output_summary: 'All affected tasks passed',
+      },
+    ];
+    writeRecord(body);
+
+    let result = runGate();
+    expect(result.status, output(result)).toBe(0);
+
+    body.checks = criticalRecord().checks;
+    writeRecord(body);
+    result = runGate();
+    expect(result.status).not.toBe(0);
+    expect(output(result)).toContain("required check 'affected-tests' is missing");
   });
 });

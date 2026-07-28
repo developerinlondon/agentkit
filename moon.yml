@@ -1,0 +1,200 @@
+id: 'agentkit'
+
+fileGroups:
+  ciConfig:
+    - '.mise.toml'
+    - '.moon/toolchains.yml'
+    - '.prototools'
+    - 'bun.lock'
+    - 'moon.yml'
+    - 'package.json'
+    - 'scripts/check-test-slices.ts'
+
+  criticalInputs:
+    - '.agentkit/product.yaml'
+    - '.agentkit/review-policy.json'
+    - '.claude-plugin/marketplace.json'
+    - '.github/workflows/**/*'
+    - '.moon/**/*'
+    - '.prototools'
+    - 'bun.lock'
+    - 'docs/review-process.md'
+    - 'hooks/**/*'
+    - 'install.sh'
+    - 'instructions/coding-discipline.md'
+    - 'lib/install-platform.sh'
+    - 'moon.yml'
+    - 'package.json'
+    - 'plugins/*.ts'
+    - 'plugins-cc/agentkit/.claude-plugin/plugin.json'
+    - 'plugins-cc/agentkit/hooks/**/*'
+    - 'plugins-cc/agentkit/skills/adversarial-review/**/*'
+    - 'plugins-cc/agentkit/skills/autonomous-workflow/**/*'
+    - 'plugins-cc/agentkit/skills/product-review/**/*'
+    - 'plugins-cc/agentkit/tools/review-gate'
+    - 'policies/**/*'
+    - 'scripts/check-test-slices.ts'
+    - 'scripts/product-command'
+    - 'scripts/sync-cc-plugin.sh'
+    - 'skills/adversarial-review/**/*'
+    - 'skills/autonomous-workflow/**/*'
+    - 'skills/product-review/**/*'
+    - 'tests/agentkit-plugin.test.ts'
+    - 'tests/codex-review-hooks.test.ts'
+    - 'tests/hook-supervisor.test.ts'
+    - 'tests/install-claude-plugin.test.ts'
+    - 'tests/install-tools.test.ts'
+    - 'tests/review-disciplines.test.ts'
+    - 'tests/review-gate.test.ts'
+    - 'tests/review-police.test.ts'
+    - 'tests/test-slices.test.ts'
+    - 'tools/review-gate'
+
+  hookInputs:
+    - '.claude-plugin/**/*'
+    - 'hooks/**/*'
+    - 'plugins/**/*'
+    - 'plugins-cc/agentkit/.claude-plugin/**/*'
+    - 'plugins-cc/agentkit/hooks/**/*'
+    - 'plugins-cc/agentkit/server/**/*'
+    - 'policies/**/*'
+    - 'scripts/sync-cc-plugin.sh'
+    - 'tests/agentkit-plugin.test.ts'
+    - 'tests/coding-police-hook.test.ts'
+    - 'tests/coding-police.test.ts'
+    - 'tests/comment-police-hook.test.ts'
+    - 'tests/comment-police.test.ts'
+    - 'tests/git-police-hygiene.test.ts'
+    - 'tests/git-police.test.ts'
+    - 'tests/hook-payload-compat.test.ts'
+    - 'tests/hook-supervisor.test.ts'
+    - 'tests/kubectl-police.test.ts'
+    - 'tests/mr-police.test.ts'
+    - 'tests/pkg-police.test.ts'
+    - 'tests/version-police.test.ts'
+
+  installInputs:
+    - 'config.example.yaml'
+    - 'hooks/**/*'
+    - 'install.sh'
+    - 'instructions/**/*'
+    - 'lib/**/*'
+    - 'plugins-cc/**/*'
+    - 'rules/**/*'
+    - 'skills/**/*'
+    - 'tests/install-claude-plugin.test.ts'
+    - 'tests/install-hooks.test.ts'
+    - 'tests/install-platform.test.ts'
+    - 'tests/install-prompt.test.ts'
+    - 'tests/install-shared-root.test.ts'
+    - 'tests/install-tools.test.ts'
+    - 'tools/**/*'
+
+  integrationInputs:
+    - '.github/workflows/**/*'
+    - '.moon/**/*'
+    - 'plugins-cc/infra-tools/**/*'
+    - 'tests/infra-tools-mcp.test.ts'
+    - 'tests/test-slices.test.ts'
+
+  productInputs:
+    - 'plugins-cc/agentkit/skills/product-intelligence/**/*'
+    - 'skills/product-intelligence/**/*'
+    - 'tests/product-intelligence/**/*'
+
+  resourceInputs:
+    - 'hooks/claude/resource-police.sh'
+    - 'instructions/resource-safety.md'
+    - 'plugins/resource-police.ts'
+    - 'plugins-cc/agentkit/hooks/resource-police.sh'
+    - 'plugins-cc/agentkit/skills/resource-safe-execution/**/*'
+    - 'plugins-cc/agentkit/tools/bounded-run'
+    - 'policies/codex/delegation-police.rules'
+    - 'policies/codex/resource-police.rules'
+    - 'skills/resource-safe-execution/**/*'
+    - 'tests/fixtures/resource-commands.ts'
+    - 'tests/resource-police.test.ts'
+    - 'tests/resource-run.integration.test.ts'
+    - 'tests/resource-run.test.ts'
+    - 'tests/resource-safety-assets.test.ts'
+    - 'tools/bounded-run'
+
+  reviewInputs:
+    - '.agentkit/review-policy.json'
+    - 'hooks/claude/fail-closed-hook.sh'
+    - 'hooks/claude/review-police.sh'
+    - 'hooks/codex/**/*'
+    - 'instructions/coding-discipline.md'
+    - 'plugins-cc/agentkit/hooks/fail-closed-hook.sh'
+    - 'plugins-cc/agentkit/hooks/review-police.sh'
+    - 'plugins-cc/agentkit/skills/adversarial-review/**/*'
+    - 'plugins-cc/agentkit/skills/autonomous-workflow/**/*'
+    - 'plugins-cc/agentkit/skills/product-review/**/*'
+    - 'plugins-cc/agentkit/tools/review-gate'
+    - 'scripts/product-command'
+    - 'skills/adversarial-review/**/*'
+    - 'skills/autonomous-workflow/**/*'
+    - 'skills/product-review/**/*'
+    - 'tests/codex-review-hooks.test.ts'
+    - 'tests/probe-cases.txt'
+    - 'tests/product-command.test.ts'
+    - 'tests/review-disciplines.test.ts'
+    - 'tests/review-gate.test.ts'
+    - 'tests/review-police.test.ts'
+    - 'tools/review-gate'
+
+  sessionInputs:
+    - 'install.sh'
+    - 'tests/session/**/*'
+    - 'tools/agent-session'
+
+tasks:
+  check-test-slices:
+    command: 'bun run scripts/check-test-slices.ts --check'
+
+  test-hooks:
+    command: 'bun run scripts/check-test-slices.ts hooks'
+    inputs:
+      - 'group://ciConfig'
+      - 'group://hookInputs'
+
+  test-install:
+    command: 'bun run scripts/check-test-slices.ts install'
+    inputs:
+      - 'group://ciConfig'
+      - 'group://installInputs'
+
+  test-integrations:
+    command: 'bun run scripts/check-test-slices.ts integrations'
+    inputs:
+      - 'group://ciConfig'
+      - 'group://integrationInputs'
+
+  test-product:
+    command: 'bun run scripts/check-test-slices.ts product'
+    inputs:
+      - 'group://ciConfig'
+      - 'group://productInputs'
+
+  test-resources:
+    command: 'bun run scripts/check-test-slices.ts resources'
+    inputs:
+      - 'group://ciConfig'
+      - 'group://resourceInputs'
+
+  test-review:
+    command: 'bun run scripts/check-test-slices.ts review'
+    inputs:
+      - 'group://ciConfig'
+      - 'group://reviewInputs'
+
+  test-session:
+    command: 'bun run scripts/check-test-slices.ts session'
+    inputs:
+      - 'group://ciConfig'
+      - 'group://sessionInputs'
+
+  test-full:
+    command: 'bun test'
+    inputs:
+      - 'group://criticalInputs'

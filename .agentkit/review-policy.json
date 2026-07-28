@@ -7,7 +7,14 @@
         "id": "agent-enforcement",
         "tier": "critical",
         "path_regexes": [
-          "^(hooks/.*|policies/.*|tools/review-gate|install\\.sh|lib/install-platform\\.sh|scripts/sync-cc-plugin\\.sh|plugins/(git-police|kubectl-police|resource-police|mr-police|pkg-police|comment-police)\\.ts|plugins-cc/agentkit/(\\.claude-plugin/plugin\\.json|hooks/.*|tools/review-gate)|\\.agentkit/(product\\.yaml|review-policy\\.json)|\\.claude-plugin/marketplace\\.json)$"
+          "^(hooks/.*|policies/.*|tools/review-gate|install\\.sh|lib/install-platform\\.sh|scripts/(product-command|sync-cc-plugin\\.sh)|plugins/.*\\.ts|plugins-cc/agentkit/(\\.claude-plugin/plugin\\.json|hooks/.*|tools/review-gate)|\\.agentkit/(product\\.yaml|review-policy\\.json)|\\.claude-plugin/marketplace\\.json)$"
+        ]
+      },
+      {
+        "id": "ci-and-test-routing",
+        "tier": "critical",
+        "path_regexes": [
+          "^(\\.github/workflows/.*|\\.moon/.*|\\.prototools|moon\\.yml|package\\.json|bun\\.lock|scripts/check-test-slices\\.ts|tests/test-slices\\.test\\.ts)$"
         ]
       },
       {
@@ -18,12 +25,15 @@
           "^plugins-cc/agentkit/skills/(adversarial-review|autonomous-workflow|product-review)/.*$",
           "^instructions/coding-discipline\\.md$",
           "^docs/review-process\\.md$",
-          "^tests/(agentkit-plugin|hook-supervisor|install-claude-plugin|install-tools|review-gate|review-police|review-disciplines)\\.test\\.ts$"
+          "^tests/(agentkit-plugin|codex-review-hooks|hook-supervisor|install-claude-plugin|install-tools|review-gate|review-police|review-disciplines)\\.test\\.ts$"
         ]
       }
     ]
   },
   "checks": {
+    "affected-tests": {
+      "command": "scripts/product-command default -- moon ci"
+    },
     "tests": {
       "command": "scripts/product-command default -- bun test"
     }
@@ -31,7 +41,7 @@
   "tiers": {
     "trivial": {
       "required_checks": [
-        "tests"
+        "affected-tests"
       ],
       "analyses": {
         "claims_audit": {
@@ -52,7 +62,7 @@
     },
     "standard": {
       "required_checks": [
-        "tests"
+        "affected-tests"
       ],
       "analyses": {
         "claims_audit": {

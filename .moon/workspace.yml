@@ -1,0 +1,16 @@
+$schema: 'https://moonrepo.dev/schemas/workspace.json'
+
+projects:
+  sources:
+    agentkit: '.'
+
+defaultProject: 'agentkit'
+
+vcs:
+  client: 'git'
+  defaultBranch: 'main'
+  provider: 'github'
+  remoteCandidates:
+    - 'origin'
+
+telemetry: false

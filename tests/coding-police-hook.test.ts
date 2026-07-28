@@ -1,10 +1,12 @@
 import { describe, expect, test } from 'bun:test';
 import {
   chmodSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -14,6 +16,7 @@ import { spawnSync } from 'node:child_process';
 const repoRoot = dirname(import.meta.dir);
 const hook = join(repoRoot, 'hooks', 'claude', 'coding-police.sh');
 const pluginHook = join(repoRoot, 'plugins-cc', 'agentkit', 'hooks', 'coding-police.sh');
+const testDarwin = process.platform === 'darwin' ? test : test.skip;
 
 const source = `export function alpha() {
   const sharedAlpha = 1;
@@ -169,8 +172,99 @@ exec /usr/bin/head "$@"
     expectConfiguredThresholds(result.stderr);
   });
 
+  test('normalizes BSD-style padded wc output in file-length findings', () => {
+    const result = runHook(`coding-police:\n${settings}`, (binDir) => {
+      writeExecutable(
+        join(binDir, 'wc'),
+        `#!/usr/bin/env bash
+count=$(/usr/bin/wc -l)
+printf '    %s\\n' "$count"
+`,
+      );
+    });
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain('FILE TOO LONG: 8 lines (limit: 5');
+    expect(result.stderr).not.toContain('FILE TOO LONG:     8 lines');
+  });
+
   test('keeps the Claude plugin hook identical to its source', () => {
     expect(readFileSync(pluginHook, 'utf-8')).toBe(readFileSync(hook, 'utf-8'));
+  });
+});
+
+describe('Claude coding-police repository path portability', () => {
+  test('uses physical paths so legacy violations stay silent but growth still blocks', () => {
+    const root = mkdtempSync(join(tmpdir(), 'agentkit-path-alias-'));
+    const repoDir = join(root, 'physical-repo');
+    const aliasDir = join(root, 'repo-alias');
+    mkdirSync(repoDir);
+    makeGitRepo(repoDir);
+    commitFile(
+      repoDir,
+      'src/legacy.ts',
+      'const one = 1;\nconst two = 2;\nconst three = 3;\nconst four = 4;\nconst five = 5;\n',
+    );
+    symlinkSync(repoDir, aliasDir, 'dir');
+    const aliasedFile = join(aliasDir, 'src', 'legacy.ts');
+
+    try {
+      const unchanged = runHookOnFile(
+        'coding-police:\n  max-file-lines: 3\n',
+        root,
+        aliasedFile,
+      );
+      expect(unchanged.status, unchanged.stderr).toBe(0);
+
+      writeFileSync(
+        join(repoDir, 'src', 'legacy.ts'),
+        'const one = 1;\nconst two = 2;\nconst three = 3;\nconst four = 4;\nconst five = 5;\nconst six = 6;\n',
+      );
+      const grown = runHookOnFile(
+        'coding-police:\n  max-file-lines: 3\n',
+        root,
+        aliasedFile,
+      );
+      expect(grown.status).toBe(2);
+      expect(grown.stderr).toContain('FILE TOO LONG: 6 lines (limit: 3');
+    } finally {
+      rmSync(root, { force: true, recursive: true });
+    }
+  });
+
+  testDarwin('resolves the tracked basename casing before reading the baseline', () => {
+    const root = mkdtempSync(join(tmpdir(), 'agentkit-path-case-'));
+    makeGitRepo(root);
+    commitFile(
+      root,
+      'src/Legacy.ts',
+      'const one = 1;\nconst two = 2;\nconst three = 3;\nconst four = 4;\nconst five = 5;\n',
+    );
+    const caseVariant = join(root, 'src', 'legacy.ts');
+
+    try {
+      expect(existsSync(caseVariant)).toBe(true);
+      const unchanged = runHookOnFile(
+        'coding-police:\n  max-file-lines: 3\n',
+        root,
+        caseVariant,
+      );
+      expect(unchanged.status, unchanged.stderr).toBe(0);
+
+      writeFileSync(
+        join(root, 'src', 'Legacy.ts'),
+        'const one = 1;\nconst two = 2;\nconst three = 3;\nconst four = 4;\nconst five = 5;\nconst six = 6;\n',
+      );
+      const grown = runHookOnFile(
+        'coding-police:\n  max-file-lines: 3\n',
+        root,
+        caseVariant,
+      );
+      expect(grown.status).toBe(2);
+      expect(grown.stderr).toContain('FILE TOO LONG: 6 lines (limit: 3');
+    } finally {
+      rmSync(root, { force: true, recursive: true });
+    }
   });
 });
 
