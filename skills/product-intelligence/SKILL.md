@@ -39,6 +39,14 @@ asymmetric contradictions and unsourced observations all fail loudly.
 Worked examples of the full artifact set — website-only, repo-only and
 mixed evidence — live in `examples/`.
 
+The four artifacts plus `acquisition.json` are **deliverables — commit
+them**: git history is the brief's version trail, and refresh mode diffs
+against the committed previous ledger. The raw acquired corpus (repo
+packs, crawled pages, `gh-*` responses) stays untracked: it is
+re-acquirable on demand and, for third-party subjects, someone else's
+content wholesale — the ledger's short verbatim quotes are the part that
+belongs in your repo.
+
 ## Workflow
 
 ```mermaid

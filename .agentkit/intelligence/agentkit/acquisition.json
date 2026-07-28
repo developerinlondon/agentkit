@@ -1,0 +1,12 @@
+[
+  {
+    "tool": "gh api",
+    "target": "developerinlondon/agentkit",
+    "retrieved_at": "2026-07-28"
+  },
+  {
+    "tool": "repomix --remote",
+    "target": "developerinlondon/agentkit",
+    "retrieved_at": "2026-07-28"
+  }
+]

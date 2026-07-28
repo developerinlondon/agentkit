@@ -1,0 +1,39 @@
+brief_version: "1.0"
+subject:
+  name: agentkit
+  repo: github.com/developerinlondon/agentkit
+  one_liner: Reusable skills, rules and police hooks that make several AI coding agents behave like one disciplined team.
+evidence:
+  ledger: ledger.yaml
+  acquired_at: "2026-07-28"
+  acquisition:
+    - tool: gh api
+      target: developerinlondon/agentkit
+      retrieved_at: "2026-07-28"
+    - tool: repomix --remote
+      target: developerinlondon/agentkit
+      retrieved_at: "2026-07-28"
+positioning:
+  target_customer: operators running multiple AI coding agents
+  need: the same working discipline on every harness, not per-tool config drift
+  category: agent skills and policy kit
+  key_benefit: one shared copy of skills, rules and hooks, installed everywhere
+  alternative: hand-maintained per-harness instructions
+  differentiation: behavior is enforced by rules and hooks, not just described in prose
+  claims: [C-001, C-003]
+value_map:
+  - attribute: single package spanning OpenCode, Claude Code, Codex and Grok
+    value: fix a workflow once and every agent inherits it
+    proof: install and confirm the same skill appears in each client
+    claims: [C-001]
+  - attribute: consent and safety rules ship as enforceable policy
+    value: agents cannot silently skip the discipline
+    proof: attempt a forbidden action and watch the hook refuse it
+    claims: [C-003]
+cannot_verify:
+  - what: the website surface (agentkit.sbs)
+    why: the site lane needs advertools/trafilatura, which are not installed on this host
+  - what: behavior on macOS hosts
+    why: only this Linux machine was exercised during acquisition
+  - what: real adoption or install counts
+    why: no public telemetry exists; stars and releases are the only visible signals

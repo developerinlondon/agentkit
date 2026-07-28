@@ -14,3 +14,15 @@ bun.lock
 # reviewer reads in a fresh clone. Ignoring it wholesale meant it was silently
 # untracked and every reviewer refused for want of a file that was there all
 # along.
+
+# Intelligence runs split the same way: the brief/ledger/findings are dated
+# deliverables (refresh mode diffs against the committed previous ledger),
+# while the raw acquired corpus is re-acquirable bulk — and for third-party
+# subjects, someone else's content wholesale. Allowlist, so unknown corpus
+# shapes stay untracked by default.
+.agentkit/intelligence/*/*
+!.agentkit/intelligence/*/ledger.yaml
+!.agentkit/intelligence/*/brief.yaml
+!.agentkit/intelligence/*/brief.md
+!.agentkit/intelligence/*/findings.md
+!.agentkit/intelligence/*/acquisition.json
