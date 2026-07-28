@@ -1,0 +1,4 @@
+part_of:
+  product_repo: acme/product
+  part: Engine Core
+summary: Rules engine and CLI.

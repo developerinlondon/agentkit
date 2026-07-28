@@ -1,0 +1,4 @@
+part_of:
+  product: acme-platform
+  product_repo: acme/product
+summary: Rules engine and CLI.

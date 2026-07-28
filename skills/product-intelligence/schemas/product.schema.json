@@ -1,0 +1,117 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentkit.sbs/schemas/product-intelligence/product.schema.json",
+  "title": "Product declaration",
+  "description": "What a product IS and which repositories, sites and services compose it. One product per product repo; the product repo need not hold code. Components point back with a `part_of` marker, so the composition is discoverable from either end. This file is also the deterministic input for a brief's subject.origins and for a workspace orientation page — hand-typing either is what it exists to prevent.",
+  "type": "object",
+  "required": ["product_version", "product", "composition"],
+  "additionalProperties": false,
+  "properties": {
+    "product_version": {
+      "description": "Semver of the product-declaration schema this document targets. Backward-compatible across minors.",
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+(\\.[0-9]+)?$"
+    },
+    "product": {
+      "type": "object",
+      "required": ["name"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "description": "Product name as its makers use it. Matches the brief's subject.name.",
+          "type": "string",
+          "minLength": 1
+        },
+        "one_liner": {
+          "description": "What the product is in one sentence, from a user's point of view — not the architecture.",
+          "type": "string",
+          "minLength": 1
+        },
+        "homepage": {
+          "description": "Canonical marketing/site URL.",
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "composition": {
+      "description": "The parts the product is made of. A single-repo product declares one part; nothing here assumes several.",
+      "type": "object",
+      "required": ["parts"],
+      "additionalProperties": false,
+      "properties": {
+        "parts": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/part" }
+        }
+      }
+    },
+    "evidence": {
+      "description": "Where the evidence about this product lives, as paths relative to this file. The validator resolves them: a pointer that no longer resolves is a rotted pointer, not a warning.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "brief": { "type": "string", "minLength": 1 },
+        "ledger": { "type": "string", "minLength": 1 },
+        "findings": { "type": "string", "minLength": 1 },
+        "acquisition": { "type": "string", "minLength": 1 }
+      }
+    },
+    "site": {
+      "description": "The product's published page, derived from the evidence rather than hand-edited.",
+      "type": "object",
+      "required": ["entry"],
+      "additionalProperties": false,
+      "properties": {
+        "entry": {
+          "description": "Page source, relative to this file.",
+          "type": "string",
+          "minLength": 1
+        },
+        "published_at": {
+          "description": "URL the entry is published to.",
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  },
+  "$defs": {
+    "part": {
+      "type": "object",
+      "required": ["id", "kind", "target"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "Short handle for this part. It is the id a component repeats in its `part_of` marker, and the origin id derived for a brief, so it must stay stable once published.",
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*$"
+        },
+        "kind": {
+          "description": "What the part physically is: a repository, a published site, or a running service.",
+          "enum": ["repo", "site", "service"]
+        },
+        "target": {
+          "description": "Where the part lives: a clone URL, owner/repo, or service URL. Named `target` to match the brief's origin field it derives into.",
+          "type": "string",
+          "minLength": 1
+        },
+        "role": {
+          "description": "What this part does for the product, in one line. Free text on purpose — a fixed vocabulary would force every product into one shape.",
+          "type": "string",
+          "minLength": 1
+        },
+        "visibility": {
+          "description": "Whether someone outside the team can reach the target. A private part is why a reader cannot verify it, not an omission.",
+          "enum": ["public", "private"]
+        },
+        "description": {
+          "description": "What the part contains, for a reader who has not opened it.",
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}
