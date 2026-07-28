@@ -1,0 +1,58 @@
+direction: down
+
+title: Publishing platform — C4 level 2 (containers) {
+  shape: text
+  near: top-center
+  style.font-size: 26
+}
+
+person: Author {
+  shape: person
+  style.multiple: true
+}
+
+platform: Publishing platform {
+  spa: Web app {
+    shape: rectangle
+    icon: @typescript
+  }
+  api: Publish API {
+    shape: rectangle
+    icon: @logos:nodejs
+  }
+  renderer: Render worker {
+    shape: rectangle
+    icon: @logos:rust
+    # The Rust mark is near-black; the node gets a light plate rather than the
+    # mark getting recoloured.
+    style.fill: "#e9e9ec"
+    style.font-color: "#1b1d22"
+  }
+  db: Page store {
+    shape: cylinder
+    icon: @postgres
+  }
+  blob: Artifact bucket {
+    shape: cylinder
+    icon: @object storage
+  }
+}
+
+idp: Identity provider {
+  style.stroke-dash: 4
+  icon: @identity provider
+}
+cdn: Edge CDN {
+  style.stroke-dash: 4
+  icon: @cdn
+}
+
+person -> platform.spa: "writes a page\n[HTTPS]"
+platform.spa -> platform.api: "PUT /api/pages/:slug\n[JSON/HTTPS]"
+platform.spa -> idp: "OIDC authorization code\n[HTTPS]"
+platform.api -> idp: "validates JWT\n[HTTPS]"
+platform.api -> platform.db: "reads/writes page rows\n[SQL/TLS]"
+platform.api -> platform.renderer: "enqueues render job\n[AMQP]"
+platform.renderer -> platform.blob: "writes rendered HTML\n[S3 API]"
+cdn -> platform.blob: "origin pull\n[HTTPS]"
+person -> cdn: "reads published page\n[HTTPS]"

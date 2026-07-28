@@ -41,12 +41,12 @@ function createFixture(): Fixture {
 
   copyFileSync(installScript, join(repo, 'install.sh'));
   chmodSync(join(repo, 'install.sh'), 0o755);
-  writeFixtureFile(
-    join(repo, 'lib', 'install-platform.sh'),
-    readFileSync(join(repoRoot, 'lib', 'install-platform.sh'), 'utf-8'),
-  );
+  for (const lib of ['install-platform.sh', 'skill-groups.sh']) {
+    writeFixtureFile(join(repo, 'lib', lib), readFileSync(join(repoRoot, 'lib', lib), 'utf-8'));
+  }
   writeFixtureFile(join(repo, 'config.example.yaml'), '{}\n');
   writeFixtureFile(join(repo, 'skills', 'sample', 'SKILL.md'), '# Sample\n');
+  writeFixtureFile(join(repo, 'skills', 'GROUPS'), 'group core Sample core group\n');
   writeFixtureFile(join(repo, 'rules', 'sample.md'), '# Sample\n');
   mkdirSync(join(repo, 'instructions'), { recursive: true });
   mkdirSync(join(repo, 'plugins'), { recursive: true });

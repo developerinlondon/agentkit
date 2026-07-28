@@ -1,3 +1,4 @@
+import { Glob } from 'bun';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { copyFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -374,6 +375,7 @@ describe('renderDeck', () => {
     ['origin rail id', /<li class="rail hot"><strong>&lt;script&gt;originid&lt;\/script&gt;/],
     ['origin rail kind', /<\/strong> — &lt;script&gt;originkind&lt;\/script&gt;/],
     ['origin rail target', /<code>&lt;script&gt;origintarget&lt;\/script&gt;/],
+    ['positioning claims chip', /<strong>claims<\/strong> &lt;script&gt;posclaims&lt;\/script&gt;/],
   ] as Array<[string, RegExp]>)('%s escapes at the site, not merely somewhere', (_site, at) => {
     expect(withArtifacts(hostileBrief(), hostileLedger())).toMatch(at);
   });
@@ -467,6 +469,46 @@ describe('renderDeck', () => {
     expect(repro).toContain('git log --oneline\n---\n```');
     expect(repro).not.toContain('\\---');
     expect(repro).toContain('tail');
+  });
+
+  // Scanning fence state per section put the renderer half a fence out of step
+  // with the publisher: section 2 read the CLOSING ``` as an opening one, left
+  // the rule below it unescaped, and the publisher cut a slide there carrying
+  // none of our structure — while swallowing the separator before it.
+  test('a fence spanning two findings sections neither mints nor merges a slide', () => {
+    const out = withFindings(
+      '# Findings',
+      '',
+      '## Gaps',
+      '',
+      '```sh',
+      'unclosed inside this section',
+      '',
+      '## Risks',
+      '',
+      '```',
+      '---',
+      '# FORGED BY THE ANALYZE FILE',
+      '',
+      'attacker owns this slide',
+    );
+    // Every renderer slide carries exactly one kicker, and the author cannot
+    // forge one: sanitizeFindings escapes the `<`.
+    const emitted = count(out, /^<div class="kicker">/gm);
+    const published = slides(out);
+    expect(published).toHaveLength(emitted);
+    for (const [i, slide] of published.entries()) {
+      expect(count(slide, /^<div class="kicker">/gm), `slide ${i}: ${slide.slice(0, 80)}`).toBe(1);
+    }
+    expect(out).toContain('\\---');
+    expect(out).not.toMatch(/^#\s+(.+)$/m);
+  });
+
+  test('a heading inside a code fence is content, not a section of its own', () => {
+    const out = withFindings('# Findings', '', '## Repro', '', '```sh', '# install deps', 'bun install', '```');
+    const repro = section(out, '## Repro');
+    expect(repro).toContain('# install deps');
+    expect(repro).not.toContain('### install deps');
   });
 
   // Only the file's first line is dropped as its title. A later one reached the
@@ -577,6 +619,22 @@ describe('renderDeck', () => {
     );
     expect(out).not.toContain('\r');
     expect(out).toContain('acme forged');
+  });
+});
+
+// Two extractions of this rule once landed in two different files, so git
+// merged them with no conflict and the repo carried both scanners again. A
+// second definition cannot announce itself; this is what notices.
+describe('the slide rule has exactly one definition', () => {
+  test.each([
+    ['a separator predicate', /\.trim\(\)\s*===\s*["']---["']/],
+    ['a fence scanner', /```\|~~~/],
+  ])('no shipped file outside slides.ts carries %s', (_what, scanner) => {
+    const skills = join(repoRoot, 'skills');
+    const offenders = [...new Glob('**/*.ts').scanSync(skills)]
+      .filter((file) => file.replaceAll('\\', '/') !== 'publish-page/slides.ts')
+      .filter((file) => scanner.test(readFileSync(join(skills, file), 'utf-8')));
+    expect(offenders).toEqual([]);
   });
 });
 

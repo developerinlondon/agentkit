@@ -1,0 +1,9 @@
+group core   Core   skills   here
+# comment line
+group   product	Product group	with tabs
+group solo
+
+product-intelligence   product
+product-review	product
+group weird-record
+plugin foo bar

@@ -1,0 +1,49 @@
+name: Install pinned d2
+description: Installs the pinned d2 release, verified against a recorded sha256, and puts it on PATH.
+
+inputs:
+  version:
+    description: Release version without the leading v. Must equal D2_PIN in skills/diagram/scripts/d2-svg.ts.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Download, verify and install d2 v${{ inputs.version }}
+      shell: bash
+      env:
+        D2_VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+
+        case "${RUNNER_OS}-${RUNNER_ARCH}" in
+          Linux-X64)
+            asset='linux-amd64'
+            sha='eb172adf59f38d1e5a70ab177591356754ffaf9bebb84e0ca8b767dfb421dad7'
+            ;;
+          macOS-ARM64)
+            asset='macos-arm64'
+            sha='80de85f3b0ac7d9569acac0780ed65dd994ea78969b6b230c58bbb2c6113465b'
+            ;;
+          *)
+            echo "no pinned d2 checksum recorded for ${RUNNER_OS}-${RUNNER_ARCH}" >&2
+            exit 1
+            ;;
+        esac
+
+        tarball="d2-v${D2_VERSION}-${asset}.tar.gz"
+        curl -fsSL --retry 3 -o "${RUNNER_TEMP}/${tarball}" \
+          "https://github.com/terrastruct/d2/releases/download/v${D2_VERSION}/${tarball}"
+        echo "${sha}  ${RUNNER_TEMP}/${tarball}" | shasum -a 256 -c -
+
+        tar xzf "${RUNNER_TEMP}/${tarball}" -C "${RUNNER_TEMP}"
+        mkdir -p "${RUNNER_TEMP}/d2-bin"
+        install -m 0755 "${RUNNER_TEMP}/d2-v${D2_VERSION}/bin/d2" "${RUNNER_TEMP}/d2-bin/d2"
+
+        found="$("${RUNNER_TEMP}/d2-bin/d2" --version)"
+        if [ "${found}" != "v${D2_VERSION}" ]; then
+          echo "installed d2 reports ${found}, expected v${D2_VERSION}" >&2
+          exit 1
+        fi
+
+        echo "${RUNNER_TEMP}/d2-bin" >> "${GITHUB_PATH}"

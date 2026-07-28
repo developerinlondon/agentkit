@@ -23,9 +23,12 @@ merely tidy. Write the classification line first:
 `altitude / relationship / audience → type`
 
 Generic boxes-and-arrows is what comes out when this step was skipped, and a
-figure that mixes two altitudes is misclassified rather than thorough. In the
-sketch register a correct glyph teaches more than any icon. Then set the depth,
-which the audience term drives:
+figure that mixes two altitudes is misclassified rather than thorough.
+
+The type also picks the register. **ERD, C4 context, C4 container and
+deployment topology** route to the technical register below; every other type
+stays in the sketch register this file describes, where a correct glyph teaches
+more than any icon. Then set the depth, which the audience term drives:
 
 - **Conceptual**: mental models, philosophies, quick overviews. Abstract shapes
   and relationships are enough.
@@ -35,6 +38,28 @@ which the audience term drives:
   payload snippet, the true API call, a mini mockup of the actual output.
   Placeholder labels like "API" or "Event 1" are a failure; write
   `PUT /api/pages/:slug` and `RUN_STARTED`, not "endpoint" and "event".
+
+### The technical register
+
+Those four types render D2 to a self-contained SVG instead of hand-written
+Excalidraw:
+
+```bash
+bun <skill-dir>/scripts/d2-render.ts --in topology.d2 --out topology.svg \
+  --png topology.png --label "Production deployment topology"
+```
+
+Renderer is pinned to **d2 v0.7.1**; the wrapper refuses any other version,
+inlines vendored CC0 icons (`icon: @postgres`), and fails the render if the
+output is not self-contained. The render-LOOK-fix discipline of step 5 applies
+unchanged — read the PNG, never the SVG. Vendor logos are never recoloured or
+theme-filtered; that is why D2 output is exempt from the page's light-mode
+inversion.
+
+Steps 2–6 below are the sketch register's. A technical figure leaves here and
+follows `references/technical-register.md` end to end — authoring rules,
+notation conventions, the icon manifest, the trademark rule and how the SVG is
+inlined into a page.
 
 ## 2 — Map each concept to a structural pattern
 

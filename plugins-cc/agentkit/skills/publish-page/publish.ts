@@ -1,7 +1,6 @@
 #!/usr/bin/env bun
-import { marked } from "marked";
 import { lintFigures } from "./lint.ts";
-import { splitSlides } from "./slides.ts";
+import { bundledThemePath, renderThemed } from "./render-html.ts";
 import { createHmac, randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
@@ -20,12 +19,6 @@ function arg(name: string): string | undefined {
   const v = i > 0 ? process.argv[i + 1] : undefined;
   if (v?.startsWith("--")) fail(`--${name} is missing its value (got "${v}")`);
   return v;
-}
-
-function escapeHtml(s: string): string {
-  return s.replace(/[&<>"']/g, (c) =>
-    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c] as string
-  );
 }
 
 const explicitSlug = arg("slug");
@@ -128,79 +121,25 @@ const title = arg("title")
   ?? source.match(/<title>([^<]+)<\/title>/)?.[1]
   ?? pageLabel;
 
-// Mermaid fences via marked's renderer, not a regex: fence-aware (nesting,
-// splitSlides sees real fences) and escaped (mermaid decodes via textContent).
-marked.use({
-  renderer: {
-    code({ text, lang }: { text: string; lang?: string }) {
-      return lang === "mermaid" ? `<pre class="mermaid">${escapeHtml(text)}</pre>\n` : false;
-    },
-  },
-});
-
-async function mermaidRuntime(): Promise<string> {
-  const dist = join(import.meta.dir, "node_modules/mermaid/dist/mermaid.min.js");
-  if (!existsSync(dist)) fail(`mermaid runtime missing at ${dist} — run: cd ${import.meta.dir} && bun install`);
-  const js = await readFile(dist, "utf8");
-  // Decks render diagrams per-slide (hidden slides have zero width, which breaks
-  // mermaid's measurements) — the deck theme's show() calls mermaid.run on the
-  // active slide; docs render everything immediately.
-  const init = `(() => {
-  const DARK = { darkMode: true, background: "transparent", primaryColor: "#1b1d22", primaryBorderColor: "#3a4150", primaryTextColor: "#eeeeee", secondaryColor: "#16181c", tertiaryColor: "#152438", lineColor: "#6a7280", edgeLabelBackground: "#0a0a0c", nodeBorder: "#3a4150", mainBkg: "#1b1d22", clusterBkg: "#16181c", clusterBorder: "#2a2d34", fontFamily: "ui-monospace, Menlo, monospace", fontSize: "14px", actorBkg: "#1b1d22", actorBorder: "#3a4150", actorTextColor: "#eeeeee", signalColor: "#6a7280", signalTextColor: "#9aa0aa", noteBkgColor: "#152438", noteTextColor: "#eeeeee", noteBorderColor: "#2a2d34" };
-  const LIGHT = { darkMode: false, background: "transparent", primaryColor: "#ffffff", primaryBorderColor: "#c3cbd6", primaryTextColor: "#1a1a1a", secondaryColor: "#f0f3f7", tertiaryColor: "#e3ecf8", lineColor: "#5f6672", edgeLabelBackground: "#eef0f4", nodeBorder: "#c3cbd6", mainBkg: "#ffffff", clusterBkg: "#f0f3f7", clusterBorder: "#d5dae2", fontFamily: "ui-monospace, Menlo, monospace", fontSize: "14px", actorBkg: "#ffffff", actorBorder: "#c3cbd6", actorTextColor: "#1a1a1a", signalColor: "#5f6672", signalTextColor: "#5f6672", noteBkgColor: "#e3ecf8", noteTextColor: "#1a1a1a", noteBorderColor: "#d5dae2" };
-  const srcs = new Map();
-  function renderAll() {
-    const light = document.documentElement.dataset.theme === "light";
-    mermaid.initialize({ startOnLoad: false, theme: "base", themeVariables: light ? LIGHT : DARK, flowchart: { curve: "basis", nodeSpacing: 46, rankSpacing: 56, padding: 12 } });
-    document.querySelectorAll("pre.mermaid").forEach((el) => {
-      if (!srcs.has(el)) srcs.set(el, el.textContent);
-      el.removeAttribute("data-processed");
-      el.replaceChildren();
-      el.textContent = srcs.get(el);
-    });
-    if (document.querySelector(".slide")) mermaid.run({ querySelector: ".slide.active pre.mermaid" });
-    else mermaid.run();
-  }
-  renderAll();
-  addEventListener("agentkit-theme", renderAll);
-})();`;
-  return `\n<script>${js}</script>\n<script>${init}</script>`;
-}
-
 async function render(): Promise<string> {
   if (template === "raw") return source;
   // Canonical themes live in the agentkit-pages repo; the skill bundles a copy
   // so publishing works on machines without the repo clone.
   const repoTheme = join(repo, "themes", `${template}.html`);
-  const bundledTheme = join(import.meta.dir, "themes", `${template}.html`);
+  const bundledTheme = bundledThemePath(template);
   const themePath = existsSync(repoTheme) ? repoTheme : bundledTheme;
   if (!existsSync(themePath)) fail(`theme not found: ${repoTheme} or ${bundledTheme}`);
-  const theme = await readFile(themePath, "utf8");
   if (themePath === repoTheme && existsSync(bundledTheme)) {
-    const bundled = await readFile(bundledTheme, "utf8");
-    if (bundled !== theme) {
+    const [canonical, bundled] = await Promise.all([readFile(repoTheme, "utf8"), readFile(bundledTheme, "utf8")]);
+    if (bundled !== canonical) {
       console.error(`warning: bundled theme drifted from canonical ${repoTheme} — re-sync skills/publish-page/themes/`);
     }
   }
-  let content: string;
-  if (template === "deck") {
-    const parts = isMd
-      ? splitSlides(source).map((s) => marked.parse(s) as string)
-      : source.split(/<hr\b[^>]*>/i);
-    content = parts
-      .map((s) => s.trim())
-      .filter(Boolean)
-      .map((s) => `<section class="slide">\n${s}\n</section>`)
-      .join("\n");
-  } else {
-    content = isMd ? (marked.parse(source) as string) : source;
+  try {
+    return await renderThemed({ source, isMd, template, title, themePath });
+  } catch (error) {
+    fail((error as Error).message);
   }
-  if (content.includes('class="mermaid"')) content += await mermaidRuntime();
-  // Function replacers: a plain string replacement expands $&, $`, $' found in
-  // page content and silently corrupts the output.
-  return theme
-    .replaceAll("{{TITLE}}", () => escapeHtml(title))
-    .replaceAll("{{CONTENT}}", () => content);
 }
 
 const html = await render();

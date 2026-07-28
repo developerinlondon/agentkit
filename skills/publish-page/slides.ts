@@ -1,7 +1,9 @@
-// The one definition of what cuts a slide. The publisher splits pages on it,
-// the brief renderer neutralises authored rules against it, and the suites
-// assert against it — a second scanner that re-derives the rule drifts, and
-// the drift is exactly where an authored line mints a slide nobody wrote.
+// The one definition of what cuts a slide. render-html.ts splits pages on it
+// and re-exports it, the brief renderer neutralises authored rules against it,
+// and the suites assert against it — a second scanner that re-derives the rule
+// drifts, and the drift is where an authored line mints a slide nobody wrote.
+// It sits apart from render-html.ts only because that file imports marked, and
+// a renderer neutralising against this scanner must not take on that weight.
 
 // Fence markers belong to the block they open, so a `---` on the opening line
 // of a fence is content, not a break.

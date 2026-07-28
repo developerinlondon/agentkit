@@ -43,7 +43,8 @@ export const FIELDS = [
   'wf_description', 'si_locator', 'si_title', 'si_page_type', 'si_disposition',
   'si_rationale', 'cv_what', 'cv_why', 'statement', 'quote', 'locator',
   'acq_tool', 'acq_target', 'origin_id', 'origin_kind', 'origin_target',
-  'claim_id', 'claim_id_b', 'statement_b', 'generated_at', 'generated_by',
+  'claim_id', 'claim_id_b', 'statement_b', 'pos_claims', 'generated_at',
+  'generated_by',
 ] as const;
 
 // The marker itself must survive escaping unchanged, so it carries no markdown
@@ -74,6 +75,7 @@ export function hostileBrief(): string {
     'positioning:',
     ...(['category', 'target_customer', 'need', 'key_benefit', 'alternative', 'differentiation'] as const)
       .map((k) => `  ${k}: ${y(k)}`),
+    `  claims: [${y('pos_claims')}]`,
     'value_map:',
     `  - attribute: ${y('vm_attribute')}`,
     `    value: ${y('vm_value')}`,
