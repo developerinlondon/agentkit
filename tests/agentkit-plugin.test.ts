@@ -1,7 +1,21 @@
 import { describe, expect, test } from 'bun:test';
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { pluginIdFor, readSkillGroups, skillsInGroup } from '../scripts/skill-groups';
+
+// Recursive: some skills carry a references/ subdirectory, and a nested file
+// that drifts is exactly as misleading as a top-level one. node_modules is
+// gitignored, never reaches the plugin package, and a skill that documents
+// `bun install` would otherwise fail this walk on whichever copy the deps
+// landed in.
+const filesUnder = (dir: string, prefix = ''): string[] =>
+  readdirSync(join(dir, prefix), { withFileTypes: true }).flatMap((e) =>
+    e.name === 'node_modules'
+      ? []
+      : e.isDirectory()
+      ? filesUnder(dir, join(prefix, e.name))
+      : [join(prefix, e.name)]
+  );
 
 // The comprehensive "agentkit" Claude Code plugin bundles, in one install:
 //   - the enforcement police hooks (wired via hooks/hooks.json),
@@ -168,11 +182,35 @@ describe('agentkit plugin skills', () => {
       const plugin = JSON.parse(readFileSync(join(dir, '.claude-plugin', 'plugin.json'), 'utf-8'));
       expect(plugin.name, `${group.id} plugin name`).toBe(pluginIdFor(group.id));
       // A skill lands in exactly one plugin; two copies is a double listing in
-      // Claude Code and a second copy to rot.
-      expect(readdirSync(join(dir, 'skills')).sort()).toEqual(
-        skillsInGroup(manifest, repoRoot, group.id),
-      );
+      // Claude Code and a second copy to rot. What makes a directory a listing
+      // is its SKILL.md — a carried dependency has none and lists nowhere.
+      const listed = readdirSync(join(dir, 'skills'))
+        .filter((name) => existsSync(join(dir, 'skills', name, 'SKILL.md')));
+      expect(listed.sort()).toEqual(skillsInGroup(manifest, repoRoot, group.id));
     }
+  });
+
+  // A skill importing across group boundaries needs its dependency shipped
+  // alongside, or the relative import cannot resolve where the plugin installs.
+  // What rides along stays a copy of the canonical file and stays unlisted.
+  test('a carried dependency is an unlisted, byte-identical leaf', () => {
+    const manifest = readSkillGroups(repoRoot);
+    let carried = 0;
+    for (const group of manifest.groups) {
+      const skillsDir = join(repoRoot, 'plugins-cc', pluginIdFor(group.id), 'skills');
+      const declared = new Set(skillsInGroup(manifest, repoRoot, group.id));
+      for (const name of readdirSync(skillsDir).filter((n) => !declared.has(n))) {
+        expect(existsSync(join(skillsDir, name, 'SKILL.md')), `${name} would list as a skill`).toBe(false);
+        for (const file of filesUnder(join(skillsDir, name))) {
+          carried += 1;
+          expect(
+            readFileSync(join(skillsDir, name, file), 'utf-8'),
+            `${name}/${file} drifted from its canonical copy`,
+          ).toBe(readFileSync(join(repoRoot, 'skills', name, file), 'utf-8'));
+        }
+      }
+    }
+    expect(carried, 'the cross-group import has no carried dependency').toBeGreaterThan(0);
   });
 
   test('lists every generated group plugin in the marketplace', () => {
@@ -203,19 +241,6 @@ describe('agentkit plugin skills', () => {
     // copy waiting to be read by someone.
     const sourceSkills = join(repoRoot, 'skills');
     const manifest = readSkillGroups(repoRoot);
-    // Recursive: some skills carry a references/ subdirectory, and a nested
-    // file that drifts is exactly as misleading as a top-level one.
-    // node_modules is gitignored, never reaches the plugin package, and a
-    // skill that documents `bun install` would otherwise fail this walk on
-    // whichever copy the deps landed in.
-    const filesUnder = (dir: string, prefix = ''): string[] =>
-      readdirSync(join(dir, prefix), { withFileTypes: true }).flatMap((e) =>
-        e.name === 'node_modules'
-          ? []
-          : e.isDirectory()
-          ? filesUnder(dir, join(prefix, e.name))
-          : [join(prefix, e.name)]
-      );
 
     for (const group of manifest.groups) {
       const groupDir = join(repoRoot, 'plugins-cc', pluginIdFor(group.id), 'skills');
