@@ -88,14 +88,14 @@ async function acquireUrl(target: string, outDir: string): Promise<void> {
 
 async function acquireSite(target: string, outDir: string): Promise<void> {
   await assertHostAllowed(new URL(target).hostname);
-  const argv = [...runnerPrefix(), ...advertoolsArgs(target, join(outDir, 'crawl.jl'))];
+  const argv = [...runnerPrefix(), ...advertoolsArgs(target, join(outDir, `crawl-${targetSlug(target)}.jl`))];
   run(argv);
   stamp(outDir, 'advertools', target, argv);
 }
 
 // Multi-origin subjects acquire several repos into one directory; a fixed
 // filename would let the second pack silently clobber the first.
-function targetSlug(target: string): string {
+export function targetSlug(target: string): string {
   return target.replace(/^https?:\/\//, '').replace(/\.git$/, '').replace(/[^\w.-]+/g, '_');
 }
 

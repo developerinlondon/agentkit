@@ -30,7 +30,7 @@ positioning:
   key_benefit: one shared copy of skills, rules and hooks, installed everywhere
   alternative: hand-maintained per-harness instructions
   differentiation: behavior is enforced by rules and hooks, not just described in prose
-  claims: [C-001, C-003]
+  claims: [C-001, C-003, C-011]
 value_map:
   - attribute: single package spanning OpenCode, Claude Code, Codex and Grok
     value: fix a workflow once and every agent inherits it
@@ -39,7 +39,7 @@ value_map:
   - attribute: consent and safety rules ship as enforceable policy
     value: agents cannot silently skip the discipline
     proof: attempt a forbidden action and watch the hook refuse it
-    claims: [C-003]
+    claims: [C-003, C-011]
   - attribute: agent-published pages with git as the source of truth
     value: agents can ship shareable reports whose history survives the serving layer
     proof: delete the served copy and re-seed it from the pages repository

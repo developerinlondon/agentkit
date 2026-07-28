@@ -8,8 +8,8 @@ multiple AI coding agents — OpenCode, Claude Code, Codex CLI and Grok CLI
 repositories: the kit itself, and a pages store that holds agent-published
 web pages with git as the source of truth [C-009, C-010]. Its bet is that
 agent behavior should be _enforced_, not described: rules like the consent
-protocol ("never act and ask in the same turn") ship as policy hooks
-alongside the code [C-003].
+protocol ("never act and ask in the same turn") ship with police hooks
+that enforce them [C-003, C-011].
 
 ## The Problem
 
@@ -20,11 +20,11 @@ discipline several times, once per harness, and watches the copies drift.
 
 One shared package, installed everywhere [C-001]. Fix a workflow once and
 every agent inherits it; police hooks make skipping the discipline loud
-instead of silent [C-003].
+instead of silent [C-011].
 
 ## What Makes This Different
 
-Enforcement over prose [C-003], and a publishing surface whose serving
+Enforcement over prose [C-003, C-011], and a publishing surface whose serving
 layer is disposable — the pages repository can re-seed it at any time
 [C-010].
 

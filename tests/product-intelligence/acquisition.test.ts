@@ -14,6 +14,7 @@ import {
   advertoolsArgs,
   repomixArgs,
   runnerPrefix,
+  targetSlug,
 } from '../../skills/product-intelligence/scripts/acquire.ts';
 
 const repoRoot = dirname(dirname(import.meta.dir));
@@ -250,8 +251,27 @@ describe('acquire.ts CLI', () => {
     expect(result.code, result.err).toBe(0);
     expect(readFileSync(join(scratch, 'runner-argv'), 'utf-8').trim()).toBe(
       '--profile default -- advertools crawl https://example.com/ '
-        + `${join(outDir, 'crawl.jl')} --follow-links 1 --custom-settings DEPTH_LIMIT=3 CLOSESPIDER_PAGECOUNT=200`,
+        + `${join(outDir, 'crawl-example.com.jl')} --follow-links 1 --custom-settings DEPTH_LIMIT=3 CLOSESPIDER_PAGECOUNT=200`,
     );
+  });
+
+  test('targetSlug strips scheme and .git and keeps targets distinct', () => {
+    expect(targetSlug('owner/repo')).toBe('owner_repo');
+    expect(targetSlug('https://gitlab.com/agentkit/agentkit-pages.git')).toBe('gitlab.com_agentkit_agentkit-pages');
+    expect(targetSlug('https://gitlab.com/a/b')).not.toBe(targetSlug('https://gitlab.com/a/c'));
+  });
+
+  test('two repo origins acquired into one directory keep separate packs', () => {
+    // The bug this pins: a fixed repo.json let the second origin's pack
+    // silently clobber the first during a real multi-origin run.
+    process.env.SAFE_FETCH_ALLOW_HOSTS = 'gitlab.com';
+    fakeExecutable('agentkit-run', `printf '%s\\n' "$*" >> '${scratch}/runner-log'`);
+    const outDir = join(scratch, 'out');
+    expect(runCli('repo', 'owner/repo', '--out', outDir).code).toBe(0);
+    expect(runCli('repo', 'https://gitlab.com/other/pages', '--out', outDir).code).toBe(0);
+    const log = readFileSync(join(scratch, 'runner-log'), 'utf-8');
+    expect(log).toContain('repo-owner_repo.json');
+    expect(log).toContain('repo-gitlab.com_other_pages.json');
   });
 
   test('repo lane refuses a non-public host in URL form', () => {
