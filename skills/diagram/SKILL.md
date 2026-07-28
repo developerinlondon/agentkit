@@ -14,21 +14,18 @@ original.
 
 ## 1 — Classify, then decide the depth
 
-Before authoring anything, write one line:
+**Open `references/selection.md` and copy the notation recipe for the type you
+land on.** It defines the three axes, crosses altitude against relationship
+into the named type, and holds the recipes — crow's-foot cardinality, C4
+boundary semantics, trust zones — that make the figure correct rather than
+merely tidy. Write the classification line first:
 
 `altitude / relationship / audience → type`
 
-Altitude is the zoom (business capability → system context → container →
-component → code/data), relationship is what the edges mean (structural,
-behavioral, data, deployment, comparison, quantitative), audience is who reads
-it and what they do next. `references/selection.md` crosses the two into the
-named type, the notation that type requires (crow's-foot cardinality, C4
-boundary semantics, trust zones), and the phrases that select it. Generic
-boxes-and-arrows is what comes out when this step was skipped, and a figure
-that mixes two altitudes is misclassified rather than thorough.
-
-The classified type's notation is not decoration — in the sketch register a
-correct glyph teaches more than any icon. Then set the depth:
+Generic boxes-and-arrows is what comes out when this step was skipped, and a
+figure that mixes two altitudes is misclassified rather than thorough. In the
+sketch register a correct glyph teaches more than any icon. Then set the depth,
+which the audience term drives:
 
 - **Conceptual**: mental models, philosophies, quick overviews. Abstract shapes
   and relationships are enough.
