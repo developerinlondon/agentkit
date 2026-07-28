@@ -131,7 +131,7 @@ describe('renderBrief', () => {
     'js_situation', 'js_motivation', 'js_outcome', 'wf_name', 'wf_step',
     'wf_description', 'si_locator', 'si_title', 'si_page_type', 'si_disposition',
     'si_rationale', 'cv_what', 'cv_why', 'statement', 'quote', 'locator',
-    'acq_tool', 'acq_target',
+    'acq_tool', 'acq_target', 'origin_kind', 'generated_at',
   ] as const;
 
   // The marker itself must survive escaping unchanged, so it carries no
@@ -144,7 +144,11 @@ describe('renderBrief', () => {
     const y = (v: string) => JSON.stringify(payload(v));
     const brief = [
       "brief_version: '1.0'",
-      `subject: { name: ${y('name')}, one_liner: ${y('one_liner')} }`,
+      'subject:',
+      `  name: ${y('name')}`,
+      `  one_liner: ${y('one_liner')}`,
+      '  origins:',
+      `    - { id: og, kind: ${y('origin_kind')}, target: t }`,
       'evidence:',
       '  ledger: ledger.yaml',
       '  acquisition:',
@@ -177,12 +181,16 @@ describe('renderBrief', () => {
       `  - what: ${y('cv_what')}`,
       `    why: ${y('cv_why')}`,
     ].join('\n');
-    const out = withArtifacts(
-      brief,
-      ledgerWith(claim('C-001', payload('statement'), 'observed', 'high', [
+    const hostileLedger = [
+      "ledger_version: '1.0'",
+      'generated_by: t',
+      `generated_at: ${y('generated_at')}`,
+      'claims:',
+      ...claim('C-001', payload('statement'), 'observed', 'high', [
         src(payload('locator'), payload('quote'), 'supports'),
-      ])),
-    );
+      ]),
+    ].join('\n');
+    const out = withArtifacts(brief, hostileLedger);
 
     expect(out).not.toContain('<script');
     expect(out).not.toContain('](javascript:');
