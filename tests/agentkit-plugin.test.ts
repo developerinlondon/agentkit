@@ -167,7 +167,12 @@ describe('agentkit plugin skills', () => {
     // nobody diffed them. Two copies with no mechanical check is one rotting
     // copy waiting to be read by someone.
     const sourceSkills = join(repoRoot, 'skills');
-    const names = readdirSync(sourceSkills).sort();
+    // skills/ also holds the GROUPS manifest, which is installer metadata:
+    // the plugin bundles every skill, so it has nothing to select on.
+    const names = readdirSync(sourceSkills, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name)
+      .sort();
     expect(readdirSync(join(pluginDir, 'skills')).sort()).toEqual(names);
     // Recursive: some skills carry a references/ subdirectory, and a nested
     // file that drifts is exactly as misleading as a top-level one.

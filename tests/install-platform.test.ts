@@ -47,6 +47,7 @@ function createFixture(): Fixture {
   );
   writeFixtureFile(join(repo, 'config.example.yaml'), '{}\n');
   writeFixtureFile(join(repo, 'skills', 'sample', 'SKILL.md'), '# Sample\n');
+  writeFixtureFile(join(repo, 'skills', 'GROUPS'), '# <skill> <group>\n');
   writeFixtureFile(join(repo, 'rules', 'sample.md'), '# Sample\n');
   mkdirSync(join(repo, 'instructions'), { recursive: true });
   mkdirSync(join(repo, 'plugins'), { recursive: true });

@@ -14,6 +14,10 @@ supported AI coding tools: OpenCode, Claude Code, Codex CLI, and Grok CLI.
 
 Options:
   --global             Install globally (all tools, all projects)
+  --with <group>       Also install an opt-in skill group (repeatable). Groups
+                       are declared in skills/GROUPS; every unlisted skill is
+                       in the always-installed `core` group.
+                         --with product   product-intelligence, product-review
   --claude-plugin      Global only: install Claude Code bits as the agentkit
                        plugin (marketplace add + plugin install) INSTEAD of
                        copying hooks/skills and merging settings.json. The two
@@ -48,6 +52,7 @@ Project install locations:
 
 Examples:
   ./install.sh --global               # Install for all tools globally
+  ./install.sh --global --with product   # …plus the opt-in product skills
   ./install.sh --global --claude-plugin  # Claude Code via plugin, rest as usual
   ./install.sh                        # Install into current project
   ./install.sh ~/code/my-project      # Install into specific project
@@ -61,20 +66,71 @@ AGENTKIT_HOME="${AGENTKIT_HOME:-$HOME/.agentkit}"
 
 CLAUDE_PLUGIN=false
 SESSION_SCOPE=true
-for arg in "$@"; do
-	case "$arg" in
+EXTRA_GROUPS=""
+while [[ $# -gt 0 ]]; do
+	case "$1" in
 	-h | --help) usage ;;
 	--global) GLOBAL=true ;;
 	--claude-plugin) CLAUDE_PLUGIN=true ;;
 	--no-session-scope) SESSION_SCOPE=false ;;
-	*) TARGET_DIR="$arg" ;;
+	--with)
+		shift
+		if [[ $# -eq 0 ]]; then
+			echo "ERROR: --with requires a group name (e.g. --with product)." >&2
+			exit 1
+		fi
+		EXTRA_GROUPS="${EXTRA_GROUPS:+$EXTRA_GROUPS }$1"
+		;;
+	--with=*) EXTRA_GROUPS="${EXTRA_GROUPS:+$EXTRA_GROUPS }${1#--with=}" ;;
+	*) TARGET_DIR="$1" ;;
 	esac
+	shift
 done
 
 if [[ "$CLAUDE_PLUGIN" == true && "$GLOBAL" != true ]]; then
 	echo "ERROR: --claude-plugin requires --global (plugins are user-level)." >&2
 	exit 1
 fi
+
+# ─── Shared: Skill Groups ────────────────────────────────────────────────────
+
+SKILL_GROUPS_FILE="$REPO_DIR/skills/GROUPS"
+if [[ ! -f "$SKILL_GROUPS_FILE" ]]; then
+	echo "ERROR: missing $SKILL_GROUPS_FILE — cannot resolve skill groups." >&2
+	exit 1
+fi
+
+declared_groups() {
+	awk '$1 !~ /^#/ && NF >= 2 { print $2 }' "$SKILL_GROUPS_FILE" | sort -u
+}
+
+skill_group() {
+	local name="$1" entry group
+	while read -r entry group _; do
+		case "$entry" in '' | '#'*) continue ;; esac
+		if [[ "$entry" == "$name" && -n "$group" ]]; then
+			printf '%s' "$group"
+			return 0
+		fi
+	done <"$SKILL_GROUPS_FILE"
+	printf 'core'
+}
+
+group_selected() {
+	case " $SELECTED_GROUPS " in
+	*" $1 "*) return 0 ;;
+	esac
+	return 1
+}
+
+for requested_group in $EXTRA_GROUPS; do
+	if [[ "$requested_group" != core ]] && ! declared_groups | grep -Fxq "$requested_group"; then
+		echo "ERROR: unknown skill group '$requested_group'." >&2
+		echo "       Declared groups: core $(declared_groups | tr '\n' ' ')" >&2
+		exit 1
+	fi
+done
+SELECTED_GROUPS="core${EXTRA_GROUPS:+ $EXTRA_GROUPS}"
 
 # shellcheck source=lib/install-platform.sh
 source "$REPO_DIR/lib/install-platform.sh"
@@ -135,9 +191,22 @@ install_skills() {
 	fi
 
 	for skill_dir in "$REPO_DIR"/skills/*/; do
-		local skill_name
+		local skill_name group
 		skill_name="$(basename "$skill_dir")"
 		local target="$dest/$skill_name"
+		group="$(skill_group "$skill_name")"
+
+		# An unselected group that is already installed is still refreshed:
+		# dropping it on upgrade would silently take a skill away from someone
+		# who is using it, and leaving it unupdated rots it instead.
+		if ! group_selected "$group"; then
+			if [[ -e "$target" ]]; then
+				echo "[skills] Keeping installed (group '$group' not selected): $skill_name"
+			else
+				echo "[skills] Skipping (group '$group' — add --with $group): $skill_name"
+				continue
+			fi
+		fi
 
 		if [[ -d "$target" && ! -L "$target" ]]; then
 			echo "[skills] Updating: $skill_name"
@@ -842,10 +911,16 @@ install_codex_skills() {
 	mkdir -p "$prompts_dir"
 
 	for skill_dir in "$REPO_DIR"/skills/*/; do
-		local name target
+		local name target group
 		name="$(basename "$skill_dir")"
 		[[ -f "$skill_dir/SKILL.md" ]] || continue
 		target="$prompts_dir/$name.md"
+		group="$(skill_group "$name")"
+
+		if ! group_selected "$group" && [[ ! -f "$target" ]]; then
+			echo "[codex] Skipping prompt (group '$group' — add --with $group): $name.md"
+			continue
+		fi
 
 		if [[ -f "$target" ]]; then
 			echo "[codex] Updating prompt: $name.md"
@@ -1061,6 +1136,7 @@ if [[ "$GLOBAL" == true ]]; then
 	echo "Done. Installed globally for all tools:"
 	echo ""
 	echo "  Shared root:     $AGENTKIT_HOME/{skills,rules,instructions,hooks,tools}"
+	echo "  Skill groups:    $SELECTED_GROUPS"
 	echo "  Config:          ${XDG_CONFIG_HOME:-$HOME/.config}/agentkit/config.yaml"
 	echo "  Prompts:         $INSTRUCTIONS_CANON/*.md"
 	echo "  Skills links:    ~/.agents/skills, ~/.claude/skills, ~/.grok/skills"
@@ -1129,6 +1205,7 @@ else
 	echo "Done. Installed into $TARGET_DIR for all tools:"
 	echo ""
 	echo "  Skills:      $SKILLS_DEST/ (OpenCode), $CLAUDE_SKILLS/ (Claude Code)"
+	echo "  Skill groups: $SELECTED_GROUPS"
 	echo "  Rules:       $RULES_DEST/"
 	echo "  OpenCode:    $OPENCODE_PLUGINS/"
 	echo "  Claude Code: $CLAUDE_HOOKS/ (hooks in $CLAUDE_SETTINGS)"

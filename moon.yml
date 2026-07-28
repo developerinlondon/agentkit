@@ -95,6 +95,7 @@ fileGroups:
     - 'tests/install-prompt.test.ts'
     - 'tests/install-shared-root.test.ts'
     - 'tests/install-tools.test.ts'
+    - 'tests/install/**/*'
     - 'tools/**/*'
 
   integrationInputs:

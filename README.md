@@ -8,18 +8,18 @@ Reusable AI agent skills, rules, plugins, hooks, and tools for OpenCode, Claude 
 
 ### Skills (SKILL.md -- works everywhere via skills.sh)
 
-| Skill                       | Description                                                                              |
-| --------------------------- | ---------------------------------------------------------------------------------------- |
-| **gitops-master**           | GitOps operations for ArgoCD + Kargo: diagnose, verify, promote, setup                   |
-| **autonomous-workflow**     | Proposal-first development, commit hygiene, decision authority                           |
-| **adversarial-review**      | Trace-first falsification of plans and diffs with replayable evidence                    |
-| **code-quality**            | Warnings-as-errors, no underscore prefixes, test coverage                                |
-| **documentation**           | Surface-aware diagrams (Mermaid / ASCII), structured plan format, formatting rules       |
-| **issue-raiser**            | GitLab issue creation with root cause analysis and git-history-based assignees           |
-| **product-intelligence**    | Evidence-backed product briefs with a claim-by-claim ledger; hardened acquisition        |
-| **project-planning**        | Structured project planning: break down ideas into architecture, file structure, roadmap |
-| **product-review**          | Build, run, and use declared product surfaces as a separate review lane                  |
-| **resource-safe-execution** | On Linux, runs heavy developer commands inside deterministic systemd resource limits     |
+| Skill                       | Description                                                                                                  |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| **gitops-master**           | GitOps operations for ArgoCD + Kargo: diagnose, verify, promote, setup                                       |
+| **autonomous-workflow**     | Proposal-first development, commit hygiene, decision authority                                               |
+| **adversarial-review**      | Trace-first falsification of plans and diffs with replayable evidence                                        |
+| **code-quality**            | Warnings-as-errors, no underscore prefixes, test coverage                                                    |
+| **documentation**           | Surface-aware diagrams (Mermaid / ASCII), structured plan format, formatting rules                           |
+| **issue-raiser**            | GitLab issue creation with root cause analysis and git-history-based assignees                               |
+| **product-intelligence**    | Evidence-backed product briefs with a claim-by-claim ledger; hardened acquisition (opt-in: `--with product`) |
+| **project-planning**        | Structured project planning: break down ideas into architecture, file structure, roadmap                     |
+| **product-review**          | Build, run, and use declared product surfaces as a separate review lane (opt-in: `--with product`)           |
+| **resource-safe-execution** | On Linux, runs heavy developer commands inside deterministic systemd resource limits                         |
 
 ### Rules (auto-loaded by file glob match)
 
@@ -166,6 +166,17 @@ Grok builtins under `~/.grok/skills/`, etc. OpenCode plugins still install as re
 (`~/.grok/rules/`) idempotently.
 
 Override the shared root with `AGENTKIT_HOME=/path` if needed.
+
+**Skill groups.** `skills/GROUPS` assigns skills to install groups; anything unlisted is in
+`core` and installs by default. Opt into the rest per install:
+
+```bash
+./agentkit/install.sh --global --with product   # + product-intelligence, product-review
+```
+
+An unselected skill that is already installed is kept and refreshed, so an upgrade never
+removes a skill you are using. The Claude Code plugin (`--claude-plugin`, or the marketplace)
+bundles every group — groups shape the `install.sh` surface, not the plugin.
 
 The installer detects `linux`, `darwin`, or `unknown`; `AGENTKIT_PLATFORM` may override detection
 with one of those exact values for controlled packaging and tests. Artifacts carrying an

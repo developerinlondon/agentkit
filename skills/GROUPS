@@ -1,0 +1,4 @@
+# <skill> <group>. A skill not listed here belongs to `core` and installs by
+# default; a listed skill installs only with `install.sh --with <group>`.
+product-intelligence product
+product-review product
