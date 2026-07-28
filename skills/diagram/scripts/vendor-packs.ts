@@ -70,7 +70,7 @@ export function splitVendorKey(key: string, file = registryPath()): { pack: stri
   const at = key.search(/[:/]/);
   if (at < 0) return undefined;
   const pack = key.slice(0, at);
-  if (!(pack in packs(file))) return undefined;
+  if (!Object.hasOwn(packs(file), pack)) return undefined;
   return { pack, name: key.slice(at + 1) };
 }
 

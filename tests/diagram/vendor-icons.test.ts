@@ -4,6 +4,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { ArchiveError, parseListing, screenArchive, screenSvg } from '../../skills/diagram/scripts/fetch-icons.ts';
 import { expandIconRefs, IconError, resolveIcon } from '../../skills/diagram/scripts/icons.ts';
 import { packs, registryPath } from '../../skills/diagram/scripts/vendor-packs.ts';
 
@@ -17,8 +18,8 @@ function sha256Of(path: string): string {
 
 // The fixture registry is written per-test because a file:// URL is absolute and
 // therefore cannot be committed. Everything else mirrors a real pack entry.
-function writeRegistry(dir: string, over: Record<string, unknown> = {}): string {
-  const zip = join(fixtures, 'pack-ok.zip');
+function writeRegistry(dir: string, over: Record<string, unknown> = {}, pack = 'pack-ok.zip'): string {
+  const zip = join(fixtures, pack);
   const registry = {
     fixture: {
       title: 'Fixture icon pack',
@@ -35,7 +36,7 @@ function writeRegistry(dir: string, over: Record<string, unknown> = {}): string 
       ...over,
     },
   };
-  const path = join(dir, 'registry.json');
+  const path = join(dir, `registry-${pack}.json`);
   writeFileSync(path, JSON.stringify(registry, null, 2));
   return path;
 }
@@ -48,9 +49,15 @@ interface Run {
 function runFetch(args: string[], env: Record<string, string> = {}): Run {
   const r = Bun.spawnSync(['bun', fetchScript, ...args], {
     cwd: repoRoot,
-    env: { ...process.env, ...env },
+    // Fixtures are file:// archives, which production refuses unless asked.
+    env: { ...process.env, AGENTKIT_DIAGRAM_ALLOW_LOCAL_PACKS: '1', ...env },
   });
   return { status: r.exitCode, out: r.stdout.toString() + r.stderr.toString() };
+}
+
+function runPack(zip: string, over: Record<string, unknown> = {}, env?: Record<string, string>): Run {
+  const reg = writeRegistry(dir, over, zip);
+  return runFetch(['fixture', '--accept-terms', '--registry', reg, '--root', root], env);
 }
 
 let dir: string;
@@ -182,6 +189,58 @@ describe('what fetching refuses', () => {
     expect(existsSync(join(root, 'fixture'))).toBe(false);
   });
 
+  test('a symlinked entry disqualifies the archive before anything is extracted', () => {
+    // copyFileSync dereferences, so a symlink named like a kept terms file would
+    // copy the target's content into the pack.
+    const r = runPack('pack-symlink.zip', { keepFiles: ['Fixture_Terms.txt'] });
+    expect(r.status).toBe(1);
+    expect(r.out).toContain('non-regular entry');
+    expect(r.out).toContain('Fixture_Terms.txt');
+    expect(existsSync(join(root, 'fixture'))).toBe(false);
+  });
+
+  test('an entry that escapes its root disqualifies the archive', () => {
+    const escaped = join(tmpdir(), 'PWNED-SLIP.svg');
+    rmSync(escaped, { force: true });
+    const r = runPack('pack-traversal.zip');
+    expect(r.status).toBe(1);
+    expect(r.out).toContain('escapes its root');
+    expect(existsSync(escaped)).toBe(false);
+    expect(existsSync(join(root, 'fixture'))).toBe(false);
+  });
+
+  test('an archive that unpacks past the size ceiling is refused', () => {
+    const r = runPack('pack-oversize.zip');
+    expect(r.status).toBe(1);
+    expect(r.out).toContain('unpacked archive size');
+    expect(r.out).toContain('ceiling');
+    expect(existsSync(join(root, 'fixture'))).toBe(false);
+  });
+
+  test('an icon evading the href check by quote style or scheme-relative url is caught', () => {
+    const r = runPack('pack-evasion.zip');
+    expect(r.status).toBe(1);
+    expect(r.out).toContain('off-document reference');
+    expect(r.out).toContain('evil.example');
+    expect(existsSync(join(root, 'fixture'))).toBe(false);
+  });
+
+  test('a non-https archive url is refused before any request is made', () => {
+    const r = runPack('pack-ok.zip', {
+      archives: [{ url: 'http://127.0.0.1:9/plain.zip', sha256: 'b'.repeat(64) }],
+    });
+    expect(r.status).toBe(1);
+    expect(r.out).toContain('is not https');
+    expect(existsSync(join(root, 'fixture'))).toBe(false);
+  });
+
+  test('a file: archive is refused unless local packs are explicitly allowed', () => {
+    const r = runPack('pack-ok.zip', {}, { AGENTKIT_DIAGRAM_ALLOW_LOCAL_PACKS: '0' });
+    expect(r.status).toBe(1);
+    expect(r.out).toContain('is not https');
+    expect(existsSync(join(root, 'fixture'))).toBe(false);
+  });
+
   test('an unknown pack name lists the packs that do exist', () => {
     const r = runFetch(['nosuchpack', '--registry', registry, '--root', root]);
     expect(r.status).toBe(1);
@@ -234,9 +293,91 @@ describe('resolving a vendor icon', () => {
     expect(() => resolveIcon('nosuchset:thing')).toThrow(/unknown icon/);
   });
 
+  test.each(['toString', 'constructor', 'valueOf', '__proto__'])(
+    'the prototype member %s is not mistaken for a pack',
+    (name) => {
+      // `in` walks the prototype chain, so these all read as installed packs and
+      // a plain typo got reported as a missing pack with an undefined title.
+      process.env.AGENTKIT_DIAGRAM_VENDOR_PACKS = registry;
+      expect(() => resolveIcon(`${name}:thing`)).toThrow(/unknown icon/);
+      expect(() => resolveIcon(`${name}:thing`)).not.toThrow(/is not installed/);
+    },
+  );
+
+  test('fetching a prototype member names the real packs instead of crashing', () => {
+    const r = runFetch(['toString', '--accept-terms', '--registry', registry, '--root', root]);
+    expect(r.status).toBe(1);
+    expect(r.out).toContain('no vendor pack "toString"');
+    expect(r.out).not.toContain('error:');
+  });
+
   test('bundled CC0 icons keep resolving with a vendor registry present', () => {
     process.env.AGENTKIT_DIAGRAM_VENDOR_PACKS = registry;
     expect(resolveIcon('postgres')).toContain('logos/postgresql.svg');
+  });
+});
+
+describe('what the screens reject', () => {
+  const svg = (body: string) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 18 18">${body}</svg>`;
+
+  test.each([
+    ['double-quoted scheme-relative href', '<image href="//evil.example/a.png"/>'],
+    ['single-quoted scheme-relative href', "<image href='//evil.example/b.png'/>"],
+    ['scheme-relative css url()', '<style>@import url(//evil.example/c.css);</style>'],
+    ['single-quoted absolute href', "<image href='http://evil.example/d.png'/>"],
+    ['absolute css url()', '<style>div{background:url(http://evil.example/e.png)}</style>'],
+    ['quoted css url()', '<style>div{background:url("//evil.example/f.png")}</style>'],
+  ])('rejects %s', (_name, body) => {
+    const verdict = screenSvg(svg(body));
+    expect(verdict.ok).toBe(false);
+    expect(verdict.fatal).toBe(true);
+  });
+
+  test.each([
+    ['a fragment href', '<defs><rect id="r"/></defs><use href="#r"/>'],
+    ['a single-quoted fragment href', "<defs><rect id='r'/></defs><use href='#r'/>"],
+    ['a fragment css url()', '<rect fill="url(#grad)"/>'],
+    ['a data uri', '<image href="data:image/png;base64,AAAA"/>'],
+  ])('keeps %s', (_name, body) => {
+    expect(screenSvg(svg(body)).ok).toBe(true);
+  });
+
+  test('the archive screen refuses too many entries and too many bytes', () => {
+    const many = Array.from({ length: 20_001 }, (_, i) => ({ mode: '-rw-r--r--', bytes: 1, name: `i${i}.svg` }));
+    expect(() => screenArchive(many, 'u')).toThrow(ArchiveError);
+    expect(() => screenArchive(many, 'u')).toThrow(/over the 20000 ceiling/);
+    const huge = [{ mode: '-rw-r--r--', bytes: 256 * 1024 * 1024 + 1, name: 'a.svg' }];
+    expect(() => screenArchive(huge, 'u')).toThrow(/unpacked archive size/);
+  });
+
+  test('the listing parser reads both unix- and DOS-attribute archives', () => {
+    // Both real vendor archives are DOS-attribute, where the permission field is
+    // 7 characters rather than 10; a parser that reads only one dialect silently
+    // screens nothing.
+    const raw = [
+      'Archive:  x.zip',
+      'Zip file size: 1033184 bytes, number of entries: 4',
+      '-rw----     2.0 fat   104732 bl defN 26-Jul-08 22:21 Azure_Public_Service_Icons/A.pdf',
+      '-rw----     2.0 fat     2769 bl defN 26-Jul-08 22:21 Icons/ai + machine learning/00028-icon.svg',
+      'drwxr-xr-x  3.0 unx        0 b- stor 26-Jul-28 16:40 Fixture_Icons/',
+      '?rw-------  2.0 unx      135 b- defN 26-Jul-28 17:05 Fixture_Icons/Icons/db/a.svg',
+      '4 files, 337 bytes uncompressed, 255 bytes compressed:  24.3%',
+    ].join('\n');
+    const entries = parseListing(raw);
+    expect(entries.map((e) => e.mode[0])).toEqual(['-', '-', 'd', '?']);
+    expect(entries[1]!.name).toBe('Icons/ai + machine learning/00028-icon.svg');
+    expect(entries[0]!.bytes).toBe(104732);
+  });
+
+  test('a listing the parser cannot fully read is refused rather than read as empty', () => {
+    const raw = 'Zip file size: 10 bytes, number of entries: 3\ngarbage line\n';
+    expect(() => parseListing(raw)).toThrow(/parsed 0 of 3 entries/);
+  });
+
+  test('the archive screen accepts a real vendor-shaped listing', () => {
+    // Positive control: the ceilings must not reject an ordinary archive.
+    expect(() => screenArchive([{ mode: '-rw-r--r--', bytes: 4096, name: 'Icons/db/a.svg' }], 'u')).not.toThrow();
+    expect(() => screenArchive([{ mode: 'drwxr-xr-x', bytes: 0, name: 'Icons/' }], 'u')).not.toThrow();
   });
 });
 

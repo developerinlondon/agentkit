@@ -17,7 +17,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, dirname, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { inspect } from "./d2-svg.ts";
 import {
@@ -55,8 +55,39 @@ export function slugify(stem: string, strips: string[] = []): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 }
 
+// The checksum pins content, not resources: the whole body must be read before
+// the hash can judge it, so a ceiling is the only thing standing between a
+// substituted endpoint and memory or disk exhaustion. The largest real archive
+// is 2.3 MB, so these are generous by two orders of magnitude.
+const MAX_ARCHIVE_BYTES = 64 * 1024 * 1024;
+const MAX_UNPACKED_BYTES = 256 * 1024 * 1024;
+const MAX_ENTRIES = 20_000;
+
+export class ArchiveError extends Error {}
+
+function tooBig(what: string, found: number, cap: number, url: string): string {
+  return `${what} for ${url} is ${found} bytes, over the ${cap}-byte ceiling — nothing was installed.`
+    + ` A vendor icon archive is a few megabytes; this is not one.`;
+}
+
+// file: exists for offline fixtures and must be asked for, so that a registry
+// override cannot quietly turn a fetch into a read of an arbitrary local path.
+function checkScheme(url: string, what: string): void {
+  if (url.startsWith("https:")) return;
+  if (url.startsWith("file:") && process.env.AGENTKIT_DIAGRAM_ALLOW_LOCAL_PACKS === "1") return;
+  fail(
+    `${what} ${url} is not https — vendor archives are fetched over https only`
+      + ` (set AGENTKIT_DIAGRAM_ALLOW_LOCAL_PACKS=1 to allow a local file: archive)`,
+  );
+}
+
 async function readArchive(url: string): Promise<Buffer> {
-  if (url.startsWith("file:")) return readFileSync(fileURLToPath(url));
+  checkScheme(url, "archive url");
+  if (url.startsWith("file:")) {
+    const buf = readFileSync(fileURLToPath(url));
+    if (buf.length > MAX_ARCHIVE_BYTES) fail(tooBig("archive", buf.length, MAX_ARCHIVE_BYTES, url));
+    return buf;
+  }
   const res = await fetch(url, { redirect: "follow" });
   if (!res.ok) {
     fail(
@@ -64,7 +95,32 @@ async function readArchive(url: string): Promise<Buffer> {
         + ` check ${url.split("/").slice(0, 3).join("/")} and re-pin assets/vendor-packs.json`,
     );
   }
-  return Buffer.from(await res.arrayBuffer());
+  checkScheme(res.url, "archive url after redirect");
+  const declared = Number(res.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > MAX_ARCHIVE_BYTES) {
+    fail(tooBig("declared archive size", declared, MAX_ARCHIVE_BYTES, url));
+  }
+  return await readBounded(res, url);
+}
+
+// Content-Length is advisory and absent on a chunked response, so the budget is
+// enforced against the bytes actually arriving and the transfer is cancelled the
+// moment it is exceeded.
+async function readBounded(res: Response, url: string): Promise<Buffer> {
+  const reader = res.body?.getReader() ?? fail(`${url} returned no response body`);
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.length;
+    if (total > MAX_ARCHIVE_BYTES) {
+      await reader.cancel();
+      fail(tooBig("archive", total, MAX_ARCHIVE_BYTES, url));
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks);
 }
 
 function sha256(buf: Buffer): string {
@@ -87,10 +143,89 @@ function verifyPin(archive: PackArchive, buf: Buffer): void {
   );
 }
 
-function unzipTo(buf: Buffer, dest: string): void {
+interface ArchiveEntry {
+  mode: string;
+  bytes: number;
+  name: string;
+}
+
+// `unzip -Z` names the type, the uncompressed size and the path of every entry
+// before a single byte is written, which is the only point at which a hostile
+// entry can be refused rather than cleaned up after.
+// The permission field is 10 characters for a unix-attribute archive and 7 for
+// a DOS-attribute one (which is what both real vendor archives are), so only its
+// first character — the type — can be relied on. The `2.0`/`3.0` version field
+// is what separates an entry line from the listing's own header.
+const LISTING = /^(\S+)\s+\d+\.\d+\s+\S+\s+(\d+)\s+\S+\s+\S+\s+\S+\s+\S+\s+(.*)$/;
+
+// `?` is an entry whose type bits say nothing, which some zip writers emit for
+// ordinary files. It is allowed because unzip has nothing to act on either and
+// extracts it as a regular file — a symlink is always typed `l`.
+const EXTRACTABLE = new Set(["-", "d", "?"]);
+
+export function parseListing(raw: string): ArchiveEntry[] {
+  const entries: ArchiveEntry[] = [];
+  for (const line of raw.split("\n")) {
+    const m = LISTING.exec(line);
+    if (m) entries.push({ mode: m[1]!, bytes: Number(m[2]), name: m[3]! });
+  }
+  // A listing this parser cannot read must not read as an empty archive, which
+  // would wave every later check through on nothing.
+  const declared = /number of entries:\s*(\d+)/.exec(raw);
+  if (!declared) throw new ArchiveError(`could not read the entry count from the archive listing`);
+  if (entries.length !== Number(declared[1])) {
+    throw new ArchiveError(
+      `archive listing parsed ${entries.length} of ${declared[1]} entries — refusing to screen an`
+        + ` archive this cannot fully read`,
+    );
+  }
+  return entries;
+}
+
+function listArchive(zip: string): ArchiveEntry[] {
+  let raw: string;
+  try {
+    raw = execFileSync("unzip", ["-Z", zip], { encoding: "utf8", stdio: "pipe" });
+  } catch (e) {
+    const err = e as { stderr?: Buffer; message: string };
+    fail(`could not list the archive: ${(err.stderr?.toString() ?? err.message).trim()}`);
+  }
+  return parseListing(raw);
+}
+
+export function screenArchive(entries: ArchiveEntry[], url: string): void {
+  if (entries.length > MAX_ENTRIES) {
+    throw new ArchiveError(
+      `${url} holds ${entries.length} entries, over the ${MAX_ENTRIES} ceiling — nothing was installed.`,
+    );
+  }
+  const unpacked = entries.reduce((n, e) => n + e.bytes, 0);
+  if (unpacked > MAX_UNPACKED_BYTES) {
+    throw new ArchiveError(tooBig("unpacked archive size", unpacked, MAX_UNPACKED_BYTES, url));
+  }
+  for (const e of entries) {
+    // Refused before extraction rather than skipped after: a symlink is not a
+    // thing an icon archive legitimately contains, and copying one dereferences
+    // it into whatever the local filesystem holds at that path.
+    if (!EXTRACTABLE.has(e.mode[0]!)) {
+      throw new ArchiveError(`${url} contains a non-regular entry (${e.mode}) at "${e.name}" — nothing was installed.`);
+    }
+    if (e.name.startsWith("/") || /^[A-Za-z]:/.test(e.name) || e.name.split(/[/\\]/).includes("..")) {
+      throw new ArchiveError(`${url} contains an entry that escapes its root: "${e.name}" — nothing was installed.`);
+    }
+  }
+}
+
+function unzipTo(buf: Buffer, dest: string, url: string): void {
   const zip = join(dest, "archive.zip");
   mkdirSync(dest, { recursive: true });
   writeFileSync(zip, buf);
+  try {
+    screenArchive(listArchive(zip), url);
+  } catch (e) {
+    if (e instanceof ArchiveError) fail(e.message);
+    throw e;
+  }
   const out = join(dest, "tree");
   mkdirSync(out, { recursive: true });
   try {
@@ -113,11 +248,6 @@ function svgFiles(root: string): string[] {
     }
   };
   walk(root);
-  // An archive entry that resolves outside the extraction root would write
-  // wherever it liked; the pin makes that unlikely, not impossible.
-  for (const f of found) {
-    if (!resolve(f).startsWith(resolve(root) + sep)) fail(`archive entry escapes the extraction root: ${f}`);
-  }
   return found.sort();
 }
 
@@ -144,12 +274,24 @@ interface Rejected {
   why: string;
 }
 
+// Every target an icon can point at: href/xlink:href in either quote style, and
+// CSS url() with or without quotes.
+export function references(svg: string): string[] {
+  const out: string[] = [];
+  for (const m of svg.matchAll(/(?:xlink:)?href\s*=\s*("([^"]*)"|'([^']*)')/g)) {
+    out.push((m[2] ?? m[3] ?? "").trim());
+  }
+  for (const m of svg.matchAll(/url\(\s*("([^"]*)"|'([^']*)'|([^)'"]*))\s*\)/g)) {
+    out.push((m[2] ?? m[3] ?? m[4] ?? "").trim());
+  }
+  return out.filter((r) => r !== "");
+}
+
 // Vendor archives are not curated for embedding. An icon carrying active
 // content or an external reference would travel into every rendered diagram, so
 // it disqualifies the pack rather than being quietly dropped; a merely
 // malformed icon is skipped and named.
-function screen(abs: string): { ok: boolean; why?: string; fatal?: boolean } {
-  const svg = readFileSync(abs, "utf8");
+export function screenSvg(svg: string): { ok: boolean; why?: string; fatal?: boolean } {
   if (!svg.includes("<svg")) return { ok: false, why: "not an SVG document" };
   const found = inspect(svg);
   const active: string[] = [];
@@ -158,11 +300,11 @@ function screen(abs: string): { ok: boolean; why?: string; fatal?: boolean } {
   if (found.externalUrls.length > 0) active.push(`external ref ${found.externalUrls[0]}`);
   // inspect() demands every href be a data: URI, which is the right rule for a
   // rendered diagram but not for a source icon: `<use href="#id">` and paint
-  // servers reference the icon's own document and fetch nothing.
-  const offsite = [...svg.matchAll(/(?:xlink:)?href="([^"]*)"/g)]
-    .map((m) => m[1]!)
-    .filter((h) => !h.startsWith("#") && !h.startsWith("data:"));
-  if (offsite.length > 0) active.push(`an off-document href (${offsite[0]})`);
+  // servers reference the icon's own document and fetch nothing. Both quote
+  // styles and CSS url() count: inspect()'s URL_RE only sees an explicit
+  // scheme, so a `//host` reference reaches the render unnoticed.
+  const offsite = references(svg).filter((h) => !h.startsWith("#") && !h.startsWith("data:"));
+  if (offsite.length > 0) active.push(`an off-document reference (${offsite[0]})`);
   if (/\son[a-z]+\s*=/.test(svg)) active.push("an inline event handler");
   if (active.length > 0) return { ok: false, why: active.join(", "), fatal: true };
   if (!/viewBox\s*=/.test(svg)) return { ok: false, why: "no viewBox — d2 cannot scale it" };
@@ -188,7 +330,7 @@ function build(pack: string, info: VendorPack, extracted: Array<{ root: string; 
 
   for (const { root, label } of extracted) {
     for (const abs of svgFiles(root)) {
-      const verdict = screen(abs);
+      const verdict = screenSvg(readFileSync(abs, "utf8"));
       if (!verdict.ok) {
         if (verdict.fatal) {
           fail(
@@ -287,7 +429,7 @@ function listIcons(pack: string, root: string, filter?: string): void {
 async function main(): Promise<void> {
   const registry = packs(arg("registry") ?? registryPath());
   const root = arg("root") ?? vendorRoot();
-  const pack = process.argv.slice(2).find((a) => !a.startsWith("--") && a in registry);
+  const pack = process.argv.slice(2).find((a) => !a.startsWith("--") && Object.hasOwn(registry, a));
 
   if (!pack) {
     const named = process.argv.slice(2).find((a) => !a.startsWith("--"));
@@ -325,7 +467,7 @@ async function main(): Promise<void> {
       const buf = await readArchive(archive.url);
       verifyPin(archive, buf);
       const into = join(work, `a${i}`);
-      unzipTo(buf, into);
+      unzipTo(buf, into, archive.url);
       extracted.push({ root: join(into, "tree"), label });
     }
 
@@ -382,13 +524,16 @@ function sortKeys(records: Record<string, IconRecord>): Record<string, IconRecor
   return Object.fromEntries(Object.entries(records).sort(([a], [b]) => a.localeCompare(b)));
 }
 
+// Only a regular file: copyFileSync dereferences, so a symlink named like a
+// kept terms file would copy whatever local path it points at into the pack.
+// screenArchive already refuses symlinked entries; this is the second lock.
 function findByName(dir: string, name: string): string | undefined {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const abs = join(dir, entry.name);
     if (entry.isDirectory()) {
       const hit = findByName(abs, name);
       if (hit) return hit;
-    } else if (entry.name === name) return abs;
+    } else if (entry.name === name && entry.isFile()) return abs;
   }
   return undefined;
 }

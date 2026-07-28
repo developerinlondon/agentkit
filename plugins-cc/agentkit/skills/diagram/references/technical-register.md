@@ -140,9 +140,12 @@ bun skills/diagram/scripts/fetch-icons.ts gcp   --accept-terms
 ```
 
 Without `--accept-terms` the script prints the vendor's terms and downloads
-nothing. Archives are pinned by sha256; a vendor re-release fails the fetch with
-the observed hash and re-pin instructions rather than installing changed bytes.
-Nothing is wired into `install.sh` — fetching is always a deliberate act.
+nothing. Archives are fetched over https only, pinned by sha256; a vendor
+re-release fails the fetch with the observed hash and re-pin instructions rather
+than installing changed bytes. Before anything is unpacked the archive listing is
+screened — an entry that is a symlink, escapes its root, or pushes the archive
+past its size or entry ceiling disqualifies the whole pack. Nothing is wired into
+`install.sh` — fetching is always a deliberate act.
 
 Fetched icons then resolve exactly like vendored ones, under a pack prefix:
 
