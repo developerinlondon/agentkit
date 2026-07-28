@@ -1,0 +1,9 @@
+part_of:
+  product: acme-platform
+  product_repo: acme/product
+  part: engine
+summary: Rules engine and CLI.
+surfaces:
+  - name: engine
+    kind: cli
+    build: cargo build --release

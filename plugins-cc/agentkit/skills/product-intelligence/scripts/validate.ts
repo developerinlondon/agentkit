@@ -1,9 +1,7 @@
 #!/usr/bin/env bun
-// Self-contained validator for product-intelligence ledgers and briefs.
-// The JSON Schema files are the source of truth for structure; this file
-// implements only the schema subset they use, plus the cross-field rules a
-// schema cannot express (class/source coupling, contradiction symmetry,
-// cross-document claim references).
+// Self-contained validator for product-intelligence documents. The JSON Schema
+// files are the source of truth for structure; this file implements only the
+// schema subset they use, plus the cross-field rules a schema cannot express.
 
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -14,6 +12,8 @@ type Schema = Record<string, Json>;
 const schemasDir = join(import.meta.dir, '..', 'schemas');
 export const ledgerSchema = loadSchema('ledger.schema.json');
 export const briefSchema = loadSchema('brief.schema.json');
+export const productSchema = loadSchema('product.schema.json');
+export const partOfSchema = loadSchema('part-of.schema.json');
 
 function loadSchema(name: string): Schema {
   return JSON.parse(readFileSync(join(schemasDir, name), 'utf-8'));
@@ -71,9 +71,16 @@ export function checkSchema(value: Json, schema: Schema, root: Schema, path: str
   }
   if (schema.type === 'string') checkString(value as string, schema, path, errors);
   if (schema.type === 'object') checkObject(value as Record<string, Json>, schema, root, path, errors);
-  if (schema.type === 'array' && schema.items) {
-    (value as Json[]).forEach((item, i) => checkSchema(item, schema.items as Schema, root, `${path}[${i}]`, errors));
+  if (schema.type === 'array') checkArray(value as Json[], schema, root, path, errors);
+}
+
+function checkArray(value: Json[], schema: Schema, root: Schema, path: string, errors: string[]): void {
+  if (typeof schema.minItems === 'number' && value.length < schema.minItems) {
+    errors.push(`${path}: must have at least ${schema.minItems} item(s)`);
+    return;
   }
+  if (!schema.items) return;
+  value.forEach((item, i) => checkSchema(item, schema.items as Schema, root, `${path}[${i}]`, errors));
 }
 
 function checkString(value: string, schema: Schema, path: string, errors: string[]): void {
@@ -265,6 +272,63 @@ function collectClaimRefs(node: Json, path: string): { path: string; ref: string
   return refs;
 }
 
+export interface Part {
+  id?: string;
+  kind?: string;
+  target?: string;
+  role?: string;
+  visibility?: string;
+  description?: string;
+}
+
+export function partsOf(doc: Json): Part[] {
+  const composition = (doc as Record<string, Json>).composition as Record<string, Json> | undefined;
+  return (composition?.parts ?? []) as Part[];
+}
+
+export function validateProductDoc(doc: Json): string[] {
+  const errors: string[] = [];
+  checkSchema(doc, productSchema, productSchema, 'product', errors);
+  if (errors.length > 0) return errors;
+
+  const seen = new Set<string>();
+  for (const part of partsOf(doc)) {
+    if (!part.id) continue;
+    if (seen.has(part.id)) errors.push(`product.composition.parts: duplicate part id '${part.id}'`);
+    seen.add(part.id);
+  }
+  return errors;
+}
+
+// The marker rides inside the component's product-review manifest, so validate
+// that one key and leave the sibling surfaces/requires blocks to product-review.
+export function validatePartOfDoc(doc: Json): string[] {
+  const errors: string[] = [];
+  checkSchema((doc as Record<string, Json>).part_of, partOfSchema, partOfSchema, 'part_of', errors);
+  return errors;
+}
+
+// A declaration whose evidence has moved is worse than one that never had any:
+// it reads as sourced right up until somebody follows the pointer.
+function validateProductFile(doc: Json, path: string): string[] {
+  const errors = validateProductDoc(doc);
+  if (errors.length > 0) return errors;
+
+  const root = doc as Record<string, Json>;
+  const pointers: [string, Json][] = Object.entries((root.evidence ?? {}) as Record<string, Json>)
+    .map(([key, value]) => [`evidence.${key}`, value] as [string, Json]);
+  const entry = (root.site as Record<string, Json> | undefined)?.entry;
+  if (entry !== undefined) pointers.push(['site.entry', entry]);
+
+  for (const [field, value] of pointers) {
+    if (typeof value !== 'string') continue;
+    if (!existsSync(resolve(dirname(path), value))) {
+      errors.push(`product.${field}: '${value}' not found relative to the declaration`);
+    }
+  }
+  return errors;
+}
+
 export function parseDocument(path: string): Json {
   const text = readFileSync(path, 'utf-8');
   return path.endsWith('.json') ? JSON.parse(text) : Bun.YAML.parse(text);
@@ -281,7 +345,11 @@ export function validateFile(path: string): string[] {
   const root = doc as Record<string, Json>;
   if (root.ledger_version !== undefined) return validateLedgerDoc(doc);
   if (root.brief_version !== undefined) return validateBriefFile(doc, path);
-  return [`${path}: neither a ledger (ledger_version) nor a brief (brief_version)`];
+  if (root.product_version !== undefined) return validateProductFile(doc, path);
+  if (root.part_of !== undefined) return validatePartOfDoc(doc);
+  return [
+    `${path}: not a recognised document — expected ledger_version, brief_version, product_version or part_of`,
+  ];
 }
 
 function validateBriefFile(doc: Json, path: string): string[] {
@@ -304,7 +372,7 @@ function validateBriefFile(doc: Json, path: string): string[] {
 if (import.meta.main) {
   const files = process.argv.slice(2);
   if (files.length === 0) {
-    console.error('usage: validate.ts <ledger-or-brief>...');
+    console.error('usage: validate.ts <ledger|brief|product-declaration|part-of-marker>...');
     process.exit(2);
   }
   let failed = false;
