@@ -19,7 +19,18 @@ usage() {
 	printf '%s\n' \
 		'usage: review-profile [--profile fast|balanced|strict]' \
 		'  [--risk trivial|standard|critical] [--release] [--user-facing]' \
-		'  [--repo PATH]' >&2
+		'  [--repo PATH]' \
+		'' \
+		'profiles:' \
+		'  fast: primary review for nontrivial work; product review at release' \
+		'  balanced: primary review plus risk-triggered specialist and product lanes' \
+		'  strict: all review lanes, full local checks, and a fresh CI run' \
+		'' \
+		'context:' \
+		'  --risk trivial|standard|critical  classify the change risk' \
+		'  --release                         mark release work' \
+		'  --user-facing                     mark a user-visible change' \
+		'  --repo PATH                       read repository review configuration' >&2
 	exit "$status"
 }
 

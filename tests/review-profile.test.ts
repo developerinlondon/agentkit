@@ -59,6 +59,19 @@ afterEach(() => {
 });
 
 describe('review-profile', () => {
+  test('documents profiles, task context, and repository selection in help', () => {
+    const result = resolve(['--help']);
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toContain('fast:');
+    expect(result.stderr).toContain('balanced:');
+    expect(result.stderr).toContain('strict:');
+    expect(result.stderr).toContain('--risk trivial|standard|critical');
+    expect(result.stderr).toContain('--release');
+    expect(result.stderr).toContain('--user-facing');
+    expect(result.stderr).toContain('--repo PATH');
+  });
+
   test('defaults to one exact-head review and reuses exact-SHA CI evidence', () => {
     const result = output(['--risk', 'standard']);
 
