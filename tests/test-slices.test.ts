@@ -1,3 +1,4 @@
+import { YAML } from 'bun';
 import { describe, expect, test } from 'bun:test';
 import {
   chmodSync,
@@ -20,12 +21,65 @@ import {
 
 const repoRoot = join(import.meta.dir, '..');
 
-function moonBlock(contents: string, start: string, end: string): string {
-  const startIndex = contents.indexOf(start);
-  const endIndex = contents.indexOf(end, startIndex + start.length);
-  expect(startIndex).toBeGreaterThanOrEqual(0);
-  expect(endIndex).toBeGreaterThan(startIndex);
-  return contents.slice(startIndex, endIndex);
+// Restated rather than derived: this group decides which changes escalate CI to
+// the full suite, so narrowing it has to fail a diff instead of passing quietly.
+const CRITICAL_INPUTS = [
+  '.agentkit/config.yaml',
+  '.agentkit/product.yaml',
+  '.agentkit/review-policy.json',
+  '.claude-plugin/marketplace.json',
+  '.github/actions/**/*',
+  '.github/workflows/**/*',
+  '.moon/**/*',
+  '.prototools',
+  'bun.lock',
+  'config.example.yaml',
+  'docs/review-process.md',
+  'hooks/**/*',
+  'install.sh',
+  'instructions/coding-discipline.md',
+  'lib/install-platform.sh',
+  'moon.yml',
+  'package.json',
+  'plugins-cc/agentkit-product/skills/product-review/**/*',
+  'plugins-cc/agentkit/.claude-plugin/plugin.json',
+  'plugins-cc/agentkit/hooks/**/*',
+  'plugins-cc/agentkit/skills/adversarial-review/**/*',
+  'plugins-cc/agentkit/skills/autonomous-workflow/**/*',
+  'plugins-cc/agentkit/skills/product-review/**/*',
+  'plugins-cc/agentkit/skills/test-driven-development/**/*',
+  'plugins-cc/agentkit/tools/review-gate',
+  'plugins-cc/agentkit/tools/review-profile',
+  'plugins/*.ts',
+  'policies/**/*',
+  'scripts/check-test-slices.ts',
+  'scripts/product-command',
+  'scripts/sync-cc-plugin.sh',
+  'skills/adversarial-review/**/*',
+  'skills/autonomous-workflow/**/*',
+  'skills/product-review/**/*',
+  'skills/test-driven-development/**/*',
+  'tests/agentkit-plugin.test.ts',
+  'tests/codex-review-hooks.test.ts',
+  'tests/hook-supervisor.test.ts',
+  'tests/install-claude-plugin.test.ts',
+  'tests/install-tools.test.ts',
+  'tests/review-disciplines.test.ts',
+  'tests/review-gate.test.ts',
+  'tests/review-police.test.ts',
+  'tests/review-profile.test.ts',
+  'tests/test-slices.test.ts',
+  'tools/review-gate',
+  'tools/review-profile',
+];
+
+type MoonConfig = {
+  fileGroups: Record<string, string[]>;
+  tasks: Record<string, { inputs?: string[] }>;
+};
+
+function readMoonConfig(): MoonConfig {
+  return YAML.parse(readFileSync(join(repoRoot, 'moon.yml'), 'utf-8')) as MoonConfig;
 }
 
 describe('test slice routing', () => {
@@ -163,20 +217,21 @@ tasks:
   });
 
   test('runs slice coverage validation for every project change', () => {
-    const moon = readFileSync(join(repoRoot, 'moon.yml'), 'utf-8');
-    // Ends at whichever task comes next: the invariant is that this one
-    // declares no inputs, not that a particular task follows it.
-    const task = moonBlock(moon, '  check-test-slices:', '\n\n  test-');
-    expect(task).not.toContain('\n    inputs:');
+    // A moon task without declared inputs is never filtered out as unaffected.
+    expect(readMoonConfig().tasks['check-test-slices'].inputs).toBeUndefined();
+  });
+
+  test('gates the full suite on exactly the committed critical surfaces', () => {
+    expect([...readMoonConfig().fileGroups.criticalInputs].sort()).toEqual(
+      [...CRITICAL_INPUTS].sort(),
+    );
   });
 
   test('routes the check wrapper and review probe data to their consumers', () => {
-    const moon = readFileSync(join(repoRoot, 'moon.yml'), 'utf-8');
-    const criticalInputs = moonBlock(moon, '  criticalInputs:', '\n  hookInputs:');
-    const reviewInputs = moonBlock(moon, '  reviewInputs:', '\n  sessionInputs:');
+    const { fileGroups } = readMoonConfig();
 
-    expect(criticalInputs).toMatch(/- ['"]scripts\/product-command['"]/);
-    expect(reviewInputs).toMatch(/- ['"]tests\/probe-cases\.txt['"]/);
+    expect(fileGroups.criticalInputs).toContain('scripts/product-command');
+    expect(fileGroups.reviewInputs).toContain('tests/probe-cases.txt');
   });
 
   test('never runs affected slices alongside the critical full suite', () => {
