@@ -11,11 +11,11 @@ fileGroups:
     - "scripts/check-test-slices.ts"
 
   criticalInputs:
-
     - ".agentkit/config.yaml"
     - ".agentkit/product.yaml"
     - ".agentkit/review-policy.json"
     - ".claude-plugin/marketplace.json"
+    - ".github/actions/**/*"
     - ".github/workflows/**/*"
     - ".moon/**/*"
     - ".prototools"
@@ -107,6 +107,7 @@ fileGroups:
     - "tools/**/*"
 
   integrationInputs:
+    - ".github/actions/**/*"
     - ".github/workflows/**/*"
     - ".moon/**/*"
     - "plugins-cc/infra-tools/**/*"
