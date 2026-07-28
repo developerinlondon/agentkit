@@ -1,0 +1,178 @@
+#!/usr/bin/env bash
+# Detect the two silent failures of a `cond && action` compound under
+# `set -euo pipefail`, both confirmed against real bash rather than assumed:
+#
+#   tail-leak  As the last command of a function, the compound's status becomes
+#              the function's return status. Called in statement position, that
+#              kills the caller with no message. Fix: `if ! cond; then` or a
+#              closing `return 0`.
+#   soft-gate  Anywhere else, set -e's AND-list exemption swallows the failure
+#              and execution continues past a check that did not pass. A gate
+#              whose only action is a success message never fails. Fix: invert
+#              it into `if ! cond; then ... exit 1; fi`.
+set -euo pipefail
+
+usage() {
+	local status="${1:-2}"
+	printf '%s\n' \
+		'usage: bash-status-check FILE...' \
+		'' \
+		'Reports conditional-and compounds that silently drop a failure:' \
+		'  tail-leak  a function or script ending in `cond && action`' \
+		'  soft-gate  `cmd && echo ...` — a check whose failure branch is nothing' \
+		'' \
+		'Exits 1 when any leak is found, 0 when the files are clean.' >&2
+	exit "$status"
+}
+
+if [[ "${1:-}" == "--help" ]]; then
+	usage 0
+fi
+if [[ $# -eq 0 ]]; then
+	usage 2
+fi
+
+SCAN='
+function trim(s) {
+	sub(/^[ \t]+/, "", s)
+	sub(/[ \t]+$/, "", s)
+	return s
+}
+
+# Command substitutions are erased before any test: their status is captured by
+# the surrounding assignment, not exported to the enclosing shell.
+function bare(s,   t) {
+	t = s
+	gsub(/\$\([^)]*\)/, "", t)
+	gsub(/`[^`]*`/, "", t)
+	return t
+}
+
+function tail_leak(s,   t) {
+	t = bare(s)
+	if (t !~ /&&/) return 0
+	if (t ~ /\|\|/) return 0
+	if (t ~ /^(if|elif|while|until|return|exit|case)([ \t]|$)/) return 0
+	return 1
+}
+
+# A gate that reports success and nothing else. An if-condition is excluded —
+# there the status is consumed by the enclosing construct — but a line
+# continuation is not: splitting `cmd && echo ok` across two physical lines
+# leaves the same swallowed failure.
+function soft_gate(s,   t, left, right, at) {
+	t = bare(s)
+	if (t !~ /&&/) return 0
+	if (t ~ /(^|[ \t;])then$/) return 0
+	if (t ~ /^(if|elif|while|until)([ \t]|$)/) return 0
+	at = index(t, "&&")
+	left = trim(substr(t, 1, at - 1))
+	right = trim(substr(t, at + 2))
+	if (left ~ /^(\[\[|\[|test|!)([ \t]|$)/) return 0
+	if (left ~ /[;|&]$/) return 0
+	return right ~ /^(echo|printf)([ \t]|$)/
+}
+
+function closer(s) {
+	return s ~ /^(done|fi|esac|else|then|do|\}|\{|;;|;;&|\))([ \t].*)?$/
+}
+
+function report(file, no, kind, text) {
+	printf "%s:%d: [%s] %s\n", file, no, kind, text
+	found = 1
+}
+
+function flushfile() {
+	if (top != "" && tail_leak(top)) {
+		report(prevfile, topno, "tail-leak", "script ends with a conditional-and: " top)
+	}
+	top = ""
+}
+
+BEGIN { found = 0 }
+
+FNR == 1 {
+	flushfile()
+	prevfile = FILENAME
+	depth = 0
+	heredoc = ""
+	last = ""
+	lastno = 0
+	name = ""
+	indent = ""
+}
+
+{
+	line = $0
+
+	if (heredoc != "") {
+		if (trim(line) == heredoc) heredoc = ""
+		next
+	}
+	if (line ~ /^[ \t]*#/) next
+	if (trim(line) == "") next
+
+	if (line !~ /<<</ && match(line, /<<-?[ \t]*["\047]?[A-Za-z_][A-Za-z0-9_]*/)) {
+		word = substr(line, RSTART, RLENGTH)
+		sub(/^<<-?[ \t]*["\047]?/, "", word)
+		heredoc = word
+	}
+
+	body = trim(line)
+
+	if (soft_gate(body)) {
+		report(FILENAME, FNR, "soft-gate", "failure is swallowed, only success is reported: " body)
+	}
+
+	if (depth == 0 && line ~ /^[ \t]*[A-Za-z_][A-Za-z0-9_:.-]*[ \t]*\(\)[ \t]*\{[ \t]*$/) {
+		depth = 1
+		match(line, /^[ \t]*/)
+		indent = substr(line, 1, RLENGTH)
+		name = body
+		sub(/[ \t]*\(\).*$/, "", name)
+		last = ""
+		lastno = 0
+		next
+	}
+
+	if (depth == 1 && line ~ ("^" indent "\\}[ \t]*$")) {
+		depth = 0
+		if (last != "" && tail_leak(last)) {
+			report(FILENAME, lastno, "tail-leak", name "() ends with a conditional-and: " last)
+		}
+		last = ""
+		next
+	}
+
+	if (closer(body)) next
+
+	if (depth == 1) {
+		last = body
+		lastno = FNR
+	} else {
+		top = body
+		topno = FNR
+	}
+}
+
+END {
+	flushfile()
+	exit(found)
+}
+'
+
+set +e
+awk "$SCAN" "$@"
+SCAN_STATUS=$?
+set -e
+
+# A scan that could not run is not a clean scan: findings exit 1, everything
+# else exits 2 so a caller can tell "nothing found" from "nothing looked".
+case "$SCAN_STATUS" in
+0) exit 0 ;;
+1) exit 1 ;;
+*)
+	printf 'bash-status-check: scan failed (exit %d)\n' "$SCAN_STATUS" >&2
+	exit 2
+	;;
+esac

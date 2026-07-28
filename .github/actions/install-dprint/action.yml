@@ -1,0 +1,49 @@
+name: Install pinned dprint
+description: Installs the pinned dprint release, verified against a recorded sha256, and puts it on PATH.
+
+inputs:
+  version:
+    description: Release version as tagged upstream, without a leading v.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Download, verify and install dprint ${{ inputs.version }}
+      shell: bash
+      env:
+        DPRINT_VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+
+        case "${RUNNER_OS}-${RUNNER_ARCH}" in
+          Linux-X64)
+            asset='x86_64-unknown-linux-gnu'
+            sha='d7ccde62d789dfb048717252d259e21253e32feffe4cbf2dab9954eeab492219'
+            ;;
+          macOS-ARM64)
+            asset='aarch64-apple-darwin'
+            sha='e9ba8ed7988f3350501a8cf8af92da616cdec8d9d5c831c069293c587311b49d'
+            ;;
+          *)
+            echo "no pinned dprint checksum recorded for ${RUNNER_OS}-${RUNNER_ARCH}" >&2
+            exit 1
+            ;;
+        esac
+
+        archive="dprint-${asset}.zip"
+        curl -fsSL --retry 3 -o "${RUNNER_TEMP}/${archive}" \
+          "https://github.com/dprint/dprint/releases/download/${DPRINT_VERSION}/${archive}"
+        echo "${sha}  ${RUNNER_TEMP}/${archive}" | shasum -a 256 -c -
+
+        unzip -q -o "${RUNNER_TEMP}/${archive}" -d "${RUNNER_TEMP}/dprint-unpack"
+        mkdir -p "${RUNNER_TEMP}/dprint-bin"
+        install -m 0755 "${RUNNER_TEMP}/dprint-unpack/dprint" "${RUNNER_TEMP}/dprint-bin/dprint"
+
+        found="$("${RUNNER_TEMP}/dprint-bin/dprint" --version)"
+        if [ "${found}" != "dprint ${DPRINT_VERSION}" ]; then
+          echo "installed dprint reports ${found}, expected dprint ${DPRINT_VERSION}" >&2
+          exit 1
+        fi
+
+        echo "${RUNNER_TEMP}/dprint-bin" >> "${GITHUB_PATH}"
