@@ -175,4 +175,19 @@ tasks:
     expect(criticalInputs).toMatch(/- ['"]scripts\/product-command['"]/);
     expect(reviewInputs).toMatch(/- ['"]tests\/probe-cases\.txt['"]/);
   });
+
+  test('never runs affected slices alongside the critical full suite', () => {
+    const moon = readFileSync(join(repoRoot, 'moon.yml'), 'utf-8');
+    const workflow = readFileSync(join(repoRoot, '.github/workflows/ci.yml'), 'utf-8');
+    const fullTask = moon.slice(moon.indexOf('  test-full:'));
+
+    expect(fullTask).toContain('runInCI: false');
+    expect(workflow).toContain('moon query affected');
+    expect(workflow).toMatch(
+      /if: steps\.test-mode\.outputs\.mode == 'full'[\s\S]*run: moon run agentkit:test-full/,
+    );
+    expect(workflow).toMatch(
+      /if: steps\.test-mode\.outputs\.mode == 'affected'[\s\S]*run: moon ci/,
+    );
+  });
 });
