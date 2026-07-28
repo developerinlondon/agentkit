@@ -234,43 +234,26 @@ function cannotVerify(brief: Dict): string {
 // destinations instead re-decides per line, before entity decoding, what the
 // parser decides later and across lines — a scheme survives as an entity or a
 // split reference. Fence interiors stay untouched: marked escapes them.
-// Returns the run that is still open at the end, or '' when every fence closed.
-function unclosedFence(lines: string[]): string {
-  let fence = '';
-  for (const line of lines) {
-    const m = line.match(/^ {0,3}([`~]{3,})(.*)$/);
-    if (!m) continue;
-    const [, run, info] = m;
-    if (fence) {
-      if (run[0] === fence[0] && run.length >= fence.length && info.trim() === '') fence = '';
-    } else if (!(run[0] === '`' && info.includes('`'))) {
-      fence = run;
-    }
-  }
-  return fence;
-}
-
 function sanitizeFindings(body: string): string {
-  const escaped = body
+  return body
     // Backslash FIRST: an input `\[` would otherwise pair with the backslash
     // added below, and the brackets would go back to being live link syntax.
     .replace(/\\/g, '\\\\')
     .replace(/[[\]()<]/g, '\\$&')
     .replace(AUTOLINK, '\\');
-  // Not a trust boundary — every line is escaped either way — but an unclosed
-  // fence would still render the evidence section below it as code. Counting
-  // markers is not enough: a fence line carrying an info string cannot close,
-  // and a tilde run cannot close a backtick one, so a balanced file can hold an
-  // odd number of markers and an unbalanced one an even number.
-  const open = unclosedFence(escaped.split('\n'));
-  return open ? `${escaped}\n${open}` : escaped;
 }
 
+// An unclosed fence here renders the rest of THIS section as code and nothing
+// else, because the section is last. Deciding whether to append a closer meant
+// a second fence scanner shadowing the one that renders the page, and it
+// disagreed on line endings, mixed runs and fences inside list items — each
+// time appending a run that opened a fence over everything below.
 function findings(dir: string): string {
   const path = join(dir, 'findings.md');
   if (!existsSync(path)) return '';
   const body = sanitizeFindings(
     readFileSync(path, 'utf-8')
+      .replace(/\r\n?/g, '\n')
       .replace(/^# .*\n/, '')
       .replace(/^## /gm, '### ')
       .trim(),
@@ -342,8 +325,10 @@ export function renderBrief(dir: string): string {
     siteInventory(brief),
     contradictions(ledger),
     cannotVerify(brief),
-    findings(dir),
     evidence(brief, ledger),
+    // Last: it is the one section whose block structure comes from a file we
+    // did not generate, so nothing downstream can be damaged by it.
+    findings(dir),
   ];
   return sections.filter(Boolean).join('\n');
 }

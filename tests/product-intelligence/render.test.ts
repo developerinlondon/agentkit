@@ -373,25 +373,41 @@ describe('renderBrief', () => {
     expect(out).toContain('www\\.evil.example');
   });
 
-  // Counting markers gets both directions wrong: a fence line with an info
-  // string cannot close, and a tilde run cannot close a backtick one. So a
-  // balanced file can carry an odd count and an unbalanced one an even count.
+  // Every shape below defeated a hand-written fence scanner at some point:
+  // counting markers, then parsing lines but missing containers, CRLF and
+  // non-homogeneous runs. The section is last instead, so none of it can reach
+  // the evidence — and nothing is appended to the author's file.
   test.each([
-    ['unclosed, even count', ['```js', 'a', '```python', 'b'], true],
-    ['balanced, odd count', ['```yaml', 'a', '```bash', 'b', '```'], false],
-    ['tilde cannot close a backtick fence', ['```text', 'a', '~~~'], true],
-    ['plain unclosed', ['```bash', 'echo oops'], true],
-    ['balanced, even count', ['```bash', 'echo ok', '```'], false],
-  ])('fence balance: %s', (_name, lines, needsCloser) => {
+    ['unclosed, even count', ['```js', 'a', '```python', 'b']],
+    ['balanced, odd count', ['```yaml', 'a', '```bash', 'b', '```']],
+    ['tilde cannot close a backtick fence', ['```text', 'a', '~~~']],
+    ['plain unclosed', ['```bash', 'echo oops']],
+    ['balanced', ['```bash', 'echo ok', '```']],
+    ['unclosed inside a list item', ['- step one', '', '  ```bash', '  run it']],
+    ['unclosed inside a blockquote', ['> note', '> ```sh', '> run']],
+    ['non-homogeneous run', ['~~~`js`', 'a', '~~~']],
+    ['crlf line endings', ['```bash\r', 'echo ok\r', '```\r']],
+  ])('the evidence survives findings.md: %s', (_name, lines) => {
     writeFileSync(join(scratch, 'findings.md'), ['# Findings', '', ...lines].join('\n'));
     const out = withArtifacts(journalBrief());
-    const findings = findingsSection(out);
+    // The evidence heading and its claims precede the findings section, so no
+    // block the author opened can reach them.
     expect(out).toContain('## The evidence, claim by claim');
-    // A closer is appended only when one is actually needed, and never a
-    // spurious one — which would itself open a fence over the evidence.
-    const before = lines.filter((l) => /^ {0,3}[`~]{3,}/.test(l)).length;
-    const after = (findings.match(/^ {0,3}[`~]{3,}/gm) ?? []).length;
-    expect(after - before, 'closers added').toBe(needsCloser ? 1 : 0);
+    expect(out.indexOf('## The evidence, claim by claim'))
+      .toBeLessThan(out.indexOf('## What the analyze pass flagged'));
+    expect(out).toContain('<span id="c-001"></span>');
+    // Nothing is appended to what the author wrote.
+    const section = findingsSection(out);
+    const before = lines.filter((l) => /^ {0,3}[`~]{3,}/.test(l.replace(/\r/g, ''))).length;
+    const after = (section.match(/^ {0,3}[`~]{3,}/gm) ?? []).length;
+    expect(after, 'fence markers added').toBe(before);
+  });
+
+  test('a CRLF findings file does not render a duplicate heading', () => {
+    writeFileSync(join(scratch, 'findings.md'), '# Findings\r\n\r\n## Gaps\r\n\r\nnone\r\n');
+    const section = findingsSection(withArtifacts(journalBrief()));
+    expect(section).not.toContain('# Findings');
+    expect(section).toContain('### Gaps');
   });
 
   test('a statement ending in a period does not double it', () => {
