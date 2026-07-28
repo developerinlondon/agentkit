@@ -1,11 +1,13 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { renderBriefHtml } from '../../skills/product-intelligence/scripts/html.ts';
 
 const repoRoot = dirname(dirname(import.meta.dir));
 const skillRoot = join(repoRoot, 'skills', 'product-intelligence');
+const publishSkill = join(repoRoot, 'skills', 'publish-page');
 const mixed = join(skillRoot, 'examples', 'mixed');
 
 let scratch = '';
@@ -20,6 +22,35 @@ function copyOfMixed(name: string): string {
   const dir = join(scratch, name);
   cpSync(mixed, dir, { recursive: true });
   return dir;
+}
+
+// A standalone copy of the two skills, laid out as they sit in the repo. It
+// lets a test decide whether the dependencies are there and mark its own
+// bundled theme, neither of which can be done to the repo's own tree while
+// other work shares it.
+function skillTree(name: string, options: { deps: boolean; sentinel?: string }): string {
+  const root = join(scratch, name);
+  const publishCopy = join(root, 'skills', 'publish-page');
+  cpSync(publishSkill, publishCopy, {
+    recursive: true,
+    filter: (src) => !src.includes('node_modules'),
+  });
+  cpSync(join(skillRoot, 'scripts'), join(root, 'skills', 'product-intelligence', 'scripts'), {
+    recursive: true,
+  });
+  if (options.deps) {
+    symlinkSync(join(publishSkill, 'node_modules'), join(publishCopy, 'node_modules'));
+  }
+  if (options.sentinel) {
+    const theme = join(publishCopy, 'themes', 'doc.html');
+    writeFileSync(theme, readFileSync(theme, 'utf-8').replace('</head>', `<!--${options.sentinel}--></head>`));
+  }
+  return root;
+}
+
+function renderCli(root: string, args: string[], env: Record<string, string> = {}) {
+  const script = join(root, 'skills', 'product-intelligence', 'scripts', 'render.ts');
+  return spawnSync('bun', [script, ...args], { encoding: 'utf-8', env: { ...process.env, ...env } });
 }
 
 // Attribute values only. A verbatim quote in the evidence may well contain a
@@ -88,6 +119,25 @@ describe('portable brief page', () => {
     expect(html).toContain('&lt;/title&gt;&lt;script&gt;alert(1)&lt;/script&gt;');
   });
 
+  // The page must come from the theme shipped beside the script. publish.ts
+  // prefers a canonical clone when one exists, and a portable page that
+  // silently followed it would render differently on every machine.
+  test('renders the bundled theme, not a canonical clone', async () => {
+    const clone = join(scratch, 'pages-clone');
+    mkdirSync(join(clone, 'themes'), { recursive: true });
+    const bundled = readFileSync(join(publishSkill, 'themes', 'doc.html'), 'utf-8');
+    writeFileSync(join(clone, 'themes', 'doc.html'), bundled.replace('</head>', '<!--CLONE-THEME--></head>'));
+
+    const root = skillTree('themed', { deps: true, sentinel: 'BUNDLED-THEME' });
+    const out = join(scratch, 'themed.html');
+    const result = renderCli(root, [mixed, '--html', '--out', out], { AGENTKIT_PAGES_REPO: clone });
+
+    expect(result.status, result.stderr).toBe(0);
+    const html = readFileSync(out, 'utf-8');
+    expect(html).toContain('<!--BUNDLED-THEME-->');
+    expect(html).not.toContain('<!--CLONE-THEME-->');
+  });
+
   test('the mermaid runtime is inlined only when the page has a diagram', async () => {
     const plain = await renderBriefHtml(mixed);
     expect(plain).not.toContain('class="mermaid"');
@@ -99,5 +149,52 @@ describe('portable brief page', () => {
     expect(withDiagram).toContain('class="mermaid"');
     expect(withDiagram).toContain('mermaid.initialize');
     expect(withDiagram).not.toMatch(/<script\b[^>]*\bsrc\s*=/i);
+  });
+});
+
+// The CLI surface both Pages scaffolds invoke.
+describe('render.ts --html', () => {
+  test('writes index.html into the intelligence dir by default', async () => {
+    const dir = copyOfMixed('cli-default');
+    const result = renderCli(skillTree('cli', { deps: true }), [dir, '--html']);
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout.trim()).toBe(join(dir, 'index.html'));
+    expect(readFileSync(join(dir, 'index.html'), 'utf-8')).toBe(await renderBriefHtml(mixed));
+  });
+
+  test('--out writes there, and the flag may lead the directory', () => {
+    const root = skillTree('cli-out', { deps: true });
+    const target = join(scratch, 'public', 'index.html');
+    mkdirSync(dirname(target), { recursive: true });
+    const leading = renderCli(root, ['--html', mixed, '--out', target]);
+    expect(leading.status, leading.stderr).toBe(0);
+    expect(leading.stdout.trim()).toBe(target);
+    expect(readFileSync(target, 'utf-8')).toContain('<title>acme-notes: what the evidence says</title>');
+  });
+
+  test('exits 2 on usage, 1 on unusable input', () => {
+    const root = skillTree('cli-errors', { deps: true });
+    const noDir = renderCli(root, ['--html']);
+    expect(noDir.status).toBe(2);
+    expect(noDir.stderr).toContain('usage:');
+    expect(noDir.stderr).toContain('--html');
+
+    const noOutPath = renderCli(root, [mixed, '--html', '--out']);
+    expect(noOutPath.status).toBe(2);
+
+    const empty = renderCli(root, [join(scratch, 'nothing-here'), '--html']);
+    expect(empty.status).toBe(1);
+    expect(empty.stderr).toContain('missing');
+  });
+
+  test('without the publish-page dependencies it fails naming its own fix', () => {
+    const root = skillTree('cli-nodeps', { deps: false });
+    const result = renderCli(root, [mixed, '--html', '--out', join(scratch, 'never.html')]);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('page renderer unavailable');
+    expect(result.stderr).toContain('bun install');
+    // The markdown lane carries no such dependency and must stay usable.
+    const markdown = renderCli(root, [mixed, '--out', join(scratch, 'brief.md')]);
+    expect(markdown.status, markdown.stderr).toBe(0);
   });
 });

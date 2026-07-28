@@ -238,6 +238,12 @@ output, so a rebuilt page only changes when the evidence does.
 
 One-time on the machine that renders: `cd skills/publish-page && bun install`.
 
+**Findings diagrams: known limitation.** A `` ```mermaid `` fence in
+`findings.md` reaches the page with the analyze pass's escaping applied inside
+the fence, so any diagram using `[`, `]`, `(` or `)` fails to parse — while
+the 3.4 MB mermaid runtime is inlined regardless. Keep diagrams out of
+`findings.md` until that escaping is fence-aware.
+
 ### Rung 2 — Pages CI
 
 Scaffolds in `assets/ci/` — copy one into the repo that owns the brief and set
