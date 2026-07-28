@@ -99,6 +99,7 @@ fileGroups:
 
   productInputs:
     - 'hooks/claude/pages-police.sh'
+    - 'pages/worker/**/*'
     - 'plugins-cc/agentkit/hooks/pages-police.sh'
     - 'plugins-cc/agentkit/skills/product-intelligence/**/*'
     - 'plugins-cc/agentkit/skills/publish-page/**/*'

@@ -1,10 +1,20 @@
 import { describe, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import {
   TEST_SLICES,
+  discoverProductionSurfaces,
   discoverTestFiles,
+  testTaskInputPatterns,
+  validateProductionRouting,
   validateTestSlices,
 } from '../scripts/check-test-slices';
 
@@ -61,6 +71,74 @@ describe('test slice routing', () => {
     } finally {
       rmSync(root, { force: true, recursive: true });
     }
+  });
+
+  test('discovers nested packages and executable entrypoints as production surfaces', () => {
+    const root = mkdtempSync(join(tmpdir(), 'agentkit-production-discovery-'));
+
+    try {
+      for (const file of [
+        'package.json',
+        'pages/worker/package.json',
+        'pages/worker/src/worker.js',
+        'pages/worker/wrangler.toml',
+        'pages/worker/.gitignore',
+        'scripts/entrypoint',
+        'tests/probe.sh',
+      ]) {
+        const path = join(root, file);
+        mkdirSync(dirname(path), { recursive: true });
+        writeFileSync(path, '');
+      }
+      chmodSync(join(root, 'scripts/entrypoint'), 0o755);
+      chmodSync(join(root, 'tests/probe.sh'), 0o755);
+
+      expect(discoverProductionSurfaces(root)).toEqual([
+        'pages/worker/package.json',
+        'pages/worker/src/worker.js',
+        'pages/worker/wrangler.toml',
+        'scripts/entrypoint',
+      ]);
+    } finally {
+      rmSync(root, { force: true, recursive: true });
+    }
+  });
+
+  test('rejects a production surface that matches no test task input', () => {
+    const moon = `
+fileGroups:
+  productInputs:
+    - 'covered/**/*'
+tasks:
+  test-product:
+    inputs:
+      - 'group://productInputs'
+  deploy:
+    inputs:
+      - 'uncovered/**/*'
+`;
+
+    expect(
+      validateProductionRouting(
+        ['covered/src/worker.js', 'uncovered/src/worker.js'],
+        testTaskInputPatterns(moon),
+      ),
+    ).toEqual(['unrouted production surface: uncovered/src/worker.js']);
+  });
+
+  test('routes every production surface to at least one test task input', () => {
+    const moon = readFileSync(join(repoRoot, 'moon.yml'), 'utf-8');
+    const surfaces = discoverProductionSurfaces();
+    const pagesWorker = [
+      'pages/worker/package.json',
+      'pages/worker/src/worker.js',
+      'pages/worker/wrangler.toml',
+    ];
+
+    expect(surfaces).toEqual(expect.arrayContaining(pagesWorker));
+    expect(validateProductionRouting(surfaces, testTaskInputPatterns(moon))).toEqual(
+      [],
+    );
   });
 
   test('runs slice coverage validation for every project change', () => {

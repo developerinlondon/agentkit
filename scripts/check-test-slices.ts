@@ -1,5 +1,6 @@
-import { readdirSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { Glob, YAML } from 'bun';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { basename, join, relative } from 'node:path';
 
 export const TEST_SLICES = {
   hooks: [
@@ -53,9 +54,14 @@ export type TestSlice = keyof typeof TEST_SLICES;
 const repoRoot = join(import.meta.dir, '..');
 const bunTestFilename = /(?:\.test|_test|\.spec|_spec)\.(?:js|jsx|ts|tsx)$/;
 
-export function discoverTestFiles(root = repoRoot): string[] {
+interface DiscoveredFile {
+  absolute: string;
+  relative: string;
+}
+
+function discoverFiles(root: string): DiscoveredFile[] {
   const directories = [root];
-  const testFiles: string[] = [];
+  const files: DiscoveredFile[] = [];
 
   while (directories.length > 0) {
     const directory = directories.pop();
@@ -71,13 +77,42 @@ export function discoverTestFiles(root = repoRoot): string[] {
 
       const path = join(directory, entry.name);
       if (entry.isDirectory()) directories.push(path);
-      if (entry.isFile() && bunTestFilename.test(entry.name)) {
-        testFiles.push(relative(root, path).replaceAll('\\', '/'));
+      if (entry.isFile()) {
+        files.push({
+          absolute: path,
+          relative: relative(root, path).replaceAll('\\', '/'),
+        });
       }
     }
   }
 
-  return testFiles.sort();
+  return files.sort((left, right) => left.relative.localeCompare(right.relative));
+}
+
+export function discoverTestFiles(root = repoRoot): string[] {
+  return discoverFiles(root)
+    .filter((file) => bunTestFilename.test(basename(file.relative)))
+    .map((file) => file.relative);
+}
+
+export function discoverProductionSurfaces(root = repoRoot): string[] {
+  const files = discoverFiles(root);
+  const packageRoots = files
+    .map((file) => file.relative)
+    .filter((file) => file.endsWith('/package.json'))
+    .map((file) => file.slice(0, -'/package.json'.length));
+
+  return files
+    .filter((file) => {
+      if (file.relative.startsWith('tests/')) return false;
+      if (basename(file.relative).startsWith('.')) return false;
+      if (bunTestFilename.test(basename(file.relative))) return false;
+
+      const executable = (statSync(file.absolute).mode & 0o111) !== 0;
+      const packaged = packageRoots.some((root) => file.relative.startsWith(`${root}/`));
+      return executable || packaged;
+    })
+    .map((file) => file.relative);
 }
 
 export function validateTestSlices(testFiles: readonly string[]): string[] {
@@ -101,6 +136,54 @@ export function validateTestSlices(testFiles: readonly string[]): string[] {
   return errors.sort();
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function strings(value: unknown, label: string): string[] {
+  if (!Array.isArray(value) || !value.every((item) => typeof item === 'string')) {
+    throw new Error(`${label} must be a list of strings`);
+  }
+  return value;
+}
+
+export function testTaskInputPatterns(contents: string): string[] {
+  const config = YAML.parse(contents);
+  if (!isRecord(config) || !isRecord(config.fileGroups) || !isRecord(config.tasks)) {
+    throw new Error('moon.yml must define fileGroups and tasks');
+  }
+
+  const patterns = new Set<string>();
+  for (const [taskName, task] of Object.entries(config.tasks)) {
+    if (!taskName.startsWith('test-') || !isRecord(task)) continue;
+
+    for (const input of strings(task.inputs, `${taskName}.inputs`)) {
+      if (!input.startsWith('group://')) {
+        patterns.add(input);
+        continue;
+      }
+
+      const groupName = input.slice('group://'.length);
+      for (const pattern of strings(config.fileGroups[groupName], `fileGroups.${groupName}`)) {
+        patterns.add(pattern);
+      }
+    }
+  }
+
+  return [...patterns].sort();
+}
+
+export function validateProductionRouting(
+  productionSurfaces: readonly string[],
+  inputPatterns: readonly string[],
+): string[] {
+  const globs = inputPatterns.map((pattern) => new Glob(pattern));
+  return productionSurfaces
+    .filter((file) => !globs.some((glob) => glob.match(file)))
+    .map((file) => `unrouted production surface: ${file}`)
+    .sort();
+}
+
 function failForCoverage(errors: readonly string[]): never {
   for (const error of errors) console.error(error);
   process.exit(1);
@@ -120,11 +203,20 @@ function runSlice(slice: TestSlice): never {
 if (import.meta.main) {
   const requested = process.argv[2];
   const testFiles = discoverTestFiles();
-  const errors = validateTestSlices(testFiles);
+  const productionSurfaces = discoverProductionSurfaces();
+  const moon = readFileSync(join(repoRoot, 'moon.yml'), 'utf-8');
+  const errors = [
+    ...validateTestSlices(testFiles),
+    ...validateProductionRouting(productionSurfaces, testTaskInputPatterns(moon)),
+  ].sort();
 
   if (errors.length > 0) failForCoverage(errors);
   if (requested === '--check') {
-    console.log(`Test slice routing covers ${testFiles.length} test files.`);
+    const summary = [
+      `Test slice routing covers ${testFiles.length} test files`,
+      `${productionSurfaces.length} production surfaces.`,
+    ].join(' and ');
+    console.log(summary);
     process.exit(0);
   }
 
