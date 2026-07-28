@@ -2,7 +2,8 @@
 #   group <id> <description>   declares a group; the description is what an
 #                              installer, a plugin manifest, or a picker shows
 #   <skill> <group>            puts a skill in a declared group
-# A skill with no record belongs to `core`, which always installs.
+# A skill with no record belongs to `core`, which always installs, and may name
+# only one group. LF line endings only — CRLF is rejected by both readers.
 # Adding a group is a `group` line plus its membership lines — nothing else.
 
 group core Enforcement, review, planning, and workflow skills for everyday use

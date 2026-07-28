@@ -28,6 +28,11 @@ export function parseSkillGroups(contents: string): SkillGroupManifest {
       continue;
     }
     if (!first || !second) throw new Error(`membership record without a group: ${trimmed}`);
+    // Resolved first-match by lib/skill-groups.sh and last-match here, so a
+    // duplicate would make the installer and this reader ship different sets.
+    if (first in membership) {
+      throw new Error(`manifest names more than one group for: ${first}`);
+    }
     membership[first] = second;
   }
 

@@ -52,12 +52,20 @@ validate_skill_groups() {
 		echo "ERROR: missing $SKILL_GROUPS_FILE — cannot resolve skill groups." >&2
 		return 1
 	fi
-	local group orphan
+	local group orphan duplicate
 	# A membership line that lost its group name would otherwise fall through to
 	# core, shipping that skill to everyone by default.
 	orphan="$(awk '$1 != "group" && $1 !~ /^#/ && NF == 1 { print $1 }' "$SKILL_GROUPS_FILE")"
 	if [[ -n "$orphan" ]]; then
 		echo "ERROR: $SKILL_GROUPS_FILE has membership lines without a group: $orphan" >&2
+		return 1
+	fi
+	# Two memberships for one skill resolve first-match here and last-match in
+	# the TypeScript reader, so the two would ship different sets.
+	duplicate="$(awk '$1 != "group" && $1 !~ /^#/ && NF >= 2 { print $1 }' \
+		"$SKILL_GROUPS_FILE" | sort | uniq -d)"
+	if [[ -n "$duplicate" ]]; then
+		echo "ERROR: $SKILL_GROUPS_FILE names more than one group for: $duplicate" >&2
 		return 1
 	fi
 	for group in $(assigned_groups); do

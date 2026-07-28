@@ -8,6 +8,7 @@ const repoRoot = dirname(dirname(import.meta.dir));
 const fixtures = join(repoRoot, 'tests', 'fixtures');
 const hostile = join(fixtures, 'skill-groups-hostile');
 const orphan = join(fixtures, 'skill-groups-orphan');
+const duplicate = join(fixtures, 'skill-groups-duplicate');
 
 // The installer and the plugin generator read the manifest in bash; the tests
 // and any future picker read it in TypeScript. A disagreement means one of them
@@ -56,6 +57,18 @@ describe('manifest readers agree', () => {
 
     expect(() => parseSkillGroups(readFileSync(orphan, 'utf-8'))).toThrow(
       'membership record without a group',
+    );
+  });
+
+  test('both readers reject a skill claimed by two groups', () => {
+    // Accepting it would be worse than divergent: bash resolves first-match and
+    // TypeScript last-match, so installer and generator would disagree.
+    const validated = bashReader(duplicate, 'validate_skill_groups');
+    expect(validated.status).toBe(1);
+    expect(validated.stderr).toContain('more than one group for: product-review');
+
+    expect(() => parseSkillGroups(readFileSync(duplicate, 'utf-8'))).toThrow(
+      'more than one group for: product-review',
     );
   });
 
