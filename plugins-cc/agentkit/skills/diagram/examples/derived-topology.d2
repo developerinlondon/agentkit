@@ -1,0 +1,35 @@
+# derived from Kubernetes objects — 9 nodes, 8 edges
+
+direction: down
+
+ns_publishing: "namespace publishing" {
+  deployment_publish_api: "publish-api ×3\nDeployment" {
+    icon: @kubernetes
+    style.multiple: true
+  }
+  deployment_publish_cache: "publish-cache\nDeployment" {
+    icon: @redis
+  }
+  ingress_publish: "publish\nIngress" {
+    icon: @ingress
+  }
+  persistentvolumeclaim_publish_artifacts: "publish-artifacts\nPersistentVolumeClaim"
+  persistentvolumeclaim_publish_db_data: "publish-db-data\nPersistentVolumeClaim"
+  service_publish_api: "publish-api\nService"
+  service_publish_cache: "publish-cache\nService"
+  service_publish_db: "publish-db\nService"
+  statefulset_publish_db: "publish-db\nStatefulSet" {
+    icon: @postgres
+  }
+}
+
+ns_publishing.deployment_publish_api -> ns_publishing.persistentvolumeclaim_publish_artifacts: "mounts /var/lib/artifacts"
+ns_publishing.deployment_publish_api -> ns_publishing.service_publish_cache: "redis 6379"
+ns_publishing.deployment_publish_api -> ns_publishing.service_publish_db: "postgres 5432"
+ns_publishing.ingress_publish -> ns_publishing.service_publish_api: "HTTPS pages.example.com/" {
+  style.bold: true
+}
+ns_publishing.service_publish_api -> ns_publishing.deployment_publish_api: "TCP 80→8080"
+ns_publishing.service_publish_cache -> ns_publishing.deployment_publish_cache: "TCP 6379→6379"
+ns_publishing.service_publish_db -> ns_publishing.statefulset_publish_db: "TCP 5432→5432"
+ns_publishing.statefulset_publish_db -> ns_publishing.persistentvolumeclaim_publish_db_data: "mounts /var/lib/postgresql/data"

@@ -82,9 +82,41 @@ trust zones. When the classification lands on one of them, author D2 and follow
 Every other row is drawn in the **sketch register** — the hand-drawn excalidraw
 pipeline in `SKILL.md`. There, notation correctness beats icon fidelity: a
 correct crow's foot or a correctly placed trust boundary teaches; a vendor logo
-does not. C4 component, interchange map, trust-zone map and process model sit
-here for now, and stay here until the technical register grows recipes for
-them — do not reach for logo look-alikes to fake the register you are not in.
+does not. Interchange map, trust-zone map and process model sit here for now,
+and stay here until the technical register grows recipes for them — do not
+reach for logo look-alikes to fake the register you are not in.
+
+**C4 component is the one row that sits in both**, because the condition above
+has been met for exactly half of it. Derived from a module graph it has a
+mechanical recipe — group the modules, aggregate the imports — so it renders
+D2. Authored by hand it has none, so it stays a sketch. The register follows
+the recipe, not the type.
+
+## Derive it before you draw it
+
+Four rows have a deterministic extractor. When the trigger fires **and** the
+named source exists, run the extractor and render its D2; hand-authoring the
+same figure from memory is a worse diagram, not a faster one.
+
+| Type                | Source of truth                             | Extractor                                          |
+| ------------------- | ------------------------------------------- | -------------------------------------------------- |
+| ERD                 | a database you can connect to               | `extract.ts schema` ← `tbls out -t json`           |
+| deployment topology | `terraform/`, `*.tfstate`, an applied state | `extract.ts infra` ← `tofu show -json`             |
+| deployment topology | `k8s/`, a chart, a live namespace           | `extract.ts k8s` ← manifests or `kubectl -o json`  |
+| C4 component        | one package's module graph                  | `extract.ts deps` ← `depcruise --output-type json` |
+
+Two rows deliberately have none. **C4 context and C4 container** are claims
+about what a system is _for_ and where its responsibility ends — no tool reads
+that off a repository, and a container inventory scraped from `charts/` would
+be a deployables list wearing a C4 costume. Author those.
+
+Where both an extractor and a hand-drawn figure are possible, the tie-break is
+the audience cap from above: a derived figure carries real names, real types
+and real ports, which an implementer needs and a non-engineering audience does
+not. Cap first, then derive.
+
+Full option reference, and an honest account of the edges these tools cannot
+recover, in `technical-register.md`.
 
 **Type is not medium.** For **sequence** and **state machine** the destination
 picks the tool: publish-page's routing table owns those thresholds and sends

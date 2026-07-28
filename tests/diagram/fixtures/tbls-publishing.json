@@ -1,0 +1,542 @@
+{
+  "name": "pub.db",
+  "tables": [
+    {
+      "name": "account",
+      "type": "table",
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "email",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "nullable": false
+        }
+      ],
+      "indexes": [
+        {
+          "name": "sqlite_autoindex_account_2",
+          "def": "UNIQUE (email)",
+          "table": "account",
+          "columns": [
+            "email"
+          ]
+        },
+        {
+          "name": "sqlite_autoindex_account_1",
+          "def": "PRIMARY KEY (id)",
+          "table": "account",
+          "columns": [
+            "id"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "id",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "account",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "sqlite_autoindex_account_2",
+          "type": "UNIQUE",
+          "def": "UNIQUE (email)",
+          "table": "account",
+          "columns": [
+            "email"
+          ]
+        },
+        {
+          "name": "sqlite_autoindex_account_1",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "account",
+          "columns": [
+            "id"
+          ]
+        }
+      ],
+      "def": "CREATE TABLE account (\n  id TEXT NOT NULL PRIMARY KEY,\n  email TEXT NOT NULL UNIQUE,\n  created_at TEXT NOT NULL\n)"
+    },
+    {
+      "name": "site",
+      "type": "table",
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "account_id",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "slug",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "theme",
+          "type": "TEXT",
+          "nullable": true
+        }
+      ],
+      "indexes": [
+        {
+          "name": "sqlite_autoindex_site_2",
+          "def": "UNIQUE (slug)",
+          "table": "site",
+          "columns": [
+            "slug"
+          ]
+        },
+        {
+          "name": "sqlite_autoindex_site_1",
+          "def": "PRIMARY KEY (id)",
+          "table": "site",
+          "columns": [
+            "id"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "id",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "site",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "- (Foreign key ID: 0)",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (account_id) REFERENCES account (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE",
+          "table": "site",
+          "referenced_table": "account",
+          "columns": [
+            "account_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "sqlite_autoindex_site_2",
+          "type": "UNIQUE",
+          "def": "UNIQUE (slug)",
+          "table": "site",
+          "columns": [
+            "slug"
+          ]
+        },
+        {
+          "name": "sqlite_autoindex_site_1",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "site",
+          "columns": [
+            "id"
+          ]
+        }
+      ],
+      "def": "CREATE TABLE site (\n  id TEXT NOT NULL PRIMARY KEY,\n  account_id TEXT NOT NULL REFERENCES account(id),\n  slug TEXT NOT NULL UNIQUE,\n  theme TEXT\n)"
+    },
+    {
+      "name": "page",
+      "type": "table",
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "site_id",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "slug",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "title",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "body_md",
+          "type": "TEXT",
+          "nullable": true
+        },
+        {
+          "name": "published_at",
+          "type": "TEXT",
+          "nullable": true
+        }
+      ],
+      "indexes": [
+        {
+          "name": "sqlite_autoindex_page_1",
+          "def": "PRIMARY KEY (id)",
+          "table": "page",
+          "columns": [
+            "id"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "id",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "page",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "- (Foreign key ID: 0)",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (site_id) REFERENCES site (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE",
+          "table": "page",
+          "referenced_table": "site",
+          "columns": [
+            "site_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "sqlite_autoindex_page_1",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "page",
+          "columns": [
+            "id"
+          ]
+        }
+      ],
+      "def": "CREATE TABLE page (\n  id TEXT NOT NULL PRIMARY KEY,\n  site_id TEXT NOT NULL REFERENCES site(id),\n  slug TEXT NOT NULL,\n  title TEXT NOT NULL,\n  body_md TEXT,\n  published_at TEXT\n)"
+    },
+    {
+      "name": "revision",
+      "type": "table",
+      "columns": [
+        {
+          "name": "id",
+          "type": "INTEGER",
+          "nullable": false
+        },
+        {
+          "name": "page_id",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "author_id",
+          "type": "TEXT",
+          "nullable": true
+        },
+        {
+          "name": "body_md",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "nullable": false
+        }
+      ],
+      "constraints": [
+        {
+          "name": "id",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "revision",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "- (Foreign key ID: 0)",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (author_id) REFERENCES account (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE",
+          "table": "revision",
+          "referenced_table": "account",
+          "columns": [
+            "author_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "- (Foreign key ID: 1)",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (page_id) REFERENCES page (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE",
+          "table": "revision",
+          "referenced_table": "page",
+          "columns": [
+            "page_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        }
+      ],
+      "def": "CREATE TABLE revision (\n  id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,\n  page_id TEXT NOT NULL REFERENCES page(id),\n  author_id TEXT REFERENCES account(id),\n  body_md TEXT NOT NULL,\n  created_at TEXT NOT NULL\n)"
+    },
+    {
+      "name": "tag",
+      "type": "table",
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "name",
+          "type": "TEXT",
+          "nullable": false
+        }
+      ],
+      "indexes": [
+        {
+          "name": "sqlite_autoindex_tag_2",
+          "def": "UNIQUE (name)",
+          "table": "tag",
+          "columns": [
+            "name"
+          ]
+        },
+        {
+          "name": "sqlite_autoindex_tag_1",
+          "def": "PRIMARY KEY (id)",
+          "table": "tag",
+          "columns": [
+            "id"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "id",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "tag",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "sqlite_autoindex_tag_2",
+          "type": "UNIQUE",
+          "def": "UNIQUE (name)",
+          "table": "tag",
+          "columns": [
+            "name"
+          ]
+        },
+        {
+          "name": "sqlite_autoindex_tag_1",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "tag",
+          "columns": [
+            "id"
+          ]
+        }
+      ],
+      "def": "CREATE TABLE tag (\n  id TEXT NOT NULL PRIMARY KEY,\n  name TEXT NOT NULL UNIQUE\n)"
+    },
+    {
+      "name": "page_tag",
+      "type": "table",
+      "columns": [
+        {
+          "name": "page_id",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "tag_id",
+          "type": "TEXT",
+          "nullable": false
+        }
+      ],
+      "indexes": [
+        {
+          "name": "sqlite_autoindex_page_tag_1",
+          "def": "PRIMARY KEY (page_id, tag_id)",
+          "table": "page_tag",
+          "columns": [
+            "page_id",
+            "tag_id"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "page_id",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (page_id)",
+          "table": "page_tag",
+          "columns": [
+            "page_id"
+          ]
+        },
+        {
+          "name": "tag_id",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (tag_id)",
+          "table": "page_tag",
+          "columns": [
+            "tag_id"
+          ]
+        },
+        {
+          "name": "- (Foreign key ID: 0)",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (tag_id) REFERENCES tag (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE",
+          "table": "page_tag",
+          "referenced_table": "tag",
+          "columns": [
+            "tag_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "- (Foreign key ID: 1)",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (page_id) REFERENCES page (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE",
+          "table": "page_tag",
+          "referenced_table": "page",
+          "columns": [
+            "page_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "sqlite_autoindex_page_tag_1",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (page_id, tag_id)",
+          "table": "page_tag",
+          "columns": [
+            "page_id",
+            "tag_id"
+          ]
+        }
+      ],
+      "def": "CREATE TABLE page_tag (\n  page_id TEXT NOT NULL REFERENCES page(id),\n  tag_id TEXT NOT NULL REFERENCES tag(id),\n  PRIMARY KEY (page_id, tag_id)\n)"
+    }
+  ],
+  "relations": [
+    {
+      "table": "site",
+      "columns": [
+        "account_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "account",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (account_id) REFERENCES account (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
+    },
+    {
+      "table": "page",
+      "columns": [
+        "site_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "site",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (site_id) REFERENCES site (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
+    },
+    {
+      "table": "revision",
+      "columns": [
+        "author_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "account",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "zero_or_one",
+      "def": "FOREIGN KEY (author_id) REFERENCES account (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
+    },
+    {
+      "table": "revision",
+      "columns": [
+        "page_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "page",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (page_id) REFERENCES page (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
+    },
+    {
+      "table": "page_tag",
+      "columns": [
+        "tag_id"
+      ],
+      "cardinality": "zero_or_one",
+      "parent_table": "tag",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (tag_id) REFERENCES tag (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
+    },
+    {
+      "table": "page_tag",
+      "columns": [
+        "page_id"
+      ],
+      "cardinality": "zero_or_one",
+      "parent_table": "page",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (page_id) REFERENCES page (id) ON UPDATE NO ACTION ON DELETE NO ACTION MATCH NONE"
+    }
+  ],
+  "driver": {
+    "name": "sqlite",
+    "database_version": "3.53.2"
+  }
+}

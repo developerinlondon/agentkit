@@ -49,6 +49,25 @@ bun <skill-dir>/scripts/d2-render.ts --in topology.d2 --out topology.svg \
   --png topology.png --label "Production deployment topology"
 ```
 
+**Before writing a line of that D2, ask whether the project can produce it.**
+When the classification lands on a technical type and the system's shape is
+already recorded somewhere — a module graph, a live schema, a state file, a
+manifest directory — an extractor derives the D2 and you never author the
+graph at all:
+
+```bash
+depcruise --no-config --output-type json 'src/**/*.ts' \
+  | bun <skill-dir>/scripts/extract.ts deps --focus src --out modules.d2
+```
+
+`extract.ts deps | schema | infra | k8s` covers C4 component, ERD and
+deployment topology; `references/selection.md` names the extractor beside each
+type it serves. Choosing the scope is your job and the graph is never your
+invention — which is the whole difference between a diagram that documents the
+system and one that documents your memory of it. Reach for hand-written D2 only
+when no such source exists, and see `references/technical-register.md` for what
+these tools genuinely cannot know.
+
 Renderer is pinned to **d2 v0.7.1**; the wrapper refuses any other version,
 inlines vendored CC0 icons (`icon: @postgres`), and fails the render if the
 output is not self-contained. The render-LOOK-fix discipline of step 5 applies
