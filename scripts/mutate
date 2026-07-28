@@ -1,0 +1,181 @@
+#!/usr/bin/env bash
+# Run one mutation against one file and report whether the tests notice.
+#
+# Restores from a scratch copy, never `git checkout` — a shared clone carries
+# other sessions' uncommitted work that a checkout would destroy. The restore is
+# verified by digest, and a mutation that did not change the file is a harness
+# fault rather than a result.
+set -euo pipefail
+
+# shellcheck source=lib/test-verdict.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/test-verdict.sh"
+
+FILE=""
+TEST_CMD=""
+REPLACE=""
+WITH=""
+WITH_SET=false
+SED_COUNT=0
+
+usage() {
+	local status="${1:-2}"
+	printf '%s\n' \
+		'usage: mutate --file PATH --test CMD (--replace FROM --with TO | --sed EXPR)...' \
+		'' \
+		'  --file PATH        the file to mutate' \
+		'  --test CMD         test command; judged by its printed pass/fail counts' \
+		'  --replace FROM     literal text to replace (no regex, no escaping)' \
+		'  --with TO          literal replacement; pair with --replace' \
+		'  --sed EXPR         sed expression, repeatable, for anything else' \
+		'' \
+		'exit: 0 caught (tests went red), 1 survived (no test failed),' \
+		'      2 usage, 3 harness fault (mutation did not land, or nothing ran)' >&2
+	exit "$status"
+}
+
+fail() {
+	printf 'mutate: %s\n' "$1" >&2
+	exit "${2:-3}"
+}
+
+parse_args() {
+	while [[ $# -gt 0 ]]; do
+		case "$1" in
+		--file)
+			[[ $# -ge 2 ]] || usage
+			FILE="$2"
+			shift 2
+			;;
+		--test)
+			[[ $# -ge 2 ]] || usage
+			TEST_CMD="$2"
+			shift 2
+			;;
+		--replace)
+			[[ $# -ge 2 ]] || usage
+			REPLACE="$2"
+			shift 2
+			;;
+		--with)
+			[[ $# -ge 2 ]] || usage
+			WITH="$2"
+			WITH_SET=true
+			shift 2
+			;;
+		--sed)
+			[[ $# -ge 2 ]] || usage
+			SED_EXPRS[$SED_COUNT]="$2"
+			SED_COUNT=$((SED_COUNT + 1))
+			shift 2
+			;;
+		--help)
+			usage 0
+			;;
+		*) usage ;;
+		esac
+	done
+}
+
+digest() {
+	md5sum "$1" | awk '{print $1}'
+}
+
+apply_literal() {
+	local target="$1" from="$2" to="$3"
+	FROM="$from" TO="$to" awk '
+		BEGIN { from = ENVIRON["FROM"]; to = ENVIRON["TO"]; n = length(from) }
+		{
+			out = ""
+			line = $0
+			while ((at = index(line, from)) > 0) {
+				out = out substr(line, 1, at - 1) to
+				line = substr(line, at + n)
+			}
+			print out line
+		}
+	' "$target"
+}
+
+mutate_file() {
+	local target="$1" work="$2" i=0
+	cp "$target" "$work"
+	if [[ -n "$REPLACE" ]]; then
+		apply_literal "$work" "$REPLACE" "$WITH" >"$work.next"
+		mv "$work.next" "$work"
+	fi
+	while [[ "$i" -lt "$SED_COUNT" ]]; do
+		sed "${SED_EXPRS[$i]}" "$work" >"$work.next"
+		mv "$work.next" "$work"
+		i=$((i + 1))
+	done
+	cp "$work" "$target"
+}
+
+parse_args "$@"
+
+[[ -n "$FILE" ]] || usage
+[[ -n "$TEST_CMD" ]] || usage
+[[ -f "$FILE" ]] || fail "no such file: $FILE" 2
+
+# bash reads a script lazily as it executes, so rewriting this file mid-run
+# corrupts the rest of the run rather than testing anything.
+SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
+if [[ "$(cd "$(dirname "$FILE")" && pwd)/$(basename "$FILE")" == "$SELF" ]]; then
+	fail "refusing to mutate the running script — copy it and mutate the copy" 2
+fi
+if [[ -n "$REPLACE" && "$WITH_SET" != true ]]; then
+	usage
+fi
+if [[ -z "$REPLACE" && "$SED_COUNT" -eq 0 ]]; then
+	usage
+fi
+
+SCRATCH="$(mktemp -d "${TMPDIR:-/tmp}/agentkit-mutate.XXXXXX")"
+BACKUP="$SCRATCH/$(basename "$FILE")"
+cp "$FILE" "$BACKUP"
+BEFORE="$(digest "$FILE")"
+
+restore() {
+	local status=$?
+	cp "$BACKUP" "$FILE"
+	if [[ "$(digest "$FILE")" != "$BEFORE" ]]; then
+		printf 'mutate: RESTORE FAILED — %s does not match its pre-mutation digest\n' "$FILE" >&2
+		rm -rf "$SCRATCH"
+		exit 3
+	fi
+	rm -rf "$SCRATCH"
+	exit "$status"
+}
+trap restore EXIT
+
+mutate_file "$FILE" "$SCRATCH/work"
+if [[ "$(digest "$FILE")" == "$BEFORE" ]]; then
+	fail "mutation did not change $FILE — the pattern never matched"
+fi
+
+printf 'mutate: mutated %s, running: %s\n' "$FILE" "$TEST_CMD" >&2
+OUTPUT="$SCRATCH/output"
+set +e
+bash -c "$TEST_CMD" >"$OUTPUT" 2>&1
+set -e
+cat "$OUTPUT"
+
+set +e
+test_verdict "$OUTPUT"
+VERDICT=$?
+set -e
+
+case "$VERDICT" in
+0)
+	printf 'mutate: SURVIVED — %s pass / %s fail, no test failed under the mutation\n' \
+		"$TEST_VERDICT_PASS" "$TEST_VERDICT_FAIL" >&2
+	exit 1
+	;;
+1)
+	printf 'mutate: CAUGHT — %s pass / %s fail\n' "$TEST_VERDICT_PASS" "$TEST_VERDICT_FAIL" >&2
+	exit 0
+	;;
+*)
+	fail "no pass/fail marker in the test output — nothing ran, so there is no verdict"
+	;;
+esac

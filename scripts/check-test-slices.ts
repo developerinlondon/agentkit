@@ -42,6 +42,8 @@ export const TEST_SLICES = {
     'tests/resource-safety-assets.test.ts',
   ],
   review: [
+    'tests/build/mutate.test.ts',
+    'tests/build/preflight.test.ts',
     'tests/codex-review-hooks.test.ts',
     'tests/product-command.test.ts',
     'tests/review-disciplines.test.ts',

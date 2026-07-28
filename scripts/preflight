@@ -1,0 +1,390 @@
+#!/usr/bin/env bash
+# Deterministic gate a build lane runs before requesting review. Every check is
+# a mechanical repeat of a defect a reviewer already caught by hand; the classes
+# and their evidence are catalogued in BUILD-DISCIPLINE.md.
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO="$(cd "$SCRIPT_DIR/.." && pwd)"
+BASE="origin/main"
+PATHS_FROM=""
+SLICE=""
+FAILED=0
+
+# shellcheck source=lib/test-verdict.sh
+source "$SCRIPT_DIR/lib/test-verdict.sh"
+
+usage() {
+	local status="${1:-2}"
+	printf '%s\n' \
+		'usage: preflight [--base REF] [--repo PATH] [--paths-from FILE] [--slice NAME]' \
+		'' \
+		'  --base REF         compare against this ref (default origin/main)' \
+		'  --repo PATH        repository root to check (default: this checkout)' \
+		'  --paths-from FILE  read the touched paths from FILE instead of git' \
+		'  --slice NAME       run that test slice, judged by its printed counts' \
+		'' \
+		'Exits 0 when every check passes, 1 when any check fails.' >&2
+	exit "$status"
+}
+
+while [[ $# -gt 0 ]]; do
+	case "$1" in
+	--base)
+		[[ $# -ge 2 ]] || usage
+		BASE="$2"
+		shift 2
+		;;
+	--repo)
+		[[ $# -ge 2 ]] || usage
+		REPO="$(cd "$2" && pwd)"
+		shift 2
+		;;
+	--paths-from)
+		[[ $# -ge 2 ]] || usage
+		PATHS_FROM="$2"
+		shift 2
+		;;
+	--slice)
+		[[ $# -ge 2 ]] || usage
+		SLICE="$2"
+		shift 2
+		;;
+	--help) usage 0 ;;
+	*) usage ;;
+	esac
+done
+
+ok() { printf '[ok]   %s\n' "$1"; }
+skip() { printf '[skip] %s\n' "$1"; }
+
+bad() {
+	printf '[FAIL] %s\n' "$1"
+	FAILED=1
+}
+
+touched_paths() {
+	if [[ -n "$PATHS_FROM" ]]; then
+		cat "$PATHS_FROM"
+		return 0
+	fi
+	local base
+	base="$(git -C "$REPO" merge-base "$BASE" HEAD 2>/dev/null || printf '%s' "$BASE")"
+	{
+		git -C "$REPO" diff --name-only --diff-filter=d "$base" HEAD 2>/dev/null || true
+		git -C "$REPO" diff --name-only --diff-filter=d HEAD 2>/dev/null || true
+		git -C "$REPO" diff --name-only --diff-filter=d --cached 2>/dev/null || true
+		git -C "$REPO" ls-files --others --exclude-standard 2>/dev/null || true
+	} | sort -u
+}
+
+is_shell_file() {
+	local path="$1"
+	case "$path" in
+	*.sh) return 0 ;;
+	esac
+	head -1 "$path" 2>/dev/null | grep -qE '^#!.*\b(bash|sh)\b'
+}
+
+# Lines that are wholly a comment carry no behaviour, so a pattern that matches
+# one is describing the defect rather than committing it.
+code_lines() {
+	grep -vnE '^[[:space:]]*(#|//|\*|/\*)' "$1" 2>/dev/null || true
+}
+
+check_bash_syntax() {
+	local path status=0
+	for path in "$@"; do
+		if ! bash -n "$path" 2>/dev/null; then
+			bad "bash -n: $path does not parse"
+			status=1
+		fi
+	done
+	if [[ "$status" -eq 0 ]]; then
+		ok "bash -n clean on $# shell file(s)"
+	fi
+	return 0
+}
+
+check_bash_status() {
+	local report
+	report="$("$SCRIPT_DIR/bash-status-check" "$@" || true)"
+	if [[ -n "$report" ]]; then
+		printf '%s\n' "$report"
+		bad "conditional-and status leak — see BUILD-DISCIPLINE.md 'silent status leak'"
+		return 0
+	fi
+	ok "no conditional-and status leaks"
+	return 0
+}
+
+check_shellcheck() {
+	if ! command -v shellcheck >/dev/null 2>&1; then
+		skip "shellcheck not installed — bash-status-check still covers the status-leak class"
+		return 0
+	fi
+	if ! shellcheck -x "$@"; then
+		bad "shellcheck reported findings"
+		return 0
+	fi
+	ok "shellcheck clean on $# shell file(s)"
+	return 0
+}
+
+mirror_of() {
+	local path="$1"
+	case "$path" in
+	skills/*) printf 'plugins-cc/agentkit/%s' "$path" ;;
+	plugins-cc/agentkit/skills/*) printf '%s' "${path#plugins-cc/agentkit/}" ;;
+	*) printf '' ;;
+	esac
+}
+
+check_mirror() {
+	local path mirror checked=0 status=0
+	for path in "$@"; do
+		mirror="$(mirror_of "$path")"
+		if [[ -z "$mirror" ]]; then
+			continue
+		fi
+		checked=$((checked + 1))
+		if [[ ! -f "$REPO/$mirror" ]]; then
+			bad "mirror missing: $mirror (run scripts/sync-cc-plugin.sh)"
+			status=1
+			continue
+		fi
+		if ! cmp -s "$REPO/$path" "$REPO/$mirror"; then
+			bad "mirror drift: $path differs from $mirror (run scripts/sync-cc-plugin.sh)"
+			status=1
+		fi
+	done
+	if [[ "$checked" -eq 0 ]]; then
+		skip "no skill files touched — mirror parity not applicable"
+		return 0
+	fi
+	if [[ "$status" -eq 0 ]]; then
+		ok "plugin mirror byte-identical for $checked touched skill file(s)"
+	fi
+	return 0
+}
+
+check_routing() {
+	if [[ ! -f "$REPO/scripts/check-test-slices.ts" ]]; then
+		skip "no scripts/check-test-slices.ts — test routing not applicable"
+		return 0
+	fi
+	local output
+	if output="$(cd "$REPO" && bun run scripts/check-test-slices.ts --check 2>&1)"; then
+		ok "test slice routing: $output"
+		return 0
+	fi
+	printf '%s\n' "$output"
+	bad "test slice routing — a new test file runs in no CI slice"
+	return 0
+}
+
+check_slice() {
+	if [[ -z "$SLICE" ]]; then
+		skip "no --slice given — the lane still owes a test run"
+		return 0
+	fi
+	local output verdict=0
+	output="$(mktemp "${TMPDIR:-/tmp}/agentkit-preflight.XXXXXX")"
+	(cd "$REPO" && bun run scripts/check-test-slices.ts "$SLICE") >"$output" 2>&1 || true
+	cat "$output"
+	set +e
+	test_verdict "$output"
+	verdict=$?
+	set -e
+	rm -f "$output"
+	case "$verdict" in
+	0) ok "slice '$SLICE': $TEST_VERDICT_PASS pass / $TEST_VERDICT_FAIL fail" ;;
+	1) bad "slice '$SLICE': $TEST_VERDICT_PASS pass / $TEST_VERDICT_FAIL fail" ;;
+	*) bad "slice '$SLICE' printed no pass/fail marker — nothing ran, so there is no verdict" ;;
+	esac
+	return 0
+}
+
+# Drift that predates the change is not the change's to repair: reformatting it
+# buries the diff in churn the reviewer then has to read past.
+base_unformatted() {
+	local path="$1" base tmp name result=1
+	base="$(git -C "$REPO" merge-base "$BASE" HEAD 2>/dev/null || printf '%s' "$BASE")"
+	tmp="$(mktemp -d "${TMPDIR:-/tmp}/agentkit-preflight-fmt.XXXXXX")"
+	name="$(basename "$path")"
+	if git -C "$REPO" show "$base:$path" >"$tmp/$name" 2>/dev/null; then
+		cp "$REPO/dprint.json" "$tmp/dprint.json"
+		if ! (cd "$tmp" && dprint check "$name" >/dev/null 2>&1); then
+			result=0
+		fi
+	fi
+	rm -rf "$tmp"
+	return "$result"
+}
+
+check_format() {
+	local formattable=""
+	local path
+	for path in "$@"; do
+		case "$path" in
+		*.md | *.json | *.toml | *.yaml | *.yml) formattable="$formattable $path" ;;
+		esac
+	done
+	if [[ -z "$formattable" ]]; then
+		skip "no formattable files touched — dprint not invoked (a bare list formats the repo)"
+		return 0
+	fi
+	if ! command -v dprint >/dev/null 2>&1; then
+		skip "dprint not installed"
+		return 0
+	fi
+	if [[ ! -f "$REPO/dprint.json" ]]; then
+		skip "no dprint.json at the repository root"
+		return 0
+	fi
+	local unclean="" inherited="" path
+	for path in $formattable; do
+		if (cd "$REPO" && dprint check "$path" >/dev/null 2>&1); then
+			continue
+		fi
+		if base_unformatted "$path"; then
+			inherited="$inherited $path"
+		else
+			unclean="$unclean $path"
+		fi
+	done
+	if [[ -n "$inherited" ]]; then
+		skip "already unformatted before this change, left alone:$inherited"
+	fi
+	if [[ -n "$unclean" ]]; then
+		bad "dprint check failed — run: dprint fmt$unclean"
+		return 0
+	fi
+	ok "dprint check clean on the touched formattable files"
+	return 0
+}
+
+check_focused_tests() {
+	local path hits status=0
+	for path in "$@"; do
+		case "$path" in
+		*.test.ts | *.test.js) ;;
+		*) continue ;;
+		esac
+		hits="$(code_lines "$REPO/$path" | grep -E '^[0-9]+:[[:space:]]*(test|describe|it)\.(only|skip)\(' || true)"
+		if [[ -n "$hits" ]]; then
+			bad "focused or skipped test in $path — a green suite that did not run the case"
+			status=1
+		fi
+	done
+	if [[ "$status" -eq 0 ]]; then
+		ok "no focused or skipped tests"
+	fi
+	return 0
+}
+
+check_restore_by_checkout() {
+	local path hits status=0
+	for path in "$@"; do
+		hits="$(code_lines "$REPO/$path" | grep -E '^[0-9]+:[[:space:]]*(.*(;|&&)[[:space:]]*)?git (checkout --|restore )' || true)"
+		if [[ -n "$hits" ]]; then
+			bad "$path restores with git — a shared clone loses other sessions' work; use scripts/mutate"
+			status=1
+		fi
+	done
+	if [[ "$status" -eq 0 ]]; then
+		ok "no git-checkout restores in the touched files"
+	fi
+	return 0
+}
+
+check_bare_dprint() {
+	local path hits status=0
+	for path in "$@"; do
+		hits="$(code_lines "$REPO/$path" | grep -E 'dprint (fmt|check)[[:space:]]*$' || true)"
+		if [[ -n "$hits" ]]; then
+			bad "$path runs dprint with no file list — that formats the whole repo"
+			status=1
+		fi
+	done
+	if [[ "$status" -eq 0 ]]; then
+		ok "no bare dprint invocations"
+	fi
+	return 0
+}
+
+check_real_home() {
+	local path status=0
+	for path in "$@"; do
+		case "$path" in
+		tests/*.ts | tests/*/*.ts) ;;
+		*) continue ;;
+		esac
+		if ! code_lines "$REPO/$path" | grep -qE 'install\.sh|AGENTKIT_HOME'; then
+			continue
+		fi
+		if ! grep -q '\.\.\.process\.env' "$REPO/$path"; then
+			continue
+		fi
+		if grep -qE '\bHOME:' "$REPO/$path"; then
+			continue
+		fi
+		bad "$path spawns an installer with the inherited environment — it writes the real \$HOME"
+		status=1
+	done
+	if [[ "$status" -eq 0 ]]; then
+		ok "no test spawns an installer against the real \$HOME"
+	fi
+	return 0
+}
+
+PATHS="$(touched_paths)"
+EXISTING=""
+SHELL_FILES=""
+for candidate in $PATHS; do
+	if [[ -f "$REPO/$candidate" ]]; then
+		EXISTING="$EXISTING $candidate"
+		if is_shell_file "$REPO/$candidate"; then
+			SHELL_FILES="$SHELL_FILES $REPO/$candidate"
+		fi
+	fi
+done
+
+if [[ -z "$EXISTING" ]]; then
+	printf 'preflight: no touched files against %s — nothing to check\n' "$BASE" >&2
+	exit 0
+fi
+
+printf 'preflight: %s file(s) touched against %s\n\n' "$(printf '%s' "$EXISTING" | wc -w)" "$BASE"
+
+# shellcheck disable=SC2086
+if [[ -n "$SHELL_FILES" ]]; then
+	check_bash_syntax $SHELL_FILES
+	check_bash_status $SHELL_FILES
+	check_shellcheck $SHELL_FILES
+else
+	skip "no shell files touched"
+fi
+
+# shellcheck disable=SC2086
+check_mirror $EXISTING
+# shellcheck disable=SC2086
+check_format $EXISTING
+# shellcheck disable=SC2086
+check_focused_tests $EXISTING
+# shellcheck disable=SC2086
+check_restore_by_checkout $EXISTING
+# shellcheck disable=SC2086
+check_bare_dprint $EXISTING
+# shellcheck disable=SC2086
+check_real_home $EXISTING
+check_routing
+check_slice
+
+printf '\n'
+if [[ "$FAILED" -ne 0 ]]; then
+	printf 'preflight: FAILED — fix the findings above before requesting review\n' >&2
+	exit 1
+fi
+printf 'preflight: all checks passed\n'
+exit 0
