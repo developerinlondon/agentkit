@@ -29,6 +29,8 @@ export const TEST_SLICES = {
   product: [
     'tests/product-intelligence/acquisition.test.ts',
     'tests/product-intelligence/schemas.test.ts',
+    'tests/publish-page/lint.test.ts',
+    'tests/publish-page/pages-police.test.ts',
   ],
   resources: [
     'tests/resource-police.test.ts',

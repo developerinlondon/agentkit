@@ -98,9 +98,14 @@ fileGroups:
     - 'tests/test-slices.test.ts'
 
   productInputs:
+    - 'hooks/claude/pages-police.sh'
+    - 'plugins-cc/agentkit/hooks/pages-police.sh'
     - 'plugins-cc/agentkit/skills/product-intelligence/**/*'
+    - 'plugins-cc/agentkit/skills/publish-page/**/*'
     - 'skills/product-intelligence/**/*'
+    - 'skills/publish-page/**/*'
     - 'tests/product-intelligence/**/*'
+    - 'tests/publish-page/**/*'
 
   resourceInputs:
     - 'hooks/claude/resource-police.sh'
