@@ -30,6 +30,7 @@ export const TEST_SLICES = {
   product: [
     'tests/product-intelligence/acquisition.test.ts',
     'tests/product-intelligence/composition.test.ts',
+    'tests/product-intelligence/deck.test.ts',
     'tests/product-intelligence/render.test.ts',
     'tests/product-intelligence/schemas.test.ts',
     'tests/publish-page/lint.test.ts',

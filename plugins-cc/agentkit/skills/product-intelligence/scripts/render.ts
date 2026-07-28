@@ -129,12 +129,16 @@ function header(brief: Dict, ledger: Dict): string {
   return lines.join('\n');
 }
 
+function missingTerminalPeriod(value: unknown): string {
+  return /[.!?]$/.test(String(value ?? '').trim()) ? '' : '.';
+}
+
 // Moore's six slots are all optional, so compose only complete thoughts: a
 // half-filled slot set must read as a short sentence, never as a fragment
 // ending in a comma — and no slot may be silently dropped.
-function positioning(brief: Dict): string {
+function positioningSentences(brief: Dict): string[] {
   const p = brief.positioning;
-  if (!p) return '';
+  if (!p) return [];
   const name = mdEsc(brief.subject?.name ?? 'It');
   const sentences: string[] = [];
   const lead = p.target_customer && p.need
@@ -152,8 +156,13 @@ function positioning(brief: Dict): string {
   }
   if (!lead && p.need) sentences.push(`The need it answers: ${mdEsc(p.need)}.`);
   if (!lead && p.target_customer) sentences.push(`Who it is for: ${mdEsc(p.target_customer)}.`);
+  return sentences;
+}
+
+function positioning(brief: Dict): string {
+  const sentences = positioningSentences(brief);
   if (sentences.length === 0) return '';
-  return `## What it is\n\n${sentences.join(' ')}${cites(p.claims)}\n`;
+  return `## What it is\n\n${sentences.join(' ')}${cites(brief.positioning?.claims)}\n`;
 }
 
 function valueMap(brief: Dict): string {
@@ -200,12 +209,12 @@ function siteInventory(brief: Dict): string {
   return `## Public surface, page by page\n\n| page | type | verdict | why |\n| --- | --- | --- | --- |\n${body}\n`;
 }
 
-function contradictions(ledger: Dict): string {
+// A dangling or self-referential target would render an empty bold span and
+// a dead anchor. renderBrief validates nothing, so unvalidated input reaches
+// here; drop the pair rather than print a broken row.
+function contradictionPairs(ledger: Dict): Array<[Dict, Dict]> {
   const claims = (ledger.claims ?? []) as Dict[];
   const byId = new Map(claims.map((c) => [c.id, c]));
-  // A dangling or self-referential target would render an empty bold span and
-  // a dead anchor. renderBrief validates nothing, so unvalidated input reaches
-  // here; drop the pair rather than print a broken row.
   const pairs = new Set<string>();
   for (const c of claims) {
     for (const other of (c.contradicts ?? []) as string[]) {
@@ -213,15 +222,18 @@ function contradictions(ledger: Dict): string {
       pairs.add([c.id, other].sort().join('|'));
     }
   }
-  if (pairs.size === 0) return '';
-  const rows = [...pairs].map((pair) => {
+  return [...pairs].map((pair) => {
     const [a, b] = pair.split('|');
-    const one = byId.get(a);
-    const two = byId.get(b);
-    // Statements are written as full sentences, so a blanket period doubles up.
-    const stop = (s: unknown) => (/[.!?]$/.test(String(s ?? '').trim()) ? '' : '.');
-    return `- ${link(a)} says **${mdEsc(one?.statement)}** — `
-      + `while ${link(b)} says **${mdEsc(two?.statement)}**${stop(two?.statement)} `
+    return [byId.get(a) as Dict, byId.get(b) as Dict];
+  });
+}
+
+function contradictions(ledger: Dict): string {
+  const pairs = contradictionPairs(ledger);
+  if (pairs.length === 0) return '';
+  const rows = pairs.map(([one, two]) => {
+    return `- ${link(one.id)} says **${mdEsc(one.statement)}** — `
+      + `while ${link(two.id)} says **${mdEsc(two.statement)}**${missingTerminalPeriod(two.statement)} `
       + 'Both sources are recorded; neither is silently preferred.';
   }).join('\n');
   return `## Unresolved contradictions\n\n<div class="callout"><strong>Recorded, not reconciled.</strong> The sources disagree and the disagreement is the finding.</div>\n\n${rows}\n`;
@@ -325,14 +337,20 @@ function evidence(brief: Dict, ledger: Dict): string {
   return `## The evidence, claim by claim\n\n${blocks}\n${provenance}`;
 }
 
-export function renderBrief(dir: string): string {
+function artifacts(dir: string): { brief: Dict; ledger: Dict } {
   const briefPath = join(dir, 'brief.yaml');
   const ledgerPath = join(dir, 'ledger.yaml');
   for (const p of [briefPath, ledgerPath]) {
     if (!existsSync(p)) throw new Error(`missing ${p} — render needs both brief.yaml and ledger.yaml`);
   }
-  const brief = Bun.YAML.parse(readFileSync(briefPath, 'utf-8')) as Dict;
-  const ledger = Bun.YAML.parse(readFileSync(ledgerPath, 'utf-8')) as Dict;
+  return {
+    brief: Bun.YAML.parse(readFileSync(briefPath, 'utf-8')) as Dict,
+    ledger: Bun.YAML.parse(readFileSync(ledgerPath, 'utf-8')) as Dict,
+  };
+}
+
+export function renderBrief(dir: string): string {
+  const { brief, ledger } = artifacts(dir);
   const sections = [
     header(brief, ledger),
     positioning(brief),
@@ -350,16 +368,335 @@ export function renderBrief(dir: string): string {
   return sections.filter(Boolean).join('\n');
 }
 
+// The deck theme owns the URL hash — it numbers slides there and rewrites it on
+// every navigation — so a citation anchor would be clobbered instead of
+// followed. Claim ids travel as mono text markers, never as links.
+function citeIds(claims?: unknown): string {
+  return ((claims ?? []) as string[]).join(' · ');
+}
+
+// Inside a raw-HTML island marked runs no inline pass, so code()'s backslash
+// escapes would reach the reader literally. Entities decode to themselves there.
+function codeText(value: unknown): string {
+  return `<code>${escText(value)}</code>`;
+}
+
+function chunk<T>(items: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
+
+// One idea per slide: a mono kicker, one h2, then the shape. Both labels are
+// escaped whatever their provenance — a bypass for "our own" strings is the
+// gap a later edit walks through.
+function slide(kicker: string, heading: string, ...body: string[]): string {
+  return [
+    `<div class="kicker">${escText(kicker)}</div>`,
+    '',
+    `## ${mdEsc(heading)}`,
+    '',
+    body.filter(Boolean).join('\n\n'),
+  ].join('\n');
+}
+
+// Only counts the ledger actually yields, capped at the row's four columns.
+// Contradictions outrank the class breakdown: a deck that pushes its conflict
+// count off the row behind a fourth class label defeats the whole ledger.
+function stats(ledger: Dict): string {
+  const claims = (ledger.claims ?? []) as Dict[];
+  const byClass = new Map<string, number>();
+  for (const c of claims) {
+    const label = collapse(c.class).trim();
+    // An unclassed claim still counts toward the total; a numeral under a
+    // blank label is a hole in the row.
+    if (label) byClass.set(label, (byClass.get(label) ?? 0) + 1);
+  }
+  const conflicts = contradictionPairs(ledger).length;
+  const cells: Array<[number, string]> = [[claims.length, claims.length === 1 ? 'claim' : 'claims']];
+  if (conflicts > 0) cells.push([conflicts, conflicts === 1 ? 'contradiction' : 'contradictions']);
+  for (const [label, n] of byClass) cells.push([n, label]);
+  const row = cells.slice(0, 4).map(([n, label], i) =>
+    `<div class="stat${i === 0 ? ' hot' : ''}"><div class="num">${n}</div>`
+    + `<div class="lbl">${escText(label)}</div></div>`
+  ).join('');
+  return `<div class="stats">${row}</div>`;
+}
+
+// Two-tone at a fixed point: the subject's own name in ink, the deck's fixed
+// clause in accent. Splitting the name itself would need a heuristic, and a
+// crawled name is exactly where a heuristic produces nonsense.
+function cover(brief: Dict, ledger: Dict): string {
+  const subject = brief.subject ?? {};
+  const name = subject.name ?? 'Untitled product';
+  const stamp = brief.evidence?.acquired_at ?? ledger.generated_at;
+  const thesis = subject.one_liner
+    ? `<p class="thesis">${escText(subject.one_liner)}</p>`
+    : '';
+  return [
+    '<div class="cover">',
+    `<div class="kicker">${escText(stamp ? `evidence brief — ${stamp}` : 'evidence brief')}</div>`,
+    `<h1>${escText(name)}${missingTerminalPeriod(name)} <span class="hi">What the evidence says.</span></h1>`,
+    thesis,
+    stats(ledger),
+    '</div>',
+  ].filter(Boolean).join('\n');
+}
+
+function positioningSlide(brief: Dict): string {
+  const sentences = positioningSentences(brief);
+  if (sentences.length === 0) return '';
+  const ids = citeIds(brief.positioning?.claims);
+  const cited = ids ? `<div class="chips">${chip('claims', ids)}</div>` : '';
+  return slide('positioning', 'What it is', sentences.join(' '), cited);
+}
+
+// Groups of three, widened to four when three would strand a single card. Four
+// is the theme's column cap, so nothing here may widen past it.
+function cardGroups(rows: Dict[]): Dict[][] {
+  if (rows.length === 0) return [];
+  return chunk(rows, rows.length <= 4 ? rows.length : rows.length % 3 === 1 ? 4 : 3);
+}
+
+// An uncited card says so: a blank eyebrow reads as a styling slip rather than
+// as the absence of a claim behind the card.
+function card(claims: unknown, title: unknown, body: string): string {
+  return `<div class="card"><span class="eyebrow">${escText(citeIds(claims) || 'uncited')}</span>`
+    + `<h3>${escText(title)}</h3>${body}</div>`;
+}
+
+function cardSlide(kicker: string, heading: string, cards: string[]): string {
+  const cols = cards.length >= 3 ? ` cols-${cards.length}` : '';
+  return slide(kicker, heading, `<div class="cards${cols}">\n${cards.join('\n')}\n</div>`);
+}
+
+function valueSlides(brief: Dict): string[] {
+  return cardGroups((brief.value_map ?? []) as Dict[]).map((group) =>
+    cardSlide(
+      'value',
+      'What that gets you',
+      group.map((r) =>
+        card(
+          r.claims,
+          r.attribute,
+          `<p>${escText(r.value)}${missingTerminalPeriod(r.value)}</p>`
+            + (r.proof ? `<p><em>Check it: ${escText(r.proof)}.</em></p>` : ''),
+        )
+      ),
+    )
+  );
+}
+
+// The schema's job-story template already supplies "I want"/"so I can", so the
+// values are bare clauses — the card states the frame once around them.
+function jobStorySlides(brief: Dict): string[] {
+  return cardGroups((brief.job_stories ?? []) as Dict[]).map((group) =>
+    cardSlide(
+      'jobs',
+      "In a user's words",
+      group.map((r) =>
+        card(
+          r.claims,
+          `When ${collapse(r.situation)}`,
+          `<p>${escText(r.motivation)}, so that ${escText(r.outcome)}.</p>`,
+        )
+      ),
+    )
+  );
+}
+
+// One flow per slide, its own name as the heading. The step marker is the scale
+// the rows share, so it rides in .when instead of repeating inside the row.
+function workflowSlides(brief: Dict): string[] {
+  return ((brief.workflows ?? []) as Dict[]).flatMap((f) => {
+    const steps = (f.steps ?? []) as Dict[];
+    if (steps.length === 0) return [];
+    return chunk(steps, 6).map((group) => {
+      const rows = group.map((s) =>
+        `<li class="rail dim">${escText(s.description)}`
+        + `<span class="when">${escText(s.step)}</span></li>`
+      ).join('\n');
+      return slide(
+        'workflow',
+        collapse(f.name) || 'Where it sits in the work',
+        `<ul class="rails">\n${rows}\n</ul>`,
+      );
+    });
+  });
+}
+
+// Pages across four criteria: the columns are the point, and a card per page
+// would run a small site to a dozen slides.
+function siteInventorySlides(brief: Dict): string[] {
+  return chunk((brief.site_inventory ?? []) as Dict[], 8).map((group) => {
+    const body = group.map((r) => {
+      const page = r.title ? `${code(r.locator)}<br/>${mdEsc(r.title)}` : code(r.locator);
+      const ids = citeIds(r.claims);
+      const why = `${mdEsc(r.rationale ?? '—')}${ids ? ` ${code(ids)}` : ''}`;
+      return `| ${page} | ${mdEsc(r.page_type)} | ${mdEsc(r.disposition ?? '—')} | ${why} |`;
+    }).join('\n');
+    return slide(
+      'surface',
+      'Public surface, page by page',
+      `| page | type | verdict | why |\n| --- | --- | --- | --- |\n${body}`,
+    );
+  });
+}
+
+function contradictionSlides(ledger: Dict): string[] {
+  return chunk(contradictionPairs(ledger), 6).map((group) => {
+    const rows = group.map(([one, two]) =>
+      `<li class="rail red"><strong>${escText(one.statement)}</strong> — versus ${escText(two.statement)}`
+      + `<span class="when">${escText(`${one.id} · ${two.id}`)}</span></li>`
+    ).join('\n');
+    return slide(
+      'contradictions',
+      'Unresolved contradictions',
+      'Recorded, not reconciled — the sources disagree and the disagreement is the finding.',
+      `<ul class="rails">\n${rows}\n</ul>`,
+    );
+  });
+}
+
+function cannotVerifySlides(brief: Dict): string[] {
+  return chunk((brief.cannot_verify ?? []) as Dict[], 5).map((group) =>
+    slide(
+      'gaps',
+      'What we could not verify',
+      '<div class="callout"><strong>Said plainly.</strong> Absence of a slide means <em>unknown</em>, never <em>does not exist</em>.</div>',
+      group.map((r) => `- **${mdEsc(r.what)}** — ${mdEsc(r.why)}.`).join('\n'),
+    )
+  );
+}
+
+function evidenceSlides(ledger: Dict): string[] {
+  const claims = (ledger.claims ?? []) as Dict[];
+  const known = new Set(claims.map((c) => c.id));
+  const refs = (ids: unknown, self: string) =>
+    ((ids ?? []) as string[]).filter((id) => id !== self && known.has(id));
+  return claims.map((c) => {
+    const from = refs(c.derived_from, c.id);
+    const against = refs(c.contradicts, c.id);
+    const chips = [
+      chip(c.class, c.confidence),
+      from.length ? chip('inferred from', from.join(' · ')) : '',
+      against.length ? chip('contradicts', against.join(' · ')) : '',
+    ].filter(Boolean).join('');
+    const sources = (c.sources ?? []) as Dict[];
+    const body = sources.length > 0
+      ? sources.map(source).join('\n\n')
+      : `> _No source — this claim is ${mdEsc(c.class)}, carried as such rather than dressed up._`;
+    return slide(String(c.id ?? ''), String(c.statement ?? ''), `<div class="chips">${chips}</div>`, body);
+  });
+}
+
+// A single-origin brief names its sources in subject.repo/homepage instead of
+// an origins list. Both say where the evidence came from, and a deck that
+// showed neither would send the reader back to the doc to find out.
+function originRails(subject: Dict): Array<[unknown, string]> {
+  const origins = (subject.origins ?? []) as Dict[];
+  if (origins.length > 0) {
+    return origins.map((o) => [o.id, `${escText(o.kind ?? 'origin')} ${codeText(o.target)}`]);
+  }
+  return ([['repo', subject.repo], ['site', subject.homepage]] as Array<[string, unknown]>)
+    .filter(([, target]) => target)
+    .map(([head, target]) => [head, codeText(target)]);
+}
+
+const RAIL_KEY: Record<string, string> = { hot: 'origin', gold: 'acquisition', dim: 'ledger' };
+
+function provenanceSlides(brief: Dict, ledger: Dict): string[] {
+  const acquired = (brief.evidence?.acquisition ?? []) as Dict[];
+  const rail = (tone: string, head: unknown, bodyHtml: string, when?: unknown): [string, string] => [
+    tone,
+    `<li class="rail ${tone}"><strong>${escText(head)}</strong> — ${bodyHtml}`
+    + (when ? `<span class="when">${escText(when)}</span>` : '') + '</li>',
+  ];
+  const rows: Array<[string, string]> = [
+    ...originRails(brief.subject ?? {}).map(([head, body]) => rail('hot', head, body)),
+    ...acquired.map((a) => rail('gold', a.tool, codeText(a.target), a.retrieved_at)),
+    ...(ledger.generated_by || ledger.generated_at
+      ? [rail('dim', 'ledger', `generated by ${codeText(ledger.generated_by ?? 'unrecorded')}`, ledger.generated_at)]
+      : []),
+  ];
+  return chunk(rows, 6).map((group) => {
+    // Per group, not per deck: a legend decoding one colour explains nothing,
+    // and one decoding a colour absent from this slide explains a row that is
+    // not on it.
+    const tones = [...new Set(group.map(([tone]) => tone))];
+    const legend = tones.length > 1
+      ? `<div class="legend">${tones.map((t) => `<span class="key ${t}">${RAIL_KEY[t]}</span>`).join('')}</div>`
+      : '';
+    return slide(
+      'provenance',
+      'Where this came from',
+      legend,
+      `<ul class="rails">\n${group.map(([, html]) => html).join('\n')}\n</ul>`,
+    );
+  });
+}
+
+// publish-page splits slides on a lone `---`, so an analyze-pass file could
+// otherwise mint slides of its own. The backslash resolves away, leaving the
+// hyphens the author typed. It lands inside fences too — the same trade the
+// doc pipeline already takes rather than run a second fence scanner that
+// disagrees with the one splitting the page.
+function neutralizeSlideBreaks(body: string): string {
+  return body.replace(/^[ \t]*---[ \t]*$/gm, '\\---');
+}
+
+// Last, as in the doc: the analyze pass owns this file's block structure, so an
+// unclosed fence of its own can only reach the slides after it — and there are
+// none. One slide per section it wrote.
+function findingsSlides(dir: string): string[] {
+  const path = join(dir, 'findings.md');
+  if (!existsSync(path)) return [];
+  const body = readFileSync(path, 'utf-8')
+    .replace(/\r\n?/g, '\n')
+    .replace(/^# .*\n/, '')
+    .trim();
+  return body.split(/^## /m).flatMap((section, i) => {
+    const [head, ...rest] = section.split('\n');
+    const heading = i === 0 ? 'What the analyze pass flagged' : head;
+    const content = (i === 0 ? section : rest.join('\n')).trim();
+    if (!content) return [];
+    return [slide('analyze pass', heading, neutralizeSlideBreaks(sanitizeFindings(content)))];
+  });
+}
+
+export function renderDeck(dir: string): string {
+  const { brief, ledger } = artifacts(dir);
+  const slides = [
+    cover(brief, ledger),
+    positioningSlide(brief),
+    ...valueSlides(brief),
+    ...jobStorySlides(brief),
+    ...workflowSlides(brief),
+    ...siteInventorySlides(brief),
+    ...contradictionSlides(ledger),
+    ...cannotVerifySlides(brief),
+    ...evidenceSlides(ledger),
+    ...provenanceSlides(brief, ledger),
+    ...findingsSlides(dir),
+  ];
+  return `${slides.filter(Boolean).join('\n\n---\n\n')}\n`;
+}
+
 if (import.meta.main) {
-  const [dir, outFlag, outPath] = process.argv.slice(2);
+  const argv = process.argv.slice(2);
+  const deck = argv.includes('--deck');
+  const [dir, outFlag, outPath] = argv.filter((a) => a !== '--deck');
   if (!dir || (outFlag && (outFlag !== '--out' || !outPath))) {
-    console.error('usage: render.ts <intelligence-dir> [--out <file>]');
+    console.error('usage: render.ts <intelligence-dir> [--deck] [--out <file>]');
     process.exit(2);
   }
   try {
-    const page = renderBrief(dir);
-    const target = outPath ?? join(dir, 'brief-page.md');
+    const page = deck ? renderDeck(dir) : renderBrief(dir);
+    const target = outPath ?? join(dir, deck ? 'brief-deck.md' : 'brief-page.md');
     writeFileSync(target, page);
+    if (deck) {
+      console.error('note: publish with --template deck --title "<subject>" — a deck has no document heading');
+    }
     console.log(target);
   } catch (error) {
     console.error(`error: ${(error as Error).message}`);

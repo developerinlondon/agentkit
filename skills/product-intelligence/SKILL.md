@@ -34,6 +34,26 @@ ledger's verbatim quotes and the findings into one page-ready
 `brief-page.md` (derived, never committed), which publish-page can put on a
 URL as-is.
 
+For a walked-through presentation rather than a page to read, add `--deck`:
+
+```sh
+bun skills/product-intelligence/scripts/render.ts <dir> --deck
+bun skills/publish-page/publish.ts --name <slug> --file <dir>/brief-deck.md \
+  --template deck --title "<subject>"
+```
+
+It writes `brief-deck.md` in the publish-page deck grammar — a title slide
+with the claim counts, then one idea per slide across the brief's sections and
+one slide per ledger claim carrying its verbatim quote. Pass `--title` rather
+than letting the deck open with a heading: the deck has none, by design, so a
+document heading would stack a second headline above the cover.
+
+Both renderings are the same transform over the same artifacts — deterministic,
+never a fresh pass over the evidence. Nothing is written for a slide that is
+not already in the brief or the ledger, so a deck cannot say more than the
+evidence does. Claim ids ride as text markers instead of links, because the
+deck theme owns the URL hash for slide numbers.
+
 Validate before presenting anything:
 
 ```sh
