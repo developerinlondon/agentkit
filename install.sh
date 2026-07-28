@@ -641,7 +641,8 @@ merge_codex_hooks() {
 
 	local rendered
 	rendered=$(jq --arg token '__AGENTKIT_CODEX_HOOKS_ROOT__' --arg root "$hooks_dir" '
-    walk(if type == "string" then gsub($token; $root) else . end)
+    ($root | @sh) as $quoted_root
+    | walk(if type == "string" then gsub($token; $quoted_root) else . end)
   ' "$canonical") || return 1
 
 	mkdir -p "$(dirname "$hooks_file")"

@@ -194,6 +194,39 @@ describe('Claude Code and Codex hook wiring', () => {
     }
   }, globalInstallTimeoutMs);
 
+  test('quotes shell-active CODEX_HOME paths before a trusted hook executes', () => {
+    const home = mkdtempSync(join(tmpdir(), 'agentkit-hooks-'));
+    const codexHome = join(
+      home,
+      "codex ' $(touch codex-hook-dollar) `touch codex-hook-backtick`",
+    );
+
+    try {
+      const install = runGlobalInstall(home, { CODEX_HOME: codexHome });
+      expect(install.status, install.stderr.toString()).toBe(0);
+
+      const codexHooks = JSON.parse(readFileSync(join(codexHome, 'hooks.json'), 'utf-8'));
+      const command = codexHooks.hooks.PreToolUse[0].hooks[0].command;
+      const hook = spawnSync('bash', ['-c', command], {
+        cwd: home,
+        encoding: 'utf-8',
+        env: { ...process.env, HOME: home },
+        input: JSON.stringify({
+          tool_name: 'Bash',
+          tool_input: { command: 'printf safe' },
+          session_id: 'codex-shell-path-test',
+        }),
+        timeout: 5_000,
+      });
+
+      expect(hook.status, hook.stderr).toBe(0);
+      expect(existsSync(join(home, 'codex-hook-dollar'))).toBe(false);
+      expect(existsSync(join(home, 'codex-hook-backtick'))).toBe(false);
+    } finally {
+      rmSync(home, { force: true, recursive: true });
+    }
+  }, globalInstallTimeoutMs);
+
   test('skips optional Codex hook wiring cleanly when jq is unavailable', () => {
     const root = mkdtempSync(join(tmpdir(), 'agentkit-hooks-no-jq-'));
     const codexHome = join(root, 'codex-home');

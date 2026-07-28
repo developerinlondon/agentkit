@@ -41,24 +41,21 @@ describe('Codex review hook wiring', () => {
       expect(entry).toEqual({
         type: 'command',
         command:
-          `AGENTKIT_HOOK_TARGET=codex "${hooksRootToken}/fail-closed-hook.sh" 45 ` +
-          `"${hooksRootToken}/review-police.sh"`,
+          `AGENTKIT_HOOK_TARGET=codex ${hooksRootToken}/fail-closed-hook.sh 45 ` +
+          `${hooksRootToken}/review-police.sh`,
         timeout: 60,
       });
     }
   });
 
-  test('uses one deterministic token for installer path rewriting', () => {
+  test('uses one deterministic token for shell-safe installer path rewriting', () => {
     const source = readFileSync(manifestPath, 'utf-8');
-    const installedRoot = '/tmp/agentkit install/.codex/hooks';
-    const installed = JSON.parse(source.replaceAll(hooksRootToken, installedRoot));
-    const commands = preToolUseEntries(installed).map((entry) => entry.command);
+    const commands = preToolUseEntries(readManifest()).map((entry) => entry.command);
 
     expect(source.match(new RegExp(hooksRootToken, 'g'))).toHaveLength(4);
-    expect(JSON.stringify(installed)).not.toContain(hooksRootToken);
     expect(commands).toEqual([
-      `AGENTKIT_HOOK_TARGET=codex "${installedRoot}/fail-closed-hook.sh" 45 "${installedRoot}/review-police.sh"`,
-      `AGENTKIT_HOOK_TARGET=codex "${installedRoot}/fail-closed-hook.sh" 45 "${installedRoot}/review-police.sh"`,
+      `AGENTKIT_HOOK_TARGET=codex ${hooksRootToken}/fail-closed-hook.sh 45 ${hooksRootToken}/review-police.sh`,
+      `AGENTKIT_HOOK_TARGET=codex ${hooksRootToken}/fail-closed-hook.sh 45 ${hooksRootToken}/review-police.sh`,
     ]);
   });
 
