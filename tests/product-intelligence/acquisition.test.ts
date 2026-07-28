@@ -210,6 +210,17 @@ function fakeExecutable(name: string, body: string): void {
   chmodSync(path, 0o755);
 }
 
+function fakePlatformTool(tool: 'advertools' | 'repomix'): string {
+  const invocationPath = join(scratch, 'tool-argv');
+  const body = `printf '%s\\n' "$*" > '${invocationPath}'`;
+  fakeExecutable(process.platform === 'linux' ? 'agentkit-run' : tool, body);
+  return invocationPath;
+}
+
+function expectedPlatformInvocation(tool: 'advertools' | 'repomix', args: string): string {
+  return process.platform === 'linux' ? `--profile default -- ${tool} ${args}` : args;
+}
+
 describe('acquire.ts CLI', () => {
   function runCli(...args: string[]) {
     const result = Bun.spawnSync([process.execPath, acquireScript, ...args], {
@@ -224,15 +235,18 @@ describe('acquire.ts CLI', () => {
     };
   }
 
-  test('repo lane runs repomix under the bounded runner and stamps provenance', () => {
-    fakeExecutable('agentkit-run', `printf '%s\\n' "$*" > '${scratch}/runner-argv'`);
+  test('repo lane follows the platform runner contract and stamps provenance', () => {
+    const invocationPath = fakePlatformTool('repomix');
     const outDir = join(scratch, 'out');
     const result = runCli('repo', 'owner/repo', '--out', outDir);
 
     expect(result.code, result.err).toBe(0);
-    expect(readFileSync(join(scratch, 'runner-argv'), 'utf-8').trim()).toBe(
-      '--profile default -- repomix --remote owner/repo --style json --include '
-        + `README*,readme*,docs/**,doc/**,CHANGELOG*,CHANGES*,*.md -o ${join(outDir, 'repo.json')}`,
+    expect(readFileSync(invocationPath, 'utf-8').trim()).toBe(
+      expectedPlatformInvocation(
+        'repomix',
+        '--remote owner/repo --style json --include '
+          + `README*,readme*,docs/**,doc/**,CHANGELOG*,CHANGES*,*.md -o ${join(outDir, 'repo.json')}`,
+      ),
     );
     const entries = JSON.parse(readFileSync(join(outDir, 'acquisition.json'), 'utf-8'));
     expect(entries).toHaveLength(1);
@@ -242,15 +256,18 @@ describe('acquire.ts CLI', () => {
     expect(readFileSync(join(outDir, 'invocations.log'), 'utf-8')).toContain('"repomix"');
   });
 
-  test('site lane emits the exact bounded crawl invocation', () => {
+  test('site lane emits the platform-correct crawl invocation', () => {
     process.env.SAFE_FETCH_ALLOW_HOSTS = 'example.com'; // keep the test off DNS
-    fakeExecutable('agentkit-run', `printf '%s\\n' "$*" > '${scratch}/runner-argv'`);
+    const invocationPath = fakePlatformTool('advertools');
     const outDir = join(scratch, 'out');
     const result = runCli('site', 'https://example.com', '--out', outDir);
     expect(result.code, result.err).toBe(0);
-    expect(readFileSync(join(scratch, 'runner-argv'), 'utf-8').trim()).toBe(
-      '--profile default -- advertools crawl https://example.com/ '
-        + `${join(outDir, 'crawl.jl')} --follow-links 1 --custom-settings DEPTH_LIMIT=3 CLOSESPIDER_PAGECOUNT=200`,
+    expect(readFileSync(invocationPath, 'utf-8').trim()).toBe(
+      expectedPlatformInvocation(
+        'advertools',
+        'crawl https://example.com/ '
+          + `${join(outDir, 'crawl.jl')} --follow-links 1 --custom-settings DEPTH_LIMIT=3 CLOSESPIDER_PAGECOUNT=200`,
+      ),
     );
   });
 
