@@ -758,6 +758,13 @@ describe('review-police: bypasses found in adversarial review', () => {
       `gh api graphql --input /dev/stdin < ${jsonPayload}`,
       `cat ${jsonPayload} | gh api graphql --input -`,
       `gh api graphql -F query=@- < ${jsonPayload}`,
+      `endpoint=graphql; gh api "$endpoint" --input ${jsonPayload}`,
+      `endpoint=graph; suffix=ql; gh api "$endpoint$suffix" --input - < ${jsonPayload}`,
+      `field=query=@${jsonPayload}; gh api graphql -F "$field"`,
+      `key=query; gh api graphql -F "$key=@${jsonPayload}"`,
+      `flag=--input; gh api graphql "$flag" ${jsonPayload}`,
+      `flag=--input=${jsonPayload}; gh api graphql "$flag"`,
+      `flag=--field=query=@${jsonPayload}; gh api graphql "$flag"`,
     ]) {
       const out = runHook(cmd);
       expect(out, cmd).toContain('"deny"');
@@ -790,6 +797,7 @@ describe('review-police: bypasses found in adversarial review', () => {
     for (const cmd of [
       "gh api graphql -f 'query=query { viewer { login } }'",
       "gh api graphql -F 'query=query { viewer { login } }'",
+      "gh api graphql -f 'query=query($login:String!){user(login:$login){id}}' -F login=octocat",
       'gh api repos/owner/repo',
     ]) {
       expect(runHook(cmd), cmd).toBe('');

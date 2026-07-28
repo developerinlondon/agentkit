@@ -205,6 +205,46 @@ after() { printf '%s' "$COMMAND" | awk -v k="$1" 'p { print; exit } $0 == k { p 
 # command the hook actually checks.
 graphql_payload_indirect=0
 
+raw_has_active_shell_expansion() {
+	local status=0
+	if ! command -v python3 >/dev/null 2>&1; then
+		[[ "$RAW_COMMAND" == *'$'* || "$RAW_COMMAND" == *'`'* ]]
+		return
+	fi
+
+	if printf '%s' "$RAW_COMMAND" | python3 -c '
+import sys
+
+raw = sys.stdin.read()
+single = False
+double = False
+escaped = False
+for char in raw:
+    if escaped:
+        escaped = False
+        continue
+    if char == chr(92) and not single:
+        escaped = True
+        continue
+    if char == chr(39) and not double:
+        single = not single
+        continue
+    if char == chr(34) and not single:
+        double = not double
+        continue
+    if not single and char in (chr(36), chr(96)):
+        raise SystemExit(0)
+raise SystemExit(2 if single or double or escaped else 1)
+'; then
+		return 0
+	else
+		status=$?
+	fi
+	[[ $status -eq 1 ]] && return 1
+	# Parser errors and incomplete shell quoting are opaque, so fail closed.
+	return 0
+}
+
 scan_graphql_payload_refs() {
 	local token=""
 	local expect_input=0
@@ -289,13 +329,25 @@ if tok_match 'mergeRequestAccept|mergePullRequest'; then
 	direct_api_merge=1
 fi
 # File/stdin-backed GraphQL requests are mutable after the hook checks them.
+# The endpoint can be indirect too (`endpoint=graphql; gh api "$endpoint"`), so
+# a forge API call with an indirect body and a shell-built endpoint must be
+# treated as GraphQL-shaped even when no standalone `graphql` token survives.
 # Keep ordinary inline queries allowed, but fail closed on every indirect body.
 graphql_api=0
-if has api && tok_match '(^|/)graphql([?#].*)?$'; then
-	if has_basename gh || has_basename glab; then graphql_api=1; fi
+forge_api=0
+graphql_shell_indirect=0
+if has api; then
+	if has_basename gh || has_basename glab; then forge_api=1; fi
+fi
+if [[ $forge_api -eq 1 ]]; then
+	if raw_has_active_shell_expansion; then graphql_shell_indirect=1; fi
+	if tok_match '(^|[=/])graphql([?#].*)?$' || [[ $graphql_shell_indirect -eq 1 ]]; then
+		graphql_api=1
+	fi
 fi
 if [[ $graphql_api -eq 1 ]]; then
 	scan_graphql_payload_refs
+	if [[ $graphql_shell_indirect -eq 1 ]]; then graphql_payload_indirect=1; fi
 	if [[ $graphql_payload_indirect -eq 1 ]]; then
 		deny "BLOCKED: an indirect GraphQL API payload can change after this check and may hide a merge mutation.
 
