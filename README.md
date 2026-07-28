@@ -190,7 +190,8 @@ Everything else stays unattended, because an unanswered question stops an instal
 declining for you. The wizard is suppressed when stdin or stdout is not a terminal, when `CI`
 is set to anything non-empty (runners hand out ptys, so a terminal is no evidence of a person),
 when `--no-prompt` or `AGENTKIT_SKIP_PROMPT` is given, when any group flag is passed, and when
-a selection is already remembered. Project installs never ask either: they persist nothing, so
+a selection is already remembered. A detached process whose `/dev/tty` cannot be opened is the
+same story: it installs `core`, says so on stderr, and never asks. Project installs never ask either: they persist nothing, so
 the answer could not be kept and every run would ask again — pass `--with` there instead.
 
 A global install records the chosen groups in `~/.agentkit/groups`, so a later bare

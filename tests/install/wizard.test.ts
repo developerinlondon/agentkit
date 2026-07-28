@@ -243,6 +243,34 @@ describe('installer skill-group wizard', () => {
     }
   }, globalInstallTimeoutMs);
 
+  test('no controlling terminal declines rather than asking into the void', () => {
+    const home = mkdtempSync(join(tmpdir(), 'agentkit-wizard-'));
+
+    try {
+      // `setsid` leaves stdin and stdout terminals while detaching the process
+      // from its controlling terminal, so /dev/tty cannot be opened. That is
+      // the one shape where the gate says "ask" but there is nowhere to ask:
+      // writing the question to stderr instead would put it wherever stderr was
+      // captured and then block on an answer nobody ever saw.
+      const result = installOnTty(home, '', [], {
+        shell: `setsid --wait bash ${installScript} ${baseArgs.join(' ')}`,
+        timeoutMs: hangTimeoutMs,
+      });
+
+      expect(result.signal, 'the detached install blocked on a question').toBe(null);
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.stdout).not.toContain(promptMarker);
+      // Silent would be wrong too: skipping the question is a decision the
+      // operator has to be able to see, and to reverse with a flag.
+      expect(result.stdout).toContain('[groups] No controlling terminal');
+      expect(result.stdout).toContain('--with <group>');
+      expect(result.stdout).toContain('Skill groups:    core');
+      expect(existsSync(canonSkill(home, 'product-review'))).toBe(false);
+    } finally {
+      rmSync(home, { force: true, recursive: true });
+    }
+  }, globalInstallTimeoutMs);
+
   test('the explicit opt-outs suppress the question on a terminal', () => {
     for (
       const optOut of [

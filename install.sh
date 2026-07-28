@@ -226,16 +226,19 @@ open_prompt_channel() {
 		exec 4<&3
 		return 0
 	fi
-	# No controlling terminal to address directly. The gate has already proved
-	# both of these are terminals, so they remain a safe place to ask.
-	exec 3>&2
-	exec 4<&0
-	return 0
+	return 1
 }
 
 prompt_for_groups() {
 	local group description reply header=false
-	open_prompt_channel
+	# Nowhere to hold the conversation. Asking anyway would put the question
+	# somewhere nobody is reading and then wait forever for the answer, so this
+	# declines like every other unattended shape and says so once, out loud.
+	if ! open_prompt_channel; then
+		echo "[groups] No controlling terminal — installing core only." >&2
+		echo "[groups] Use --with <group> to add an optional group." >&2
+		return 0
+	fi
 	for group in $(declared_groups); do
 		if [[ "$group" == core ]]; then continue; fi
 		if [[ "$header" == false ]]; then
@@ -774,7 +777,9 @@ install_claude_hooks() {
 	# link_children below as a *directory* symlink — never re-link files
 	# inside lib/, or path resolution turns into self-symlinks.
 	if [[ -d "$REPO_DIR/hooks/claude/lib" ]]; then
-		rm -rf "$install_dir/lib"
+		# `:?` rather than a bare expansion: an empty install_dir here would make
+		# this `rm -rf /lib`.
+		rm -rf "${install_dir:?}/lib"
 		mkdir -p "$install_dir/lib"
 		cp -a "$REPO_DIR"/hooks/claude/lib/. "$install_dir/lib/"
 		echo "[claude] Installed hook lib/ helpers"
@@ -1044,8 +1049,13 @@ install_shim_path() {
 	{
 		printf '\n%s\n' "$begin"
 		printf '# Runs each agent CLI session in its own systemd scope.\n'
+		# $PATH stays unexpanded on purpose: what lands in the rc file has to be
+		# read at the reader's shell startup, not resolved to the installer's
+		# PATH and frozen there.
+		# shellcheck disable=SC2016
 		printf 'case ":$PATH:" in\n'
 		printf '  *":%s:"*) ;;\n' "$shim_dir"
+		# shellcheck disable=SC2016
 		printf '  *) PATH="%s:$PATH" ;;\n' "$shim_dir"
 		printf 'esac\n'
 		printf '%s\n' "$end"
