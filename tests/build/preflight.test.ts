@@ -18,12 +18,26 @@ function write(relative: string, body: string): string {
   return path;
 }
 
-function preflight(paths: string[], extra: string[] = []): ReturnType<typeof spawnSync> {
+function preflight(
+  paths: string[],
+  extra: string[] = [],
+  env: Record<string, string> = {},
+): ReturnType<typeof spawnSync> {
   const list = join(root, '.touched');
   writeFileSync(list, `${paths.join('\n')}\n`);
   return spawnSync('bash', [PREFLIGHT, '--repo', root, '--paths-from', list, ...extra], {
     encoding: 'utf-8',
+    env: { ...process.env, ...env },
   });
+}
+
+// Puts a stub ahead of the real tool so a broken sub-tool can be simulated.
+function stubOnPath(name: string, body: string): Record<string, string> {
+  const bin = join(root, '.bin');
+  mkdirSync(bin, { recursive: true });
+  writeFileSync(join(bin, name), body);
+  chmodSync(join(bin, name), 0o755);
+  return { PATH: `${bin}:${process.env.PATH ?? ''}` };
 }
 
 const SHELL_PREAMBLE = ['#!/usr/bin/env bash', 'set -euo pipefail'];
@@ -390,6 +404,66 @@ describe('pattern checks', () => {
     }
   });
 
+  test('the argv-array and shell-template spellings are caught', () => {
+    // Assembled rather than written out, so this file does not itself read as a
+    // restore — the check deliberately cannot tell a quoted command from a run one.
+    const g = 'git';
+    for (const line of [`execFileSync("${g}", ["checkout", "--", "x"]);`, `Bun.$\`${g} stash\`;`]) {
+      write('tests/a.test.ts', `${line}\n`);
+      const result = preflight(['tests/a.test.ts']);
+      expect(result.stdout, line).toContain('discards working-tree state');
+      expect(result.status, line).toBe(1);
+    }
+  });
+
+  test('git restore without an explicit -- is still a discard', () => {
+    write('scripts/probe.sh', shellScript(['git restore src/thing.ts']));
+
+    const result = preflight(['scripts/probe.sh']);
+
+    expect(result.stdout).toContain('discards working-tree state');
+    expect(result.status).toBe(1);
+  });
+
+  test('a branch switch is not a discard', () => {
+    write('scripts/probe.sh', shellScript(['git checkout main']));
+
+    const result = preflight(['scripts/probe.sh']);
+
+    expect(result.stdout).toContain('no git-checkout restores');
+    expect(result.status).toBe(0);
+  });
+
+  test('the per-file loop idiom passes, unlike a list that can vanish', () => {
+    write('scripts/probe.sh', shellScript(['for f in "${FILES[@]}"; do', '\tdprint fmt "$f"', 'done']));
+
+    const result = preflight(['scripts/probe.sh']);
+
+    expect(result.stdout).toContain('no bare dprint invocations');
+    expect(result.status).toBe(0);
+  });
+
+  test('prose showing a bare dprint is described, not committed', () => {
+    // The same text in a shell file must fire, or this proves nothing.
+    const lines = ['# note', '', 'Never run:', '', '```bash', 'dprint fmt', '```'];
+    write('docs/note.md', `${lines.join('\n')}\n`);
+    write('scripts/probe.sh', shellScript(['dprint fmt']));
+
+    expect(preflight(['docs/note.md']).stdout).toContain('no bare dprint invocations');
+    expect(preflight(['docs/note.md']).status).toBe(0);
+    expect(preflight(['scripts/probe.sh']).stdout).toContain('no guaranteed file list');
+    expect(preflight(['scripts/probe.sh']).status).toBe(1);
+  });
+
+  test('a test naming an installer but spawning nothing is left alone', () => {
+    write('tests/inst.test.ts', ["const script = join(REPO, 'install.sh');", 'export default script;', ''].join('\n'));
+
+    const result = preflight(['tests/inst.test.ts']);
+
+    expect(result.stdout).toContain('no test spawns an installer');
+    expect(result.status).toBe(0);
+  });
+
   test('a git command a test only asserts about is not a restore', () => {
     write('tests/a.test.ts', ["expect(runHook(clone, 'git stash push -q -m wip')).not.toContain('deny');", ''].join('\n'));
 
@@ -607,6 +681,17 @@ describe('formatting', () => {
 
     expect(result.stdout).toContain('dprint fmt drifted.json');
     expect(result.status).toBe(1);
+  });
+
+  test('a dprint that cannot run leaves the file unchecked rather than exonerated', () => {
+    cpSync(join(REPO, 'dprint.json'), join(root, 'dprint.json'));
+    write('bad.json', UNFORMATTED);
+
+    const broken = preflight(['bad.json'], [], stubOnPath('dprint', '#!/bin/sh\nexit 70\n'));
+
+    expect(broken.stdout).toContain('could not judge formatting drift');
+    expect(broken.stdout).not.toContain('no new drift added');
+    expect(broken.status).toBe(1);
   });
 
   test('an untouched already-drifted file is still left alone', () => {

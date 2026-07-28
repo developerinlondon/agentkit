@@ -158,8 +158,19 @@ unrelated churn.
 changed in a CI file the change never touched — is the visible symptom.
 
 **Caught by.** `preflight`'s bare-dprint check flags an invocation with no file
-list. `preflight` also declines to run its own format check when the touched set
-contains no formattable file, rather than invoking dprint bare.
+list, or one whose arguments can all expand to no words (`$FILES`, `"$@"`). A
+quoted scalar in a per-file loop (`dprint fmt "$file"`) is fine. `preflight` also
+declines to run its own format check when the touched set contains no formattable
+file, rather than invoking dprint bare.
+
+**Expect this when you touch an already-drifted file.** The format check judges
+the lines your change added, not the whole file, so drift you inherited is
+skipped and drift you add is not. Where a file's prevailing style predates the
+formatter — several here still use single-quoted YAML scalars that dprint wants
+doubled — your added lines must satisfy dprint even though their neighbours do
+not, and the file ends up mixing the two. That is deliberate: a handful of
+inconsistent lines beats a whole-file reformat burying the change. Reformatting
+such a file is its own commit, not a rider on yours.
 
 ### A second scanner shadowing the real parser
 

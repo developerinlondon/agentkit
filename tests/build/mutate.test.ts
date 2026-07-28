@@ -105,6 +105,17 @@ describe('restoration', () => {
     expect(result.status).toBe(3);
   });
 
+  test('each restore fault names its own cause', () => {
+    const unwritable = mutate(
+      ['--replace', 'LIMIT = 10', '--with', 'LIMIT = 99'],
+      `chmod 444 '${target}'; printf '\\n 2 pass\\n 1 fail\\n'`,
+    );
+    chmodSync(target, 0o644);
+
+    expect(unwritable.stderr).toContain('could not write');
+    expect(unwritable.stderr).not.toContain('does not match its pre-mutation digest');
+  });
+
   test('a restore that writes the wrong bytes is a hard error', () => {
     const result = mutate(
       ['--replace', 'LIMIT = 10', '--with', 'LIMIT = 99'],

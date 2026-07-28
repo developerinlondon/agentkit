@@ -141,8 +141,13 @@ BEFORE="$(digest "$FILE")"
 # copy survives a failed restore: it is the only remaining good copy.
 restore() {
 	local status=$?
-	if ! cp "$BACKUP" "$FILE" 2>/dev/null || [[ "$(digest "$FILE")" != "$BEFORE" ]]; then
-		printf 'mutate: RESTORE FAILED — %s does not match its pre-mutation digest; backup kept at %s\n' \
+	if ! cp "$BACKUP" "$FILE"; then
+		printf 'mutate: RESTORE FAILED — could not write %s, so it is still mutated; backup kept at %s\n' \
+			"$FILE" "$BACKUP" >&2
+		exit 3
+	fi
+	if [[ "$(digest "$FILE")" != "$BEFORE" ]]; then
+		printf 'mutate: RESTORE FAILED — %s was written but does not match its pre-mutation digest; backup kept at %s\n' \
 			"$FILE" "$BACKUP" >&2
 		exit 3
 	fi

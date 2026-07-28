@@ -216,16 +216,17 @@ check_slice() {
 # inherited is not its to repair — reformatting buries the diff in churn a
 # reviewer must then read past — but drift on its own added lines is, even when
 # the file was already drifted.
+# The count is the answer; the status says whether there is one. A formatter that
+# could not run must not be readable as "this change added nothing".
 new_drift_lines() {
 	local path="$1" base tmp name hits=0
 	base="$(git -C "$REPO" merge-base "$BASE" HEAD 2>/dev/null || printf '%s' "$BASE")"
 	tmp="$(mktemp -d "${TMPDIR:-/tmp}/agentkit-preflight-fmt.XXXXXX")"
 	name="$(basename "$path")"
 
-	if ! (cd "$REPO" && dprint fmt --stdin "$name" <"$REPO/$path" >"$tmp/formatted") 2>/dev/null; then
+	if ! (cd "$REPO" && dprint fmt --stdin "$name" <"$REPO/$path" >"$tmp/formatted"); then
 		rm -rf "$tmp"
-		printf '0'
-		return 0
+		return 2
 	fi
 	diff "$REPO/$path" "$tmp/formatted" | sed -n 's/^< //p' | sort -u >"$tmp/drifted"
 
@@ -267,13 +268,14 @@ check_format() {
 		skip "no dprint.json at the repository root"
 		return 0
 	fi
-	local added
+	local added unjudged=""
 	for path in "${formattable[@]}"; do
 		if (cd "$REPO" && dprint check "$path" >/dev/null 2>&1); then
 			continue
 		fi
-		added="$(new_drift_lines "$path")"
-		if [[ "$added" -gt 0 ]]; then
+		if ! added="$(new_drift_lines "$path")"; then
+			unjudged="$unjudged $path"
+		elif [[ "$added" -gt 0 ]]; then
 			unclean="$unclean $path"
 		else
 			inherited="$inherited $path"
@@ -282,8 +284,14 @@ check_format() {
 	if [[ -n "$inherited" ]]; then
 		skip "already unformatted before this change, no new drift added:$inherited"
 	fi
+	if [[ -n "$unjudged" ]]; then
+		bad "dprint could not judge formatting drift, so it is unchecked:$unjudged"
+	fi
 	if [[ -n "$unclean" ]]; then
 		bad "dprint check failed — run: dprint fmt$unclean"
+		return 0
+	fi
+	if [[ -n "$unjudged" ]]; then
 		return 0
 	fi
 	ok "dprint check clean on the touched formattable files"
@@ -312,17 +320,22 @@ check_focused_tests() {
 check_restore_by_checkout() {
 	local path hits status=0
 	for path in "$@"; do
-		# Any spelling that discards working-tree state, wherever it sits on the
-		# line — in a shell file a bare command is already execution, elsewhere it
-		# counts only next to something that runs it, so a command a test merely
-		# asserts about is not mistaken for one it performs.
-		local discard exec_verb
-		discard="git[[:space:]]+(checkout|restore)([[:space:]]+[^[:space:]\"']+)*[[:space:]]+--[[:space:]]|git[[:space:]]+(stash|clean)([[:space:]]|\$)"
-		exec_verb='(execSync|execFileSync|execFile|spawnSync|spawn|exec|system|Bun\.\$|\$`|(sh|bash)[[:space:]]+-c)'
+		# Quotes, commas and brackets are flattened first so an argv array and a
+		# shell template literal read the same as a bare command. In a shell file a
+		# bare command is already execution; elsewhere it counts only next to
+		# something that runs it, so a command a test merely asserts about is not
+		# mistaken for one it performs.
+		local flat discard exec_verb
+		flat="$(code_lines "$REPO/$path" | awk '{gsub(/["\047`,\[\]]/, " "); print}')"
+		discard='git[[:space:]]+(checkout|restore)([[:space:]]+[^[:space:]]+)*[[:space:]]+--([[:space:]]|$)'
+		discard="$discard"'|git[[:space:]]+restore[[:space:]]+[^-[:space:]]'
+		discard="$discard"'|git[[:space:]]+(stash|clean)([[:space:]]|$)'
+		exec_verb='(^|[^A-Za-z])(execSync|execFileSync|execFile|spawnSync|spawn|exec|system)[[:space:]]*\('
+		exec_verb="$exec_verb"'|Bun\.\$|(^|[[:space:]])\$([[:space:]]|$)|(sh|bash)[[:space:]]+-c'
 		if is_shell_file "$REPO/$path"; then
-			hits="$(code_lines "$REPO/$path" | grep -E "$discard" || true)"
+			hits="$(printf '%s\n' "$flat" | grep -E "$discard" || true)"
 		else
-			hits="$(code_lines "$REPO/$path" | grep -E "$discard" | grep -E "$exec_verb" || true)"
+			hits="$(printf '%s\n' "$flat" | grep -E "$discard" | grep -E "$exec_verb" || true)"
 		fi
 		if [[ -n "$hits" ]]; then
 			bad "$path discards working-tree state with git — a shared clone loses other sessions' work; use scripts/mutate"
@@ -342,11 +355,12 @@ check_bare_dprint() {
 		case "$path" in
 		*.md) continue ;;
 		esac
-		# Nothing after the subcommand, or nothing but whole-word expansions that
-		# can each be empty — both reformat the whole repository. An expansion
-		# carrying a literal path segment ("$REPO/moon.yml") names a real file.
+		# Nothing after the subcommand, or nothing but arguments that can expand to
+		# no words at all — both reformat the whole repository. A quoted scalar
+		# ("$file", the per-file loop idiom) is always exactly one argument, and an
+		# expansion carrying a literal segment ("$REPO/moon.yml") names a real file.
 		local expansion
-		expansion='("\$\{?[A-Za-z_@*][A-Za-z0-9_]*\}?"|\$\{?[A-Za-z_@*][A-Za-z0-9_]*\}?)'
+		expansion='(\$\{?[A-Za-z_][A-Za-z0-9_]*(\[[@*]\])?\}?|"?\$@"?)'
 		hits="$(code_lines "$REPO/$path" |
 			grep -E "dprint[[:space:]]+(fmt|check)([[:space:]]+$expansion)*[[:space:]]*(\\\\)?\$" ||
 			true)"
