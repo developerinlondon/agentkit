@@ -30,6 +30,8 @@ const expectedFailures: Record<string, string> = {
   'brief-disposition-without-rationale.yaml': 'requires a rationale',
   'brief-missing-subject-name.yaml': "missing required field 'name'",
   'brief-dangling-ledger.yaml': 'not found',
+  'brief-multi-origin-unqualified.yaml': 'must name its origin',
+  'brief-origin-duplicate-id.yaml': 'duplicate origin id',
 };
 
 describe('product-intelligence schemas', () => {
