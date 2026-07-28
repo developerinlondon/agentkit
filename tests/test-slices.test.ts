@@ -222,7 +222,9 @@ tasks:
   });
 
   test('gates the full suite on exactly the committed critical surfaces', () => {
-    expect([...readMoonConfig().fileGroups.criticalInputs].sort()).toEqual(
+    const config = readMoonConfig();
+    expect(config.tasks['test-full'].inputs).toContain('group://criticalInputs');
+    expect([...config.fileGroups.criticalInputs].sort()).toEqual(
       [...CRITICAL_INPUTS].sort(),
     );
   });
