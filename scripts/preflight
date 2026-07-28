@@ -298,6 +298,59 @@ check_format() {
 	return 0
 }
 
+normalise_path() {
+	local combined="$1/$2" out="" part
+	local IFS='/'
+	for part in $combined; do
+		case "$part" in
+		'' | .) continue ;;
+		..) out="${out%/*}" ;;
+		*) out="$out/$part" ;;
+		esac
+	done
+	printf '%s' "${out#/}"
+	return 0
+}
+
+# A skill is the unit that ships, and install groups can put two skills in
+# different plugins. An import reaching out of its own skill therefore survives
+# every same-repo check and dangles only in the artifact a user installs — and a
+# byte-parity mirror check copies it faithfully, because parity is sameness, not
+# loadability.
+check_cross_skill_import() {
+	local path status=0 skill dir spec target
+	for path in "$@"; do
+		case "$path" in
+		skills/*/*.ts | skills/*/*.js | skills/*/*.mjs) ;;
+		*) continue ;;
+		esac
+		skill="${path#skills/}"
+		skill="skills/${skill%%/*}"
+		dir="$(dirname "$path")"
+		while IFS= read -r spec; do
+			if [[ -z "$spec" ]]; then
+				continue
+			fi
+			target="$(normalise_path "$dir" "$spec")"
+			case "$target" in
+			"$skill"/*) ;;
+			*)
+				bad "$path imports $spec, outside $skill — it dangles wherever the skills ship apart"
+				status=1
+				;;
+			esac
+		done <<EOF
+$(code_lines "$REPO/$path" |
+			grep -oE "(from|import|require)[[:space:]]*\(?[[:space:]]*['\"]\.[^'\"]*['\"]" |
+			grep -oE "['\"]\.[^'\"]*['\"]" | tr -d "\"'" || true)
+EOF
+	done
+	if [[ "$status" -eq 0 ]]; then
+		ok "no skill imports across a skill boundary"
+	fi
+	return 0
+}
+
 check_focused_tests() {
 	local path hits status=0
 	for path in "$@"; do
@@ -469,6 +522,7 @@ else
 fi
 
 check_mirror "${EXISTING[@]}"
+check_cross_skill_import "${EXISTING[@]}"
 check_format "${EXISTING[@]}"
 check_focused_tests "${EXISTING[@]}"
 check_restore_by_checkout "${EXISTING[@]}"

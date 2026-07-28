@@ -191,6 +191,35 @@ fixtures, including hostile ones, and assert they agree — the repository has a
 manifest-readers test doing exactly this. Where a real parser exists, prefer it
 over a second scan.
 
+### The merge mints what neither parent had
+
+**Mechanism.** Two branches are each correct and each reviewed clean, and the
+merge has no textual conflict, so nothing asks whether their combination holds.
+One branch adds a relative import from one skill into another; the other splits
+the shipped plugin mirrors by install group, so those two skills stop travelling
+together. The import now points outside the artifact that carries it, and the
+plugin dies at module load. Neither parent contained the defect; the merge is
+where it first exists, and a merge is the one change nobody reviews as a change.
+
+Two amplifiers let it reach users, both confirmed here:
+
+- **Byte parity is not loadability.** The mirror check compares bytes, so it
+  copies a broken import faithfully and reports success. Probed directly: a
+  skill importing `../../beta/slides.ts` and the same skill importing
+  `./slides.ts` both yield `plugin mirror byte-identical`.
+- **Nothing executed the shipped artifact.** Tests import from the source tree;
+  no test imported or ran any script under the shipped skill mirrors, so the
+  thing a user installs was never once loaded.
+
+**Caught by.** `preflight`'s cross-skill import check refuses the ingredient: a
+relative import in `skills/<name>/` that resolves outside its own skill is
+flagged when it is written, long before any merge, because the skill is the unit
+that ships and grouping may put two of them in different plugins. That is static
+and cheap; it cannot see the emergent half. For that, execute the artifact —
+dynamically import every shipped mirror script — and treat a merged head as a
+change in its own right: re-derive its checks rather than trusting the runs from
+either parent.
+
 ### The fix introduces a new defect
 
 **Mechanism.** A round-two fix is correct for the reported symptom and wrong

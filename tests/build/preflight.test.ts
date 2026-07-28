@@ -252,6 +252,37 @@ describe('plugin mirror parity', () => {
   });
 });
 
+describe('cross-skill imports', () => {
+  function skillPair(spec: string): ReturnType<typeof spawnSync> {
+    const body = `import { render } from '${spec}';\nexport const x = render;\n`;
+    write('skills/alpha/scripts/render.ts', body);
+    write('plugins-cc/agentkit/skills/alpha/scripts/render.ts', body);
+    write('skills/beta/slides.ts', 'export const render = 1;\n');
+    return preflight(['skills/alpha/scripts/render.ts']);
+  }
+
+  test('an import reaching into another skill fails', () => {
+    const result = skillPair('../../beta/slides.ts');
+
+    expect(result.stdout).toContain('outside skills/alpha');
+    expect(result.status).toBe(1);
+  });
+
+  test('an import inside the same skill passes', () => {
+    const result = skillPair('./slides.ts');
+
+    expect(result.stdout).toContain('no skill imports across a skill boundary');
+    expect(result.status).toBe(0);
+  });
+
+  test('byte parity is satisfied by a faithfully copied broken import', () => {
+    // The mirror is identical either way: parity proves sameness, not loadability,
+    // so it cannot be the check that catches this.
+    expect(skillPair('../../beta/slides.ts').stdout).toContain('plugin mirror byte-identical');
+    expect(skillPair('./slides.ts').stdout).toContain('plugin mirror byte-identical');
+  });
+});
+
 describe('test slice routing', () => {
   function sliceRepo(): void {
     cpSync(join(REPO, 'scripts', 'check-test-slices.ts'), write('scripts/check-test-slices.ts', ''));
