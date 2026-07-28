@@ -15,7 +15,9 @@ export const DEFAULT_GROUP = 'core';
 
 export function parseSkillGroups(contents: string): SkillGroupManifest {
   const groups: SkillGroup[] = [];
-  const membership: Record<string, string> = {};
+  // Null prototype: a skill named toString/constructor must hit the manifest,
+  // not Object.prototype — bash has no such collision, so the readers diverge.
+  const membership: Record<string, string> = Object.create(null);
 
   for (const line of contents.split('\n')) {
     const trimmed = line.trim();

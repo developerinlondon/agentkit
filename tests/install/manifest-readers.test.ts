@@ -72,6 +72,21 @@ describe('manifest readers agree', () => {
     );
   });
 
+  test('a skill named after an Object.prototype key behaves like any other name', () => {
+    const proto = join(fixtures, 'skill-groups-proto');
+    const manifest = parseSkillGroups(readFileSync(proto, 'utf-8'));
+    expect(manifest.membership['toString']).toBe('product');
+
+    const resolved = bashReader(proto, 'skill_group "toString"');
+    expect(resolved.stdout).toBe(groupOf(manifest, 'toString'));
+
+    // Absent from the manifest entirely, it must fall back to core as a
+    // string — never surface an inherited function through the lookup.
+    const clean = parseSkillGroups(readFileSync(hostile, 'utf-8'));
+    expect(groupOf(clean, 'toString')).toBe('core');
+    expect(groupOf(clean, 'constructor')).toBe('core');
+  });
+
   test('the shipped manifest passes both readers', () => {
     const validated = bashReader(join(repoRoot, 'skills', 'GROUPS'), 'validate_skill_groups');
     expect(validated.status, validated.stderr).toBe(0);
