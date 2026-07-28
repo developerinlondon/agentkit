@@ -143,6 +143,10 @@ if (!hasDepcruise && process.env.CI !== undefined) {
   throw new Error('dependency-cruiser is a pinned devDependency and must be installed in CI');
 }
 
+// dependency-cruiser walks the whole tree; the 5s default is a coin flip
+// under full-suite load, and a timeout there reads as a real failure.
+const CRUISE_TIMEOUT_MS = 60_000;
+
 describe.if(hasDepcruise)('a live cruise of this repository', () => {
   test('agentkit\'s own module graph comes out as a figure, not a hairball', () => {
     const cruised = Bun.spawnSync({
@@ -162,7 +166,7 @@ describe.if(hasDepcruise)('a live cruise of this repository', () => {
     // its CLI — if that stops being true the grouping has stopped working.
     expect(result.stdout).toContain('scripts_extract: "extract\\n');
     expect(result.stdout).toContain('scripts.scripts_extract_ts -> scripts.scripts_extract:');
-  });
+  }, CRUISE_TIMEOUT_MS);
 
   test('the default flags meet both guards on this repository, and --focus resolves it', () => {
     // Real data either side of the budget: the whole tree is one component
@@ -185,7 +189,7 @@ describe.if(hasDepcruise)('a live cruise of this repository', () => {
     // The cross-skill import this repository actually has, derived rather than
     // remembered — skills ship as separate plugins, so it is worth seeing.
     expect(focused.stdout).toMatch(/product_intelligence\S* -> publish_page\S*: "\d+ imports?"/);
-  });
+  }, CRUISE_TIMEOUT_MS);
 });
 
 const hasD2 = Bun.which('d2') !== null;
