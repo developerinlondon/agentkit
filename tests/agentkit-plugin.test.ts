@@ -21,6 +21,7 @@ const PRE_TOOL_USE_HOOKS = [
   'git-police.sh',
   'kubectl-police.sh',
   'pkg-police.sh',
+  'pages-police.sh',
   'mr-police.sh',
   'resource-police.sh',
   'review-police.sh',

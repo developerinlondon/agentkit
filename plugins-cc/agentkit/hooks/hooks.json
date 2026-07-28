@@ -24,6 +24,12 @@
           },
           {
             "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/pages-police.sh",
+            "timeout": 10,
+            "statusMessage": "pages-police: guarding page publishes..."
+          },
+          {
+            "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/hooks/resource-police.sh",
             "timeout": 10,
             "statusMessage": "resource-police: requiring bounded execution..."

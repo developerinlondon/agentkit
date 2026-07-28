@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 import { marked } from "marked";
+import { lintFigures } from "./lint.ts";
 import { createHmac, randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
@@ -221,6 +222,9 @@ async function render(): Promise<string> {
 }
 
 const html = await render();
+const lint = lintFigures(html, process.argv.includes("--allow-bare-svg"));
+for (const warning of lint.warnings) console.error(`publish-page: warning: ${warning}`);
+if (lint.errors.length > 0) fail(lint.errors.join("\n"));
 if (Buffer.byteLength(html) > 5 * 1024 * 1024) {
   const hint = html.includes("mermaid.initialize")
     ? " (the inlined mermaid runtime accounts for ~3.4 MB — diagram pages have ~1.4 MB left for content; split the page or drop diagrams)"
