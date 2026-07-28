@@ -136,6 +136,13 @@ describe('conditional-and status leaks', () => {
     expect(result.status).toBe(1);
   });
 
+  test('an apostrophe inside a double-quoted string does not open a quoted span', () => {
+    const result = statusCheck('v() {', '\tprintf "it\'s" && printf "won\'t"', '}', 'v');
+
+    expect(result.stdout).toContain('[tail-leak]');
+    expect(result.status).toBe(1);
+  });
+
   test('a && inside a single-quoted program is data, not shell syntax', () => {
     const clean = statusCheck(
       'f() {',
@@ -313,6 +320,20 @@ describe('plugin mirror parity', () => {
     expect(result.status).toBe(0);
   });
 
+  test('a manifest that exists but does not validate is blamed, not the mirror', () => {
+    cpSync(join(REPO, 'lib', 'skill-groups.sh'), write('lib/skill-groups.sh', ''));
+    write('skills/GROUPS', 'group core Core skills\n\nbeta undeclared-group\n');
+    write('skills/beta/SKILL.md', '# beta\n');
+    write('plugins-cc/agentkit/skills/beta/SKILL.md', '# beta\n');
+
+    const result = preflight(['skills/beta/SKILL.md']);
+
+    expect(result.stdout).toContain('skills/GROUPS does not validate');
+    expect(result.stdout).toContain('undeclared-group');
+    expect(result.stdout).not.toContain('mirror missing');
+    expect(result.status).toBe(1);
+  });
+
   test('an unresolvable group manifest fails rather than assuming the core plugin', () => {
     write('skills/beta/SKILL.md', '# beta\n');
     write('plugins-cc/agentkit/skills/beta/SKILL.md', '# beta\n');
@@ -369,6 +390,39 @@ describe('cross-skill imports', () => {
 
     expect(result.stdout).toContain('no skill imports across a skill boundary');
     expect(result.status).toBe(0);
+  });
+
+  test('every spelling that resolves at load time is checked', () => {
+    for (
+      const line of [
+        "import { x } from '../../alpha/gone.ts';",
+        "import '../../alpha/gone.ts';",
+        "const x = require('../../alpha/gone.ts');",
+      ]
+    ) {
+      groupedRepo();
+      write('skills/beta/scripts/a.ts', `${line}\n`);
+      write('plugins-cc/agentkit-product/skills/beta/scripts/a.ts', `${line}\n`);
+      const result = preflight(['skills/beta/scripts/a.ts']);
+      expect(result.stdout, line).toContain('does not ship at');
+      expect(result.status, line).toBe(1);
+    }
+  });
+
+  test('a type-only import is erased before the code runs, so it cannot dangle', () => {
+    for (
+      const line of [
+        "import type { X } from '../../alpha/gone.ts';",
+        "export type { X } from '../../alpha/gone.ts';",
+      ]
+    ) {
+      groupedRepo();
+      write('skills/beta/scripts/a.ts', `${line}\n`);
+      write('plugins-cc/agentkit-product/skills/beta/scripts/a.ts', `${line}\n`);
+      const result = preflight(['skills/beta/scripts/a.ts']);
+      expect(result.stdout, line).toContain('no skill imports across a skill boundary');
+      expect(result.status, line).toBe(0);
+    }
   });
 
   test('a guarded dynamic import is not the fatal class a static one is', () => {
