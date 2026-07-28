@@ -177,4 +177,6 @@ navy tokens above so pages feel like one product.
 - Publish refuses a baked (excalidraw) SVG that is not inside a `.figure`
   island or a container styled with `var(--diagram-bg)` — a navy-palette
   diagram on a page-supplied light background is illegible in both themes.
-  `--allow-bare-svg` overrides when a raw page really owns its background.
+  `--allow-bare-svg` overrides when a raw page really owns its background —
+  the pages-police hook blocks that flag unless the user approved it
+  (`AGENTKIT_ALLOW_BARE_SVG=1`), and blocks raw API writes outright.

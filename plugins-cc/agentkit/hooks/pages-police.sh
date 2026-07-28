@@ -20,8 +20,17 @@ deny() {
 # canonical history. A raw PUT with the bearer token skips all three. Reads
 # (GET/HEAD) stay allowed.
 if echo "$COMMAND" | grep -qE '/api/pages'; then
-  if echo "$COMMAND" | grep -qiE '\b(curl|wget|http|xh)\b' \
-    && echo "$COMMAND" | grep -qiE '(-X[[:space:]]*(PUT|POST|DELETE)|--method[[:space:]=]*(PUT|POST|DELETE)|--upload-file|[[:space:]]-T[[:space:]]|--data|[[:space:]]-d[[:space:]])'; then
+  API_WRITE=0
+  if echo "$COMMAND" | grep -qiE '\b(curl|wget)\b' \
+    && echo "$COMMAND" | grep -qiE '((-X|--request|--method)[[:space:]=]*(PUT|POST|DELETE)|--upload-file|[[:space:]]-T[[:space:]]|--data|--json|--form|[[:space:]]-d[[:space:]])'; then
+    API_WRITE=1
+  fi
+  # httpie/xh take the method as a bare word: `http PUT …/api/pages/x`.
+  if echo "$COMMAND" | grep -qE '(^|[[:space:];&|])(http|xh)[[:space:]]' \
+    && echo "$COMMAND" | grep -qE '\b(PUT|POST|DELETE)\b'; then
+    API_WRITE=1
+  fi
+  if [[ "$API_WRITE" == "1" ]]; then
     deny "BLOCKED: direct write to the Pages API. Publish through skills/publish-page/publish.ts — it enforces the figure lint (illegible-diagram guard), the 5 MB cap, and the canonical git commit; a raw API write bypasses all three. Deletes: publish.ts --delete --name <name>."
   fi
 fi

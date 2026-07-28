@@ -19,7 +19,11 @@ describe('pages-police: direct API writes', () => {
     'curl --upload-file page.html https://pages.agentkit.sbs/api/pages/abc',
     'curl -T page.html https://pages.agentkit.sbs/api/pages/abc',
     'curl -X DELETE https://pages.agentkit.sbs/api/pages/abc',
+    'curl --request DELETE https://pages.agentkit.sbs/api/pages/abc',
+    'curl --request PUT --json @p.html https://pages.agentkit.sbs/api/pages/abc',
     'wget --method=PUT --body-file=p.html http://127.0.0.1:8787/api/pages/abc',
+    'http PUT pages.agentkit.sbs/api/pages/abc < page.html',
+    'xh DELETE pages.agentkit.sbs/api/pages/abc',
   ];
   for (const command of denied) {
     test(`denies: ${command.slice(0, 60)}`, () => {

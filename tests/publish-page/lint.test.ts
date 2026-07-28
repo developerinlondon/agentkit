@@ -49,8 +49,36 @@ describe('publish-page figure lint', () => {
   });
 
   test('a distant .figure from an earlier, closed island does not cover a bare svg', () => {
-    const filler = '<p>x</p>'.repeat(120);
+    const filler = '<p>x</p>'.repeat(160);
     const html = `<div class="figure">old</div>${filler}${SVG}`;
     expect(lintFigures(html).errors).toHaveLength(1);
+  });
+
+  test('a CLOSED .figure immediately before a bare svg does not cover it', () => {
+    const html = `<div class="figure">old</div><p>hi</p>${SVG}`;
+    expect(lintFigures(html).errors).toHaveLength(1);
+  });
+
+  test('an unstyled inner div inside an open .figure still counts as wrapped', () => {
+    const html = `<div class="figure"><div class="inner">${SVG}</div></div>`;
+    expect(lintFigures(html).errors).toEqual([]);
+  });
+
+  test('a prefix-named class does not borrow another rule: .diagrams cannot cover .diagram', () => {
+    const html = `<style>.diagrams { background: var(--diagram-bg) } .diagram { background: white }</style>
+<div class="diagram">${SVG}</div>`;
+    expect(lintFigures(html).errors).toHaveLength(1);
+  });
+
+  test('var(--diagram-bg) on a non-background property does not qualify', () => {
+    const html = `<style>.d { border-color: var(--diagram-bg); background: white }</style><div class="d">${SVG}</div>`;
+    expect(lintFigures(html).errors).toHaveLength(1);
+  });
+
+  test('background-color spelling and single-quoted class attributes are understood', () => {
+    const html = `<style>.hero { background-color: white }</style><div class='figure'>${SVG}</div>`;
+    const result = lintFigures(html);
+    expect(result.errors).toEqual([]);
+    expect(result.warnings).toHaveLength(1);
   });
 });
