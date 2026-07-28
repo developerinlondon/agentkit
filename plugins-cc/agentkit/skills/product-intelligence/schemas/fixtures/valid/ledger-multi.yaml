@@ -1,0 +1,31 @@
+ledger_version: "1.0"
+generated_by: product-intelligence
+generated_at: "2026-07-28T09:00:00Z"
+claims:
+  - id: C-001
+    statement: The server exposes a REST API documented in its README.
+    class: observed
+    confidence: high
+    sources:
+      - locator: "repo:server:README.md:8-14"
+        quote: "Every endpoint is available over REST at /api/v1."
+        stance: supports
+        as_of: "2026-07-28"
+  - id: C-002
+    statement: The CLI ships prebuilt binaries with each release.
+    class: observed
+    confidence: high
+    sources:
+      - locator: "gh:cli:releases/v2.3.0"
+        quote: "Assets: acme-linux-amd64, acme-darwin-arm64"
+        stance: supports
+        as_of: "2026-07-28"
+  - id: C-003
+    statement: The pricing page sells the server and CLI as one product.
+    class: observed
+    confidence: high
+    sources:
+      - locator: "site:/pricing"
+        quote: "One license covers the server and the CLI."
+        stance: supports
+        as_of: "2026-07-28"

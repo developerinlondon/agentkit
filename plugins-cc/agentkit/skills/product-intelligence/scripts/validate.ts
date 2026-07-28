@@ -177,6 +177,7 @@ export function validateBriefDoc(doc: Json, ledger?: Json): string[] {
       errors.push(`brief.site_inventory[${i}]: a disposition requires a rationale`);
     }
   }
+  checkOrigins(brief, ledger, errors);
   if (ledger !== undefined) {
     const known = new Set(
       (((ledger as Record<string, Json>).claims ?? []) as Claim[]).map((c) => c.id).filter(Boolean),
@@ -186,6 +187,64 @@ export function validateBriefDoc(doc: Json, ledger?: Json): string[] {
     }
   }
   return errors;
+}
+
+// One brief may span several repos/sites; a locator like 'repo:README.md'
+// cannot say which. Qualification is demanded exactly when it is ambiguous:
+// two origins of one kind make every locator of that kind name its origin.
+const KIND_SCHEMES: Record<string, string[]> = { site: ['site'], repo: ['repo', 'gh'], docset: ['doc'] };
+
+interface Origin {
+  id?: string;
+  kind?: string;
+}
+
+function checkOrigins(brief: Record<string, Json>, ledger: Json | undefined, errors: string[]): void {
+  const origins = ((brief.subject as Record<string, Json> | undefined)?.origins ?? []) as Origin[];
+  if (origins.length === 0) return;
+
+  const idsByKind = new Map<string, string[]>();
+  const seen = new Set<string>();
+  for (const origin of origins) {
+    if (!origin.id || !origin.kind) continue;
+    if (seen.has(origin.id)) {
+      errors.push(`brief.subject.origins: duplicate origin id '${origin.id}'`);
+      continue;
+    }
+    seen.add(origin.id);
+    idsByKind.set(origin.kind, [...(idsByKind.get(origin.kind) ?? []), origin.id]);
+  }
+
+  const ambiguous = new Map<string, string[]>();
+  for (const [kind, ids] of idsByKind) {
+    if (ids.length < 2) continue;
+    for (const scheme of KIND_SCHEMES[kind] ?? []) ambiguous.set(scheme, ids);
+  }
+  if (ambiguous.size === 0) return;
+
+  for (const { path, locator } of collectLocators(brief, ledger)) {
+    const [scheme, second] = locator.split(':');
+    const ids = ambiguous.get(scheme);
+    if (ids && !ids.includes(second ?? '')) {
+      errors.push(`${path}: locator '${locator}' must name its origin — ${scheme}:<${ids.join('|')}>:…`);
+    }
+  }
+}
+
+function collectLocators(brief: Record<string, Json>, ledger: Json | undefined): { path: string; locator: string }[] {
+  const out: { path: string; locator: string }[] = [];
+  for (const [i, page] of (((brief.site_inventory ?? []) as Record<string, Json>[])).entries()) {
+    if (typeof page.locator === 'string') out.push({ path: `brief.site_inventory[${i}]`, locator: page.locator });
+  }
+  const claims = (((ledger as Record<string, Json> | undefined)?.claims ?? []) as Claim[]);
+  for (const [i, claim] of claims.entries()) {
+    for (const [j, source] of ((claim.sources ?? []) as Record<string, Json>[]).entries()) {
+      if (typeof source.locator === 'string') {
+        out.push({ path: `ledger claim ${claim.id ?? i}: sources[${j}]`, locator: source.locator });
+      }
+    }
+  }
+  return out;
 }
 
 function collectClaimRefs(node: Json, path: string): { path: string; ref: string }[] {

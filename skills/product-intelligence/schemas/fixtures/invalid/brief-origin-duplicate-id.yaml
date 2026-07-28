@@ -1,0 +1,12 @@
+brief_version: "1.0"
+subject:
+  name: acme-platform
+  origins:
+    - id: server
+      kind: repo
+      target: acme/server
+    - id: server
+      kind: repo
+      target: acme/server-v2
+evidence:
+  ledger: ../valid/ledger.yaml
