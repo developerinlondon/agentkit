@@ -129,6 +129,46 @@ Only CC0 packs are vendored (`logos`, `simple-icons`), under
 `assets/iconify/` with their own NOTICE files — that artwork is **not** covered
 by this repository's licence.
 
+### Vendor packs (Azure, GCP) — fetched, never vendored
+
+Cloud-vendor icon sets are vendor-licensed rather than CC0, so no vendor artwork
+is committed. Fetch a pack once, on the machine that needs it:
+
+```bash
+bun skills/diagram/scripts/fetch-icons.ts azure --accept-terms
+bun skills/diagram/scripts/fetch-icons.ts gcp   --accept-terms
+```
+
+Without `--accept-terms` the script prints the vendor's terms and downloads
+nothing. Archives are pinned by sha256; a vendor re-release fails the fetch with
+the observed hash and re-pin instructions rather than installing changed bytes.
+Nothing is wired into `install.sh` — fetching is always a deliberate act.
+
+Fetched icons then resolve exactly like vendored ones, under a pack prefix:
+
+```d2
+api: App Service   { icon: @azure:app-services/app-services }
+db:  Cosmos DB     { icon: @azure:azure-cosmos-db }
+bq:  BigQuery      { icon: @gcp:bigquery }
+```
+
+| Command                                        | Does                                      |
+| ---------------------------------------------- | ----------------------------------------- |
+| `fetch-icons.ts`                               | lists packs and whether each is installed |
+| `fetch-icons.ts <pack> --list`                 | lists that pack's icon keys               |
+| `fetch-icons.ts <pack> --list --filter sql`    | narrows the listing                       |
+| `fetch-icons.ts <pack> --accept-terms --force` | refetches an installed pack               |
+
+A name that exists twice with different artwork keeps the qualified form
+(`@gcp:legacy/bigquery` beside `@gcp:bigquery`); the fetch reports every such
+name. Referencing a pack that is not installed fails the render naming the fetch
+command, the same way a missing `d2` binary does.
+
+Trees land in `~/.agentkit/diagram/vendor-icons/` (override with
+`AGENTKIT_DIAGRAM_VENDOR_ICONS`) — outside any repository, because they must
+never be committed. Terms, pins and the reason AWS is excluded are in
+[VENDOR-LICENSES.md](VENDOR-LICENSES.md).
+
 ### Trademark rule (hard)
 
 **Vendor logos are never recoloured, distorted, or theme-filtered.** They are
