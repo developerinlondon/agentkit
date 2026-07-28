@@ -3,6 +3,11 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { basename, join, relative } from 'node:path';
 
 export const TEST_SLICES = {
+  diagram: [
+    'tests/diagram/d2-svg.test.ts',
+    'tests/diagram/icons.test.ts',
+    'tests/diagram/render.test.ts',
+  ],
   hooks: [
     'tests/agentkit-plugin.test.ts',
     'tests/coding-police-hook.test.ts',

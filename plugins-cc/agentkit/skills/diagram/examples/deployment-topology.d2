@@ -1,0 +1,59 @@
+direction: down
+
+client: Browser {
+  style.stroke-dash: 4
+}
+
+edge: Edge — Cloudflare {
+  style.stroke-dash: 4
+  cdn: CDN + WAF {
+    icon: @logos:cloudflare-icon
+  }
+}
+
+vpc: Production VPC 10.0.0.0/16 {
+  public: Public 10.0.0.0/24 {
+    alb: Application LB {
+      icon: @logos:aws-vpc
+    }
+  }
+
+  private: Private 10.0.10.0/24 — no inbound {
+    api: api-server ×3 {
+      icon: @logos:aws-ecs
+    }
+    worker: batch-worker ×2 {
+      icon: @logos:aws-fargate
+    }
+  }
+
+  data: Data 10.0.20.0/24 — isolated {
+    pg: Postgres 16 {
+      icon: @postgres
+    }
+    cache: Redis 7 {
+      icon: @cache
+    }
+    queue: SQS queue {
+      icon: @queue
+    }
+  }
+}
+
+secrets: Secrets Manager {
+  icon: @secrets
+}
+
+client -> edge.cdn: HTTPS 443 {
+  style.bold: true
+}
+edge.cdn -> vpc.public.alb: HTTPS 443 origin pull
+vpc.public.alb -> vpc.private.api: HTTP 8080
+vpc.private.api -> vpc.data.pg: TLS 5432 rw
+vpc.private.api -> vpc.data.cache: TCP 6379
+vpc.private.api -> vpc.data.queue: HTTPS enqueue
+vpc.data.queue -> vpc.private.worker: long poll
+vpc.private.worker -> vpc.data.pg: TLS 5432 w
+vpc.private.api -> secrets: TLS 443 IAM role {
+  style.stroke-dash: 4
+}

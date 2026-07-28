@@ -1,0 +1,12 @@
+Simple Icons (Iconify set "simple-icons")
+Upstream:   @iconify-json/simple-icons@1.2.92
+Author:     Simple Icons Collaborators <https://github.com/simple-icons/simple-icons>
+License:    CC0 1.0 (SPDX: CC0-1.0)
+License URL: https://github.com/simple-icons/simple-icons/blob/develop/LICENSE.md
+Full licence text: ../LICENSE.CC0-1.0.txt
+This directory holds 7 of 3450 icons from the set,
+extracted verbatim by skills/diagram/scripts/trim-iconify.ts. Icon artwork is
+NOT covered by this repository's own licence.
+Vendor logos are trademarks of their respective owners. They are reproduced
+unmodified for nominative identification only, and must never be recoloured,
+distorted, or theme-filtered.

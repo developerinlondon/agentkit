@@ -1,0 +1,12 @@
+SVG Logos (Iconify set "logos")
+Upstream:   @iconify-json/logos@1.2.11
+Author:     Gil Barbara <https://github.com/gilbarbara/logos>
+License:    CC0 (SPDX: CC0-1.0)
+License URL: https://raw.githubusercontent.com/gilbarbara/logos/master/LICENSE.txt
+Full licence text: ../LICENSE.CC0-1.0.txt
+This directory holds 77 of 1861 icons from the set,
+extracted verbatim by skills/diagram/scripts/trim-iconify.ts. Icon artwork is
+NOT covered by this repository's own licence.
+Vendor logos are trademarks of their respective owners. They are reproduced
+unmodified for nominative identification only, and must never be recoloured,
+distorted, or theme-filtered.

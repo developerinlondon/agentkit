@@ -69,12 +69,22 @@ substrate — they select C4 container unless the prompt also says where it runs
 
 ## Register
 
-Everything above is drawn in the **sketch register** today — the hand-drawn
-excalidraw pipeline in `SKILL.md`. In this register notation correctness beats
-icon fidelity: a correct crow's foot or a correctly placed trust boundary
-teaches; a vendor logo does not. A **technical register** (crisp strokes,
-vendor icon stencils) is the planned extension point for the deployment, C4 and
-interchange rows. Until it exists, do not approximate it with logo look-alikes.
+The type decides the register, and there are two.
+
+The **technical register** — crisp strokes, D2 source, vendored vendor icon
+stencils — carries exactly four types today: **ERD**, **C4 context**, **C4
+container** and **deployment topology**. These are the rows whose correctness is
+mechanical rather than compositional: real column types with `PK`/`FK`/`UNQ`
+badges, crow's-foot arrowheads that encode required versus optional, CIDR-named
+trust zones. When the classification lands on one of them, author D2 and follow
+`technical-register.md`.
+
+Every other row is drawn in the **sketch register** — the hand-drawn excalidraw
+pipeline in `SKILL.md`. There, notation correctness beats icon fidelity: a
+correct crow's foot or a correctly placed trust boundary teaches; a vendor logo
+does not. C4 component, interchange map, trust-zone map and process model sit
+here for now, and stay here until the technical register grows recipes for
+them — do not reach for logo look-alikes to fake the register you are not in.
 
 **Type is not medium.** For **sequence** and **state machine** the destination
 picks the tool: publish-page's routing table owns those thresholds and sends
