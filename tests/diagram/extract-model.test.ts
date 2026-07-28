@@ -4,9 +4,10 @@ import {
   emit,
   ExtractError,
   type Graph,
+  idAssigner,
   quote,
+  RESERVED_WORDS,
   slug,
-  uniqueSlug,
 } from '../../skills/diagram/scripts/extract/model.ts';
 
 const graph = (over: Partial<Graph> = {}): Graph => ({ zones: [], nodes: [], edges: [], ...over });
@@ -34,11 +35,9 @@ describe('identifier slugging', () => {
     expect(slug('///')).toBe('n');
   });
 
-  test('distinct inputs that slug alike are kept distinct', () => {
-    const taken = new Set<string>();
-    expect(uniqueSlug('a/b', taken)).toBe('a_b');
-    expect(uniqueSlug('a-b', taken)).toBe('a_b_2');
-    expect(uniqueSlug('a.b', taken)).toBe('a_b_3');
+  test('a D2 keyword is reserved in the spelling slug() emits, not D2\'s', () => {
+    expect(slug('style')).toBe('style_');
+    expect(slug('grid-rows')).toBe('grid_rows');
   });
 });
 
@@ -66,6 +65,35 @@ describe('label quoting', () => {
 
   test('control characters are stripped, not passed through', () => {
     expect(quote('a\u0000b\u001fc\u007f')).toBe('"a b c "');
+  });
+});
+
+describe('dollar escaping', () => {
+  test('a dollar is escaped — d2 substitutes ${...} inside double quotes too', () => {
+    // Without this the render dies on a variable nothing declared, and the one
+    // function every extractor trusts for safety has a hole in it.
+    expect(quote('/data/${ENV}/x')).toBe('"/data/\\${ENV}/x"');
+    expect(quote('cost $5')).toBe('"cost \\$5"');
+  });
+
+  test('a backslash already present is not confused with the escapes added after it', () => {
+    expect(quote('a\\${x}')).toBe('"a\\\\\\${x}"');
+  });
+});
+
+describe('the reserved-keyword list', () => {
+  test('every entry is one slug() can actually emit', () => {
+    // The list guards slug() output, so an entry slug() can never produce is
+    // cover that is not there — d2's hyphenated spellings do not survive it.
+    for (const word of RESERVED_WORDS) {
+      expect(slug(word)).toBe(`${word}_`);
+    }
+  });
+
+  test('the D2 keywords that can collide are covered', () => {
+    for (const word of ['style', 'shape', 'icon', 'label', 'near', 'direction', 'vars', 'steps']) {
+      expect(RESERVED_WORDS).toContain(word);
+    }
   });
 });
 
@@ -104,6 +132,46 @@ describe('D2 emission', () => {
   test('two nodes sharing an id are refused — the second would silently win', () => {
     const bad = graph({ nodes: [{ id: 'a', label: 'A' }, { id: 'a', label: 'B' }] });
     expect(() => emit(bad, 'test')).toThrow(/duplicate node id/);
+  });
+
+  test('two containers sharing an id are refused — d2 would merge them silently', () => {
+    // The damaging case: d2 merges same-key blocks and the last label wins, so
+    // one container disappears and its children are shown inside the other.
+    const bad = graph({
+      zones: [{ id: 'a_b', label: 'a-b' }, { id: 'a_b', label: 'a_b' }],
+      nodes: [{ id: 'n', label: 'N', zone: 'a_b' }],
+    });
+    expect(() => emit(bad, 'test')).toThrow(/duplicate container id "a_b"/);
+    // Both names appear, so the reader knows which two collided.
+    expect(() => emit(bad, 'test')).toThrow(/"a_b" collides with "a-b"/);
+  });
+
+  test('a container and a node cannot share an id either — one key namespace', () => {
+    const bad = graph({
+      zones: [{ id: 'shared', label: 'Z' }],
+      nodes: [{ id: 'shared', label: 'N' }],
+    });
+    expect(() => emit(bad, 'test')).toThrow(/duplicate node id "shared"/);
+  });
+
+  test('an assigner keeps names that slug alike distinct', () => {
+    const assign = idAssigner();
+    expect([assign('a-b'), assign('a_b'), assign('a.b')]).toEqual(['a_b', 'a_b_2', 'a_b_3']);
+  });
+
+  test('a provenance line cannot end its comment and become source', () => {
+    const out = emit(graph({ nodes: [{ id: 'a', label: 'A' }] }), 'derived\nINJECTED: "PWNED"');
+    expect(out.split('\n')[0]).toBe('# derived INJECTED: "PWNED"');
+    expect(out.split('\n').filter((l) => l.includes('INJECTED'))).toHaveLength(1);
+  });
+
+  test('shape and icon are constrained, since neither can be quoted', () => {
+    const bad = (over: Record<string, string>) =>
+      graph({ nodes: [{ id: 'a', label: 'A', ...over }] });
+    expect(() => emit(bad({ shape: 'circle' }), 'test')).not.toThrow();
+    expect(() => emit(bad({ shape: 'circle\nINJ: "x"' }), 'test')).toThrow(/unusable shape/);
+    expect(() => emit(bad({ icon: 'aws-rds' }), 'test')).not.toThrow();
+    expect(() => emit(bad({ icon: 'x\n}\nINJ: "y"' }), 'test')).toThrow(/unusable icon/);
   });
 
   test('node attributes land inside the node block, not beside it', () => {

@@ -28,6 +28,9 @@ const depsOptions = (over: Partial<DepsOptions> = {}): DepsOptions => ({
   ...over,
 });
 
+// What the CLI passes when the caller gives nothing but an input file.
+const DEFAULT_DEPS: DepsOptions = { groupDepth: 2, externals: false, maxNodes: 12 };
+
 describe('dependency-cruiser -> module dependencies', () => {
   const cruised = parseCruiser(fixture('depcruise-storefront.json'));
 
@@ -103,8 +106,21 @@ describe('dependency-cruiser -> module dependencies', () => {
   });
 
   test('a core module is never mistaken for a top-level component of the project', () => {
-    const graph = buildDeps(cruised, depsOptions({ maxNodes: 30 }));
-    expect(graph.nodes.map((n) => n.id)).toEqual(['src']);
+    const graph = buildDeps(cruised, DEFAULT_DEPS);
+    expect(graph.nodes.map((n) => n.label)).toEqual(['api', 'domain', 'store', 'web']);
+  });
+
+  test('the flags the usage line documents produce the figure it promises', () => {
+    // A project rooted at one top directory is the layout the usage example
+    // shows; at depth 1 every module bucketed into a single box.
+    const graph = buildDeps(cruised, DEFAULT_DEPS);
+    expect(graph.nodes.length).toBeGreaterThan(1);
+    expect(graph.edges.length).toBeGreaterThan(0);
+  });
+
+  test('a grouping that collapses everything into one box is refused, not drawn', () => {
+    expect(() => buildDeps(cruised, depsOptions({ groupDepth: 1 })))
+      .toThrow(/single box "src".*--group-depth/s);
   });
 
   test('bucket sorts each kind of module entry to where it belongs', () => {
@@ -135,6 +151,23 @@ describe('dependency-cruiser -> module dependencies', () => {
   });
 });
 
+// Two tables joined by one foreign key, with the cardinalities under test —
+// the smallest schema that exercises both crow's-foot ends.
+const related = (child: string | undefined, parent: string | undefined) => ({
+  tables: [
+    { name: 'a', columns: [{ name: 'id', type: 'int' }] },
+    { name: 'b', columns: [{ name: 'a_id', type: 'int' }] },
+  ],
+  relations: [{
+    table: 'b',
+    columns: ['a_id'],
+    cardinality: child,
+    parent_table: 'a',
+    parent_columns: ['id'],
+    parent_cardinality: parent,
+  }],
+});
+
 describe('tbls -> ERD', () => {
   const schema = parseTbls(fixture('tbls-publishing.json'));
   const erd = buildErd(schema, { maxNodes: 12 });
@@ -142,15 +175,57 @@ describe('tbls -> ERD', () => {
   test('a column carrying two constraints gets both badges', () => {
     const table = (schema.tables ?? []).find((t) => t.name === 'page_tag');
     expect(badgesFor(table as never, 'page_id')).toEqual(['primary_key', 'foreign_key']);
-    expect(erd).toContain('"page_id": TEXT {constraint: [primary_key; foreign_key]}');
+    expect(erd).toContain('"page_id": "TEXT" {constraint: [primary_key; foreign_key]}');
   });
 
   test('a plain column gets no badge at all', () => {
-    expect(erd).toContain('"body_md": TEXT\n');
+    expect(erd).toContain('"body_md": "TEXT"\n');
   });
 
   test('column types are reproduced verbatim — the figure is read as a schema', () => {
-    expect(erd).toContain('"id": INTEGER {constraint: primary_key}');
+    // Verbatim means quoted, not raw: the text between the quotes is exactly
+    // what the database declared, and d2 renders a quoted type unchanged.
+    expect(erd).toContain('"id": "INTEGER" {constraint: primary_key}');
+  });
+
+  test('a column type cannot close the table and declare nodes of its own', () => {
+    // SQLite stores a declared type as free text, so this reaches the transform
+    // from a real capture — the payload ends the sql_table block, declares a
+    // node and an edge that exist in no database, then reopens a block to
+    // swallow the columns that follow.
+    const payload = 'TEXT}\nINJECTED: "PWNED" {\n  shape: circle\n}\nINJECTED -> "page": "FAKE EDGE"\nzzz: {\n  shape: sql_table\n  "c": TEXT';
+    const hostile = buildErd(
+      {
+        driver: { name: 'sqlite' },
+        tables: [{ name: 'page', columns: [{ name: 'id', type: payload }] }],
+      },
+      { maxNodes: 12 },
+    );
+    // The payload survives as text inside one quoted value — that is what
+    // verbatim means — but it is no longer structure: every one of its
+    // newlines is now the two characters `\n`, so it cannot leave its line.
+    expect(hostile).toContain('INJECTED');
+    expect(hostile.match(/^\s*shape: sql_table$/gm) ?? []).toHaveLength(1);
+    expect(hostile.match(/^\s*shape: circle$/gm) ?? []).toHaveLength(0);
+    expect(hostile.match(/^\S.* -> /gm) ?? []).toHaveLength(0);
+    const payloadLines = hostile.split('\n').filter((l) => l.includes('INJECTED'));
+    expect(payloadLines).toHaveLength(1);
+    expect(payloadLines[0]?.startsWith('  "id": "')).toBe(true);
+  });
+
+  test('a driver name cannot end the provenance comment and become source', () => {
+    const hostile = buildErd(
+      {
+        driver: { name: 'sqlite\nINJECTED: "PWNED"' },
+        tables: [{ name: 't', columns: [{ name: 'c', type: 'TEXT' }] }],
+      },
+      { maxNodes: 12 },
+    );
+    // It stays inside the comment; what it must not do is start a new line.
+    const lines = hostile.split('\n');
+    expect(lines[0]?.startsWith('# derived from tbls JSON')).toBe(true);
+    expect(lines.filter((l) => l.includes('INJECTED'))).toHaveLength(1);
+    expect(lines.filter((l) => l.includes('INJECTED'))[0]?.startsWith('#')).toBe(true);
   });
 
   test('a nullable foreign key is drawn optional and a NOT NULL one required', () => {
@@ -179,7 +254,31 @@ describe('tbls -> ERD', () => {
       { maxNodes: 12 },
     );
     expect(hostile).toContain('"style": {');
-    expect(hostile).toContain('"label": text {constraint: primary_key}');
+    expect(hostile).toContain('"label": "text" {constraint: primary_key}');
+  });
+
+  test('a type or name carrying $ cannot reach d2 as a variable reference', () => {
+    // d2 substitutes ${...} inside double quotes, so an unescaped $ aborts the
+    // render on a variable nothing declared.
+    const hostile = buildErd(
+      {
+        driver: { name: 'postgres' },
+        tables: [{ name: 'tbl$1', columns: [{ name: 'col${x}', type: 'numeric${y}' }] }],
+      },
+      { maxNodes: 12 },
+    );
+    expect(hostile).toContain('"tbl\\$1"');
+    expect(hostile).toContain('"col\\${x}"');
+    expect(hostile).toContain('"numeric\\${y}"');
+    expect(hostile).not.toMatch(/[^\\]\$\{/);
+  });
+
+  test('the cf-many-required arrowhead is reachable, though no live tbls emits it', () => {
+    // tbls's detectCardinality can only derive zero_or_one, zero_or_more and
+    // exactly_one, so regenerating the fixture will never cover one_or_more.
+    const built = buildErd(related('one_or_more', 'exactly_one'), { maxNodes: 12 });
+    expect(built).toContain('target-arrowhead.shape: cf-many-required');
+    expect(built).toContain('"1..N"');
   });
 
   test('--tables selects a subsystem and drops the relations that left with it', () => {
@@ -197,21 +296,29 @@ describe('tbls -> ERD', () => {
     expect(() => buildErd(schema, { maxNodes: 3 })).toThrow(/6 tables.*--tables/s);
   });
 
-  test('an unrecognised cardinality is refused rather than guessed at', () => {
-    const odd = {
-      tables: [
-        { name: 'a', columns: [{ name: 'id', type: 'int' }] },
-        { name: 'b', columns: [{ name: 'a_id', type: 'int' }] },
-      ],
-      relations: [{
-        table: 'b',
-        columns: ['a_id'],
-        cardinality: 'several',
-        parent_table: 'a',
-        parent_columns: ['id'],
-      }],
-    };
-    expect(() => buildErd(odd, { maxNodes: 12 })).toThrow(/unknown tbls cardinality "several"/);
+  test('an unrecognised cardinality is refused on both the arrowhead and the label', () => {
+    // The two lookups used to disagree: one threw, the other quietly dropped
+    // the label. A derived figure states what the schema says or nothing.
+    expect(() => buildErd(related('several', 'exactly_one'), { maxNodes: 12 }))
+      .toThrow(/unknown tbls cardinality "several"/);
+    expect(() => buildErd(related('zero_or_more', 'a few'), { maxNodes: 12 }))
+      .toThrow(/unknown tbls cardinality "a few"/);
+  });
+
+  test('a cardinality tbls could not derive draws no glyph and no label', () => {
+    // tbls tags the field omitempty, so a relation it could not classify has
+    // no key at all. Defaulting the crow's foot would state a modality the
+    // schema never did — the edge is drawn, the claim is not.
+    const built = buildErd(related(undefined, undefined), { maxNodes: 12 });
+    expect(built).toContain('"a"."id" -> "b"."a_id"\n');
+    expect(built).not.toContain('arrowhead');
+    expect(built).not.toContain('0..N');
+  });
+
+  test('one end known and the other not draws only the end that is known', () => {
+    const built = buildErd(related('zero_or_more', undefined), { maxNodes: 12 });
+    expect(built).toContain('target-arrowhead.shape: cf-many');
+    expect(built).not.toContain('source-arrowhead');
   });
 
   test('input that is not tbls output is named as such', () => {
@@ -417,6 +524,64 @@ describe('Kubernetes objects -> deployment topology', () => {
   test('input that is neither JSON nor a manifest is refused', () => {
     expect(() => parseObjects('')).toThrow(/empty/);
     expect(() => parseObjects('{"a": 1}')).toThrow(/no Kubernetes objects/);
+  });
+});
+
+describe('container names that slug alike stay distinct', () => {
+  // slug() maps every separator run to `_`, so `a-b` and `a_b` land on one id.
+  // Two containers sharing an id is the silent failure: d2 merges same-key
+  // blocks, the last label wins, and one namespace vanishes with its contents
+  // shown living somewhere they are not.
+  const service = (namespace: string, name: string) => ({
+    kind: 'Service',
+    metadata: { name, namespace },
+    spec: { selector: { app: name } },
+  });
+
+  test('k8s keeps two namespaces that slug alike apart', () => {
+    const graph = buildK8s([service('a-b', 'svc-one'), service('a_b', 'svc-two')], {
+      config: false,
+      maxNodes: 12,
+    });
+    expect(new Set(graph.zones.map((z) => z.id)).size).toBe(2);
+    expect(graph.zones.map((z) => z.label).sort()).toEqual(['namespace a-b', 'namespace a_b']);
+    const emitted = emit(graph, 'test');
+    expect(emitted).toContain('namespace a-b');
+    expect(emitted).toContain('namespace a_b');
+  });
+
+  test('infra keeps two modules that slug alike apart', () => {
+    const resource = (module: string) => ({
+      address: `${module}.local_file.x`,
+      mode: 'managed',
+      type: 'local_file',
+      name: 'x',
+    });
+    const graph = buildInfra(
+      {
+        values: {
+          root_module: {
+            child_modules: [
+              { address: 'module.a-b', resources: [resource('module.a-b')] },
+              { address: 'module.a_b', resources: [resource('module.a_b')] },
+            ],
+          },
+        },
+      },
+      { groupByType: false, reduce: true, maxNodes: 12 },
+    );
+    expect(new Set(graph.zones.map((z) => z.id)).size).toBe(2);
+    expect(() => emit(graph, 'test')).not.toThrow();
+  });
+
+  test('deps keeps two directories that slug alike apart', () => {
+    const mod = (source: string) => ({ source, dependencies: [] });
+    const graph = buildDeps(
+      { modules: [mod('src/a-b/one.ts'), mod('src/a_b/two.ts'), mod('src/c/three.ts')] },
+      depsOptions({ focus: 'src', groupDepth: 2 }),
+    );
+    expect(new Set(graph.zones.map((z) => z.id)).size).toBe(graph.zones.length);
+    expect(() => emit(graph, 'test')).not.toThrow();
   });
 });
 

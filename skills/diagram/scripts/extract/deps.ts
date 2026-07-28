@@ -2,7 +2,14 @@
 //
 //   depcruise --no-config --output-type json 'src/**/*.ts' > deps.json
 
-import { assertDensity, type Edge, ExtractError, type Graph, type Node, slug } from "./model.ts";
+import {
+  assertDensity,
+  type Edge,
+  ExtractError,
+  type Graph,
+  idAssigner,
+  type Node,
+} from "./model.ts";
 
 interface Resolvable {
   coreModule?: boolean;
@@ -147,6 +154,16 @@ export function buildGraph(output: CruiserOutput, options: DepsOptions): Graph {
   }
 
   const graph = assemble(modules, weights, options);
+  // The density budget only refuses too many nodes. Grouping fails the other
+  // way just as silently: every module under one top directory buckets to one
+  // box, and a single box with no edges is a figure that argues nothing.
+  if (graph.nodes.length < 2) {
+    throw new ExtractError(
+      `every module grouped into the single box "${graph.nodes[0]?.label ?? ""}" — nothing `
+        + "is left to draw a relationship between. Raise --group-depth, or --focus the "
+        + "subtree whose components you want compared.",
+    );
+  }
   assertDensity(graph, options.maxNodes, "--focus a subtree, or lower --group-depth");
   return graph;
 }
@@ -169,14 +186,19 @@ function assemble(modules: Map<string, number>, weights: Weights, options: DepsO
     ...new Set(paths.map(zoneOf).filter((z): z is string => z !== undefined)),
   ].sort();
 
+  const assign = idAssigner();
+  const zoneIds = new Map(zonePaths.map((path) => [path, assign(path)]));
+  const nodeIds = new Map(paths.map((path) => [path, assign(path)]));
+  const idOf = (path: string): string => nodeIds.get(path) as string;
+
   const nodes: Node[] = paths.map((path) => {
     const zone = zoneOf(path);
     const count = modules.get(path) ?? 0;
     return {
-      id: slug(path),
+      id: idOf(path),
       label: path.slice((zone?.length ?? -1) + 1),
       tech: count === 0 ? undefined : plural(count, "module"),
-      zone: zone === undefined ? undefined : slug(zone),
+      zone: zone === undefined ? undefined : zoneIds.get(zone),
     };
   });
 
@@ -185,8 +207,8 @@ function assemble(modules: Map<string, number>, weights: Weights, options: DepsO
     for (const [to, count] of [...(weights.get(from) ?? [])].sort(([a], [b]) => a.localeCompare(b))) {
       const external = to.startsWith(`${EXTERNAL}/`);
       edges.push({
-        from: slug(from),
-        to: slug(to),
+        from: idOf(from),
+        to: idOf(to),
         // Many components reach the same few packages, so labelling those edges
         // stacks counts on top of one another until none of them reads — and
         // how often a component imports `node:fs` is not an argument anyway.
@@ -203,7 +225,7 @@ function assemble(modules: Map<string, number>, weights: Weights, options: DepsO
     title: options.title,
     direction: "down",
     zones: zonePaths.map((path) => ({
-      id: slug(path),
+      id: zoneIds.get(path) as string,
       label: path === EXTERNAL ? "external packages" : path,
       dashed: path === EXTERNAL,
     })),

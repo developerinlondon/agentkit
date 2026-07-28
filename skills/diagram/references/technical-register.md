@@ -65,12 +65,19 @@ answer to a figure past its budget is _split, don't shrink_. Raising
 `--max-nodes` is a deliberate act; reaching for it twice means the figure is
 carrying two arguments.
 
+Grouping fails the other way too, and just as quietly: `deps` at
+`--group-depth 1` puts every module of a `src/`-rooted project into one box.
+A single box with no edges argues nothing, so that is refused as well —
+raise the depth, or `--focus` the subtree you meant to compare.
+
 ### What each one derives
 
-- **`deps`** groups modules by directory at `--group-depth` and aggregates the
-  imports between groups, so the node count follows the altitude you asked for
-  rather than the file count. A pair of groups importing each other is drawn
-  bold: a layering cycle is the one thing a module graph exists to expose.
+- **`deps`** groups modules by directory at `--group-depth` (2 by default, the
+  depth at which a `src/`-rooted project has components rather than one box)
+  and aggregates the imports between groups, so the node count follows the
+  altitude you asked for rather than the file count. A pair of groups importing
+  each other is drawn bold: a layering cycle is the one thing a module graph
+  exists to expose.
   Core modules and packages are dropped unless `--externals` asks for them, and
   each package is one node however many of its files were imported.
 - **`schema`** turns tbls tables into `sql_table` shapes with the real column

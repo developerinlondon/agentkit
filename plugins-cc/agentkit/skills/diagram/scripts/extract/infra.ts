@@ -12,8 +12,7 @@ import {
   ExtractError,
   type Graph,
   type Node,
-  slug,
-  uniqueSlug,
+  idAssigner,
   type Zone,
 } from "./model.ts";
 import { manifest } from "../icons.ts";
@@ -117,7 +116,11 @@ interface Grouped {
   addresses: string[];
 }
 
-function group(collected: Collected[], byType: boolean): Grouped[] {
+function group(
+  collected: Collected[],
+  byType: boolean,
+  assign: (text: string) => string,
+): Grouped[] {
   const groups = new Map<string, Grouped>();
   for (const { resource, module } of collected) {
     const type = resource.type ?? "resource";
@@ -142,8 +145,7 @@ function group(collected: Collected[], byType: boolean): Grouped[] {
     });
   }
   const sorted = [...groups.entries()].sort(([a], [b]) => a.localeCompare(b));
-  const taken = new Set<string>();
-  return sorted.map(([, group]) => ({ ...group, id: uniqueSlug(group.id, taken) }));
+  return sorted.map(([, group]) => ({ ...group, id: assign(group.id) }));
 }
 
 // State records every ancestor a resource waited on, so a three-deep chain
@@ -169,18 +171,23 @@ export function reduceTransitive(edges: Array<[string, string]>): Array<[string,
   return edges.filter(([from, to]) => !reachableBeyond(from, to).has(to));
 }
 
-function zonesFor(groups: Grouped[]): Zone[] {
-  const modules = [...new Set(groups.map((g) => g.module))].filter((m) => m !== "").sort();
-  return modules.map((address) => {
+function zonesFor(collected: Collected[], assign: (text: string) => string): {
+  zones: Zone[];
+  ids: Map<string, string>;
+} {
+  const modules = [...new Set(collected.map((c) => c.module))].filter((m) => m !== "").sort();
+  const ids = new Map(modules.map((address) => [address, assign(address)]));
+  const zones = modules.map((address) => {
     const parent = modules
       .filter((m) => m !== address && address.startsWith(`${m}.`))
       .sort((a, b) => b.length - a.length)[0];
     return {
-      id: slug(address),
+      id: ids.get(address) as string,
       label: address,
-      parent: parent === undefined ? undefined : slug(parent),
+      parent: parent === undefined ? undefined : ids.get(parent),
     };
   });
+  return { zones, ids };
 }
 
 export function buildGraph(state: State, options: InfraOptions): Graph {
@@ -190,7 +197,11 @@ export function buildGraph(state: State, options: InfraOptions): Graph {
     throw new ExtractError("state declares no managed resources — nothing to draw");
   }
 
-  const groups = group(collected, options.groupByType);
+  // Containers are named before their contents: both share one key namespace,
+  // so the assigner has to see the modules first.
+  const assign = idAssigner();
+  const { zones, ids: zoneIds } = zonesFor(collected, assign);
+  const groups = group(collected, options.groupByType, assign);
   const byAddress = new Map<string, string>();
   for (const g of groups) {
     for (const address of g.addresses) {
@@ -220,13 +231,13 @@ export function buildGraph(state: State, options: InfraOptions): Graph {
     tech: options.groupByType ? undefined : g.type,
     icon: g.icon,
     multiple: g.count > 1,
-    zone: g.module === "" ? undefined : slug(g.module),
+    zone: g.module === "" ? undefined : zoneIds.get(g.module),
   }));
   const edges: Edge[] = kept
     .map(([from, to]) => ({ from, to }))
     .sort((a, b) => `${a.from} ${a.to}`.localeCompare(`${b.from} ${b.to}`));
 
-  const graph: Graph = { title: options.title, direction: "down", zones: zonesFor(groups), nodes, edges };
+  const graph: Graph = { title: options.title, direction: "down", zones, nodes, edges };
   assertDensity(graph, options.maxNodes, "--group-by type collapses same-type resources");
   return graph;
 }

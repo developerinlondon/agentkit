@@ -17,7 +17,7 @@ const USAGE = `usage: extract.ts <${KINDS.join("|")}> [--in FILE] [--out FILE] [
 
   deps    dependency-cruiser JSON  ->  C4 component view of module dependencies
           depcruise --no-config --output-type json 'src/**/*.ts'
-          --focus PREFIX  --group-depth N (default 1)  --externals
+          --focus PREFIX  --group-depth N (default 2)  --externals
 
   schema  tbls JSON                ->  crow's-foot ERD
           tbls out -t json 'postgres://…'
@@ -100,7 +100,7 @@ function transform(kind: Kind, raw: string): string {
   if (kind === "deps") {
     const graph = buildDeps(parseCruiser(raw), {
       focus: arg("focus"),
-      groupDepth: integer("group-depth", 1),
+      groupDepth: integer("group-depth", 2),
       externals: flag("externals"),
       maxNodes,
       title,

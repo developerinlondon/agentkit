@@ -2,7 +2,7 @@
 //
 //   tbls out -t json 'postgres://user:pass@host:5432/db' > schema.json
 
-import { ExtractError, quote } from "./model.ts";
+import { ExtractError, finish, header, quote, titleBlock } from "./model.ts";
 
 interface TblsColumn {
   name: string;
@@ -42,6 +42,7 @@ export interface SchemaOptions {
   tables?: string[];
   maxNodes: number;
   title?: string;
+  direction?: string;
 }
 
 export function parseTbls(raw: string): TblsSchema {
@@ -79,29 +80,27 @@ export function badgesFor(table: TblsTable, column: string): string[] {
 
 // tbls derives these from the foreign key's nullability and uniqueness, which
 // is exactly the required-versus-optional distinction the crow's foot encodes.
-const ARROWHEADS: Record<string, string> = {
-  zero_or_one: "cf-one",
-  exactly_one: "cf-one-required",
-  zero_or_more: "cf-many",
-  one_or_more: "cf-many-required",
+// Arrowhead and notation come from one lookup so they cannot drift apart.
+const CARDINALITY: Record<string, { arrowhead: string; notation: string }> = {
+  zero_or_one: { arrowhead: "cf-one", notation: "0..1" },
+  exactly_one: { arrowhead: "cf-one-required", notation: "1..1" },
+  zero_or_more: { arrowhead: "cf-many", notation: "0..N" },
+  one_or_more: { arrowhead: "cf-many-required", notation: "1..N" },
 };
 
-const NOTATION: Record<string, string> = {
-  zero_or_one: "0..1",
-  exactly_one: "1..1",
-  zero_or_more: "0..N",
-  one_or_more: "1..N",
-};
-
-function arrowhead(cardinality: string | undefined, fallback: string): string {
-  if (cardinality === undefined) return fallback;
-  const shape = ARROWHEADS[cardinality];
-  if (shape === undefined) {
+// Nothing is drawn for a cardinality tbls did not state: the register's rule
+// is get it right or do not draw it, and defaulting would invent the one kind
+// of claim this transform exists to stop inventing. An unrecognised value is
+// refused outright rather than guessed.
+function known(cardinality: string | undefined): { arrowhead: string; notation: string } | undefined {
+  if (cardinality === undefined || cardinality === "") return undefined;
+  const found = CARDINALITY[cardinality];
+  if (found === undefined) {
     throw new ExtractError(
       `unknown tbls cardinality "${cardinality}" — refusing to guess a crow's foot`,
     );
   }
-  return shape;
+  return found;
 }
 
 function emitTable(table: TblsTable): string[] {
@@ -111,9 +110,12 @@ function emitTable(table: TblsTable): string[] {
     const constraint = badges.length === 0
       ? ""
       : ` {constraint: ${badges.length === 1 ? badges[0] : `[${badges.join("; ")}]`}}`;
-    // The type is reproduced verbatim: an ERD is read as a schema, and a
-    // prettified type is a wrong one.
-    lines.push(`  ${quote(column.name)}: ${column.type}${constraint}`);
+    // The type is reproduced verbatim — an ERD is read as a schema, and a
+    // prettified type is a wrong one — but verbatim means quoted, not raw:
+    // SQLite stores a declared type as free text and Postgres type names are
+    // quoted identifiers, so a type can carry braces and newlines that would
+    // otherwise close this table and declare nodes of their own.
+    lines.push(`  ${quote(column.name)}: ${quote(column.type)}${constraint}`);
   }
   lines.push("}");
   return lines;
@@ -129,13 +131,15 @@ function emitRelation(relation: TblsRelation): string[] {
   }
   const source = `${quote(relation.parent_table)}.${quote(parentColumn)}`;
   const target = `${quote(relation.table)}.${quote(childColumn)}`;
-  const label = NOTATION[relation.cardinality ?? ""] ?? "";
-  return [
-    `${source} -> ${target}${label === "" ? "" : `: ${quote(label)}`} {`,
-    `  source-arrowhead.shape: ${arrowhead(relation.parent_cardinality, "cf-one-required")}`,
-    `  target-arrowhead.shape: ${arrowhead(relation.cardinality, "cf-many")}`,
-    "}",
+  const child = known(relation.cardinality);
+  const parent = known(relation.parent_cardinality);
+  const head = `${source} -> ${target}`;
+  const attrs = [
+    ...(parent === undefined ? [] : [`  source-arrowhead.shape: ${parent.arrowhead}`]),
+    ...(child === undefined ? [] : [`  target-arrowhead.shape: ${child.arrowhead}`]),
   ];
+  const labelled = child === undefined ? head : `${head}: ${quote(child.notation)}`;
+  return attrs.length === 0 ? [labelled] : [`${labelled} {`, ...attrs, "}"];
 }
 
 export function buildErd(schema: TblsSchema, options: SchemaOptions): string {
@@ -168,23 +172,10 @@ export function buildErd(schema: TblsSchema, options: SchemaOptions): string {
     );
 
   const driver = schema.driver?.name ?? "unknown driver";
-  const lines = [
-    `# derived from tbls JSON (${driver}) — ${tables.length} tables, ${relations.length} relations`,
-    "",
-    "direction: down",
-    "",
-  ];
-  if (options.title !== undefined) {
-    lines.push(
-      `title: ${quote(options.title)} {`,
-      "  shape: text",
-      "  near: top-center",
-      "  style.font-size: 26",
-      "}",
-      "",
-    );
-  }
+  const counts = `${tables.length} tables, ${relations.length} relations`;
+  const lines = header(`derived from tbls JSON (${driver}) — ${counts}`, options.direction);
+  if (options.title !== undefined) lines.push(...titleBlock(options.title));
   for (const table of tables) lines.push(...emitTable(table), "");
   for (const relation of relations) lines.push(...emitRelation(relation));
-  return `${lines.join("\n").replace(/\n{3,}/g, "\n\n").trimEnd()}\n`;
+  return finish(lines);
 }

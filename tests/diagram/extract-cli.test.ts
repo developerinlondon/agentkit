@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { D2_PIN } from '../../skills/diagram/scripts/d2-svg.ts';
@@ -164,16 +164,27 @@ describe.if(hasDepcruise)('a live cruise of this repository', () => {
     expect(result.stdout).toContain('scripts.scripts_extract_ts -> scripts.scripts_extract:');
   });
 
-  test('the whole repository at one node per top directory stays inside the budget', () => {
+  test('the default flags meet both guards on this repository, and --focus resolves it', () => {
+    // Real data either side of the budget: the whole tree is one component
+    // over the ceiling at the default depth, and narrowing brings it back.
     const cruised = Bun.spawnSync({
       cmd: [depcruise, '--no-config', '--output-type', 'json', 'skills/**/*.ts', 'scripts/**/*.ts', 'plugins/**/*.ts'],
       cwd: repo,
       stdout: 'pipe',
       stderr: 'pipe',
     });
-    const result = run(['deps'], cruised.stdout.toString());
-    expect(result.code).toBe(0);
-    expect(result.stdout).toContain('skills: "skills\\n');
+    const raw = cruised.stdout.toString();
+
+    const wide = run(['deps'], raw);
+    expect(wide.code).toBe(1);
+    expect(wide.stderr).toMatch(/exceeds the density budget.*--focus a subtree/s);
+
+    const focused = run(['deps', '--focus', 'skills'], raw);
+    expect(focused.code).toBe(0);
+    expect(focused.stdout).toContain('diagram: "diagram" {');
+    // The cross-skill import this repository actually has, derived rather than
+    // remembered — skills ship as separate plugins, so it is worth seeing.
+    expect(focused.stdout).toMatch(/product_intelligence\S* -> publish_page\S*: "\d+ imports?"/);
   });
 });
 
@@ -185,6 +196,90 @@ if (!hasD2) {
       + `.github/workflows/ci.yml.`,
   );
 }
+
+describe.if(hasD2)('hostile source data reaches d2 as text, never as structure', () => {
+  // Through the real renderer, not bare d2: it is what expands `icon: @name`,
+  // so bare d2 would fail on the icon rather than on the payload under test.
+  function compile(dir: string, source: string): { code: number; svg: string; stderr: string } {
+    const d2 = join(dir, 'hostile.d2');
+    const svg = join(dir, 'hostile.svg');
+    writeFileSync(d2, source);
+    const result = Bun.spawnSync({
+      cmd: [process.execPath, join(repo, 'skills/diagram/scripts/d2-render.ts'), '--in', d2, '--out', svg],
+      cwd: dir,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    });
+    return {
+      code: result.exitCode,
+      svg: existsSync(svg) ? readFileSync(svg, 'utf-8') : '',
+      stderr: result.stderr.toString(),
+    };
+  }
+
+  const shapes = (svg: string): number => (svg.match(/class="shape"/g) ?? []).length;
+  const connections = (svg: string): number => (svg.match(/class="connection"/g) ?? []).length;
+
+  test('a column type carrying D2 structure declares no node and no edge', () => {
+    // The reviewer's replay: before the type was quoted this compiled happily
+    // and put a node and an edge into the SVG that exist in no database.
+    withTemp((dir) => {
+      const payload =
+        'TEXT}\nINJECTED: "PWNED" {\n  shape: circle\n}\nINJECTED -> "page": "FAKE EDGE"\nzzz: {\n  shape: sql_table\n  "c": TEXT';
+      const schema = {
+        driver: { name: 'sqlite' },
+        tables: [
+          { name: 'page', columns: [{ name: 'id', type: payload }, { name: 'slug', type: 'TEXT' }] },
+        ],
+      };
+      writeFileSync(join(dir, 'in.json'), JSON.stringify(schema));
+      const extracted = run(['schema', '--in', join(dir, 'in.json')]);
+      expect(extracted.code).toBe(0);
+
+      const out = compile(dir, extracted.stdout);
+      expect(out.code).toBe(0);
+      // One table, no second node, no edge at all — the payload rendered as
+      // the text of a column type, which is exactly what verbatim should mean.
+      expect(shapes(out.svg)).toBe(1);
+      expect(connections(out.svg)).toBe(0);
+      expect(out.svg).toContain('INJECTED');
+      expect(out.svg).toContain('slug');
+    });
+  });
+
+  test('a mount path carrying ${...} renders as typed instead of killing the render', () => {
+    // Templated manifests carry these; d2 substitutes inside double quotes, so
+    // before the escape this died with `could not resolve variable "ENV"`.
+    withTemp((dir) => {
+      const manifests = [
+        'kind: PersistentVolumeClaim',
+        'metadata: { name: data, namespace: app }',
+        '---',
+        'kind: Deployment',
+        'metadata: { name: web, namespace: app }',
+        'spec:',
+        '  template:',
+        '    metadata: { labels: { app: web } }',
+        '    spec:',
+        '      containers:',
+        '        - name: c',
+        '          image: nginx:1.27',
+        '          volumeMounts: [{ name: v, mountPath: "/data/${ENV}/x" }]',
+        '      volumes: [{ name: v, persistentVolumeClaim: { claimName: data } }]',
+        '',
+      ].join('\n');
+      writeFileSync(join(dir, 'in.yaml'), manifests);
+      const extracted = run(['k8s', '--in', join(dir, 'in.yaml')]);
+      expect(extracted.code).toBe(0);
+      expect(extracted.stdout).toContain('\\${ENV}');
+
+      const out = compile(dir, extracted.stdout);
+      expect(out.stderr).not.toContain('could not resolve variable');
+      expect(out.code).toBe(0);
+      expect(out.svg).toContain('/data/${ENV}/x');
+    });
+  });
+});
 
 describe('the committed derived example', () => {
   const source = join(examples, 'derived-topology.d2');

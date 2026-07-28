@@ -7,7 +7,7 @@
 // volume and env references — so a manifest directory works with no cluster.
 
 import { YAML } from "bun";
-import { assertDensity, type Edge, ExtractError, type Graph, type Node, slug } from "./model.ts";
+import { assertDensity, type Edge, ExtractError, type Graph, idAssigner, type Node } from "./model.ts";
 import { manifest } from "../icons.ts";
 
 type Obj = Record<string, unknown>;
@@ -139,8 +139,7 @@ function replicaSuffix(object: Obj): { label: string; multiple: boolean } {
   return { label: count > 1 ? ` ×${count}` : "", multiple: count > 1 };
 }
 
-function collect(objects: Obj[], options: K8sOptions): Resource[] {
-  const taken = new Set<string>();
+function collect(objects: Obj[], options: K8sOptions, assign: (text: string) => string): Resource[] {
   const wanted = (kind: string): boolean =>
     WORKLOADS.has(kind) || TOPOLOGY_KINDS.has(kind) || (options.config && CONFIG_KINDS.has(kind));
   return objects
@@ -148,16 +147,7 @@ function collect(objects: Obj[], options: K8sOptions): Resource[] {
     .filter((r) => wanted(r.kind))
     .filter((r) => options.namespace === undefined || r.namespace === options.namespace)
     .sort((a, b) => `${a.namespace}/${a.kind}/${a.name}`.localeCompare(`${b.namespace}/${b.kind}/${b.name}`))
-    .map((r) => ({ ...r, id: uniqueId(r.kind, r.name, taken) }));
-}
-
-function uniqueId(kind: string, name: string, taken: Set<string>): string {
-  const base = slug(`${kind}_${name}`);
-  let candidate = base;
-  let n = 2;
-  while (taken.has(candidate)) candidate = `${base}_${n++}`;
-  taken.add(candidate);
-  return candidate;
+    .map((r) => ({ ...r, id: assign(`${r.kind}_${r.name}`) }));
 }
 
 function find(
@@ -300,7 +290,19 @@ function ownerEdges(resource: Resource, all: Resource[]): Edge[] {
 }
 
 export function buildGraph(objects: Obj[], options: K8sOptions): Graph {
-  const resources = collect(objects, options);
+  // Namespaces are named before the objects inside them: both share one key
+  // namespace, so `a-b` and `a_b` must not both end up as `ns_a_b`.
+  const assign = idAssigner();
+  const namespaces = [
+    ...new Set(
+      objects.map((o) => str(at(o, "metadata", "namespace")) ?? "").filter((n) => n !== ""),
+    ),
+  ]
+    .filter((n) => options.namespace === undefined || n === options.namespace)
+    .sort();
+  const zoneIds = new Map(namespaces.map((name) => [name, assign(`ns_${name}`)]));
+
+  const resources = collect(objects, options, assign);
   if (resources.length === 0) {
     throw new ExtractError(
       `no workloads, services, ingresses or claims found${
@@ -323,7 +325,6 @@ export function buildGraph(objects: Obj[], options: K8sOptions): Graph {
     edges.push(...ownerEdges(resource, resources));
   }
 
-  const namespaces = [...new Set(resources.map((r) => r.namespace))].filter((n) => n !== "").sort();
   const nodes: Node[] = resources.map((resource) => {
     const replicas = replicaSuffix(resource.object);
     return {
@@ -332,14 +333,17 @@ export function buildGraph(objects: Obj[], options: K8sOptions): Graph {
       tech: resource.kind,
       icon: iconFor(resource),
       multiple: replicas.multiple,
-      zone: resource.namespace === "" ? undefined : slug(`ns_${resource.namespace}`),
+      zone: resource.namespace === "" ? undefined : zoneIds.get(resource.namespace),
     };
   });
 
+  const drawn = new Set(resources.map((r) => r.namespace));
   const graph: Graph = {
     title: options.title,
     direction: "down",
-    zones: namespaces.map((name) => ({ id: slug(`ns_${name}`), label: `namespace ${name}` })),
+    zones: namespaces
+      .filter((name) => drawn.has(name))
+      .map((name) => ({ id: zoneIds.get(name) as string, label: `namespace ${name}` })),
     nodes,
     edges: dedupe(edges),
   };
