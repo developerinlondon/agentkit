@@ -68,6 +68,39 @@ function install(home: string, extraArgs: string[] = []) {
   });
 }
 
+// util-linux `script` takes the command via -c with the transcript file last;
+// BSD `script`, which macOS ships, has no -c at all and takes the command as
+// trailing positional arguments. Probe the invocation rather than reading
+// uname: what decides the syntax is which binary is on PATH, not which kernel
+// is under it, and either flavour can be installed on either system.
+type ScriptFlavour = 'util-linux' | 'bsd';
+let scriptFlavourCache: ScriptFlavour | undefined;
+
+function scriptFlavour(): ScriptFlavour {
+  if (!scriptFlavourCache) {
+    const probe = spawnSync('script', ['-qec', 'true', '/dev/null'], { encoding: 'utf-8' });
+    scriptFlavourCache = probe.status === 0 ? 'util-linux' : 'bsd';
+  }
+  return scriptFlavourCache;
+}
+
+function scriptArgv(command: string, flavour: ScriptFlavour = scriptFlavour()): string[] {
+  return flavour === 'util-linux'
+    ? ['-qec', command, '/dev/null']
+    : ['-q', '/dev/null', 'bash', '-c', command];
+}
+
+// BSD and util-linux `script` do not agree on whether the child's exit status
+// is propagated (util-linux needs -e for it; the BSD flag set differs), so the
+// status is reported from inside the pty instead of read off the wrapper. A run
+// killed for hanging prints no marker, which reads as "no status", not zero.
+const exitMarker = 'agentkit-install-exit=';
+
+function reportedStatus(transcript: string): number | null {
+  const reported = new RegExp(`^${exitMarker}(\\d+)$`, 'm').exec(transcript);
+  return reported ? Number(reported[1]) : null;
+}
+
 // `script` hands the installer a pseudo-terminal, which is the only way to
 // exercise the `-t 0` gate: a piped stdin is what every other test already has.
 function installOnTty(
@@ -76,9 +109,9 @@ function installOnTty(
   extraArgs: string[] = [],
   options: { env?: Record<string, string>; shell?: string; timeoutMs?: number } = {},
 ) {
-  const command = options.shell ??
+  const inner = options.shell ??
     ['bash', installScript, ...baseArgs, ...extraArgs].join(' ');
-  const result = spawnSync('script', ['-qec', command, '/dev/null'], {
+  const result = spawnSync('script', scriptArgv(`${inner}; printf '\\n${exitMarker}%s\\n' "$?"`), {
     cwd: repoRoot,
     env: { ...installEnv(home), ...(options.env ?? {}) },
     input: keystrokes,
@@ -87,12 +120,13 @@ function installOnTty(
   });
   // A pty terminates lines with CRLF; comparing against installer output that
   // was written with plain LF would fail on the carriage returns alone.
+  const stdout = (result.stdout ?? '').replaceAll('\r', '');
   return {
-    status: result.status,
+    status: reportedStatus(stdout),
     // A wizard that asks where nobody can answer does not fail, it stops: the
     // only evidence is the harness killing it, so the signal has to be visible.
     signal: result.signal,
-    stdout: (result.stdout ?? '').replaceAll('\r', ''),
+    stdout,
     stderr: (result.stderr ?? '').replaceAll('\r', ''),
   };
 }
@@ -116,6 +150,21 @@ function listTree(root: string, prefix = ''): string[] {
 }
 
 describe('installer skill-group wizard', () => {
+  test('the pty wrapper runs on this machine, whichever script is installed', () => {
+    expect(scriptArgv('CMD', 'util-linux')).toEqual(['-qec', 'CMD', '/dev/null']);
+    expect(scriptArgv('CMD', 'bsd')).toEqual(['-q', '/dev/null', 'bash', '-c', 'CMD']);
+
+    // The rest of this file is unreadable when the wrapper itself is wrong: a
+    // rejected argv means empty output, so assertions about absent prompts pass
+    // and only the ones expecting output fail. This says so in one line instead.
+    const probe = spawnSync('script', scriptArgv('exit 0'), {
+      encoding: 'utf-8',
+      timeout: hangTimeoutMs,
+    });
+    expect(probe.error, `script flavour '${scriptFlavour()}' would not run`).toBeUndefined();
+    expect(probe.status, probe.stderr).toBe(0);
+  });
+
   test('a bare install on a terminal offers each optional group and remembers the answer', () => {
     const home = mkdtempSync(join(tmpdir(), 'agentkit-wizard-'));
 
@@ -270,13 +319,14 @@ describe('installer skill-group wizard', () => {
     const home = mkdtempSync(join(tmpdir(), 'agentkit-wizard-'));
 
     try {
-      // `setsid` leaves stdin and stdout terminals while detaching the process
-      // from its controlling terminal, so /dev/tty cannot be opened. That is
-      // the one shape where the gate says "ask" but there is nowhere to ask:
-      // writing the question to stderr instead would put it wherever stderr was
-      // captured and then block on an answer nobody ever saw.
+      // The one shape where the gate says "ask" but there is nowhere to ask:
+      // stdin and stdout are terminals, yet /dev/tty cannot be opened. perl
+      // rather than setsid(1), which is util-linux and absent on macOS; the
+      // parent waits so the installer's exit status still comes back.
+      const detach =
+        `perl -MPOSIX -e 'my $p=fork; if($p){waitpid($p,0); exit($?>>8)} POSIX::setsid(); exec @ARGV or die' --`;
       const result = installOnTty(home, '', [], {
-        shell: `setsid --wait bash ${installScript} ${baseArgs.join(' ')}`,
+        shell: `${detach} bash ${installScript} ${baseArgs.join(' ')}`,
         timeoutMs: hangTimeoutMs,
       });
 
