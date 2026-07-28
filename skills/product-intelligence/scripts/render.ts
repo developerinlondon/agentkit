@@ -95,6 +95,10 @@ function chip(label: string, value: string): string {
   return `<span class="chip"><strong>${escText(label)}</strong> ${escText(value)}</span>`;
 }
 
+function subjectTitle(brief: Dict): string {
+  return `${collapse(brief.subject?.name ?? 'Untitled product')}: what the evidence says`;
+}
+
 function header(brief: Dict, ledger: Dict): string {
   const subject = brief.subject ?? {};
   const claims = (ledger.claims ?? []) as Dict[];
@@ -119,7 +123,7 @@ function header(brief: Dict, ledger: Dict): string {
   const promise = sourced
     ? 'every observed and inferred claim carries a verbatim quote from an acquired source'
     : 'each claim states its kind and how solid its basis is';
-  const lines = [`# ${mdEsc(subject.name ?? 'Untitled product')}: what the evidence says`, ''];
+  const lines = [`# ${mdEsc(subjectTitle(brief))}`, ''];
   lines.push(`<div class="chips">${chips}</div>`, '');
   if (subject.one_liner) lines.push(`**${mdEsc(subject.one_liner)}**`, '');
   lines.push(
@@ -325,14 +329,26 @@ function evidence(brief: Dict, ledger: Dict): string {
   return `## The evidence, claim by claim\n\n${blocks}\n${provenance}`;
 }
 
-export function renderBrief(dir: string): string {
+function artifacts(dir: string): { brief: Dict; ledger: Dict } {
   const briefPath = join(dir, 'brief.yaml');
   const ledgerPath = join(dir, 'ledger.yaml');
   for (const p of [briefPath, ledgerPath]) {
     if (!existsSync(p)) throw new Error(`missing ${p} — render needs both brief.yaml and ledger.yaml`);
   }
-  const brief = Bun.YAML.parse(readFileSync(briefPath, 'utf-8')) as Dict;
-  const ledger = Bun.YAML.parse(readFileSync(ledgerPath, 'utf-8')) as Dict;
+  return {
+    brief: Bun.YAML.parse(readFileSync(briefPath, 'utf-8')) as Dict,
+    ledger: Bun.YAML.parse(readFileSync(ledgerPath, 'utf-8')) as Dict,
+  };
+}
+
+// The page's own <title>, taken before markdown escaping: the h1 carries
+// backslash escapes that a title bar would show literally.
+export function briefTitle(dir: string): string {
+  return subjectTitle(artifacts(dir).brief);
+}
+
+export function renderBrief(dir: string): string {
+  const { brief, ledger } = artifacts(dir);
   const sections = [
     header(brief, ledger),
     positioning(brief),
@@ -351,14 +367,16 @@ export function renderBrief(dir: string): string {
 }
 
 if (import.meta.main) {
-  const [dir, outFlag, outPath] = process.argv.slice(2);
+  const argv = process.argv.slice(2);
+  const html = argv.includes('--html');
+  const [dir, outFlag, outPath] = argv.filter((a) => a !== '--html');
   if (!dir || (outFlag && (outFlag !== '--out' || !outPath))) {
-    console.error('usage: render.ts <intelligence-dir> [--out <file>]');
+    console.error('usage: render.ts <intelligence-dir> [--html] [--out <file>]');
     process.exit(2);
   }
   try {
-    const page = renderBrief(dir);
-    const target = outPath ?? join(dir, 'brief-page.md');
+    const page = html ? await (await import('./html.ts')).renderBriefHtml(dir) : renderBrief(dir);
+    const target = outPath ?? join(dir, html ? 'index.html' : 'brief-page.md');
     writeFileSync(target, page);
     console.log(target);
   } catch (error) {

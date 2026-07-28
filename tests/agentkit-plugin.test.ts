@@ -205,9 +205,16 @@ describe('agentkit plugin skills', () => {
     const manifest = readSkillGroups(repoRoot);
     // Recursive: some skills carry a references/ subdirectory, and a nested
     // file that drifts is exactly as misleading as a top-level one.
+    // node_modules is gitignored, never reaches the plugin package, and a
+    // skill that documents `bun install` would otherwise fail this walk on
+    // whichever copy the deps landed in.
     const filesUnder = (dir: string, prefix = ''): string[] =>
       readdirSync(join(dir, prefix), { withFileTypes: true }).flatMap((e) =>
-        e.isDirectory() ? filesUnder(dir, join(prefix, e.name)) : [join(prefix, e.name)]
+        e.name === 'node_modules'
+          ? []
+          : e.isDirectory()
+          ? filesUnder(dir, join(prefix, e.name))
+          : [join(prefix, e.name)]
       );
 
     for (const group of manifest.groups) {

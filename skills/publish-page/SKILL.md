@@ -45,30 +45,28 @@ mono eyebrows; light mode goes white-ground with a deep-blue accent and
 auto-inverts baked diagrams) — never re-explain or re-style these basics. Also automatic, no
 agent action needed: a **dark/light theme toggle** (persisted; mermaid
 re-renders on flip), a **TOC dot rail** with smooth scrolling on docs with ≥3
-`h2` sections, prev/next **nav buttons** on decks, and **hover lift/glow** on
-every card and diagram node. Add `data-tip="text"` to any node for a hover
-tooltip.
+`h2` sections, one persistent **deck nav bar** (progress, slide counter,
+prev/next, toggle) with arrow/space/Home/End keys and swipe (backward swipe
+may be claimed by the browser's history gesture),
+**click-to-expand** on every `.figure`, and **hover lift/glow** on every card
+and diagram node. Add `data-tip="text"` to any node for a hover tooltip.
 
 **Be illustrative by default.** Structure every doc page as sections and pick the
 strongest component for each idea — don't produce walls of prose.
 
 **Route every visual by what the concept IS**, never by the tool you used last:
 
-| Concept                                                 | Treatment                                     | Never                                                                         |
-| ------------------------------------------------------- | --------------------------------------------- | ----------------------------------------------------------------------------- |
-| System topology, trust/ownership boundaries             | `diagram` skill centerpiece                   | mermaid — auto-layout destroys boundary semantics                             |
-| Deployable inventory, ≤7 nodes, relationships secondary | `.iso` kit + `.edge` connectors               | `diagram` skill (overkill)                                                    |
-| Linear pipeline, all edges forward, stages need prose   | `.arch` flat kit                              | —                                                                             |
-| Flow with a loop-back, gate, or failure branch          | `diagram` skill                               | `.flow`/`.arch`/`.fbox` — box kits cannot draw a backward edge                |
-| Ordered message exchange, ≥3 participants               | mermaid `sequenceDiagram`                     | hand-drawn — sole exception: avoiding the mermaid runtime (see figure budget) |
-| State machine >5 states with guards/terminals           | mermaid `stateDiagram-v2`                     | —                                                                             |
-| State machine ≤5 states, transitions carry the meaning  | `diagram` skill                               | mermaid (generic)                                                             |
-| Comparison, N options × M criteria, cells are prose     | markdown table                                | any diagram                                                                   |
-| Comparison of structurally different options, ≤3        | `diagram` skill mirrored halves               | table (flattens the structural point)                                         |
-| Hierarchy/taxonomy ≤3 levels                            | `diagram` skill tree — lines + text, no boxes | mermaid flowchart TD                                                          |
-| Quantitative, ≥5 data points                            | inline SVG chart (discipline below)           | mermaid, chart libraries                                                      |
-| ≤4 numbers                                              | `.chips` or a table row                       | a chart                                                                       |
-| Independent items, no edges between them                | `.cards` grid                                 | any diagram — no edges = decorated list                                       |
+| Concept                                                                                                                     | Treatment                                               | Never                                                                                                                   |
+| --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Deployable inventory, ≤7 nodes, relationships secondary                                                                     | `.iso` kit + `.edge` connectors                         | `diagram` skill (overkill)                                                                                              |
+| Linear pipeline, all edges forward, stages need prose                                                                       | `.arch` flat kit                                        | —                                                                                                                       |
+| Independent items, no edges between them                                                                                    | `.cards` grid                                           | any diagram — no edges = decorated list                                                                                 |
+| ≤4 numbers                                                                                                                  | `.chips` or a table row                                 | a chart                                                                                                                 |
+| Comparison, N options × M criteria, cells are prose                                                                         | markdown table                                          | a diagram — unless the options differ in structure, then the "Everything else" row                                      |
+| Quantitative, ≥5 data points                                                                                                | inline SVG chart (discipline below)                     | mermaid, chart libraries                                                                                                |
+| Ordered message exchange, ≥3 participants                                                                                   | mermaid `sequenceDiagram`                               | hand-drawn — sole exception: avoiding the mermaid runtime (see figure budget)                                           |
+| State machine >5 states with guards/terminals                                                                               | mermaid `stateDiagram-v2`                               | —                                                                                                                       |
+| Everything else — structural, behavioral, data, deployment, or a structural comparison; loop-backs and hierarchies included | `diagram` skill, type per its `references/selection.md` | mermaid (auto-layout destroys boundary semantics), box kits (no backward edge), a table (flattens the structural point) |
 
 A table beats a diagram when any of these holds: cells are full sentences; the
 relation is "X has property Y", not "X acts on Y"; ≥6 uniform rows; the
@@ -142,10 +140,91 @@ sequence/state diagram with the `diagram` skill instead.
   — `.fbox` variants: `.gate` (amber), `.ok` (blue), `.deny` (red).
 - **Facts with columns**: markdown tables (themed automatically).
 
-All of these work inside markdown files — markdown passes raw HTML through.
-Decks: one idea per slide, kicker + h2 + a few bullets or one diagram/card grid;
-put heavy diagrams on their own slide. Raw pages: full freedom, but reuse the
-house tokens above so pages feel like one product.
+All of these work inside markdown files — markdown passes raw HTML through. Raw
+pages: full freedom, but reuse the house tokens above so pages feel like one
+product.
+
+### Decks — the slide grammar
+
+One idea per slide: a slide carries a kicker, an
+`h2`, and **one** of the shapes below. If it needs two, it is two slides.
+
+**Title slide** — mono kicker, two-tone headline (first phrase ink, second
+phrase accent via `.hi`), a one-sentence thesis, then the stat row:
+
+```html
+<div class="cover">
+<div class="kicker">series — subject</div>
+<h1>First phrase. <span class="hi">Second phrase.</span></h1>
+<p class="thesis">One sentence stating the claim the deck defends.</p>
+<div class="stats">
+  <div class="stat hot"><div class="num">4</div><div class="lbl">what it counts</div></div>
+  <div class="stat"><div class="num">2</div><div class="lbl">what it counts</div></div>
+</div>
+</div>
+```
+
+At most 4 numerals, each with a mono label; a numeral is a fact the thesis rests
+on, never decoration — more than four is a table. `.stat.hot` paints one numeral
+accent; use it on at most one. `.cover` opens the deck and optionally closes it
+as a restatement. Never a middle slide. Pass `--title` rather than opening the
+file with a doc-style `# Title`: the heading is not consumed, so it stacks a
+second headline above the cover's own `h1`.
+
+**Content slides** — route by what the idea IS, under slide-specific caps:
+
+| The idea is                          | Shape              | Cap       |
+| ------------------------------------ | ------------------ | --------- |
+| Peers with no edges between them     | `.cards.cols-3/-4` | 4 columns |
+| Rows that each carry a state or time | `.rails`           | 6 rows    |
+| Anything with real edges             | `.figure`          | 1 / slide |
+| Lookup across N options × M criteria | markdown table     | —         |
+| A single decision or warning         | `.callout`         | —         |
+| Metadata about the slide's subject   | `.chips`           | —         |
+
+**Column cards** — 2–4 peers, each with a mono eyebrow label, a heading, and a
+tight body. `.cols-3`/`.cols-4` collapse to two columns under 62rem, one
+under 40rem:
+
+```html
+<div class="cards cols-3">
+  <div class="card">
+    <span class="eyebrow">label</span>
+    <h3>Heading</h3>
+    <p>Two lines at most. Four columns tightens the body automatically.</p>
+  </div>
+</div>
+```
+
+**Legend rails** — rows sharing a scale (now/next/later, owned/shared/external,
+pass/warn/fail). The rail colour groups; the legend decodes it once, above the
+list. `.when` right-aligns a mono marker:
+
+```html
+<div class="legend">
+  <span class="key hot">now</span>
+  <span class="key gold">next</span>
+  <span class="key dim">later</span>
+</div>
+
+<ul class="rails">
+  <li class="rail hot"><strong>Row heading</strong> — supporting clause<span class="when">state</span></li>
+  <li class="rail gold"><strong>Row heading</strong> — supporting clause<span class="when">state</span></li>
+  <li class="rail dim"><strong>Row heading</strong> — supporting clause<span class="when">state</span></li>
+</ul>
+```
+
+Rail variants: `.hot` (blue), `.gold` (amber), `.dim` (grey), `.red`. Use two or
+three in one list — a rail per row with a unique colour groups nothing.
+
+**Colour is structural, not typographic.** The rail, the swatch, and the node
+border carry colour; row text stays ink/muted in both themes. Light-mode amber
+clears 4.5:1 on `--navy` and the white `--card` but misses it on the
+`--navy-deep`, `--accent-soft` and `--code-bg` grounds (4.26:1 / 4.07:1 /
+4.29:1), so it is a rail colour only, never body text.
+
+Every doc component above works inside a slide. Heavy diagrams get their own
+slide with nothing but a kicker and an `h2` above them.
 
 ## Requirements and behavior
 

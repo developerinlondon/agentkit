@@ -204,9 +204,146 @@ one namespace across kinds: a handle names exactly one source. Cross-origin cont
 promising what no repo implements) are exactly what the single shared
 ledger exists to surface.
 
+## Composition: one product, several repos
+
+A product spread across repos gets a **product repo** that declares it — one
+product per product repo, and that repo need not hold code. It carries
+`product.yaml` (`schemas/product.schema.json`): product identity, the parts,
+where the evidence lives, and the published page.
+
+Each part names what it is (`repo`, `site` or `service`), where it lives
+(`target`), and what it does for the product (`role`). Components point back
+with a `part_of` marker, so the composition is discoverable from either end
+rather than only from the middle:
+
+```mermaid
+flowchart LR
+  P["product repo<br/>product.yaml<br/>composition.parts[]"] -->|declares| A[engine repo]
+  P -->|declares| B[console repo]
+  A -->|part_of| P
+  B -->|part_of| P
+```
+
+The marker lives **inside the component's existing `.agentkit/product.yaml`**,
+above the surfaces product-review reads — one committed file per component
+answers both "how do I run this" and "what is this part of". It carries
+`product_repo` and this component's `part` id (plus the product `name`, so a
+reader without access to a private product repo still knows what it belongs
+to). The validator checks that block and leaves the surfaces to product-review.
+
+Validate either document with the same CLI as briefs and ledgers — the
+document kind is detected from its top-level key:
+
+```sh
+bun skills/product-intelligence/scripts/validate.ts product.yaml .agentkit/product.yaml
+```
+
+Beyond the schema it enforces what a schema cannot: part ids are unique, and
+every `evidence` and `site.entry` pointer resolves on disk. A declaration whose
+evidence has moved reads as sourced right up until somebody follows it.
+
+### Derived origins
+
+A multi-repo product's `subject.origins` are **derived from the declaration,
+not retyped** — hand-copying is how a brief ends up citing a repo the product
+no longer contains:
+
+```sh
+bun skills/product-intelligence/scripts/origins.ts product.yaml            # pasteable YAML
+bun skills/product-intelligence/scripts/origins.ts product.yaml --json
+bun skills/product-intelligence/scripts/origins.ts product.yaml --check brief.yaml
+```
+
+One part becomes one origin, keyed by the part id: `repo` and `site` pass
+through, and a `service` part derives a `site` origin — a brief has no kind for
+something that runs, and a service is evidence you acquire by visiting its URL.
+
+`--check` fails when a declared part has no origin in the brief, or when the
+brief cites that part under a different target. Targets compare canonically, so
+a clone URL and its `owner/repo` short form are the same repository — both
+schemas advertise the two notations as interchangeable, and a checker that
+disagreed would report one repo as missing and unrecognised at once.
+
+Canonical means the host (case-folded, and two different hosts stay two
+repositories) plus the **whole** remaining path. Subgroups are ordinary
+segments, so `acme/platform/engine` and `other/platform/engine` are different
+repos, and the bare `owner/repo` shorthand matches a hosted path only when that
+path is exactly `owner/repo` — never the tail of a deeper one.
+
+The check is deliberately **one-directional**: every part must be cited, but a
+brief may legitimately cite sources that are not parts — the product repo's own
+documents, or a supplied docset. Those are reported as `note:` lines and do not
+fail the check. The declaration carries no self-locator, so the product repo is
+never derived as an origin; cite it in the brief when its documents are
+evidence, and the note is the acknowledgement, not a defect to chase.
+
+### Workspace orientation
+
+For an agent landing in a multi-repo workspace, generate the page that says
+what the product is, which parts exist, where each lives, and where the
+evidence sits:
+
+```sh
+bun skills/product-intelligence/scripts/orient.ts product.yaml   # writes ORIENTATION.md
+```
+
+It is derived output — regenerate it rather than editing it, and never orient
+from a declaration that does not validate. A worked example of the whole loop
+(declaration, component marker, derived origins, generated page) is in
+`examples/composition/`.
+
 ## Refresh mode
 
 Re-running against the same subject keeps the section order stable and diffs
 against the previous ledger: new claims, changed sources (`as_of` moved),
 claims whose source disappeared. A vanished source downgrades confidence; it
 does not silently delete the claim.
+
+## Hosting ladder
+
+A brief is only useful once someone can read it. Four rungs, cheapest first —
+climb only as far as the situation needs, and never let the reader's access
+depend on a rung they cannot reach.
+
+| Rung             | What it is                             | Use it when                                                                               |
+| ---------------- | -------------------------------------- | ----------------------------------------------------------------------------------------- |
+| 1 Portable file  | One self-contained `index.html`        | Pages is disabled, the repo is private, the reader is offline or gets it as an attachment |
+| 2 Repo Pages CI  | GitHub or GitLab Pages, built on push  | The brief lives in a repo and should re-publish itself when the evidence changes          |
+| 3 AgentKit Pages | `publish-page` → your own pages worker | You want a URL now, with no repo and no CI                                                |
+| 4 Hosted         | `publish-page` at a hosted endpoint    | Same as rung 3, someone else runs the worker (`AGENTKIT_PAGES_ENDPOINT`)                  |
+
+### Rung 1 — portable file
+
+```sh
+bun skills/product-intelligence/scripts/render.ts <dir> --html --out index.html
+```
+
+Writes `<dir>/index.html` without `--out`. The doc theme's CSS and JS are
+inlined, so the page opens by double-click from `file://` with no server and
+makes **no network request of any kind** — the light/dark toggle, the section
+rail and the anchors all work offline. Same inputs render byte-identical
+output, so a rebuilt page only changes when the evidence does.
+
+One-time on the machine that renders: `cd skills/publish-page && bun install`.
+
+**Findings diagrams: known limitation.** A `` ```mermaid `` fence in
+`findings.md` reaches the page with the findings sanitizer's escaping applied inside
+the fence, so any diagram using `[`, `]`, `(` or `)` fails to parse — while
+the 3.4 MB mermaid runtime is inlined regardless. Keep diagrams out of
+`findings.md` until that escaping is fence-aware.
+
+### Rung 2 — Pages CI
+
+Scaffolds in `assets/ci/` — copy one into the repo that owns the brief and set
+`INTELLIGENCE_DIR`:
+
+| File                         | Copy to                             |
+| ---------------------------- | ----------------------------------- |
+| `assets/ci/github-pages.yml` | `.github/workflows/brief-pages.yml` |
+| `assets/ci/gitlab-ci.yml`    | `.gitlab-ci.yml`                    |
+
+Both jobs do the same three things: validate `brief.yaml` + `ledger.yaml`,
+render `brief-page.md` and `index.html` into `public/`, publish that directory.
+Validation runs first on purpose — a dangling claim id fails the build instead
+of publishing a brief whose citations go nowhere. Pin `AGENTKIT_REF` to a tag
+so a rebuild cannot change with upstream.

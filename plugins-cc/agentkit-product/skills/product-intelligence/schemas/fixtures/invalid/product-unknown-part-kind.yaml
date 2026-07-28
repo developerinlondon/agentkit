@@ -1,0 +1,8 @@
+product_version: "0.1"
+product:
+  name: acme-platform
+composition:
+  parts:
+    - id: engine
+      kind: package
+      target: acme/engine

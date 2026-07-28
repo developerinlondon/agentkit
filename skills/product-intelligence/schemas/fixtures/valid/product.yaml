@@ -1,0 +1,26 @@
+product_version: "0.1"
+product:
+  name: acme-platform
+  one_liner: Rules engine plus operator console, sold as one platform.
+  homepage: https://acme.example
+composition:
+  parts:
+    - id: engine
+      role: core
+      kind: repo
+      target: acme/engine
+      visibility: public
+      description: The rules engine and its CLI.
+    - id: docs
+      role: documentation
+      kind: site
+      target: https://docs.acme.example
+      visibility: public
+    - id: cloud
+      role: hosted deployment
+      kind: service
+      target: https://app.acme.example
+      visibility: private
+evidence:
+  brief: brief.yaml
+  ledger: ledger.yaml
