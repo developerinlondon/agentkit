@@ -29,7 +29,7 @@ All under `.agentkit/intelligence/<subject-slug>/`:
 | `findings.md` | Contradictions, gaps and risks from the analyze pass                        |
 
 To SHOW a brief to a human, render it — the YAML is the auditable form, not
-the readable one: `bun scripts/render.ts <dir>` weaves the brief, the
+the readable one: `bun skills/product-intelligence/scripts/render.ts <dir>` weaves the brief, the
 ledger's verbatim quotes and the findings into one page-ready
 `brief-page.md` (derived, never committed), which publish-page can put on a
 URL as-is.

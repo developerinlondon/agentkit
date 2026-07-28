@@ -10,16 +10,29 @@ import { join } from 'node:path';
 
 type Dict = Record<string, any>;
 
-// The pipe becomes an entity so escaped text can sit in a GFM table cell
-// without splitting it.
+// Newlines collapse and the pipe becomes an entity because markdown
+// containers — table rows, list items, HTML blocks — are line-structured: a
+// newline ends the row or block and a blank line lets crawled text continue
+// at document level, minting headings that read as the analyst's own.
+// source() splits a quote into lines before escaping, so multi-line quotes
+// keep their shape.
 function esc(value: unknown): string {
-  return String(value ?? '').replace(
+  return String(value ?? '').replace(/\s*\r?\n\s*/g, ' ').replace(
     /[&<>"'|]/g,
     (c) =>
       ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;', '|': '&#124;' })[
         c
       ] as string,
   );
+}
+
+// Text inside a raw-HTML island. marked does not run inline markdown inside a
+// block-level HTML block, but that is a property of the consumer, not of this
+// output — entity-encoding the metacharacters makes the island safe under any
+// renderer while displaying the character unchanged. Backslash escaping cannot
+// be used here: it would show as a literal backslash.
+function escText(value: unknown): string {
+  return esc(value).replace(/[[\]()*_`~#!]/g, (c) => `&#${c.charCodeAt(0)};`);
 }
 
 // Free text landing in a markdown context (headings, bold, blockquotes,
@@ -37,14 +50,16 @@ function mdEsc(value: unknown): string {
 
 // Inline <code> instead of a backtick span: a backtick inside a locator would
 // terminate a span early. marked still runs inline markdown BETWEEN inline
-// HTML tags, so the content needs mdEsc, not just esc. Newlines collapse so a
-// multi-line value cannot break out of a table row.
+// HTML tags, so the content needs mdEsc, not just esc.
 function code(value: unknown): string {
-  return `<code>${mdEsc(String(value ?? '').replace(/\s*\r?\n\s*/g, ' '))}</code>`;
+  return `<code>${mdEsc(value)}</code>`;
 }
 
+// Citation ids come from the brief, not only from the ledger, so a hostile
+// one reaches the label. marked runs inline markdown between inline HTML
+// tags, so the label needs the metacharacters encoded, not just esc().
 function link(ref: string): string {
-  return `<a href="#${esc(ref).toLowerCase()}">${esc(ref)}</a>`;
+  return `<a href="#${escText(ref).toLowerCase()}">${escText(ref)}</a>`;
 }
 
 function cites(claims?: string[]): string {
@@ -53,7 +68,7 @@ function cites(claims?: string[]): string {
 }
 
 function chip(label: string, value: string): string {
-  return `<span class="chip"><strong>${esc(label)}</strong> ${esc(value)}</span>`;
+  return `<span class="chip"><strong>${escText(label)}</strong> ${escText(value)}</span>`;
 }
 
 function header(brief: Dict, ledger: Dict): string {
@@ -113,16 +128,13 @@ function positioning(brief: Dict): string {
   return `## What it is\n\n${sentences.join(' ')}${cites(p.claims)}\n`;
 }
 
-// The cards are a block-level HTML island: marked passes the block through
-// without inline processing, so esc() alone is right here — mdEsc backslashes
-// would display literally.
 function valueMap(brief: Dict): string {
   const rows = (brief.value_map ?? []) as Dict[];
   if (rows.length === 0) return '';
   const cards = rows.map((r) => {
-    const proof = r.proof ? `<p><em>Check it: ${esc(r.proof)}.</em>${cites(r.claims)}</p>` : '';
+    const proof = r.proof ? `<p><em>Check it: ${escText(r.proof)}.</em>${cites(r.claims)}</p>` : '';
     const tail = proof || (r.claims?.length ? `<p>${cites(r.claims)}</p>` : '');
-    return `<div class="card"><h3>${esc(r.attribute)}</h3><p>${esc(r.value)}.</p>${tail}</div>`;
+    return `<div class="card"><h3>${escText(r.attribute)}</h3><p>${escText(r.value)}.</p>${tail}</div>`;
   }).join('\n');
   return `## What that gets you\n\n<div class="cards">\n${cards}\n</div>\n`;
 }
@@ -162,14 +174,18 @@ function siteInventory(brief: Dict): string {
 
 function contradictions(ledger: Dict): string {
   const claims = (ledger.claims ?? []) as Dict[];
+  const byId = new Map(claims.map((c) => [c.id, c]));
+  // A dangling or self-referential target would render an empty bold span and
+  // a dead anchor. renderBrief validates nothing, so unvalidated input reaches
+  // here; drop the pair rather than print a broken row.
   const pairs = new Set<string>();
   for (const c of claims) {
     for (const other of (c.contradicts ?? []) as string[]) {
+      if (other === c.id || !byId.has(other)) continue;
       pairs.add([c.id, other].sort().join('|'));
     }
   }
   if (pairs.size === 0) return '';
-  const byId = new Map(claims.map((c) => [c.id, c]));
   const rows = [...pairs].map((pair) => {
     const [a, b] = pair.split('|');
     const one = byId.get(a);
@@ -250,19 +266,20 @@ function source(s: Dict): string {
 function evidence(brief: Dict, ledger: Dict): string {
   const claims = (ledger.claims ?? []) as Dict[];
   if (claims.length === 0) return '';
+  const known = new Set(claims.map((c) => c.id));
+  const refs = (ids: unknown, self: string) =>
+    ((ids ?? []) as string[]).filter((id) => id !== self && known.has(id));
   const blocks = claims.map((c) => {
-    const badge = `<span class="chip"><strong>${esc(c.class)}</strong> ${esc(c.confidence)}</span>`;
-    const derived = (c.derived_from ?? []).length
-      ? ` <em>inferred from ${(c.derived_from as string[]).map(link).join(', ')}</em>`
-      : '';
-    const conflict = (c.contradicts ?? []).length
-      ? ` <em>contradicts ${(c.contradicts as string[]).map(link).join(', ')}</em>`
-      : '';
+    const badge = `<span class="chip"><strong>${escText(c.class)}</strong> ${escText(c.confidence)}</span>`;
+    const from = refs(c.derived_from, c.id);
+    const against = refs(c.contradicts, c.id);
+    const derived = from.length ? ` <em>inferred from ${from.map(link).join(', ')}</em>` : '';
+    const conflict = against.length ? ` <em>contradicts ${against.map(link).join(', ')}</em>` : '';
     const sources = (c.sources ?? []) as Dict[];
     const body = sources.length > 0
       ? sources.map(source).join('\n>\n')
       : `> _No source — this claim is ${mdEsc(c.class)}, carried as such rather than dressed up._`;
-    return `<span id="${esc(c.id).toLowerCase()}"></span>**${mdEsc(c.id)}** ${badge} — ${mdEsc(c.statement)}${derived}${conflict}\n\n${body}`;
+    return `<span id="${escText(c.id).toLowerCase()}"></span>**${mdEsc(c.id)}** ${badge} — ${mdEsc(c.statement)}${derived}${conflict}\n\n${body}`;
   }).join('\n\n');
   const acq = ((brief.evidence?.acquisition ?? []) as Dict[])
     .map((a) => `${code(a.tool)} → ${mdEsc(a.target)} (${mdEsc(a.retrieved_at)})`).join(' · ');

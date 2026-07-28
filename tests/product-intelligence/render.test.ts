@@ -122,6 +122,178 @@ describe('renderBrief', () => {
     expect(out).toContain('\\*only\\* $5 for 2\\*3 items -- see \\`config.yaml\\`');
   });
 
+  // One payload per untrusted field: a sampled test lets a refactor reopen
+  // the injection on every field it does not sample. Each field carries a
+  // distinct marker so a surviving escape gap names itself.
+  const FIELDS = [
+    'name', 'one_liner', 'category', 'target_customer', 'need', 'key_benefit',
+    'alternative', 'differentiation', 'vm_attribute', 'vm_value', 'vm_proof',
+    'js_situation', 'js_motivation', 'js_outcome', 'wf_name', 'wf_step',
+    'wf_description', 'si_locator', 'si_title', 'si_page_type', 'si_disposition',
+    'si_rationale', 'cv_what', 'cv_why', 'statement', 'quote', 'locator',
+    'acq_tool', 'acq_target',
+  ] as const;
+
+  // The marker itself must survive escaping unchanged, so it carries no
+  // markdown metacharacter of its own.
+  const marker = (field: string) => field.replace(/_/g, '');
+  const payload = (field: string) =>
+    `<script>${marker(field)}</script>[x](javascript:alert(1))\n\n## forged ${marker(field)}`;
+
+  test('no untrusted field can inject markup, links or headings', () => {
+    const y = (v: string) => JSON.stringify(payload(v));
+    const brief = [
+      "brief_version: '1.0'",
+      `subject: { name: ${y('name')}, one_liner: ${y('one_liner')} }`,
+      'evidence:',
+      '  ledger: ledger.yaml',
+      '  acquisition:',
+      `    - tool: ${y('acq_tool')}`,
+      `      target: ${y('acq_target')}`,
+      "      retrieved_at: '2026-07-28'",
+      'positioning:',
+      ...(['category', 'target_customer', 'need', 'key_benefit', 'alternative', 'differentiation'] as const)
+        .map((k) => `  ${k}: ${y(k)}`),
+      'value_map:',
+      `  - attribute: ${y('vm_attribute')}`,
+      `    value: ${y('vm_value')}`,
+      `    proof: ${y('vm_proof')}`,
+      'job_stories:',
+      `  - situation: ${y('js_situation')}`,
+      `    motivation: ${y('js_motivation')}`,
+      `    outcome: ${y('js_outcome')}`,
+      'workflows:',
+      `  - name: ${y('wf_name')}`,
+      '    steps:',
+      `      - step: ${y('wf_step')}`,
+      `        description: ${y('wf_description')}`,
+      'site_inventory:',
+      `  - locator: ${y('si_locator')}`,
+      `    title: ${y('si_title')}`,
+      `    page_type: ${y('si_page_type')}`,
+      `    disposition: ${y('si_disposition')}`,
+      `    rationale: ${y('si_rationale')}`,
+      'cannot_verify:',
+      `  - what: ${y('cv_what')}`,
+      `    why: ${y('cv_why')}`,
+    ].join('\n');
+    const out = withArtifacts(
+      brief,
+      ledgerWith(claim('C-001', payload('statement'), 'observed', 'high', [
+        src(payload('locator'), payload('quote'), 'supports'),
+      ])),
+    );
+
+    expect(out).not.toContain('<script');
+    expect(out).not.toContain('](javascript:');
+    // A forged heading needs a line start; every field is newline-collapsed.
+    expect(out).not.toMatch(/^#+ forged/m);
+    for (const field of FIELDS) {
+      expect(out, `${field} unescaped`).not.toContain(`<script>${marker(field)}`);
+      expect(out, `${field} missing`).toContain(`&lt;script&gt;${marker(field)}`);
+    }
+  });
+
+  // The full-slot fixture above never reaches the chips, the citation
+  // anchors, the single-slot positioning fallbacks or the contradiction rows.
+  test('metadata, citations and fallback branches are escaped too', () => {
+    const p = (m: string) => JSON.stringify(payload(m));
+    const out = withArtifacts(
+      [
+        "brief_version: '1.0'",
+        'subject:',
+        `  name: ${p('subjname')}`,
+        `  repo: ${p('repo')}`,
+        `  homepage: ${p('homepage')}`,
+        '  origins:',
+        `    - { id: ${p('originone')} }`,
+        `    - { id: ${p('origintwo')} }`,
+        'evidence:',
+        '  ledger: ledger.yaml',
+        `  acquired_at: ${p('acquiredat')}`,
+        `positioning: { alternative: ${p('altonly')} }`,
+        'value_map:',
+        '  - attribute: a',
+        '    value: v',
+        `    claims: [${p('citation')}]`,
+      ].join('\n'),
+      ledgerWith(
+        [
+          ...claim('C-001', payload('stmtone'), 'observed', 'high', [
+            src('site:/a', 'q', 'supports'),
+          ]),
+          '    contradicts: [C-002]',
+        ],
+        claim('C-002', payload('stmttwo'), 'observed', 'high'),
+      ),
+    );
+    expect(out).not.toContain('<script');
+    expect(out).not.toContain('](javascript:');
+    expect(out).not.toMatch(/^#+ forged/m);
+    for (const m of [
+      'subjname', 'repo', 'homepage', 'originone', 'origintwo', 'acquiredat',
+      'altonly', 'citation', 'stmtone', 'stmttwo',
+    ]) {
+      expect(out, `${m} unescaped`).not.toContain(`<script>${m}`);
+      expect(out, `${m} missing`).toContain(`&lt;script&gt;${m}`);
+    }
+    // The citation reaches both the anchor target and its label.
+    expect(out).toContain(String.raw`href="#&lt;script&gt;citation&lt;/script&gt;&#91;`);
+  });
+
+  // renderBrief validates nothing, so schema-constrained metadata still
+  // arrives untrusted when the caller skips validate.ts.
+  test('unvalidated ledger metadata cannot inject either', () => {
+    const out = withArtifacts(
+      [
+        "brief_version: '1.0'",
+        'subject: { name: acme }',
+        'evidence:',
+        '  ledger: ledger.yaml',
+        '  acquisition:',
+        '    - tool: t',
+        '      target: g',
+        `      retrieved_at: ${JSON.stringify(payload('retrievedat'))}`,
+      ].join('\n'),
+      [
+        "ledger_version: '1.0'",
+        'generated_by: t',
+        "generated_at: '2026-07-28'",
+        'claims:',
+        `  - id: ${JSON.stringify(payload('claimid'))}`,
+        '    statement: s',
+        `    class: ${JSON.stringify(payload('claimclass'))}`,
+        `    confidence: ${JSON.stringify(payload('confidence'))}`,
+        '    sources:',
+        '      - locator: site:/a',
+        '        quote: q',
+        `        stance: ${JSON.stringify(payload('stance'))}`,
+        `        as_of: ${JSON.stringify(payload('asof'))}`,
+        '  - id: C-002',
+        '    statement: sourceless',
+        `    class: ${JSON.stringify(payload('nosrcclass'))}`,
+        '    confidence: low',
+      ].join('\n'),
+    );
+    expect(out).not.toContain('<script');
+    expect(out).not.toContain('](javascript:');
+    expect(out).not.toMatch(/^#+ forged/m);
+    for (const m of ['retrievedat', 'claimid', 'claimclass', 'confidence', 'stance', 'asof', 'nosrcclass']) {
+      expect(out, `${m} unescaped`).not.toContain(`<script>${m}`);
+      expect(out, `${m} missing`).toContain(`&lt;script&gt;${m}`);
+    }
+  });
+
+  test('single-slot positioning fallbacks escape their one field', () => {
+    for (const slot of ['need', 'target_customer', 'differentiation'] as const) {
+      const out = withArtifacts(
+        minimalBrief(`positioning: { ${slot}: ${JSON.stringify(payload(slot))} }`),
+      );
+      expect(out, slot).not.toContain('<script');
+      expect(out, slot).toContain(`&lt;script&gt;${marker(slot)}`);
+    }
+  });
+
   test('a backtick in a locator cannot break its code element', () => {
     const out = withArtifacts(
       journalBrief(),
@@ -130,6 +302,19 @@ describe('renderBrief', () => {
       ])),
     );
     expect(out).toContain('<code>repo:READ\\`ME.md</code>');
+  });
+
+  test('a dangling or self-referential contradiction is dropped, not rendered broken', () => {
+    const out = withArtifacts(
+      journalBrief(),
+      ledgerWith(
+        [...claim('C-001', 'real', 'observed', 'high'), '    contradicts: [C-999, C-001]'],
+        claim('C-002', 'other', 'observed', 'high'),
+      ),
+    );
+    expect(out).not.toContain('## Unresolved contradictions');
+    expect(out).not.toContain('****');
+    expect(out).not.toContain('href="#c-999"');
   });
 
   test('a pipe in free text cannot split a table row', () => {
