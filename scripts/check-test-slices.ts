@@ -53,6 +53,27 @@ export type TestSlice = keyof typeof TEST_SLICES;
 
 const repoRoot = join(import.meta.dir, '..');
 const bunTestFilename = /(?:\.test|_test|\.spec|_spec)\.(?:js|jsx|ts|tsx)$/;
+const productionRoots = [
+  '.claude-plugin',
+  'hooks',
+  'instructions',
+  'lib',
+  'pages/worker',
+  'plugins',
+  'plugins-cc',
+  'policies',
+  'rules',
+  'skills',
+  'tools',
+] as const;
+const productionFiles = new Set([
+  '.agentkit/product.yaml',
+  '.agentkit/review-policy.json',
+  'config.example.yaml',
+  'install.sh',
+]);
+// Repository control files are neither installed nor executed at runtime.
+const nonRuntimeBasenames = new Set(['.gitignore']);
 
 interface DiscoveredFile {
   absolute: string;
@@ -70,7 +91,7 @@ function discoverFiles(root: string): DiscoveredFile[] {
     for (const entry of readdirSync(directory, { withFileTypes: true })) {
       if (
         entry.isDirectory() &&
-        (entry.name === 'node_modules' || entry.name.startsWith('.'))
+        (entry.name === '.git' || entry.name === 'node_modules')
       ) {
         continue;
       }
@@ -89,28 +110,46 @@ function discoverFiles(root: string): DiscoveredFile[] {
   return files.sort((left, right) => left.relative.localeCompare(right.relative));
 }
 
+function hasHiddenDirectory(file: string): boolean {
+  return file
+    .split('/')
+    .slice(0, -1)
+    .some((part) => part.startsWith('.'));
+}
+
 export function discoverTestFiles(root = repoRoot): string[] {
   return discoverFiles(root)
-    .filter((file) => bunTestFilename.test(basename(file.relative)))
+    .filter(
+      (file) =>
+        !hasHiddenDirectory(file.relative) &&
+        bunTestFilename.test(basename(file.relative)),
+    )
     .map((file) => file.relative);
 }
 
 export function discoverProductionSurfaces(root = repoRoot): string[] {
   const files = discoverFiles(root);
-  const packageRoots = files
-    .map((file) => file.relative)
-    .filter((file) => file.endsWith('/package.json'))
-    .map((file) => file.slice(0, -'/package.json'.length));
 
   return files
     .filter((file) => {
-      if (file.relative.startsWith('tests/')) return false;
-      if (basename(file.relative).startsWith('.')) return false;
-      if (bunTestFilename.test(basename(file.relative))) return false;
+      // Test artifacts are governed by the separate exact-once slice inventory.
+      if (
+        file.relative.startsWith('tests/') ||
+        bunTestFilename.test(basename(file.relative))
+      ) {
+        return false;
+      }
+      if (nonRuntimeBasenames.has(basename(file.relative))) return false;
 
-      const executable = (statSync(file.absolute).mode & 0o111) !== 0;
-      const packaged = packageRoots.some((root) => file.relative.startsWith(`${root}/`));
-      return executable || packaged;
+      const runtimeRoot = productionRoots.some(
+        (root) => file.relative === root || file.relative.startsWith(`${root}/`),
+      );
+      if (productionFiles.has(file.relative) || runtimeRoot) return true;
+      if (hasHiddenDirectory(file.relative)) return false;
+      return (
+        (statSync(file.absolute).mode & 0o111) !== 0 ||
+        readFileSync(file.absolute, 'utf-8').startsWith('#!')
+      );
     })
     .map((file) => file.relative);
 }

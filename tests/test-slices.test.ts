@@ -73,15 +73,31 @@ describe('test slice routing', () => {
     }
   });
 
-  test('discovers nested packages and executable entrypoints as production surfaces', () => {
+  test('discovers installed runtime roots and executable entrypoints', () => {
     const root = mkdtempSync(join(tmpdir(), 'agentkit-production-discovery-'));
+    const runtimeFiles = [
+      '.agentkit/review-policy.json',
+      '.claude-plugin/marketplace.json',
+      'config.example.yaml',
+      'hooks/codex/hooks.json',
+      'install.sh',
+      'instructions/coding-discipline.md',
+      'lib/install-platform.sh',
+      'pages/worker/package.json',
+      'pages/worker/src/worker.js',
+      'pages/worker/wrangler.toml',
+      'plugins/resource-police.ts',
+      'plugins-cc/agentkit/.mcp.json',
+      'policies/codex/resource-police.rules',
+      'rules/coding-standards.md',
+      'skills/product-review/SKILL.md',
+      'tools/agent-session',
+    ];
 
     try {
       for (const file of [
+        ...runtimeFiles,
         'package.json',
-        'pages/worker/package.json',
-        'pages/worker/src/worker.js',
-        'pages/worker/wrangler.toml',
         'pages/worker/.gitignore',
         'scripts/entrypoint',
         'tests/probe.sh',
@@ -90,15 +106,19 @@ describe('test slice routing', () => {
         mkdirSync(dirname(path), { recursive: true });
         writeFileSync(path, '');
       }
+      for (const file of [
+        'hooks/codex/hooks.json',
+        'plugins/resource-police.ts',
+        'tools/agent-session',
+      ]) {
+        chmodSync(join(root, file), 0o644);
+      }
       chmodSync(join(root, 'scripts/entrypoint'), 0o755);
       chmodSync(join(root, 'tests/probe.sh'), 0o755);
 
-      expect(discoverProductionSurfaces(root)).toEqual([
-        'pages/worker/package.json',
-        'pages/worker/src/worker.js',
-        'pages/worker/wrangler.toml',
-        'scripts/entrypoint',
-      ]);
+      expect(discoverProductionSurfaces(root)).toEqual(
+        [...runtimeFiles, 'scripts/entrypoint'].sort(),
+      );
     } finally {
       rmSync(root, { force: true, recursive: true });
     }
