@@ -4,6 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { renderBriefHtml } from '../../skills/product-intelligence/scripts/html.ts';
+import { hostileBrief, hostileLedger } from './fixtures.ts';
 
 const repoRoot = dirname(dirname(import.meta.dir));
 const skillRoot = join(repoRoot, 'skills', 'product-intelligence');
@@ -125,6 +126,24 @@ describe('portable brief page', () => {
     expect(html).toContain('&lt;/title&gt;&lt;script&gt;alert(1)&lt;/script&gt;');
   });
 
+  // The doc render is HTML and must reach the theme as HTML. Handed to the
+  // markdown path instead, marked ends its raw-HTML block at the first blank
+  // line a crawled field carries and parses everything after it as markdown —
+  // reopening exactly the injection surface emitting HTML closes.
+  test('the render is not handed back to the markdown parser', async () => {
+    const dir = copyOfMixed('hostile-blocks');
+    writeFileSync(join(dir, 'brief.yaml'), hostileBrief());
+    writeFileSync(join(dir, 'ledger.yaml'), hostileLedger());
+    rmSync(join(dir, 'findings.md'), { force: true });
+    const html = await renderBriefHtml(dir);
+    expect(html).not.toMatch(/<h[1-6][^>]*>\s*forged/i);
+    expect(html).not.toContain('href="javascript:');
+    const outbound = [...html.matchAll(/<a\b[^>]*href="([^"]*)"/gi)]
+      .map((m) => m[1])
+      .filter((href) => !href.startsWith('#'));
+    expect(outbound).toEqual(['https://agentkit.sbs']);
+  });
+
   // The page must come from the theme shipped beside the script. publish.ts
   // prefers a canonical clone when one exists, and a portable page that
   // silently followed it would render differently on every machine.
@@ -155,6 +174,49 @@ describe('portable brief page', () => {
     expect(withDiagram).toContain('class="mermaid"');
     expect(withDiagram).toContain('mermaid.initialize');
     expect(withDiagram).not.toMatch(/<script\b[^>]*\bsrc\s*=/i);
+  });
+
+  // The runtime was inlined for a diagram that could never parse: the findings
+  // sanitizer escaped the fence interior, so every bracket and paren reached
+  // mermaid backslashed. The diagram source must survive to the page as typed.
+  test('a findings diagram reaches the page able to parse', async () => {
+    const dir = copyOfMixed('bracketed');
+    writeFileSync(
+      join(dir, 'findings.md'),
+      [
+        '# Findings',
+        '',
+        '## Flow',
+        '',
+        '```mermaid',
+        'flowchart LR',
+        '  A[intake] --> B(normalise)',
+        '  B --> C{contradiction?}',
+        '  C -->|yes| D[record both]',
+        '```',
+      ].join('\n'),
+    );
+    const html = await renderBriefHtml(dir);
+    const source = html.match(/<pre class="mermaid">([\s\S]*?)<\/pre>/)![1];
+    // The browser hands mermaid textContent, which decodes the entities.
+    const decoded = source.replaceAll('&gt;', '>').replaceAll('&lt;', '<').replaceAll('&amp;', '&');
+    expect(decoded).toContain('A[intake] --> B(normalise)');
+    expect(decoded).toContain('C -->|yes| D[record both]');
+    expect(decoded).not.toContain('\\');
+  });
+
+  // A path, a URL and an address inside a code block used to reach the reader
+  // wearing the escapes that defused them in markdown — in a skill whose whole
+  // premise is that what it shows is what the source said.
+  test('a code block reaches the reader with no escape wedged into it', async () => {
+    const dir = copyOfMixed('paths');
+    writeFileSync(
+      join(dir, 'findings.md'),
+      ['# Findings', '', '## Repro', '', '```sh', String.raw`scp C:\Users\a\notes ops@host:/tmp # https://host/x`, '```']
+        .join('\n'),
+    );
+    const html = await renderBriefHtml(dir);
+    expect(html).toContain(String.raw`scp C:\Users\a\notes ops@host:/tmp # https://host/x`);
   });
 });
 
@@ -199,8 +261,8 @@ describe('render.ts --html', () => {
     expect(result.status).toBe(1);
     expect(result.stderr).toContain('page renderer unavailable');
     expect(result.stderr).toContain('bun install');
-    // The markdown lane carries no such dependency and must stay usable.
-    const markdown = renderCli(root, [mixed, '--out', join(scratch, 'brief.md')]);
-    expect(markdown.status, markdown.stderr).toBe(0);
+    // The doc lane carries no such dependency and must stay usable.
+    const doc = renderCli(root, [mixed, '--out', join(scratch, 'brief-page.html')]);
+    expect(doc.status, doc.stderr).toBe(0);
   });
 });

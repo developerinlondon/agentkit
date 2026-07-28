@@ -54,9 +54,72 @@ export const marker = (field: string) => field.replace(/_/g, '');
 export const payload = (field: string) =>
   `<script>${marker(field)}</script>[x](javascript:alert(1))\n\n## forged ${marker(field)}`;
 
-const y = (field: string) => JSON.stringify(payload(field));
+// Every block position findings.md can put author text in. The brief's fields
+// have FIELDS; this is the same idea for the file whose structure we render —
+// a position nothing samples is a position the next refactor can un-escape
+// while the suite stays green.
+export const FINDINGS_SITES = [
+  'heading', 'para', 'bullet', 'ordered', 'loose', 'nested', 'quote',
+  'th', 'td', 'fence', 'mermaid',
+] as const;
 
-export function hostileBrief(): string {
+const tag = (site: string) => `<img src=x onerror=alert(1)>${site}`;
+
+export const findingsPayload = (site: string) => tag(site);
+
+// One file carrying the payload at all of them at once: separate fixtures per
+// position drift, and the cheap ones stop being written.
+export function hostileFindings(): string {
+  return [
+    '# Findings',
+    '',
+    `## ${tag('heading')}`,
+    '',
+    tag('para'),
+    '',
+    `- ${tag('bullet')}`,
+    `- outer`,
+    `  - ${tag('nested')}`,
+    '',
+    `1. ${tag('ordered')}`,
+    '',
+    `- ${tag('loose')}`,
+    '',
+    '  second paragraph of a loose item',
+    '',
+    `> ${tag('quote')}`,
+    '',
+    `| ${tag('th')} | b |`,
+    '| --- | --- |',
+    `| ${tag('td')} | d |`,
+    '',
+    '```text',
+    tag('fence'),
+    '```',
+    '',
+    '```mermaid',
+    `flowchart LR`,
+    `  A[${tag('mermaid')}] --> B`,
+    '```',
+  ].join('\n');
+}
+
+// Markdown syntax is inert where the doc lane emits HTML, so the shapes that
+// still matter there are the ones that reach for a tag, an attribute or a
+// scheme. Each keeps the field's marker, so a surviving gap still names itself.
+export const HOSTILE_SHAPES: Record<string, (field: string) => string> = {
+  tag: payload,
+  attribute: (f) => `" onmouseover="alert(1)" data-${marker(f)}="`,
+  quote: (f) => `'><script>${marker(f)}</script>`,
+  entity: (f) => `&lt;script&gt;${marker(f)}&lt;/script&gt;&#106;`,
+  scheme: (f) => `javascript:alert(1)//${marker(f)}`,
+  backslash: (f) => `C:\\Users\\${marker(f)}\\`,
+};
+
+export type Payload = (field: string) => string;
+
+export function hostileBrief(make: Payload = payload): string {
+  const y = (field: string) => JSON.stringify(make(field));
   return [
     "brief_version: '1.0'",
     'subject:',
@@ -101,7 +164,8 @@ export function hostileBrief(): string {
   ].join('\n');
 }
 
-export function hostileLedger(): string {
+export function hostileLedger(make: Payload = payload): string {
+  const y = (field: string) => JSON.stringify(make(field));
   return [
     "ledger_version: '1.0'",
     `generated_by: ${y('generated_by')}`,
@@ -109,10 +173,10 @@ export function hostileLedger(): string {
     'claims:',
     // Two claims in conflict: with one, the contradiction renderers never see
     // hostile input at all and their escaping is asserted by nothing.
-    ...claim(payload('claim_id'), payload('statement'), 'observed', 'high', [
-      src(payload('locator'), payload('quote'), 'supports'),
+    ...claim(make('claim_id'), make('statement'), 'observed', 'high', [
+      src(make('locator'), make('quote'), 'supports'),
     ]),
     `    contradicts: [${y('claim_id_b')}]`,
-    ...claim(payload('claim_id_b'), payload('statement_b'), 'observed', 'high'),
+    ...claim(make('claim_id_b'), make('statement_b'), 'observed', 'high'),
   ].join('\n');
 }

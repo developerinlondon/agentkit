@@ -22,6 +22,10 @@ export function bundledThemePath(template: string): string {
   return join(import.meta.dir, "themes", `${template}.html`);
 }
 
+// A diagram's source is author text — in a product brief, crawled text — so the
+// label sanitiser is load-bearing, and securityLevel is set here rather than
+// inherited from whatever a future mermaid release defaults to.
+
 // Mermaid fences via marked's renderer, not a regex: fence-aware (nesting,
 // splitSlides sees real fences) and escaped (mermaid decodes via textContent).
 marked.use({
@@ -47,7 +51,7 @@ export async function mermaidRuntime(): Promise<string> {
   const srcs = new Map();
   function renderAll() {
     const light = document.documentElement.dataset.theme === "light";
-    mermaid.initialize({ startOnLoad: false, theme: "base", themeVariables: light ? LIGHT : DARK, flowchart: { curve: "basis", nodeSpacing: 46, rankSpacing: 56, padding: 12 } });
+    mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme: "base", themeVariables: light ? LIGHT : DARK, flowchart: { curve: "basis", nodeSpacing: 46, rankSpacing: 56, padding: 12 } });
     document.querySelectorAll("pre.mermaid").forEach((el) => {
       if (!srcs.has(el)) srcs.set(el, el.textContent);
       el.removeAttribute("data-processed");
