@@ -687,8 +687,56 @@ describe('base resolution', () => {
   });
 });
 
+const UNFORMATTED = '{"a":1,"b":2}\n';
+
+// PATH with the formatter's own directory removed, so "absent" can be probed on
+// a machine that has it.
+function pathWithoutDprint(): string {
+  const found = Bun.which('dprint');
+  const entries = (process.env.PATH ?? '').split(':');
+  if (found === null) return entries.join(':');
+  return entries.filter((entry) => entry !== dirname(found)).join(':');
+}
+
 describe('formatting', () => {
-  const UNFORMATTED = '{"a":1,"b":2}\n';
+  test('an absent dprint is a skip locally but a failure in CI', () => {
+    cpSync(join(REPO, 'dprint.json'), join(root, 'dprint.json'));
+    write('bad.json', UNFORMATTED);
+    const PATH = pathWithoutDprint();
+
+    const local = preflight(['bad.json'], [], { PATH, CI: '' });
+    const ci = preflight(['bad.json'], [], { PATH, CI: 'true' });
+
+    expect(local.stdout).toContain('[skip] dprint not installed');
+    expect(local.status).toBe(0);
+    expect(ci.stdout).toContain('[FAIL] dprint is not installed');
+    expect(ci.status).toBe(1);
+  });
+
+  test('a dprint that cannot run leaves the file unchecked rather than exonerated', () => {
+    cpSync(join(REPO, 'dprint.json'), join(root, 'dprint.json'));
+    write('bad.json', UNFORMATTED);
+
+    const broken = preflight(['bad.json'], [], stubOnPath('dprint', '#!/bin/sh\nexit 70\n'));
+
+    expect(broken.stdout).toContain('could not judge formatting drift');
+    expect(broken.stdout).not.toContain('no new drift added');
+    expect(broken.status).toBe(1);
+  });
+});
+
+// These need the real formatter: a stub would only test the stub. dprint is a
+// repo-wide dependency that CI installs pinned, so its absence there is a
+// broken install rather than a machine without it, and must not read as a pass.
+const dprintAvailable = Bun.which('dprint') !== null;
+const dprintNotice = 'no dprint on PATH — the formatting-drift cases did NOT run. '
+  + 'dprint is a repo-wide dependency; CI installs it pinned via .github/actions/install-dprint.';
+if (!dprintAvailable) {
+  if (process.env.CI) throw new Error(`tests/build/preflight.test.ts: ${dprintNotice}`);
+  console.error(`SKIPPED tests/build/preflight.test.ts: ${dprintNotice}`);
+}
+
+describe.if(dprintAvailable)('formatting drift', () => {
   const DRIFTED = '{"a":1}\n';
   const MORE_DRIFT = '{"a":1,"b":2,"c":[3,4],"WHOLE_NEW_MESS":true}\n';
 
@@ -712,17 +760,6 @@ describe('formatting', () => {
 
     expect(result.stdout).toContain('dprint fmt drifted.json');
     expect(result.status).toBe(1);
-  });
-
-  test('a dprint that cannot run leaves the file unchecked rather than exonerated', () => {
-    cpSync(join(REPO, 'dprint.json'), join(root, 'dprint.json'));
-    write('bad.json', UNFORMATTED);
-
-    const broken = preflight(['bad.json'], [], stubOnPath('dprint', '#!/bin/sh\nexit 70\n'));
-
-    expect(broken.stdout).toContain('could not judge formatting drift');
-    expect(broken.stdout).not.toContain('no new drift added');
-    expect(broken.status).toBe(1);
   });
 
   test('an untouched already-drifted file is still left alone', () => {

@@ -260,8 +260,16 @@ check_format() {
 		skip "no formattable files touched — dprint not invoked (a bare list formats the repo)"
 		return 0
 	fi
+	# A machine without the formatter still gets the rest of the gate, but CI
+	# installs it pinned, so its absence there is a broken install and the
+	# formatting class silently going unchecked is the very thing this gate exists
+	# to prevent.
 	if ! command -v dprint >/dev/null 2>&1; then
-		skip "dprint not installed"
+		if [[ -n "${CI:-}" ]]; then
+			bad "dprint is not installed — the formatting class went unchecked"
+		else
+			skip "dprint not installed — the formatting class went unchecked"
+		fi
 		return 0
 	fi
 	if [[ ! -f "$REPO/dprint.json" ]]; then

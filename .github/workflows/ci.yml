@@ -54,6 +54,11 @@ jobs:
         with:
           version: 0.7.1
 
+      - name: Install the pinned dprint formatter
+        uses: ./.github/actions/install-dprint
+        with:
+          version: 0.55.2
+
       - name: Validate test slice coverage
         run: bun run test:slices
 
@@ -107,6 +112,11 @@ jobs:
         uses: ./.github/actions/install-d2
         with:
           version: 0.7.1
+
+      - name: Install the pinned dprint formatter
+        uses: ./.github/actions/install-dprint
+        with:
+          version: 0.55.2
 
       - name: Run complete suite
         run: moon run agentkit:test-full

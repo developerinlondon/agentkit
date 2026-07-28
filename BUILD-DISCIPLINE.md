@@ -134,6 +134,30 @@ the exit status. A run reporting no marker is not a pass.
 never as green. Reading `$?` after a pipeline compounds this — the status is the
 last command's, not the runner's.
 
+### A tool that is absent, not merely failing
+
+**Mechanism.** A check that shells out to an external tool has three outcomes,
+not two: it ran and passed, it ran and failed, and it never ran. The third is the
+dangerous one, because a skip reads like a pass in a column of green. It is also
+the one that fires everywhere at once — if the tool is missing in CI because its
+install step broke or was never written, every case that needed it stops running
+across the whole matrix, silently.
+
+**Seen as.** Three formatting-drift cases passed on every developer machine and
+failed on a fresh runner that had no formatter at all: the gate printed
+`[skip] dprint not installed`, the expected messages never appeared, and the
+repository turned out to depend on that formatter in a hook and in this gate
+while pinning it nowhere. The diagram renderer had the same shape earlier.
+
+**Caught by.** Distinguish absent from failing, and make absent fatal wherever
+the tool is guaranteed. `preflight` skips a missing dprint on a developer machine
+but calls it a failure when `CI` is set; the drift tests skip loudly on stderr
+locally and throw under `CI`. Pin the tool and install it in CI from a recorded
+checksum, so its absence there is a broken install rather than a machine without
+it. Never swap in a stub to make the case pass — a stub tests the stub. A stub is
+legitimate only as fault injection: making the real tool fail on purpose to prove
+the gate notices, which is a different assertion.
+
 ### A test that writes the real `$HOME`
 
 **Mechanism.** A test spawns a subprocess with the inherited environment and no
