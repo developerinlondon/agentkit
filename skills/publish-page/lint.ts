@@ -1,4 +1,4 @@
-// Baked excalidraw SVGs carry the navy palette; published outside the theme's
+// Baked excalidraw SVGs carry the dark house palette; published outside the theme's
 // .figure island (or an equivalent var(--diagram-bg) container) they land on
 // whatever background the page provides — a white island shipped pale-on-white
 // once, illegible in both themes. Refuse that shape at publish time.
