@@ -38,14 +38,20 @@
     transition: background 0.3s, color 0.3s;
   }
   .slide {
-    display: none; height: 100vh; padding: 6vh 8vw; overflow-y: auto;
-    flex-direction: column; justify-content: center;
+    display: none; height: 100vh; padding: 5vh 6vw 5.5rem; overflow-y: auto;
+    flex-direction: column; max-width: 92rem; margin-inline: auto;
+    /* `safe` keeps the top of an overflowing slide reachable — plain centering
+       pushes it above the scroll origin. */
+    justify-content: safe center;
   }
   .slide.active { display: flex; }
+  .slide > * { flex-shrink: 0; }
   .slide h1 { font-size: clamp(1.8rem, 5vw, 3.2rem); letter-spacing: -0.02em; line-height: 1.1; text-wrap: balance; margin: 0 0 1rem; }
-  .slide h2 { font-size: clamp(1.4rem, 3.5vw, 2.2rem); letter-spacing: -0.01em; text-wrap: balance; margin: 0 0 1rem; }
-  .slide p, .slide li { font-size: clamp(1rem, 1.8vw, 1.25rem); max-width: 60ch; }
-  .slide li { margin-bottom: 0.5rem; }
+  .slide h2 { font-size: clamp(1.4rem, 3.2vw, 2.1rem); letter-spacing: -0.01em; text-wrap: balance; margin: 0 0 0.9rem; }
+  .slide h3 { font-size: 1rem; margin: 0 0 0.35rem; }
+  .slide p, .slide li { font-size: clamp(0.98rem, 1.6vw, 1.18rem); max-width: 62ch; }
+  .slide li { margin-bottom: 0.45rem; }
+  .hi { color: var(--accent); }
   a { color: var(--accent); }
   code {
     font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.85em;
@@ -53,15 +59,54 @@
   }
   pre { background: var(--navy-deep); border: 1px solid var(--line); border-radius: 8px; padding: 1rem 1.2rem; overflow-x: auto; font-size: clamp(0.75rem, 1.4vw, 0.95rem); }
   pre code { background: none; padding: 0; }
-  table { border-collapse: collapse; display: block; overflow-x: auto; }
+  table { border-collapse: collapse; display: block; overflow-x: auto; font-size: 0.95rem; }
   th, td { padding: 0.5rem 0.9rem 0.5rem 0; border-bottom: 1px solid var(--line); text-align: left; }
   th { color: var(--muted); font-family: ui-monospace, Menlo, monospace; font-size: 0.72rem; letter-spacing: 0.1em; text-transform: uppercase; font-weight: 500; }
   .kicker {
     font-family: ui-monospace, Menlo, monospace; font-size: 0.75rem;
     letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); margin-bottom: 0.6rem;
   }
+
+  /* Title slide: mono kicker, two-tone headline, one-sentence thesis, stat row. */
+  .cover { display: flex; flex-direction: column; }
+  .cover h1 { font-size: clamp(2.1rem, 6vw, 4rem); margin-bottom: 1rem; }
+  .cover .thesis {
+    color: var(--muted); font-size: clamp(1.02rem, 1.9vw, 1.3rem);
+    max-width: 52ch; margin: 0 0 2.2rem;
+  }
+  .stats {
+    display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 1.4rem; border-top: 1px solid var(--line); padding-top: 1.1rem;
+  }
+  @media (max-width: 46rem) { .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  .stat .num {
+    font-size: clamp(1.8rem, 3.4vw, 2.9rem); font-weight: 600; line-height: 1;
+    letter-spacing: -0.03em; font-variant-numeric: tabular-nums;
+  }
+  .stat.hot .num { color: var(--accent); }
+  .stat .lbl {
+    font-family: ui-monospace, Menlo, monospace; font-size: 0.68rem;
+    letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin-top: 0.45rem;
+  }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0.8rem 0; }
+  .chip {
+    font-family: ui-monospace, Menlo, monospace; font-size: 0.72rem;
+    border: 1px solid var(--line); border-radius: 999px; padding: 0.15rem 0.65rem;
+    color: var(--muted); background: var(--code-bg);
+  }
+  .chip strong { color: var(--ink); font-weight: 600; }
+
+  /* Column cards: 2–4 labelled columns per slide. */
   .cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.9rem; margin: 1rem 0; }
-  @media (max-width: 40rem) { .cards { grid-template-columns: 1fr; } }
+  .cards.cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .cards.cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  @media (max-width: 62rem) {
+    .cards.cols-3, .cards.cols-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  @media (max-width: 40rem) {
+    .cards, .cards.cols-3, .cards.cols-4 { grid-template-columns: 1fr; }
+  }
   .card {
     background: var(--card); border: 1px solid var(--line); border-radius: 10px;
     padding: 1rem 1.2rem; transition: transform 0.18s, border-color 0.18s;
@@ -70,9 +115,50 @@
   .card h3 { margin: 0 0 0.35rem; font-size: 1rem; }
   .card h3 code { color: var(--accent); background: none; padding: 0; }
   .card p { margin: 0; color: var(--muted); font-size: 0.92rem; max-width: none; }
+  .card ul { margin: 0.45rem 0 0; padding-left: 1.05rem; }
+  .card li { color: var(--muted); font-size: 0.88rem; margin-bottom: 0.25rem; max-width: none; }
+  .cards.cols-3 .card p, .cards.cols-3 .card li,
+  .cards.cols-4 .card p, .cards.cols-4 .card li { font-size: 0.85rem; }
+  .eyebrow {
+    display: block; font-family: ui-monospace, Menlo, monospace; font-size: 0.67rem;
+    letter-spacing: 0.13em; text-transform: uppercase; color: var(--accent); margin-bottom: 0.4rem;
+  }
+
+  /* Legend rails: a colour-keyed left rail per row, decoded by .legend.
+     Rail colour is decoration only — amber text on the light ground misses
+     4.5:1, so row text stays ink/muted in both themes. */
+  .legend {
+    display: flex; flex-wrap: wrap; gap: 1.1rem; margin: 0 0 0.9rem;
+    font-family: ui-monospace, Menlo, monospace; font-size: 0.7rem;
+    letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted);
+  }
+  .legend .key { display: inline-flex; align-items: center; gap: 0.45rem; }
+  .legend .key::before { content: ""; width: 14px; height: 3px; border-radius: 2px; background: var(--line); }
+  .legend .key.hot::before { background: var(--accent); }
+  .legend .key.gold::before { background: var(--gold); }
+  .legend .key.dim::before { background: var(--muted); }
+  .legend .key.red::before { background: var(--red); }
+  .rails { list-style: none; margin: 0.6rem 0; padding: 0; display: flex; flex-direction: column; gap: 0.5rem; }
+  .rails .rail {
+    display: flex; align-items: baseline; gap: 0.7rem; flex-wrap: wrap;
+    background: var(--card); border: 1px solid var(--line);
+    border-left: 3px solid var(--line); border-radius: 0 9px 9px 0;
+    padding: 0.6rem 1rem; margin: 0; max-width: none;
+    color: var(--muted); font-size: clamp(0.9rem, 1.4vw, 1.05rem);
+  }
+  .rail strong { color: var(--ink); font-weight: 600; }
+  .rail .when {
+    margin-left: auto; font-family: ui-monospace, Menlo, monospace; font-size: 0.68rem;
+    letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); white-space: nowrap;
+  }
+  .rail.hot { border-left-color: var(--accent); }
+  .rail.gold { border-left-color: var(--gold); }
+  .rail.dim { border-left-color: var(--muted); }
+  .rail.red { border-left-color: var(--red); }
+
   .callout {
     border: 1px solid var(--line); background: var(--accent-soft); border-radius: 8px;
-    padding: 0.8rem 1.1rem; margin: 1rem 0; max-width: 60ch;
+    padding: 0.8rem 1.1rem; margin: 1rem 0; max-width: 68ch;
   }
   .callout strong { color: var(--accent); }
   .figure {
@@ -210,45 +296,39 @@
     border-radius: 6px; padding: 0.3rem 0.7rem; font-size: 0.75rem;
     font-family: ui-monospace, Menlo, monospace; pointer-events: none;
   }
-  .theme-toggle {
-    position: fixed; top: 1rem; right: 1rem; z-index: 50;
-    width: 2.3rem; height: 2.3rem; border-radius: 50%;
+
+  /* One persistent bar: position, movement and theme all live here. */
+  .deckbar {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 50;
+    display: flex; align-items: center; gap: 0.6rem;
+    padding: 0.6rem clamp(1rem, 4vw, 2.4rem);
+    background: color-mix(in srgb, var(--navy-deep) 90%, transparent);
+    border-top: 1px solid var(--line); backdrop-filter: blur(8px);
+  }
+  .deckbar .progress {
+    position: absolute; top: -1px; left: 0; height: 2px; width: 0;
+    background: var(--accent); transition: width 0.25s ease-out;
+  }
+  .deckbar .count {
+    font-family: ui-monospace, Menlo, monospace; font-size: 0.74rem;
+    letter-spacing: 0.1em; color: var(--muted); font-variant-numeric: tabular-nums;
+  }
+  .deckbar .spacer { flex: 1; }
+  .barbtn {
+    width: 2.1rem; height: 2.1rem; border-radius: 8px; padding: 0;
     background: var(--card); border: 1px solid var(--line); color: var(--ink);
     cursor: pointer; display: flex; align-items: center; justify-content: center;
-    transition: border-color 0.2s, transform 0.2s; padding: 0;
+    transition: border-color 0.2s, opacity 0.2s;
   }
-  .theme-toggle:hover { border-color: var(--accent); transform: rotate(15deg); }
-  .theme-toggle svg { width: 1.1rem; height: 1.1rem; stroke: var(--ink); fill: none; stroke-width: 1.6; }
+  .barbtn:hover:not(:disabled) { border-color: var(--accent); }
+  .barbtn:disabled { opacity: 0.3; cursor: default; }
+  .barbtn svg { width: 1.05rem; height: 1.05rem; stroke: var(--ink); fill: none; stroke-width: 1.8; }
+  .theme-toggle { margin-left: 0.4rem; }
   html[data-theme="light"] .theme-toggle .moon { display: none; }
   html:not([data-theme="light"]) .theme-toggle .sun { display: none; }
-  .navbtn {
-    position: fixed; top: 50%; transform: translateY(-50%); z-index: 40;
-    width: 2.6rem; height: 2.6rem; border-radius: 50%;
-    background: var(--card); border: 1px solid var(--line); color: var(--ink);
-    cursor: pointer; display: flex; align-items: center; justify-content: center;
-    transition: border-color 0.2s, opacity 0.2s; opacity: 0.55; padding: 0;
-  }
-  .navbtn:hover { border-color: var(--accent); opacity: 1; }
-  .navbtn svg { width: 1.2rem; height: 1.2rem; stroke: var(--ink); fill: none; stroke-width: 2; }
-  .navbtn.prev { left: 1rem; }
-  .navbtn.next { right: 1rem; }
-  .hud {
-    position: fixed; bottom: 1rem; left: 0; right: 0; display: flex;
-    justify-content: center; align-items: center; gap: 0.45rem; pointer-events: none;
-  }
-  .dot {
-    width: 7px; height: 7px; border-radius: 50%; background: var(--line);
-    transition: background 0.2s; pointer-events: auto; border: 0; padding: 0; cursor: pointer;
-  }
-  .dot.on { background: var(--accent); }
-  .count {
-    position: fixed; bottom: 0.85rem; right: 1.2rem;
-    font-family: ui-monospace, Menlo, monospace; font-size: 0.72rem; color: var(--muted);
-    font-variant-numeric: tabular-nums;
-  }
   @media print {
-    .slide { display: flex; height: auto; min-height: 100vh; page-break-after: always; }
-    .hud, .count, .navbtn, .theme-toggle { display: none; }
+    .slide { display: flex; height: auto; min-height: 100vh; page-break-after: always; padding-bottom: 5vh; }
+    .deckbar { display: none; }
   }
   @media (prefers-reduced-motion: no-preference) {
     .slide.active { animation: rise 0.25s ease-out; }
@@ -258,15 +338,18 @@
 </style>
 </head>
 <body>
-<button class="theme-toggle" aria-label="Toggle light/dark theme">
-  <svg class="moon" viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
-  <svg class="sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.6 4.6l1.8 1.8M17.6 17.6l1.8 1.8M19.4 4.6l-1.8 1.8M6.4 17.6l-1.8 1.8"/></svg>
-</button>
 {{CONTENT}}
-<button class="navbtn prev" aria-label="Previous slide"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
-<button class="navbtn next" aria-label="Next slide"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button>
-<div class="hud" id="hud"></div>
-<div class="count" id="count"></div>
+<nav class="deckbar" aria-label="Slide navigation">
+  <div class="progress" id="progress"></div>
+  <span class="count" id="count"></span>
+  <span class="spacer"></span>
+  <button class="barbtn prev" type="button" aria-label="Previous slide"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+  <button class="barbtn next" type="button" aria-label="Next slide"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button>
+  <button class="barbtn theme-toggle" type="button" aria-label="Toggle light/dark theme">
+    <svg class="moon" viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+    <svg class="sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.6 4.6l1.8 1.8M17.6 17.6l1.8 1.8M19.4 4.6l-1.8 1.8M6.4 17.6l-1.8 1.8"/></svg>
+  </button>
+</nav>
 <script>
   document.querySelector(".theme-toggle").addEventListener("click", () => {
     const html = document.documentElement;
@@ -276,27 +359,23 @@
     dispatchEvent(new CustomEvent("agentkit-theme", { detail: next }));
   });
   const slides = [...document.querySelectorAll(".slide")];
-  const hud = document.getElementById("hud");
   const count = document.getElementById("count");
+  const progress = document.getElementById("progress");
+  const prevBtn = document.querySelector(".barbtn.prev");
+  const nextBtn = document.querySelector(".barbtn.next");
   let i = Math.max(0, slides.findIndex((s) => location.hash === "#" + (slides.indexOf(s) + 1)));
-  const dots = slides.map((_, n) => {
-    const d = document.createElement("button");
-    d.className = "dot";
-    d.setAttribute("aria-label", "slide " + (n + 1));
-    d.onclick = () => show(n);
-    hud.appendChild(d);
-    return d;
-  });
   function show(n) {
     i = Math.min(Math.max(n, 0), slides.length - 1);
     slides.forEach((s, k) => s.classList.toggle("active", k === i));
-    dots.forEach((d, k) => d.classList.toggle("on", k === i));
     count.textContent = (i + 1) + " / " + slides.length;
+    progress.style.width = ((i + 1) / slides.length * 100) + "%";
+    prevBtn.disabled = i === 0;
+    nextBtn.disabled = i === slides.length - 1;
     history.replaceState(null, "", "#" + (i + 1));
     if (window.mermaid) window.mermaid.run({ querySelector: ".slide.active pre.mermaid" });
   }
-  document.querySelector(".navbtn.prev").addEventListener("click", () => show(i - 1));
-  document.querySelector(".navbtn.next").addEventListener("click", () => show(i + 1));
+  prevBtn.addEventListener("click", () => show(i - 1));
+  nextBtn.addEventListener("click", () => show(i + 1));
   addEventListener("keydown", (e) => {
     if (document.querySelector(".fig-lightbox:not([hidden])")) return;
     if (["ArrowRight", "PageDown", " "].includes(e.key)) { e.preventDefault(); show(i + 1); }
