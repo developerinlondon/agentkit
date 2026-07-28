@@ -680,9 +680,8 @@ install_codex_review_hooks() {
 	local hook_name source
 
 	if ! command -v jq >/dev/null 2>&1; then
-		echo "[codex] WARNING: jq not found; skipping Codex review hook wiring."
-		echo "[codex] Install jq and re-run to enable the merge gate."
-		return 0
+		echo "[codex] ERROR: jq is required to install the Codex review hook." >&2
+		return 1
 	fi
 
 	mkdir -p "$hooks_dir/lib" "$tools_dir"
@@ -1012,11 +1011,11 @@ if [[ "$GLOBAL" == true ]]; then
 	PATH_TOOLS="$HOME/.local/bin"
 	CLAUDE_SKILLS="$HOME/.claude/skills"
 	CLAUDE_SETTINGS="$HOME/.claude/settings.json"
-	if [[ "$CLAUDE_PLUGIN" == true ]] && install_claude_plugin; then
+	if [[ "$CLAUDE_PLUGIN" == true ]]; then
+		install_claude_plugin
 		CLAUDE_MODE="plugin (agentkit@agentkit)"
 		echo ""
 	else
-		[[ "$CLAUDE_PLUGIN" == true ]] && echo "[claude] Falling back to manual install."
 		CLAUDE_MODE="manual (hooks via $CLAUDE_HOOKS → $HOOKS_CANON, settings $CLAUDE_SETTINGS)"
 		echo "--- Claude Code (bash hooks, shared root) ---"
 		install_claude_hooks "$CLAUDE_HOOKS" "$CLAUDE_SETTINGS" "$HOOKS_CANON"

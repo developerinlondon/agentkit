@@ -230,7 +230,7 @@ describe('Claude Code and Codex hook wiring', () => {
     }
   }, globalInstallTimeoutMs);
 
-  test('skips optional Codex hook wiring cleanly when jq is unavailable', () => {
+  test('fails Codex hook installation loudly when jq is unavailable', () => {
     const root = mkdtempSync(join(tmpdir(), 'agentkit-hooks-no-jq-'));
     const codexHome = join(root, 'codex-home');
 
@@ -254,8 +254,9 @@ install_codex_review_hooks "$2"`,
         },
       );
 
-      expect(result.status, result.stderr).toBe(0);
-      expect(result.stdout).toContain('jq not found; skipping Codex review hook wiring');
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain('jq is required to install the Codex review hook');
+      expect(result.stdout).not.toContain('skipping Codex review hook wiring');
       expect(existsSync(codexHome)).toBe(false);
     } finally {
       rmSync(root, { force: true, recursive: true });

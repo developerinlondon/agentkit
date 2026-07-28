@@ -1,5 +1,13 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -9,6 +17,10 @@ const installSource = readFileSync(join(repoRoot, 'install.sh'), 'utf-8');
 const functionStart = installSource.indexOf('install_claude_plugin() {');
 const functionEnd = installSource.indexOf('\n# ─── User Config', functionStart);
 const installFunction = installSource.slice(functionStart, functionEnd);
+const globalMain = installSource.indexOf('# ─── Main: Global Install');
+const callerStart = installSource.indexOf('\tif [[ "$CLAUDE_PLUGIN"', globalMain);
+const callerEnd = installSource.indexOf('\techo "--- Standalone tools ---"', callerStart);
+const installCaller = installSource.slice(callerStart, callerEnd);
 const homes: string[] = [];
 
 function runPluginInstall(
@@ -85,6 +97,34 @@ fi
   return { calls: readFileSync(log, 'utf-8').trim().split('\n'), result };
 }
 
+function runExplicitPluginCallerFailure() {
+  const home = mkdtempSync(join(tmpdir(), 'agentkit-plugin-caller-'));
+  homes.push(home);
+  const manualMarker = join(home, 'manual-hooks-installed');
+  const result = spawnSync(
+    'bash',
+    [
+      '-c',
+      `set -euo pipefail
+CLAUDE_PLUGIN=true
+CLAUDE_HOOKS="$1/hooks"
+CLAUDE_SETTINGS="$1/settings.json"
+HOOKS_CANON="$1/canonical-hooks"
+install_claude_plugin() { return 42; }
+install_claude_hooks() { : > "$MANUAL_MARKER"; }
+${installCaller}`,
+      'agentkit-plugin-caller',
+      home,
+    ],
+    {
+      encoding: 'utf-8',
+      env: { ...process.env, MANUAL_MARKER: manualMarker },
+    },
+  );
+
+  return { manualMarker, result };
+}
+
 afterEach(() => {
   for (const home of homes.splice(0)) rmSync(home, { force: true, recursive: true });
 });
@@ -138,5 +178,13 @@ describe('Claude plugin install lifecycle', () => {
     expect(result.status).toBe(1);
     expect(result.stderr).toContain('not enabled after installation');
     expect(result.stdout).not.toContain('Plugin ready');
+  });
+
+  test('explicit plugin mode propagates lifecycle failure without installing manual hooks', () => {
+    const { manualMarker, result } = runExplicitPluginCallerFailure();
+
+    expect(result.status).toBe(42);
+    expect(existsSync(manualMarker)).toBe(false);
+    expect(result.stdout).not.toContain('Falling back to manual install');
   });
 });
