@@ -42,8 +42,8 @@
           },
           {
             "type": "command",
-            "command": "$HOME/.claude/hooks/review-police.sh",
-            "timeout": 15,
+            "command": "$HOME/.claude/hooks/fail-closed-hook.sh 45 $HOME/.claude/hooks/review-police.sh",
+            "timeout": 60,
             "statusMessage": "review-police: verifying the review gate..."
           }
         ]
@@ -53,8 +53,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$HOME/.claude/hooks/review-police.sh",
-            "timeout": 15,
+            "command": "$HOME/.claude/hooks/fail-closed-hook.sh 45 $HOME/.claude/hooks/review-police.sh",
+            "timeout": 60,
             "statusMessage": "review-police: gating non-Bash merge tools..."
           }
         ]

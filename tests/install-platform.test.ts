@@ -52,6 +52,13 @@ function createFixture(): Fixture {
   mkdirSync(join(repo, 'plugins'), { recursive: true });
   writeFixtureFile(join(repo, 'hooks', 'claude', 'settings.json'), '{"hooks": {}}\n');
   writeFixtureFile(
+    join(repo, 'hooks', 'codex', 'hooks.json'),
+    '{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"__AGENTKIT_CODEX_HOOKS_ROOT__/fail-closed-hook.sh 45 __AGENTKIT_CODEX_HOOKS_ROOT__/review-police.sh","timeout":60}]}]}}\n',
+  );
+  writeFixtureFile(join(repo, 'hooks', 'claude', 'fail-closed-hook.sh'), '#!/bin/sh\n', true);
+  writeFixtureFile(join(repo, 'hooks', 'claude', 'review-police.sh'), '#!/bin/sh\n', true);
+  writeFixtureFile(join(repo, 'hooks', 'claude', 'lib', 'hook-input.sh'), '# helper\n');
+  writeFixtureFile(
     join(repo, 'tools', 'bounded-run'),
     '#!/usr/bin/env bash\n# agentkit:platforms linux\nprintf "bounded\\n"\n',
     true,
@@ -61,6 +68,7 @@ function createFixture(): Fixture {
     '#!/usr/bin/env bash\nprintf "portable\\n"\n',
     true,
   );
+  writeFixtureFile(join(repo, 'tools', 'review-gate'), '#!/usr/bin/env bash\n', true);
   writeFixtureFile(
     join(repo, 'policies', 'codex', 'resource-police.rules'),
     '# agentkit:platform linux # local cgroup containment\n',
@@ -73,9 +81,18 @@ function createFixture(): Fixture {
   return { home, repo, root, target };
 }
 
-function runInstall(fixture: Fixture, platform: string, global: boolean) {
+function runInstall(
+  fixture: Fixture,
+  platform: string,
+  global: boolean,
+  disableSessionScope = true,
+) {
   const args = global
-    ? [join(fixture.repo, 'install.sh'), '--global', '--no-session-scope']
+    ? [
+        join(fixture.repo, 'install.sh'),
+        '--global',
+        ...(disableSessionScope ? ['--no-session-scope'] : []),
+      ]
     : [join(fixture.repo, 'install.sh'), fixture.target];
   return spawnSync('bash', args, {
     cwd: fixture.repo,
@@ -87,13 +104,15 @@ function runInstall(fixture: Fixture, platform: string, global: boolean) {
       XDG_CONFIG_HOME: join(fixture.home, '.config'),
     },
     encoding: 'utf-8',
+    timeout: 60_000,
   });
 }
 
 function installedPaths(fixture: Fixture, global: boolean) {
   const tools = global ? join(fixture.home, '.local', 'bin') : join(fixture.target, '.claude', 'tools');
   const policies = global ? join(fixture.home, '.codex', 'rules') : join(fixture.target, '.codex', 'rules');
-  return { policies, tools };
+  const codex = global ? join(fixture.home, '.codex') : join(fixture.target, '.codex');
+  return { codex, policies, tools };
 }
 
 function expectMissing(path: string): void {
@@ -111,12 +130,19 @@ describe('platform-aware artifact installation', () => {
         const result = runInstall(fixture, 'linux', global);
         expect(result.status, result.stderr).toBe(0);
 
-        const { policies, tools } = installedPaths(fixture, global);
+        const { codex, policies, tools } = installedPaths(fixture, global);
         expect(existsSync(join(tools, 'bounded-run'))).toBe(true);
         expect(lstatSync(join(tools, 'agentkit-run')).isSymbolicLink()).toBe(true);
         expect(existsSync(join(tools, 'portable-tool'))).toBe(true);
         expect(existsSync(join(policies, 'resource-police.rules'))).toBe(true);
         expect(existsSync(join(policies, 'delegation-police.rules'))).toBe(true);
+        expect(existsSync(join(codex, 'hooks', 'review-police.sh'))).toBe(true);
+        expect(existsSync(join(codex, 'hooks', 'fail-closed-hook.sh'))).toBe(true);
+        expect(existsSync(join(codex, 'hooks', 'lib', 'hook-input.sh'))).toBe(true);
+        expect(existsSync(join(codex, 'tools', 'review-gate'))).toBe(true);
+        expect(readFileSync(join(codex, 'hooks.json'), 'utf-8')).not.toContain(
+          '__AGENTKIT_CODEX_HOOKS_ROOT__',
+        );
       } finally {
         rmSync(fixture.root, { force: true, recursive: true });
       }
@@ -125,7 +151,7 @@ describe('platform-aware artifact installation', () => {
     test(`${mode} install removes stale Linux-only artifacts on macOS`, () => {
       const fixture = createFixture();
       try {
-        const { policies, tools } = installedPaths(fixture, global);
+        const { codex, policies, tools } = installedPaths(fixture, global);
         for (const path of [
           join(tools, 'bounded-run'),
           join(tools, 'agentkit-run'),
@@ -148,6 +174,8 @@ describe('platform-aware artifact installation', () => {
         expect(existsSync(join(tools, 'portable-tool'))).toBe(true);
         expectMissing(join(policies, 'resource-police.rules'));
         expect(existsSync(join(policies, 'delegation-police.rules'))).toBe(true);
+        expect(existsSync(join(codex, 'hooks', 'review-police.sh'))).toBe(true);
+        expect(existsSync(join(codex, 'tools', 'review-gate'))).toBe(true);
         if (global) {
           for (const base of [
             join(fixture.home, '.agentkit', 'tools'),
@@ -162,6 +190,19 @@ describe('platform-aware artifact installation', () => {
       }
     });
   }
+
+  test('default global install skips Linux session scoping on macOS', () => {
+    const fixture = createFixture();
+    try {
+      const result = runInstall(fixture, 'darwin', true, false);
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.stdout).toContain('Session scoping is Linux-only');
+      expectMissing(join(fixture.home, '.config', 'systemd', 'user', 'agent-sessions.slice'));
+      expectMissing(join(fixture.home, '.bashrc'));
+    } finally {
+      rmSync(fixture.root, { force: true, recursive: true });
+    }
+  });
 
   test('rejects an invalid AGENTKIT_PLATFORM before changing an existing install', () => {
     const fixture = createFixture();

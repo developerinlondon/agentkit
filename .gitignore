@@ -1,19 +1,19 @@
 node_modules/
-bun.lock
 .omc/
+.moon/cache/
 
 # Review records are intentionally LOCAL. Committing one moves HEAD, which
 # stales the record against the branch it reviews — the gate would then deny
 # its own merge and invite regenerating records to suit, the exact loop the
-# gate exists to stop. The durable artifact is ~/.agentkit/review-audit.log,
-# outside the repo.
+# gate exists to stop. The durable evidence belongs in a redacted PR/MR comment
+# or controlled forge artifact; ~/.agentkit/review-audit.log is only the local
+# record of gate decisions.
 .agentkit/reviews/
 
-# ...but NOT the whole directory. `.agentkit/product.yaml` is the opposite kind
-# of artifact: it must be COMMITTED, because it is the contract a product
-# reviewer reads in a fresh clone. Ignoring it wholesale meant it was silently
-# untracked and every reviewer refused for want of a file that was there all
-# along.
+# ...but NOT the whole directory. Product and review-policy files must be
+# COMMITTED, because reviewers and the gate read those contracts from exact
+# repository revisions. Ignoring the directory wholesale silently disables
+# both contracts.
 
 # Intelligence runs split the same way: the brief/ledger/findings are dated
 # deliverables (refresh mode diffs against the committed previous ledger),

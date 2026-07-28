@@ -1,0 +1,4 @@
+interface:
+  display_name: "Adversarial Review"
+  short_description: "Falsify plans and diffs with replayable evidence"
+  default_prompt: "Use $adversarial-review to try to falsify this change from primary artifacts."

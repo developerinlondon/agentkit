@@ -1,0 +1,9 @@
+$schema: 'https://moonrepo.dev/schemas/toolchains.json'
+
+javascript:
+  packageManager: 'bun'
+  inferTasksFromScripts: false
+  installDependencies: false
+  syncPackageManagerField: false
+
+bun: {}

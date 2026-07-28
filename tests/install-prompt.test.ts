@@ -15,6 +15,8 @@ import { spawnSync } from 'node:child_process';
 
 const repoRoot = dirname(import.meta.dir);
 const installScript = join(repoRoot, 'install.sh');
+// A global install intentionally installs and builds dependency-bearing skills.
+const globalInstallTimeoutMs = 60_000;
 
 function countOccurrences(text: string, needle: string): number {
   return text.split(needle).length - 1;
@@ -30,6 +32,7 @@ function runGlobalInstall(home: string) {
       AGENTKIT_HOME: join(home, '.agentkit'),
     },
     encoding: 'utf-8',
+    timeout: globalInstallTimeoutMs,
   });
 }
 
@@ -200,7 +203,7 @@ describe('global prompt installation', () => {
     } finally {
       rmSync(home, { force: true, recursive: true });
     }
-  });
+  }, 2 * globalInstallTimeoutMs);
 
   test('replaces an existing embedded Codex prompt with the managed block', () => {
     const home = mkdtempSync(join(tmpdir(), 'agentkit-home-'));
@@ -236,5 +239,5 @@ describe('global prompt installation', () => {
     } finally {
       rmSync(home, { force: true, recursive: true });
     }
-  });
+  }, globalInstallTimeoutMs);
 });

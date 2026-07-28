@@ -6,6 +6,11 @@ const skillsDir = join(import.meta.dir, '..', 'skills');
 const instructionsDir = join(import.meta.dir, '..', 'instructions');
 const autonomousWorkflow = readFileSync(join(skillsDir, 'autonomous-workflow', 'SKILL.md'), 'utf-8');
 const productReview = readFileSync(join(skillsDir, 'product-review', 'SKILL.md'), 'utf-8');
+const adversarialReview = readFileSync(join(skillsDir, 'adversarial-review', 'SKILL.md'), 'utf-8');
+const reviewerDispatch = readFileSync(
+  join(skillsDir, 'adversarial-review', 'references', 'reviewer-dispatch.md'),
+  'utf-8',
+);
 const resourceSafeExecution = readFileSync(
   join(skillsDir, 'resource-safe-execution', 'SKILL.md'),
   'utf-8',
@@ -17,10 +22,23 @@ describe('review disciplines', () => {
     expect(autonomousWorkflow).toContain('Audit the claims, not just the logic');
     expect(autonomousWorkflow).toContain('Observe External Behaviour Before Building On It');
     expect(productReview).toContain('Observed vs inferred');
+    expect(adversarialReview).toContain('Trace before reading the maker narrative');
+    expect(adversarialReview).toContain('concrete failing input or a replayable trace');
+    expect(codingDiscipline).toContain('Evidence-Gated Review');
+    expect(codingDiscipline).toMatch(/policy from the exact target\s+commit/);
+  });
+
+  test('dispatches reviewers neutrally from primary artifacts', () => {
+    expect(reviewerDispatch).toContain('Primary artifacts');
+    expect(reviewerDispatch).toContain('Do not include');
+    expect(reviewerDispatch).toContain("the orchestrator's conclusion");
+    expect(reviewerDispatch).toContain("other reviewers' findings");
+    expect(reviewerDispatch).toContain('Claims list');
   });
 
   test('redacts sensitive data before preserving probe evidence', () => {
     expect(autonomousWorkflow).toContain('secrets, tokens and personal data redacted');
+    expect(adversarialReview).toMatch(/redact.*secrets.*tokens.*personal data/i);
   });
 
   test('does not present untraceable historical counts as evidence', () => {

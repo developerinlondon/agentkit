@@ -12,11 +12,13 @@ Reusable AI agent skills, rules, plugins, hooks, and tools for OpenCode, Claude 
 | --------------------------- | ---------------------------------------------------------------------------------------- |
 | **gitops-master**           | GitOps operations for ArgoCD + Kargo: diagnose, verify, promote, setup                   |
 | **autonomous-workflow**     | Proposal-first development, commit hygiene, decision authority                           |
+| **adversarial-review**      | Trace-first falsification of plans and diffs with replayable evidence                    |
 | **code-quality**            | Warnings-as-errors, no underscore prefixes, test coverage                                |
 | **documentation**           | Surface-aware diagrams (Mermaid / ASCII), structured plan format, formatting rules       |
 | **issue-raiser**            | GitLab issue creation with root cause analysis and git-history-based assignees           |
 | **product-intelligence**    | Evidence-backed product briefs with a claim-by-claim ledger; hardened acquisition        |
 | **project-planning**        | Structured project planning: break down ideas into architecture, file structure, roadmap |
+| **product-review**          | Build, run, and use declared product surfaces as a separate review lane                  |
 | **resource-safe-execution** | On Linux, runs heavy developer commands inside deterministic systemd resource limits     |
 
 ### Rules (auto-loaded by file glob match)
@@ -42,19 +44,27 @@ Reusable AI agent skills, rules, plugins, hooks, and tools for OpenCode, Claude 
 | **pkg-police.ts**      | Enforces bun as package manager — blocks npm, npx, yarn, pnpm commands                                                   |
 | **resource-police.ts** | Requires bounded heavy commands on Linux; blocks delegated and undecidable commands everywhere                           |
 
-### Hooks (Claude Code -- PreToolUse / PostToolUse)
+### Runtime hooks (Claude Code; review gate also installed for Codex)
 
-| Hook                   | Type              | Description                                                                                                                                                                                                                                                                                                                                                   |
-| ---------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **git-police.sh**      | PreToolUse        | Blocks force push, --no-verify, Co-authored-by trailers, commits to protected branches, stale pushes (feature branch behind the default branch)                                                                                                                                                                                                               |
-| **kubectl-police.sh**  | PreToolUse        | Blocks kubectl create/apply on Kargo CRDs                                                                                                                                                                                                                                                                                                                     |
-| **format-police.sh**   | PostToolUse       | Auto-formats files after edit/write using dprint                                                                                                                                                                                                                                                                                                              |
-| **coding-police.sh**   | PostToolUse       | Enforces DRY code, modular files (<1000 lines), short functions, single responsibility, and capped directory file counts                                                                                                                                                                                                                                      |
-| **pkg-police.sh**      | PreToolUse        | Enforces bun as package manager — blocks npm, npx, yarn, pnpm commands                                                                                                                                                                                                                                                                                        |
-| **resource-police.sh** | PreToolUse        | With `jq`, `awk`, and `cat`, requires `bounded-run` for heavy commands on Linux and blocks delegated or undecidable commands on every platform; warns and fails open when a parser dependency is missing                                                                                                                                                      |
-| **chime.sh**           | Notification/Stop | Audible nudge when Claude needs you: springy boing on permission prompts/questions, soft ping when a turn finishes. Mute: `touch ~/.claude/.chime-off` or `CLAUDE_CHIME=0`                                                                                                                                                                                    |
-| **mr-police.sh**       | PreToolUse        | Blocks opening a new MR while you already have an open MR you authored on the repo — stops unmerged MRs from stacking up                                                                                                                                                                                                                                      |
-| **review-police.sh**   | PreToolUse        | Blocks CLI/REST/MCP merges unless a review record passes for the MR's real source branch and head sha (resolved from the forge). Unresolved BLOCKER/HIGH block; overrides need the user's written consent, logged to `~/.agentkit/review-audit.log`. NOT security — the record is agent-writable; forge-side required approvals are the only real enforcement |
+| Hook                   | Type              | Description                                                                                                                                                                                                                                                                                                                                                                |
+| ---------------------- | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **git-police.sh**      | PreToolUse        | Blocks force push, --no-verify, Co-authored-by trailers, commits to protected branches, stale pushes (feature branch behind the default branch)                                                                                                                                                                                                                            |
+| **kubectl-police.sh**  | PreToolUse        | Blocks kubectl create/apply on Kargo CRDs                                                                                                                                                                                                                                                                                                                                  |
+| **format-police.sh**   | PostToolUse       | Auto-formats files after edit/write using dprint                                                                                                                                                                                                                                                                                                                           |
+| **coding-police.sh**   | PostToolUse       | Enforces DRY code, modular files (<1000 lines), short functions, single responsibility, and capped directory file counts                                                                                                                                                                                                                                                   |
+| **pkg-police.sh**      | PreToolUse        | Enforces bun as package manager — blocks npm, npx, yarn, pnpm commands                                                                                                                                                                                                                                                                                                     |
+| **resource-police.sh** | PreToolUse        | With `jq`, `awk`, and `cat`, requires `bounded-run` for heavy commands on Linux and blocks delegated or undecidable commands on every platform; warns and fails open when a parser dependency is missing                                                                                                                                                                   |
+| **chime.sh**           | Notification/Stop | Audible nudge when Claude needs you: springy boing on permission prompts/questions, soft ping when a turn finishes. Mute: `touch ~/.claude/.chime-off` or `CLAUDE_CHIME=0`                                                                                                                                                                                                 |
+| **mr-police.sh**       | PreToolUse        | Blocks opening a new MR while you already have an open MR you authored on the repo — stops unmerged MRs from stacking up                                                                                                                                                                                                                                                   |
+| **review-police.sh**   | PreToolUse        | Allows one standalone `gh pr merge`/`glab mr merge` only when evidence covers the forge's exact source and target; direct REST/GraphQL/MCP and compound/wrapped merges are refused. Strict policy comes from the target commit, risk comes from commit-bound paths, and critical records cannot use local consent. NOT security — forge protections are the trust boundary |
+
+Codex receives the fail-closed `review-police` route through its trusted
+`PreToolUse` hook interface. The installer preserves unrelated entries in
+`$CODEX_HOME/hooks.json` (falling back to `~/.codex/hooks.json`) or
+`<project>/.codex/hooks.json`; open `/hooks` in a new Codex session to review
+and trust the installed definition. Hook merging requires `jq`; without it the
+installer warns and leaves the optional Codex hook unwired. The other Codex
+protections below remain literal command-prefix policies.
 
 ### Policies (Codex CLI -- exec policy)
 
@@ -86,8 +96,9 @@ and OpenCode `resource-police` remain the recursive command-analysis paths.
 Hooks, skills, and tools ship as Claude Code plugins (ADR #45 — the generic units — MCP tools,
 skills, hook scripts — are the source of truth; plugins are convenience wrappers). Add the
 marketplace once, then install. The **agentkit** plugin is the recommended Claude bundle: a single
-`claude plugin install agentkit` gives you the enforcement hooks, the skills, the Linux-only bounded runner,
-and **both** MCP toolchains (assay + infra-tools). Resource execution additionally requires a
+`claude plugin install agentkit` gives you the enforcement hooks, the skills, the portable
+`review-gate`, the Linux-only bounded runner, and **both** MCP toolchains (assay + infra-tools).
+Resource execution additionally requires a
 configured systemd user manager and the host-provisioned `agent-work.slice`. The
 granular **assay** and **infra-tools** plugins remain for à-la-carte installs.
 
@@ -102,11 +113,11 @@ claude plugin install assay
 claude plugin install infra-tools
 ```
 
-| Plugin          | Provides                                                                                                                                                                                                                                                                                                 | Source                                                                                        |
-| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| **agentkit**    | Claude bundle: enforcement police hooks, skills, Linux-only `tools/bounded-run`, and both MCP toolchains. Hooks need `jq`, `awk`, and `cat`; MCPs need `bun` and `assay`. Linux bounded execution additionally needs cgroup v2, a systemd user manager, and a provisioned `agent-work.slice`.            | local `plugins-cc/agentkit/`                                                                  |
-| **assay**       | Gated Lua infra toolkit (`assay_run` + `assay_context`) — Kubernetes, ArgoCD, Vault, Prometheus, GitLab, AWS, … through one read-only/approval-gated tool. Requires the `assay` binary on PATH.                                                                                                          | vendored from [developerinlondon/assay](https://github.com/developerinlondon/assay) `plugin/` |
-| **infra-tools** | Read-only helm / tofu / git tools (`helm_template`/`helm_list`/`helm_get_values`, `tofu_plan`/`tofu_show`/`tofu_state_list`, `git_log`/`git_diff`/`git_status`/`git_clone_ro`) as a typed MCP server — render charts, preview plans, read git history. Never applies or mutates. Requires `bun` on PATH. | local `plugins-cc/infra-tools/`                                                               |
+| Plugin          | Provides                                                                                                                                                                                                                                                                                                                           | Source                                                                                        |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| **agentkit**    | Claude bundle: enforcement police hooks, skills, portable `tools/review-gate`, Linux-only `tools/bounded-run`, and both MCP toolchains. Hooks need `jq`, `git`, `awk`, and `cat`; MCPs need `bun` and `assay`. Linux bounded execution additionally needs cgroup v2, a systemd user manager, and a provisioned `agent-work.slice`. | local `plugins-cc/agentkit/`                                                                  |
+| **assay**       | Gated Lua infra toolkit (`assay_run` + `assay_context`) — Kubernetes, ArgoCD, Vault, Prometheus, GitLab, AWS, … through one read-only/approval-gated tool. Requires the `assay` binary on PATH.                                                                                                                                    | vendored from [developerinlondon/assay](https://github.com/developerinlondon/assay) `plugin/` |
+| **infra-tools** | Read-only helm / tofu / git tools (`helm_template`/`helm_list`/`helm_get_values`, `tofu_plan`/`tofu_show`/`tofu_state_list`, `git_log`/`git_diff`/`git_status`/`git_clone_ro`) as a typed MCP server — render charts, preview plans, read git history. Never applies or mutates. Requires `bun` on PATH.                           | local `plugins-cc/infra-tools/`                                                               |
 
 **Not in the plugin: the always-on rules and instructions.** Claude Code plugins cannot inject
 always-on global context, so the glob-loaded `rules/` and the `instructions/*.md` global prompts
@@ -144,7 +155,7 @@ symlinks into that root (never a second full copy):
 | OpenCode    | `~/.agents/skills\|rules\|instructions` → `~/.agentkit/…`                                        |
 | Claude Code | `~/.claude/skills\|hooks\|tools` → `~/.agentkit/…` (settings still point at `~/.claude/hooks`)   |
 | Grok CLI    | `~/.grok/skills\|rules` → `~/.agentkit/…`; instructions also as `~/.grok/rules/*.md` (always-on) |
-| Codex CLI   | policies/prompts still copied into `~/.codex/` (Starlark + `/prompt` shape differs)              |
+| Codex CLI   | policies, prompts, review hooks, and validator under `$CODEX_HOME` or `~/.codex/`               |
 
 Per-name links mean non-agentkit siblings stay put — OMC skills under `~/.claude/skills/`,
 Grok builtins under `~/.grok/skills/`, etc. OpenCode plugins still install as real files under
@@ -159,8 +170,9 @@ The installer detects `linux`, `darwin`, or `unknown`; `AGENTKIT_PLATFORM` may o
 with one of those exact values for controlled packaging and tests. Artifacts carrying an
 `agentkit:platform` directive are skipped when unsupported, and stale managed copies are removed.
 On non-Linux hosts this omits `bounded-run`, its `agentkit-run` alias, and the Codex heavy-command
-policy. OpenCode still blocks delegated and undecidable commands. The Claude hook does so when
-`jq`, `awk`, and `cat` are available; otherwise it warns and intentionally fails open.
+policy. Linux-only per-session systemd scoping is also skipped. The portable Codex review hook
+remains installed. OpenCode still blocks delegated and undecidable commands. The Claude hook does
+so when `jq`, `awk`, and `cat` are available; otherwise it warns and intentionally fails open.
 
 ### Option 3: Install into a specific project
 
@@ -193,8 +205,19 @@ JSON so either harness can block. Matcher aliases alone are not enough.
 
 ### Agent review / merge gate
 
-`review-police` blocks forge merges unless an independent review record covers the exact
-commit being merged. Record shape, who may write what, and the consent path:
+`review-police` resolves the forge's exact source head and current target, loads policy from that
+target commit, and validates a context-bound evidence index. The source branch cannot weaken the
+policy judging itself. A reviewed merge must be one standalone `gh pr merge` or `glab mr merge`
+command carrying that exact head through `--match-head-commit` or `--sha`. GitLab commands must
+also pass `--auto-merge=false` so current `glab` does not defer the action. GitHub target-branch
+rules are checked and merge-queue targets are refused because current `gh` implicitly defers them.
+Direct REST/GraphQL/MCP and compound or wrapped merges are denied because their landing context
+cannot be bound safely. Record schemas, bootstrap behavior, evidence obligations, trust limits,
+and consent boundaries:
+
+The same shell gate is wired into Claude Code, Grok's Claude-compatible hook path, and current
+Codex `PreToolUse` hooks. Codex requires an explicit trust review through `/hooks` after the
+definition is installed or changed.
 
 **[docs/review-process.md](./docs/review-process.md)**
 
@@ -206,6 +229,7 @@ On Linux, global installs place the bounded runner on `~/.local/bin/` and preser
 | Tool                   | Description                                                                          |
 | ---------------------- | ------------------------------------------------------------------------------------ |
 | **bounded-run**        | Linux-only direct-argv workload runner for the bounded `agent-work.slice` service    |
+| **review-gate**        | Portable strict review-policy and evidence-record validator used by `review-police`  |
 | **fix-ascii-boxes.py** | Fixes ASCII box-drawing alignment in markdown files, handles nested boxes inside-out |
 
 `bounded-run` fails closed unless the aggregate slice matches its expected limits (default

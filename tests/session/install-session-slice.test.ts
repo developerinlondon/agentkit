@@ -6,12 +6,17 @@ import { spawnSync } from 'node:child_process';
 
 const repoRoot = dirname(dirname(import.meta.dir));
 const installScript = join(repoRoot, 'install.sh');
+const describeLinux = process.platform === 'linux' ? describe : describe.skip;
+// A global install intentionally installs and builds dependency-bearing skills.
+const globalInstallTimeoutMs = 60_000;
+const helperTimeoutMs = 5_000;
 
 function install(home: string, extraArgs: string[] = []) {
   return spawnSync('bash', [installScript, '--global', ...extraArgs], {
     cwd: repoRoot,
     env: { ...process.env, HOME: home, XDG_CONFIG_HOME: join(home, '.config') },
     encoding: 'utf-8',
+    timeout: globalInstallTimeoutMs,
   });
 }
 
@@ -19,7 +24,7 @@ function slicePath(home: string) {
   return join(home, '.config', 'systemd', 'user', 'agent-sessions.slice');
 }
 
-describe('aggregate session slice', () => {
+describeLinux('aggregate Linux session slice', () => {
   test('installs a bounded parent slice for per-session scopes', () => {
     const home = mkdtempSync(join(tmpdir(), 'agentkit-slice-'));
     try {
@@ -37,7 +42,7 @@ describe('aggregate session slice', () => {
     } finally {
       rmSync(home, { force: true, recursive: true });
     }
-  });
+  }, globalInstallTimeoutMs);
 
   test('the aggregate ceiling exceeds a single session but stays under host RAM', () => {
     const home = mkdtempSync(join(tmpdir(), 'agentkit-slice-'));
@@ -56,7 +61,7 @@ describe('aggregate session slice', () => {
     } finally {
       rmSync(home, { force: true, recursive: true });
     }
-  });
+  }, globalInstallTimeoutMs);
 
   test('re-installing does not clobber an operator drop-in', () => {
     const home = mkdtempSync(join(tmpdir(), 'agentkit-slice-'));
@@ -72,7 +77,7 @@ describe('aggregate session slice', () => {
     } finally {
       rmSync(home, { force: true, recursive: true });
     }
-  });
+  }, 2 * globalInstallTimeoutMs);
 
   test('finds the user bus when XDG_RUNTIME_DIR is unset', () => {
     // Terminals spawned by a service manager inherit no XDG_RUNTIME_DIR, so
@@ -85,8 +90,8 @@ describe('aggregate session slice', () => {
       mkdirSync(stubBin, { recursive: true });
       writeFileSync(join(runtime, 'bus'), '');
       writeFileSync(join(stubBin, 'systemctl'), '#!/bin/bash\nexit 0\n');
-      spawnSync('chmod', ['+x', join(stubBin, 'systemctl')]);
-      spawnSync('chmod', ['+x', join(stubBin, 'id')]);
+      spawnSync('chmod', ['+x', join(stubBin, 'systemctl')], { timeout: helperTimeoutMs });
+      spawnSync('chmod', ['+x', join(stubBin, 'id')], { timeout: helperTimeoutMs });
 
       const probe = (extra: string) =>
         spawnSync('bash', [
@@ -95,7 +100,11 @@ describe('aggregate session slice', () => {
            export XDG_RUNTIME_DIR='${runtime}'
            ${extra}
            if user_bus_env; then echo "ok:$DBUS_SESSION_BUS_ADDRESS"; else echo no; fi`,
-        ], { encoding: 'utf-8', env: { ...process.env, PATH: `${stubBin}:${process.env.PATH}` } });
+        ], {
+          encoding: 'utf-8',
+          env: { ...process.env, PATH: `${stubBin}:${process.env.PATH}` },
+          timeout: helperTimeoutMs,
+        });
 
       expect(probe('').stdout.trim()).toBe(`ok:unix:path=${join(runtime, 'bus')}`);
       // No bus at the derived path must report unavailable, not pretend success.
@@ -114,5 +123,5 @@ describe('aggregate session slice', () => {
     } finally {
       rmSync(home, { force: true, recursive: true });
     }
-  });
+  }, globalInstallTimeoutMs);
 });
