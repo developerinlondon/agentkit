@@ -229,6 +229,22 @@ function cannotVerify(brief: Dict): string {
 // destinations instead re-decides per line, before entity decoding, what the
 // parser decides later and across lines — a scheme survives as an entity or a
 // split reference. Fence interiors stay untouched: marked escapes them.
+// Returns the run that is still open at the end, or '' when every fence closed.
+function unclosedFence(lines: string[]): string {
+  let fence = '';
+  for (const line of lines) {
+    const m = line.match(/^ {0,3}([`~]{3,})(.*)$/);
+    if (!m) continue;
+    const [, run, info] = m;
+    if (fence) {
+      if (run[0] === fence[0] && run.length >= fence.length && info.trim() === '') fence = '';
+    } else if (!(run[0] === '`' && info.includes('`'))) {
+      fence = run;
+    }
+  }
+  return fence;
+}
+
 function sanitizeFindings(body: string): string {
   const escaped = body
     // Backslash FIRST: an input `\[` would otherwise pair with the backslash
@@ -237,9 +253,12 @@ function sanitizeFindings(body: string): string {
     .replace(/[[\]()<]/g, '\\$&')
     .replace(AUTOLINK, '\\');
   // Not a trust boundary — every line is escaped either way — but an unclosed
-  // fence would still render the evidence section below it as code.
-  const runs = escaped.match(/^ {0,3}(`{3,}|~{3,})/gm) ?? [];
-  return runs.length % 2 === 0 ? escaped : `${escaped}\n${runs[runs.length - 1].trim()}`;
+  // fence would still render the evidence section below it as code. Counting
+  // markers is not enough: a fence line carrying an info string cannot close,
+  // and a tilde run cannot close a backtick one, so a balanced file can hold an
+  // odd number of markers and an unbalanced one an even number.
+  const open = unclosedFence(escaped.split('\n'));
+  return open ? `${escaped}\n${open}` : escaped;
 }
 
 function findings(dir: string): string {

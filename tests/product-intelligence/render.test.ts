@@ -345,16 +345,25 @@ describe('renderBrief', () => {
     expect(out).toContain('www\\.evil.example');
   });
 
-  test('an unclosed fence in findings.md cannot swallow the evidence section', () => {
-    writeFileSync(
-      join(scratch, 'findings.md'),
-      ['# Findings', '', '## Gaps', '', '```bash', 'echo oops'].join('\n'),
-    );
+  // Counting markers gets both directions wrong: a fence line with an info
+  // string cannot close, and a tilde run cannot close a backtick one. So a
+  // balanced file can carry an odd count and an unbalanced one an even count.
+  test.each([
+    ['unclosed, even count', ['```js', 'a', '```python', 'b'], true],
+    ['balanced, odd count', ['```yaml', 'a', '```bash', 'b', '```'], false],
+    ['tilde cannot close a backtick fence', ['```text', 'a', '~~~'], true],
+    ['plain unclosed', ['```bash', 'echo oops'], true],
+    ['balanced, even count', ['```bash', 'echo ok', '```'], false],
+  ])('fence balance: %s', (_name, lines, needsCloser) => {
+    writeFileSync(join(scratch, 'findings.md'), ['# Findings', '', ...lines].join('\n'));
     const out = withArtifacts(journalBrief());
+    const findings = findingsSection(out);
     expect(out).toContain('## The evidence, claim by claim');
-    // The fence is closed before the evidence begins.
-    const fences = out.slice(0, out.indexOf('## The evidence')).match(/```/g) ?? [];
-    expect(fences.length % 2).toBe(0);
+    // A closer is appended only when one is actually needed, and never a
+    // spurious one — which would itself open a fence over the evidence.
+    const before = lines.filter((l) => /^ {0,3}[`~]{3,}/.test(l)).length;
+    const after = (findings.match(/^ {0,3}[`~]{3,}/gm) ?? []).length;
+    expect(after - before, 'closers added').toBe(needsCloser ? 1 : 0);
   });
 
   test('a statement ending in a period does not double it', () => {
