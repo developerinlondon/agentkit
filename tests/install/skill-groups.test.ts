@@ -140,6 +140,11 @@ describe('skill group selection', () => {
       expect(install(home, ['--with', 'product']).status).toBe(0);
       expect(readFileSync(join(home, '.agentkit', 'groups'), 'utf-8')).toContain('product');
 
+      // Stands in for a skill added to the group upstream: it is NOT installed
+      // when the upgrade runs, so retention cannot bring it back — only the
+      // persisted selection can.
+      rmSync(canonSkill(home, 'product-intelligence'), { force: true, recursive: true });
+
       // The automation story: one command forever, no flags to remember.
       const upgrade = install(home);
       expect(upgrade.status, upgrade.stderr).toBe(0);
@@ -166,6 +171,38 @@ describe('skill group selection', () => {
       expect(upgrade.stdout).toContain(
         "[skills] Keeping installed (group 'product' not selected): product-review",
       );
+    } finally {
+      rmSync(home, { force: true, recursive: true });
+    }
+  }, globalInstallTimeoutMs);
+
+  test('an unknown flag fails with usage instead of becoming the target directory', () => {
+    const home = mkdtempSync(join(tmpdir(), 'agentkit-groups-'));
+
+    try {
+      for (const flag of ['--bogus', '-x', '--all-the-things']) {
+        const result = install(home, [flag]);
+        // Swallowed as TARGET_DIR, a typo'd flag makes the installer silently
+        // do something other than what was asked for.
+        expect(result.status, `${flag} must be rejected`).toBe(2);
+        expect(result.stderr).toContain(`unknown option '${flag}'`);
+        expect(result.stdout).toContain('Usage: ./install.sh');
+      }
+      expect(existsSync(join(home, '.agentkit', 'skills'))).toBe(false);
+    } finally {
+      rmSync(home, { force: true, recursive: true });
+    }
+  }, globalInstallTimeoutMs);
+
+  test('a repeated group is selected once', () => {
+    const home = mkdtempSync(join(tmpdir(), 'agentkit-groups-'));
+
+    try {
+      const result = install(home, ['--with', 'product', '--with=product']);
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.stdout).toContain('Skill groups:    core product\n');
+      expect(readFileSync(join(home, '.agentkit', 'groups'), 'utf-8').match(/^product$/gm))
+        .toHaveLength(1);
     } finally {
       rmSync(home, { force: true, recursive: true });
     }

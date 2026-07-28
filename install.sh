@@ -61,7 +61,7 @@ Examples:
   ./install.sh                        # Install into current project
   ./install.sh ~/code/my-project      # Install into specific project
 USAGE
-	exit 1
+	exit "${1:-1}"
 }
 
 # Single shared content root. Clients never get a second full tree — only
@@ -88,6 +88,12 @@ while [[ $# -gt 0 ]]; do
 		;;
 	--with=*) EXTRA_GROUPS="${EXTRA_GROUPS:+$EXTRA_GROUPS }${1#--with=}" ;;
 	--all) ALL_GROUPS=true ;;
+	# Without this, a typo'd flag is captured as the target directory and the
+	# install silently does something other than what was asked for.
+	-*)
+		echo "ERROR: unknown option '$1'." >&2
+		usage 2
+		;;
 	*) TARGET_DIR="$1" ;;
 	esac
 	shift
