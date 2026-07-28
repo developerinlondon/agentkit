@@ -152,10 +152,57 @@ describe('target notation', () => {
     expect(errors[0]).toContain('cites site acme/engine');
   });
 
-  // filter(Boolean) hides a trailing slash on any hosted target, so the strip
-  // is only load-bearing where there is no host to split on.
-  test('a trailing slash is not part of a bare target', () => {
-    expect(canonicalTarget('docset', 'contracts/')).toEqual(canonicalTarget('docset', 'contracts'));
+  // The trailing slash has to go before the .git suffix is stripped, or the
+  // suffix is no longer at the end and survives into the compared path.
+  test('a trailing slash does not hide the .git suffix', () => {
+    expect(errorsFor('https://github.com/acme/engine.git/')).toEqual([]);
+  });
+});
+
+// A GitLab group and subgroup are ordinary path segments, so a comparator that
+// keeps only the last two silently equates repos under different groups.
+describe('subgroup paths', () => {
+  const declaring = (target: string) =>
+    tempDeclaration(
+      'product_version: "0.1"\nproduct:\n  name: acme\ncomposition:\n  parts:\n    - id: engine\n'
+        + `      kind: repo\n      target: ${target}\n`,
+    );
+  const citing = (target: string) => ({ subject: { origins: [{ id: 'engine', kind: 'repo', target }] } });
+  const errorsBetween = (declared: string, cited: string) =>
+    checkOrigins(deriveOrigins(parse(declaring(declared))), citing(cited)).errors;
+
+  test('identical subgroup paths match', () => {
+    expect(errorsBetween('https://gitlab.com/acme/platform/engine', 'acme/platform/engine')).toEqual([]);
+  });
+
+  test('the same subgroup tail under a different group is drift', () => {
+    const errors = errorsBetween(
+      'https://gitlab.com/acme/platform/engine',
+      'https://gitlab.com/other/platform/engine',
+    );
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain('other/platform/engine');
+  });
+
+  test('a two-segment shorthand does not match the tail of a deeper path', () => {
+    expect(errorsBetween('https://gitlab.com/acme/platform/engine', 'platform/engine')).toHaveLength(1);
+  });
+
+  test('a shorthand still matches a hosted path that is exactly owner/repo', () => {
+    expect(errorsBetween('https://gitlab.com/acme/engine', 'acme/engine')).toEqual([]);
+  });
+
+  // The host-less spelling of a subgroup path keeps every segment too, or the
+  // two spellings of one repo stop matching.
+  test('a host-less subgroup path matches its hosted spelling', () => {
+    expect(errorsBetween('acme/platform/engine', 'https://gitlab.com/acme/platform/engine')).toEqual([]);
+  });
+
+  test('canonicalTarget keeps every segment after the host', () => {
+    expect(canonicalTarget('https://gitlab.com/acme/platform/engine')).toEqual({
+      host: 'gitlab.com',
+      path: 'acme/platform/engine',
+    });
   });
 
   test('a service URL matches with or without scheme and trailing slash', () => {

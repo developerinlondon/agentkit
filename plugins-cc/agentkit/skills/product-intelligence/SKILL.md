@@ -262,8 +262,13 @@ something that runs, and a service is evidence you acquire by visiting its URL.
 brief cites that part under a different target. Targets compare canonically, so
 a clone URL and its `owner/repo` short form are the same repository — both
 schemas advertise the two notations as interchangeable, and a checker that
-disagreed would report one repo as missing and unrecognised at once. Two
-different hosts are still two repositories.
+disagreed would report one repo as missing and unrecognised at once.
+
+Canonical means the host (case-folded, and two different hosts stay two
+repositories) plus the **whole** remaining path. Subgroups are ordinary
+segments, so `acme/platform/engine` and `other/platform/engine` are different
+repos, and the bare `owner/repo` shorthand matches a hosted path only when that
+path is exactly `owner/repo` — never the tail of a deeper one.
 
 The check is deliberately **one-directional**: every part must be cited, but a
 brief may legitimately cite sources that are not parts — the product repo's own

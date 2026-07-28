@@ -40,31 +40,27 @@ export interface CanonicalTarget {
 }
 
 // Both schemas advertise a clone URL and `owner/repo` as the same thing, so
-// comparing the raw strings reports one repository as simultaneously missing
-// and unrecognised. Reduce to owner/repo, keeping the host when it is stated:
-// two hosts that disagree are two repositories, not one written two ways.
-export function canonicalTarget(kind: string, target: string): CanonicalTarget {
+// raw string comparison reports one repo as missing and unrecognised at once.
+// The path after the host is kept WHOLE: a GitLab subgroup is an ordinary
+// segment, and reducing to the last two would make acme/platform/engine and
+// other/platform/engine one repository.
+export function canonicalTarget(target: string): CanonicalTarget {
   const trimmed = target.trim().replace(/\/+$/, '');
   const scp = /^(?:[\w.-]+@)?([\w.-]+\.[a-z]{2,}):(.+)$/i.exec(trimmed);
   const hostPath = scp
     ? `${scp[1]}/${scp[2]}`
     : trimmed.replace(/^[a-z][a-z0-9+.-]*:\/\//i, '').replace(/^[\w.-]+@/, '');
-  const bare = hostPath.replace(/\.git$/, '');
-  const segments = bare.split('/').filter(Boolean);
-  const host = (segments[0] ?? '').includes('.') ? (segments[0] as string).toLowerCase() : undefined;
+  const segments = hostPath.replace(/\.git$/, '').split('/').filter(Boolean);
 
   // Hostnames are case-insensitive by DNS; the path after them is not, on any
   // forge or web server, so only the host is folded.
-  if (kind !== 'repo') {
-    return host === undefined ? { path: bare } : { host, path: segments.slice(1).join('/') };
-  }
-  if (segments.length <= 2) return { path: segments.join('/') };
-  return { host, path: segments.slice(-2).join('/') };
+  if (!(segments[0] ?? '').includes('.')) return { path: segments.join('/') };
+  return { host: (segments[0] as string).toLowerCase(), path: segments.slice(1).join('/') };
 }
 
 export function sameTarget(a: Origin, b: Origin): boolean {
-  const left = canonicalTarget(a.kind, a.target);
-  const right = canonicalTarget(b.kind, b.target);
+  const left = canonicalTarget(a.target);
+  const right = canonicalTarget(b.target);
   if (left.path !== right.path) return false;
   return left.host === undefined || right.host === undefined || left.host === right.host;
 }
