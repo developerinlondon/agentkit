@@ -1,19 +1,46 @@
 #!/usr/bin/env bun
 // Renders a brief + ledger into the form a human reads, evidence woven in.
-// Everything interpolated here is UNTRUSTED — quotes are verbatim excerpts
-// from crawled sources and the output publishes to a URL whose CSP permits
-// inline script.
+// Every interpolation is UNTRUSTED — quotes are verbatim crawled excerpts and
+// the output publishes under a CSP that permits inline script. esc() stops
+// HTML from forming; mdEsc() also stops markdown, since the page is markdown
+// rendered later by marked — metacharacters would go live or eat characters.
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 type Dict = Record<string, any>;
 
+// The pipe becomes an entity so escaped text can sit in a GFM table cell
+// without splitting it.
 function esc(value: unknown): string {
   return String(value ?? '').replace(
-    /[&<>"']/g,
-    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] as string,
+    /[&<>"'|]/g,
+    (c) =>
+      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;', '|': '&#124;' })[
+        c
+      ] as string,
   );
+}
+
+// Free text landing in a markdown context (headings, bold, blockquotes,
+// table cells). Markdown-escape BEFORE esc(): esc() emits numeric entities
+// whose '#' must not be re-escaped. Backslash escapes resolve back to the
+// literal character when marked renders, so the reader sees the text
+// verbatim. Line-start list/rule markers only act at the start of a line.
+function mdEsc(value: unknown): string {
+  const neutral = String(value ?? '')
+    .replace(/[\\`*_[\]()!~#]/g, '\\$&')
+    .replace(/^([-+=])/gm, '\\$1')
+    .replace(/^(\d+)([.)])/gm, '$1\\$2');
+  return esc(neutral);
+}
+
+// Inline <code> instead of a backtick span: a backtick inside a locator would
+// terminate a span early. marked still runs inline markdown BETWEEN inline
+// HTML tags, so the content needs mdEsc, not just esc. Newlines collapse so a
+// multi-line value cannot break out of a table row.
+function code(value: unknown): string {
+  return `<code>${mdEsc(String(value ?? '').replace(/\s*\r?\n\s*/g, ' '))}</code>`;
 }
 
 function link(ref: string): string {
@@ -49,9 +76,9 @@ function header(brief: Dict, ledger: Dict): string {
   const promise = sourced
     ? 'every observed and inferred claim carries a verbatim quote from an acquired source'
     : 'each claim states its kind and how solid its basis is';
-  const lines = [`# ${esc(subject.name ?? 'Untitled product')}: what the evidence says`, ''];
+  const lines = [`# ${mdEsc(subject.name ?? 'Untitled product')}: what the evidence says`, ''];
   lines.push(`<div class="chips">${chips}</div>`, '');
-  if (subject.one_liner) lines.push(`**${esc(subject.one_liner)}**`, '');
+  if (subject.one_liner) lines.push(`**${mdEsc(subject.one_liner)}**`, '');
   lines.push(
     `<div class="callout"><strong>How to read this.</strong> Every material statement links to a numbered claim in the evidence section — ${promise}. Statements are labeled by kind (observed, inferred, proposed, unverified) and never stronger than their evidence. What could not be established is said plainly instead of papered over.</div>`,
     '',
@@ -65,27 +92,30 @@ function header(brief: Dict, ledger: Dict): string {
 function positioning(brief: Dict): string {
   const p = brief.positioning;
   if (!p) return '';
-  const name = esc(brief.subject?.name ?? 'It');
+  const name = mdEsc(brief.subject?.name ?? 'It');
   const sentences: string[] = [];
   const lead = p.target_customer && p.need
-    ? `**For** ${esc(p.target_customer)} **who need** ${esc(p.need)}`
+    ? `**For** ${mdEsc(p.target_customer)} **who need** ${mdEsc(p.need)}`
     : '';
-  const subject = p.category ? `**${name}** is ${/^[aeiou]/i.test(p.category) ? 'an' : 'a'} ${esc(p.category)}` : `**${name}**`;
-  const benefit = p.key_benefit ? ` that delivers ${esc(p.key_benefit)}` : '';
+  const subject = p.category ? `**${name}** is ${/^[aeiou]/i.test(p.category) ? 'an' : 'a'} ${mdEsc(p.category)}` : `**${name}**`;
+  const benefit = p.key_benefit ? ` that delivers ${mdEsc(p.key_benefit)}` : '';
   if (lead || p.category || p.key_benefit) sentences.push(`${lead ? `${lead}, ` : ''}${subject}${benefit}.`);
   if (p.alternative && p.differentiation) {
-    sentences.push(`**Unlike** ${esc(p.alternative)}, ${esc(p.differentiation)}.`);
+    sentences.push(`**Unlike** ${mdEsc(p.alternative)}, ${mdEsc(p.differentiation)}.`);
   } else if (p.alternative) {
-    sentences.push(`The alternative it is measured against: ${esc(p.alternative)}.`);
+    sentences.push(`The alternative it is measured against: ${mdEsc(p.alternative)}.`);
   } else if (p.differentiation) {
-    sentences.push(`What sets it apart: ${esc(p.differentiation)}.`);
+    sentences.push(`What sets it apart: ${mdEsc(p.differentiation)}.`);
   }
-  if (!lead && p.need) sentences.push(`The need it answers: ${esc(p.need)}.`);
-  if (!lead && p.target_customer) sentences.push(`Who it is for: ${esc(p.target_customer)}.`);
+  if (!lead && p.need) sentences.push(`The need it answers: ${mdEsc(p.need)}.`);
+  if (!lead && p.target_customer) sentences.push(`Who it is for: ${mdEsc(p.target_customer)}.`);
   if (sentences.length === 0) return '';
   return `## What it is\n\n${sentences.join(' ')}${cites(p.claims)}\n`;
 }
 
+// The cards are a block-level HTML island: marked passes the block through
+// without inline processing, so esc() alone is right here — mdEsc backslashes
+// would display literally.
 function valueMap(brief: Dict): string {
   const rows = (brief.value_map ?? []) as Dict[];
   if (rows.length === 0) return '';
@@ -103,7 +133,7 @@ function jobStories(brief: Dict): string {
   const rows = (brief.job_stories ?? []) as Dict[];
   if (rows.length === 0) return '';
   const items = rows.map((r) =>
-    `- **When** ${esc(r.situation)} — ${esc(r.motivation)}, **so that** ${esc(r.outcome)}.${cites(r.claims)}`
+    `- **When** ${mdEsc(r.situation)} — ${mdEsc(r.motivation)}, **so that** ${mdEsc(r.outcome)}.${cites(r.claims)}`
   ).join('\n');
   return `## In a user's words\n\n${items}\n`;
 }
@@ -113,9 +143,9 @@ function workflows(brief: Dict): string {
   if (flows.length === 0) return '';
   const blocks = flows.map((f) => {
     const steps = ((f.steps ?? []) as Dict[]).map((s) =>
-      `| \`${esc(s.step)}\` | ${esc(s.description)}${cites(s.claims)} |`
+      `| ${code(s.step)} | ${mdEsc(s.description)}${cites(s.claims)} |`
     ).join('\n');
-    return `**${esc(f.name)}**\n\n| step | what happens |\n| --- | --- |\n${steps}`;
+    return `**${mdEsc(f.name)}**\n\n| step | what happens |\n| --- | --- |\n${steps}`;
   }).join('\n\n');
   return `## Where it sits in the work\n\n${blocks}\n`;
 }
@@ -124,8 +154,8 @@ function siteInventory(brief: Dict): string {
   const rows = (brief.site_inventory ?? []) as Dict[];
   if (rows.length === 0) return '';
   const body = rows.map((r) => {
-    const page = r.title ? `\`${esc(r.locator)}\`<br/>${esc(r.title)}` : `\`${esc(r.locator)}\``;
-    return `| ${page} | ${esc(r.page_type)} | ${esc(r.disposition ?? '—')} | ${esc(r.rationale ?? '—')}${cites(r.claims)} |`;
+    const page = r.title ? `${code(r.locator)}<br/>${mdEsc(r.title)}` : code(r.locator);
+    return `| ${page} | ${mdEsc(r.page_type)} | ${mdEsc(r.disposition ?? '—')} | ${mdEsc(r.rationale ?? '—')}${cites(r.claims)} |`;
   }).join('\n');
   return `## Public surface, page by page\n\n| page | type | verdict | why |\n| --- | --- | --- | --- |\n${body}\n`;
 }
@@ -144,7 +174,7 @@ function contradictions(ledger: Dict): string {
     const [a, b] = pair.split('|');
     const one = byId.get(a);
     const two = byId.get(b);
-    return `- ${link(a)} says **${esc(one?.statement)}** — while ${link(b)} says **${esc(two?.statement)}**. `
+    return `- ${link(a)} says **${mdEsc(one?.statement)}** — while ${link(b)} says **${mdEsc(two?.statement)}**. `
       + 'Both sources are recorded; neither is silently preferred.';
   }).join('\n');
   return `## Unresolved contradictions\n\n<div class="callout"><strong>Recorded, not reconciled.</strong> The sources disagree and the disagreement is the finding.</div>\n\n${rows}\n`;
@@ -153,17 +183,53 @@ function contradictions(ledger: Dict): string {
 function cannotVerify(brief: Dict): string {
   const rows = (brief.cannot_verify ?? []) as Dict[];
   if (rows.length === 0) return '';
-  const items = rows.map((r) => `- **${esc(r.what)}** — ${esc(r.why)}.`).join('\n');
+  const items = rows.map((r) => `- **${mdEsc(r.what)}** — ${mdEsc(r.why)}.`).join('\n');
   return `## What we could not verify\n\n<div class="callout"><strong>Said plainly.</strong> Absence of a section above means <em>unknown</em>, never <em>does not exist</em>.</div>\n\n${items}\n`;
+}
+
+// findings.md is authored by the analyze pass but quotes crawled text, so
+// its markdown structure is trusted while raw HTML is not: outside code
+// fences HTML is entity-escaped and javascript:/data:/vbscript: link
+// destinations are defused by escaping the link syntax. Fence interiors stay
+// untouched — marked escapes them wholesale, and an unclosed fence swallows
+// the rest of the file as code there too, so a skipped region is never live.
+function sanitizeFindings(body: string): string {
+  const out: string[] = [];
+  let fence = '';
+  for (const line of body.split('\n')) {
+    const run = line.match(/^ {0,3}(`{3,}|~{3,})(.*)$/);
+    if (fence) {
+      out.push(line);
+      if (run && run[1][0] === fence[0] && run[1].length >= fence.length && run[2].trim() === '') {
+        fence = '';
+      }
+      continue;
+    }
+    if (run && !(run[1][0] === '`' && run[2].includes('`'))) {
+      fence = run[1];
+      out.push(line);
+      continue;
+    }
+    out.push(
+      line
+        .replace(/&(?![a-zA-Z][a-zA-Z0-9]{1,31};|#\d{1,7};|#[xX][0-9a-fA-F]{1,6};)/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/\]\((?=\s*(javascript|data|vbscript)\s*:)/gi, ']\\(')
+        .replace(/^(\s{0,3})\[(?=[^\]]*\]:\s*(javascript|data|vbscript)\s*:)/gi, '$1\\['),
+    );
+  }
+  return out.join('\n');
 }
 
 function findings(dir: string): string {
   const path = join(dir, 'findings.md');
   if (!existsSync(path)) return '';
-  const body = readFileSync(path, 'utf-8')
-    .replace(/^# .*\n/, '')
-    .replace(/^## /gm, '### ')
-    .trim();
+  const body = sanitizeFindings(
+    readFileSync(path, 'utf-8')
+      .replace(/^# .*\n/, '')
+      .replace(/^## /gm, '### ')
+      .trim(),
+  );
   return `## What the analyze pass flagged\n\n${body}\n`;
 }
 
@@ -176,9 +242,9 @@ const STANCE_LABEL: Record<string, string> = {
 function source(s: Dict): string {
   // Marker on every line: an unmarked second line continues as page prose,
   // letting a crawled source dictate the document.
-  const quoted = String(s.quote ?? '').split('\n').map((l) => `> ${esc(l)}`).join('\n');
-  const stance = STANCE_LABEL[s.stance] ?? esc(s.stance);
-  return `${quoted}\n>\n> — ${stance}, \`${esc(s.locator)}\`, as of ${esc(s.as_of)}`;
+  const quoted = String(s.quote ?? '').split('\n').map((l) => `> ${mdEsc(l)}`).join('\n');
+  const stance = STANCE_LABEL[s.stance] ?? mdEsc(s.stance);
+  return `${quoted}\n>\n> — ${stance}, ${code(s.locator)}, as of ${mdEsc(s.as_of)}`;
 }
 
 function evidence(brief: Dict, ledger: Dict): string {
@@ -195,11 +261,11 @@ function evidence(brief: Dict, ledger: Dict): string {
     const sources = (c.sources ?? []) as Dict[];
     const body = sources.length > 0
       ? sources.map(source).join('\n>\n')
-      : `> _No source — this claim is ${esc(c.class)}, carried as such rather than dressed up._`;
-    return `<span id="${esc(c.id).toLowerCase()}"></span>**${esc(c.id)}** ${badge} — ${esc(c.statement)}${derived}${conflict}\n\n${body}`;
+      : `> _No source — this claim is ${mdEsc(c.class)}, carried as such rather than dressed up._`;
+    return `<span id="${esc(c.id).toLowerCase()}"></span>**${mdEsc(c.id)}** ${badge} — ${mdEsc(c.statement)}${derived}${conflict}\n\n${body}`;
   }).join('\n\n');
   const acq = ((brief.evidence?.acquisition ?? []) as Dict[])
-    .map((a) => `\`${esc(a.tool)}\` → ${esc(a.target)} (${esc(a.retrieved_at)})`).join(' · ');
+    .map((a) => `${code(a.tool)} → ${mdEsc(a.target)} (${mdEsc(a.retrieved_at)})`).join(' · ');
   const provenance = acq ? `\nAcquired with: ${acq}.\n` : '';
   return `## The evidence, claim by claim\n\n${blocks}\n${provenance}`;
 }

@@ -97,10 +97,95 @@ describe('renderBrief', () => {
         src('site:/x', 'line one\n## Injected Heading\nline three', 'supports'),
       ])),
     );
-    for (const line of ['line one', '## Injected Heading', 'line three']) {
+    // The heading markers are escaped so the quote renders verbatim instead
+    // of forming a heading inside the blockquote.
+    for (const line of ['line one', '\\#\\# Injected Heading', 'line three']) {
       expect(out, line).toContain(`> ${line}`);
     }
     expect(out).not.toMatch(/^## Injected Heading/m);
+    expect(out).not.toMatch(/> ## Injected Heading/);
+  });
+
+  test('markdown in a quote is neutralised: no live links, characters kept', () => {
+    // esc() alone would leave markdown active: a schema-valid quote could
+    // render as <a href="javascript:...">, and emphasis would eat the very
+    // characters the verbatim promise guarantees.
+    const out = withArtifacts(
+      journalBrief(),
+      ledgerWith(claim('C-001', 'markdown quote', 'observed', 'high', [
+        src('site:/pricing', 'Free plan: [claim your *free* seat](javascript:fetch(1))', 'supports'),
+        src('site:/terms', 'Pay *only* $5 for 2*3 items -- see `config.yaml`', 'supports'),
+      ])),
+    );
+    expect(out).not.toContain('](javascript:');
+    expect(out).toContain('\\[claim your \\*free\\* seat\\]\\(javascript:fetch\\(1\\)\\)');
+    expect(out).toContain('\\*only\\* $5 for 2\\*3 items -- see \\`config.yaml\\`');
+  });
+
+  test('a backtick in a locator cannot break its code element', () => {
+    const out = withArtifacts(
+      journalBrief(),
+      ledgerWith(claim('C-001', 'hostile locator', 'observed', 'high', [
+        src('repo:READ`ME.md', 'quote', 'supports'),
+      ])),
+    );
+    expect(out).toContain('<code>repo:READ\\`ME.md</code>');
+  });
+
+  test('a pipe in free text cannot split a table row', () => {
+    const out = withArtifacts(
+      minimalBrief([
+        'workflows:',
+        '  - name: flow',
+        '    steps:',
+        '      - step: run',
+        '        description: "a | b"',
+      ].join('\n')),
+    );
+    expect(out).toContain('a &#124; b');
+    expect(out).not.toContain('| a | b |');
+  });
+
+  test('raw HTML in findings.md is inert, fenced code is untouched', () => {
+    // findings.md quotes crawled sources, so a payload copied into it must
+    // not execute on the published page.
+    writeFileSync(
+      join(scratch, 'findings.md'),
+      [
+        '# Findings',
+        '',
+        '## Contradictions',
+        '',
+        '<script>alert(1)</script>',
+        '',
+        '```html',
+        '<kbd>fence stays raw</kbd>',
+        '```',
+      ].join('\n'),
+    );
+    const out = withArtifacts(journalBrief());
+    expect(out).not.toContain('<script');
+    expect(out).toContain('&lt;script>');
+    expect(out).toContain('<kbd>fence stays raw</kbd>');
+  });
+
+  test('active link schemes in findings.md are defused', () => {
+    writeFileSync(
+      join(scratch, 'findings.md'),
+      [
+        '# Findings',
+        '',
+        'See [pricing](https://example.com/pricing) and [click](javascript:fetch(1)).',
+        '',
+        '[r]: javascript:alert(1)',
+      ].join('\n'),
+    );
+    const out = withArtifacts(journalBrief());
+    expect(out).not.toContain('](javascript:');
+    expect(out).toContain(']\\(javascript:');
+    expect(out).toContain('\\[r]: javascript:');
+    // Ordinary links keep working.
+    expect(out).toContain('[pricing](https://example.com/pricing)');
   });
 
   test('contradictions get their own section and per-claim markers', () => {
@@ -131,7 +216,7 @@ describe('renderBrief', () => {
     const out = page();
     expect(out).toContain('## Where it sits in the work');
     expect(out).toContain('capture a finding');
-    expect(out).toContain('`execute`');
+    expect(out).toContain('<code>execute</code>');
   });
 
   test('class, confidence and derived_from all reach the evidence section', () => {
@@ -187,7 +272,7 @@ describe('renderBrief', () => {
   test('verbatim ledger quotes appear in the evidence section', () => {
     const out = page();
     expect(out).toContain('> Free — up to 3 projects');
-    expect(out).toContain('— supports, `site:/pricing#plans`, as of 2026-07-27');
+    expect(out).toContain('— supports, <code>site:/pricing\\#plans</code>, as of 2026-07-27');
   });
 
   test('findings are folded in with downgraded headings', () => {
