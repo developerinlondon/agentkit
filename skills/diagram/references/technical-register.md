@@ -144,8 +144,12 @@ nothing. Archives are fetched over https only, pinned by sha256; a vendor
 re-release fails the fetch with the observed hash and re-pin instructions rather
 than installing changed bytes. Before anything is unpacked the archive listing is
 screened — an entry that is a symlink, escapes its root, or pushes the archive
-past its size or entry ceiling disqualifies the whole pack. Nothing is wired into
-`install.sh` — fetching is always a deliberate act.
+past its size or entry ceiling disqualifies the whole pack. Each icon is then
+screened against a normalized copy of itself (entity-decoded, lowercased,
+whitespace-flattened), and a reference target passes only if it points inside the
+icon (`#`) or carries its own bytes (`data:`) — everything else, however spelled,
+disqualifies the pack. Nothing is wired into `install.sh` — fetching is always a
+deliberate act.
 
 Fetched icons then resolve exactly like vendored ones, under a pack prefix:
 

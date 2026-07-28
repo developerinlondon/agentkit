@@ -19,7 +19,6 @@ import {
 import { tmpdir } from "node:os";
 import { basename, dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { inspect } from "./d2-svg.ts";
 import {
   FETCH_SCRIPT,
   type IconRecord,
@@ -55,13 +54,40 @@ export function slugify(stem: string, strips: string[] = []): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 }
 
+export interface Limits {
+  archiveBytes: number;
+  unpackedBytes: number;
+  entries: number;
+  listBytes: number;
+}
+
 // The checksum pins content, not resources: the whole body must be read before
 // the hash can judge it, so a ceiling is the only thing standing between a
 // substituted endpoint and memory or disk exhaustion. The largest real archive
-// is 2.3 MB, so these are generous by two orders of magnitude.
-const MAX_ARCHIVE_BYTES = 64 * 1024 * 1024;
-const MAX_UNPACKED_BYTES = 256 * 1024 * 1024;
-const MAX_ENTRIES = 20_000;
+// is 2.3 MB, so these are generous by two orders of magnitude. listBytes must
+// stay above what `entries` worth of listing can print, or the listing dies of
+// ENOBUFS before the entry ceiling can report anything.
+export const DEFAULT_LIMITS: Limits = {
+  archiveBytes: 64 * 1024 * 1024,
+  unpackedBytes: 256 * 1024 * 1024,
+  entries: 20_000,
+  listBytes: 128 * 1024 * 1024,
+};
+
+// A ceiling reachable only by building a fixture as big as the ceiling is a
+// ceiling nothing ever tests. Lowering them is for that; it is not a user knob.
+export function limits(): Limits {
+  const raw = process.env.AGENTKIT_DIAGRAM_TEST_LIMITS;
+  if (!raw) return DEFAULT_LIMITS;
+  const over: Partial<Limits> = {};
+  for (const pair of raw.split(",")) {
+    const [key, value] = pair.split("=").map((s) => s?.trim());
+    if (key && value && Object.hasOwn(DEFAULT_LIMITS, key)) {
+      over[key as keyof Limits] = Number(value);
+    }
+  }
+  return { ...DEFAULT_LIMITS, ...over };
+}
 
 export class ArchiveError extends Error {}
 
@@ -85,7 +111,8 @@ async function readArchive(url: string): Promise<Buffer> {
   checkScheme(url, "archive url");
   if (url.startsWith("file:")) {
     const buf = readFileSync(fileURLToPath(url));
-    if (buf.length > MAX_ARCHIVE_BYTES) fail(tooBig("archive", buf.length, MAX_ARCHIVE_BYTES, url));
+    const cap = limits().archiveBytes;
+    if (buf.length > cap) fail(tooBig("archive", buf.length, cap, url));
     return buf;
   }
   const res = await fetch(url, { redirect: "follow" });
@@ -97,8 +124,8 @@ async function readArchive(url: string): Promise<Buffer> {
   }
   checkScheme(res.url, "archive url after redirect");
   const declared = Number(res.headers.get("content-length"));
-  if (Number.isFinite(declared) && declared > MAX_ARCHIVE_BYTES) {
-    fail(tooBig("declared archive size", declared, MAX_ARCHIVE_BYTES, url));
+  if (Number.isFinite(declared) && declared > limits().archiveBytes) {
+    fail(tooBig("declared archive size", declared, limits().archiveBytes, url));
   }
   return await readBounded(res, url);
 }
@@ -108,15 +135,16 @@ async function readArchive(url: string): Promise<Buffer> {
 // moment it is exceeded.
 async function readBounded(res: Response, url: string): Promise<Buffer> {
   const reader = res.body?.getReader() ?? fail(`${url} returned no response body`);
+  const cap = limits().archiveBytes;
   const chunks: Uint8Array[] = [];
   let total = 0;
   for (;;) {
     const { done, value } = await reader.read();
     if (done) break;
     total += value.length;
-    if (total > MAX_ARCHIVE_BYTES) {
+    if (total > cap) {
       await reader.cancel();
-      fail(tooBig("archive", total, MAX_ARCHIVE_BYTES, url));
+      fail(tooBig("archive", total, cap, url));
     }
     chunks.push(value);
   }
@@ -184,24 +212,34 @@ export function parseListing(raw: string): ArchiveEntry[] {
 
 function listArchive(zip: string): ArchiveEntry[] {
   let raw: string;
+  const cap = limits().listBytes;
   try {
-    raw = execFileSync("unzip", ["-Z", zip], { encoding: "utf8", stdio: "pipe" });
+    raw = execFileSync("unzip", ["-Z", zip], { encoding: "utf8", stdio: "pipe", maxBuffer: cap });
   } catch (e) {
-    const err = e as { stderr?: Buffer; message: string };
+    const err = e as { code?: string; stderr?: Buffer; message: string };
+    // Without an explicit maxBuffer this is where an archive with a few thousand
+    // entries died — reason-less, and before the entry ceiling could name it.
+    if (err.code === "ENOBUFS") {
+      fail(
+        `the archive listing exceeded the ${cap}-byte buffer, so its entries could not be screened`
+          + ` — nothing was installed.`,
+      );
+    }
     fail(`could not list the archive: ${(err.stderr?.toString() ?? err.message).trim()}`);
   }
   return parseListing(raw);
 }
 
 export function screenArchive(entries: ArchiveEntry[], url: string): void {
-  if (entries.length > MAX_ENTRIES) {
+  const cap = limits();
+  if (entries.length > cap.entries) {
     throw new ArchiveError(
-      `${url} holds ${entries.length} entries, over the ${MAX_ENTRIES} ceiling — nothing was installed.`,
+      `${url} holds ${entries.length} entries, over the ${cap.entries} ceiling — nothing was installed.`,
     );
   }
   const unpacked = entries.reduce((n, e) => n + e.bytes, 0);
-  if (unpacked > MAX_UNPACKED_BYTES) {
-    throw new ArchiveError(tooBig("unpacked archive size", unpacked, MAX_UNPACKED_BYTES, url));
+  if (unpacked > cap.unpackedBytes) {
+    throw new ArchiveError(tooBig("unpacked archive size", unpacked, cap.unpackedBytes, url));
   }
   for (const e of entries) {
     // Refused before extraction rather than skipped after: a symlink is not a
@@ -274,40 +312,106 @@ interface Rejected {
   why: string;
 }
 
-// Every target an icon can point at: href/xlink:href in either quote style, and
-// CSS url() with or without quotes.
-export function references(svg: string): string[] {
+// XML predefines five entities; the rest are HTML's, which an SVG living in an
+// HTML document may still use. Only those that can disguise reference syntax
+// need decoding — the screening copy is not required to be a faithful render.
+const ENTITIES: Record<string, string> = {
+  amp: "&",
+  lt: "<",
+  gt: ">",
+  quot: '"',
+  apos: "'",
+  sol: "/",
+  colon: ":",
+  lpar: "(",
+  rpar: ")",
+  num: "#",
+  period: ".",
+  semi: ";",
+  tab: "\t",
+  newline: "\n",
+  nbsp: " ",
+  commat: "@",
+};
+
+function codePoint(n: number): string {
+  return Number.isFinite(n) && n >= 0 && n <= 0x10ffff ? String.fromCodePoint(n) : "";
+}
+
+function decodeEntities(text: string): string {
+  return text
+    .replace(/&#x([0-9a-f]+);/gi, (_m, hex: string) => codePoint(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_m, dec: string) => codePoint(parseInt(dec, 10)))
+    .replace(/&([a-z]+);/gi, (whole, name: string) => ENTITIES[name.toLowerCase()] ?? whole);
+}
+
+// Screening an as-authored SVG means screening one spelling of it. The same
+// reference survives entity encoding, case changes and whitespace the parsers
+// ignore, so the checks run against a copy with all of that flattened out —
+// decoded to a fixed point, since `&amp;#x2f;` is two layers deep.
+export function normalizeForScreen(svg: string): string {
+  let text = svg;
+  for (let round = 0; round < 5; round += 1) {
+    const next = decodeEntities(text);
+    if (next === text) break;
+    text = next;
+  }
+  return text
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .replace(/\s*=\s*/g, "=")
+    .replace(/url\s*\(\s*/g, "url(")
+    .replace(/\s*\)/g, ")");
+}
+
+function targets(text: string): string[] {
   const out: string[] = [];
-  for (const m of svg.matchAll(/(?:xlink:)?href\s*=\s*("([^"]*)"|'([^']*)')/g)) {
-    out.push((m[2] ?? m[3] ?? "").trim());
+  for (const m of text.matchAll(/(?:xlink:)?href=("([^"]*)"|'([^']*)'|([^\s>]*))/g)) {
+    out.push(m[2] ?? m[3] ?? m[4] ?? "");
   }
-  for (const m of svg.matchAll(/url\(\s*("([^"]*)"|'([^']*)'|([^)'"]*))\s*\)/g)) {
-    out.push((m[2] ?? m[3] ?? m[4] ?? "").trim());
+  for (const m of text.matchAll(/url\(("([^"]*)"|'([^']*)'|([^)]*))\)/g)) {
+    out.push(m[2] ?? m[3] ?? m[4] ?? "");
   }
-  return out.filter((r) => r !== "");
+  return out.map((t) => t.trim()).filter((t) => t !== "");
+}
+
+// An absolute or scheme-relative URL is legitimate in exactly one place — a
+// namespace declaration, which names a vocabulary rather than fetching it. Every
+// other appearance, including one hiding in xml:base, is refused. Checked over
+// the whole document rather than per attribute so an attribute nobody thought of
+// cannot carry one.
+function externalUrls(text: string): boolean {
+  const inert = text
+    .replace(/xmlns(:[a-z0-9_.-]+)?="[^"]*"/g, "")
+    .replace(/data:[^"'\s)>]*/g, "");
+  return /(?:[a-z][a-z0-9+.-]*:)?\/\//.test(inert);
 }
 
 // Vendor archives are not curated for embedding. An icon carrying active
 // content or an external reference would travel into every rendered diagram, so
 // it disqualifies the pack rather than being quietly dropped; a merely
 // malformed icon is skipped and named.
+const ACTIVE_CONTENT: Array<{ why: string; pattern: RegExp }> = [
+  { why: "a <script> element", pattern: /<script/ },
+  { why: "a <foreignObject> element", pattern: /<foreignobject/ },
+  { why: "an inline event handler", pattern: /[\s"';]on[a-z]+=/ },
+  { why: "an @import rule", pattern: /@import/ },
+];
+
+// A reference target passes only if it points inside this document (`#`) or
+// carries its own bytes (`data:`). Stating what is allowed rather than listing
+// what is not is the whole point: the list of ways to spell a fetch is open,
+// the list of things an icon may legitimately reference is two items long.
 export function screenSvg(svg: string): { ok: boolean; why?: string; fatal?: boolean } {
   if (!svg.includes("<svg")) return { ok: false, why: "not an SVG document" };
-  const found = inspect(svg);
-  const active: string[] = [];
-  if (found.scripts > 0) active.push(`${found.scripts} <script>`);
-  if (found.foreignObjects > 0) active.push(`${found.foreignObjects} <foreignObject>`);
-  if (found.externalUrls.length > 0) active.push(`external ref ${found.externalUrls[0]}`);
-  // inspect() demands every href be a data: URI, which is the right rule for a
-  // rendered diagram but not for a source icon: `<use href="#id">` and paint
-  // servers reference the icon's own document and fetch nothing. Both quote
-  // styles and CSS url() count: inspect()'s URL_RE only sees an explicit
-  // scheme, so a `//host` reference reaches the render unnoticed.
-  const offsite = references(svg).filter((h) => !h.startsWith("#") && !h.startsWith("data:"));
-  if (offsite.length > 0) active.push(`an off-document reference (${offsite[0]})`);
-  if (/\son[a-z]+\s*=/.test(svg)) active.push("an inline event handler");
-  if (active.length > 0) return { ok: false, why: active.join(", "), fatal: true };
-  if (!/viewBox\s*=/.test(svg)) return { ok: false, why: "no viewBox — d2 cannot scale it" };
+  const text = normalizeForScreen(svg);
+  for (const { why, pattern } of ACTIVE_CONTENT) {
+    if (pattern.test(text)) return { ok: false, why, fatal: true };
+  }
+  const offsite = targets(text).filter((t) => !t.startsWith("#") && !t.startsWith("data:"));
+  if (offsite.length > 0) return { ok: false, why: `an off-document reference (${offsite[0]})`, fatal: true };
+  if (externalUrls(text)) return { ok: false, why: "an absolute or scheme-relative URL", fatal: true };
+  if (!/viewbox=/.test(text)) return { ok: false, why: "no viewBox — d2 cannot scale it" };
   return { ok: true };
 }
 

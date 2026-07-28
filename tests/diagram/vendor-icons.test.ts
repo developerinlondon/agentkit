@@ -4,7 +4,15 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { ArchiveError, parseListing, screenArchive, screenSvg } from '../../skills/diagram/scripts/fetch-icons.ts';
+import {
+  ArchiveError,
+  DEFAULT_LIMITS,
+  limits,
+  normalizeForScreen,
+  parseListing,
+  screenArchive,
+  screenSvg,
+} from '../../skills/diagram/scripts/fetch-icons.ts';
 import { expandIconRefs, IconError, resolveIcon } from '../../skills/diagram/scripts/icons.ts';
 import { packs, registryPath } from '../../skills/diagram/scripts/vendor-packs.ts';
 
@@ -217,11 +225,51 @@ describe('what fetching refuses', () => {
     expect(existsSync(join(root, 'fixture'))).toBe(false);
   });
 
-  test('an icon evading the href check by quote style or scheme-relative url is caught', () => {
+  // The unit matrix proves the predicate; these prove the whole fetch refuses a
+  // real archive carrying each spelling, rather than a string the test composed.
+  test.each([
+    'single-quote',
+    'css-url',
+    'uppercase-url',
+    'upper-xlink',
+    'import-bare',
+    'entity',
+    'tab-url',
+    'xml-base',
+  ])('an archive whose icon evades the screen by %s is refused', (kind) => {
+    const r = runPack(`evade-${kind}.zip`);
+    expect(r.status).toBe(1);
+    expect(existsSync(join(root, 'fixture'))).toBe(false);
+  });
+
+  test('an icon carrying several evasions at once is refused on the first', () => {
     const r = runPack('pack-evasion.zip');
     expect(r.status).toBe(1);
-    expect(r.out).toContain('off-document reference');
-    expect(r.out).toContain('evil.example');
+    expect(r.out).toContain('Nothing was installed');
+    expect(existsSync(join(root, 'fixture'))).toBe(false);
+  });
+
+  test('an archive past a lowered entry ceiling fails loud, naming the ceiling', () => {
+    // The listing is what the ceiling is read from, so this is the real path:
+    // unzip -Z, parse, refuse — not a hand-built entry list.
+    const r = runPack('pack-many.zip', {}, { AGENTKIT_DIAGRAM_TEST_LIMITS: 'entries=3' });
+    expect(r.status).toBe(1);
+    expect(r.out).toContain('over the 3 ceiling');
+    expect(existsSync(join(root, 'fixture'))).toBe(false);
+  });
+
+  test('a listing too large for its buffer is refused with a reason, not ENOBUFS', () => {
+    const r = runPack('pack-many.zip', {}, { AGENTKIT_DIAGRAM_TEST_LIMITS: 'listBytes=200' });
+    expect(r.status).toBe(1);
+    expect(r.out).toContain('exceeded the 200-byte buffer');
+    expect(r.out).not.toContain('ENOBUFS');
+    expect(existsSync(join(root, 'fixture'))).toBe(false);
+  });
+
+  test('an archive past the download byte budget fails loud, naming the limit', () => {
+    const r = runPack('pack-ok.zip', {}, { AGENTKIT_DIAGRAM_TEST_LIMITS: 'archiveBytes=100' });
+    expect(r.status).toBe(1);
+    expect(r.out).toContain('over the 100-byte ceiling');
     expect(existsSync(join(root, 'fixture'))).toBe(false);
   });
 
@@ -320,13 +368,42 @@ describe('resolving a vendor icon', () => {
 describe('what the screens reject', () => {
   const svg = (body: string) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 18 18">${body}</svg>`;
 
+  // The rule is an allowlist on the target — `#` or `data:`, nothing else — so
+  // these are not the cases the screen enumerates, they are the spellings that
+  // must all normalize down to the same rejected target.
   test.each([
     ['double-quoted scheme-relative href', '<image href="//evil.example/a.png"/>'],
     ['single-quoted scheme-relative href', "<image href='//evil.example/b.png'/>"],
-    ['scheme-relative css url()', '<style>@import url(//evil.example/c.css);</style>'],
-    ['single-quoted absolute href', "<image href='http://evil.example/d.png'/>"],
-    ['absolute css url()', '<style>div{background:url(http://evil.example/e.png)}</style>'],
-    ['quoted css url()', '<style>div{background:url("//evil.example/f.png")}</style>'],
+    ['unquoted href', '<image href=//evil.example/uq.png />'],
+    ['scheme-relative css url()', '<style>div{background:url(//evil.example/c.css)}</style>'],
+    ['uppercase URL()', '<style>div{background:URL(//evil.example/u.png)}</style>'],
+    ['mixed-case Url()', '<style>div{background:Url(//evil.example/m.png)}</style>'],
+    ['uppercase XLINK:HREF', '<image XLINK:HREF="//evil.example/x.png"/>'],
+    ['@import with a bare string', '<style>@import "https://evil.example/bare.css";</style>'],
+    ['@import with url()', '<style>@import url(//evil.example/i.css);</style>'],
+    ['entity-encoded slashes', '<image href="&#x2F;&#x2F;evil.example/e.png"/>'],
+    // An XML parser decodes element text before CSS ever sees it, so an encoded
+    // at-rule is a real at-rule by the time it matters.
+    ['an entity-encoded @import', '<style>&#x40;import "https://evil.example/enc.css";</style>'],
+    ['a named-entity @import', '<style>&commat;import "https://evil.example/nam.css";</style>'],
+    ['decimal-entity slashes', '<image href="&#47;&#47;evil.example/d.png"/>'],
+    ['doubly-encoded slashes', '<image href="&amp;#x2F;&amp;#x2F;evil.example/dd.png"/>'],
+    ['tab between url and paren', '<style>div{background:url\t(//evil.example/t.png)}</style>'],
+    ['newline inside the attribute', '<image href=\n  "//evil.example/n.png"/>'],
+    ['whitespace inside url()', '<style>div{background:url( //evil.example/w.png )}</style>'],
+    ['an absolute url hidden in xml:base', '<g xml:base="//evil.example/"><use href="#a"/></g>'],
+    ['single-quoted absolute href', "<image href='http://evil.example/q.png'/>"],
+    // No `//` in any of these, so only the target allowlist stops them: a
+    // relative reference still fetches a sibling, and javascript: still runs.
+    ['a relative href', '<image href="sibling.svg"/>'],
+    ['a relative css url()', '<style>div{background:url(sprite.png)}</style>'],
+    ['a javascript: href', '<a href="javascript:alert(1)"><rect/></a>'],
+    ['a root-relative href', '<image href="/assets/x.png"/>'],
+    ['a script element', '<script>x()</script>'],
+    ['an uppercase SCRIPT element', '<SCRIPT>x()</SCRIPT>'],
+    ['a foreignObject', '<foreignObject><div/></foreignObject>'],
+    ['an inline event handler', '<rect onload="x()"/>'],
+    ['an uppercase event handler', '<rect ONLOAD="x()"/>'],
   ])('rejects %s', (_name, body) => {
     const verdict = screenSvg(svg(body));
     expect(verdict.ok).toBe(false);
@@ -338,8 +415,16 @@ describe('what the screens reject', () => {
     ['a single-quoted fragment href', "<defs><rect id='r'/></defs><use href='#r'/>"],
     ['a fragment css url()', '<rect fill="url(#grad)"/>'],
     ['a data uri', '<image href="data:image/png;base64,AAAA"/>'],
+    ['a data uri whose base64 contains slashes', '<image href="data:image/png;base64,iVBOR//w0KGgo="/>'],
+    ['the svg and xlink namespace declarations', '<g xmlns:xlink="http://www.w3.org/1999/xlink"><use href="#a"/></g>'],
   ])('keeps %s', (_name, body) => {
     expect(screenSvg(svg(body)).ok).toBe(true);
+  });
+
+  test('normalization flattens encoding, case and whitespace to one spelling', () => {
+    const text = normalizeForScreen('<A HREF = "&#x2F;&#x2F;x" />\n<style>URL\t( #a )</style>');
+    expect(text).toContain('href="//x"');
+    expect(text).toContain('url(#a)');
   });
 
   test('the archive screen refuses too many entries and too many bytes', () => {
@@ -372,6 +457,24 @@ describe('what the screens reject', () => {
   test('a listing the parser cannot fully read is refused rather than read as empty', () => {
     const raw = 'Zip file size: 10 bytes, number of entries: 3\ngarbage line\n';
     expect(() => parseListing(raw)).toThrow(/parsed 0 of 3 entries/);
+  });
+
+  test('the shipped ceilings are the documented ones', () => {
+    // Tests reach the ceilings by lowering them, which would leave a change to
+    // the shipped values invisible. This is the assertion that sees it.
+    delete process.env.AGENTKIT_DIAGRAM_TEST_LIMITS;
+    expect(limits()).toEqual({
+      archiveBytes: 64 * 1024 * 1024,
+      unpackedBytes: 256 * 1024 * 1024,
+      entries: 20_000,
+      listBytes: 128 * 1024 * 1024,
+    });
+  });
+
+  test('the listing buffer stays above what the entry ceiling can print', () => {
+    // A listing line is ~60 characters plus the path; if the buffer cannot hold
+    // `entries` of them the download dies of ENOBUFS before the ceiling reports.
+    expect(DEFAULT_LIMITS.listBytes).toBeGreaterThan(DEFAULT_LIMITS.entries * 300);
   });
 
   test('the archive screen accepts a real vendor-shaped listing', () => {
