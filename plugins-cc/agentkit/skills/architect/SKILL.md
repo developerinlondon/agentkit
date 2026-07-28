@@ -48,6 +48,17 @@ genuinely understanding a system — not a file listing with boxes around it.
    update only the affected zones/sections, republish the same name, and note
    the delta at the top of the page.
 
+## Deck mode
+
+When the review or proposal is asked for **as slides**, publish through
+publish-page's `deck` template and follow its slide grammar instead of
+compressing the doc. The title slide names the system, states the thesis in one
+sentence, and carries at most four headline numbers — components, stores,
+boundaries, whatever the thesis rests on. One concern per slide (a boundary, a
+failure mode, a decision), and every centerpiece diagram gets a slide to itself
+with nothing above it but a kicker and an `h2`. The figure plan still applies: a
+deck buys fewer words around the figures, not more figures.
+
 ## The bar: impress a staff engineer
 
 An experienced architect looking at your centerpiece diagram should learn
