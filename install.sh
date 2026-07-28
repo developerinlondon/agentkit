@@ -18,9 +18,11 @@ Options:
                        are declared in skills/GROUPS; every unlisted skill is
                        in the always-installed `core` group.
                          --with product   product-intelligence, product-review
-                       Run on a terminal with no group flags and nothing
-                       remembered yet, the installer asks about each optional
+                       A global install run on a terminal with no group flags
+                       and nothing remembered yet asks about each optional
                        group instead; every other run is unattended.
+  --no-prompt          Never ask about optional groups, even on a terminal.
+                       AGENTKIT_SKIP_PROMPT=1 and a non-empty CI do the same.
   --without <group>    Drop a group from the selection and from the remembered
                        set (repeatable). Skills already installed are left in
                        place; `core` cannot be dropped.
@@ -79,12 +81,17 @@ SESSION_SCOPE=true
 EXTRA_GROUPS=""
 DROP_GROUPS=""
 ALL_GROUPS=false
+PROMPT=true
+if [[ -n "${AGENTKIT_SKIP_PROMPT:-}" ]]; then
+	PROMPT=false
+fi
 while [[ $# -gt 0 ]]; do
 	case "$1" in
 	-h | --help) usage ;;
 	--global) GLOBAL=true ;;
 	--claude-plugin) CLAUDE_PLUGIN=true ;;
 	--no-session-scope) SESSION_SCOPE=false ;;
+	--no-prompt) PROMPT=false ;;
 	--with)
 		shift
 		if [[ $# -eq 0 ]]; then
@@ -189,43 +196,67 @@ group_dropped() {
 	return 1
 }
 
-# The installer is unattended everywhere except a bare terminal run, so the
-# question is asked only where someone is there to answer it: a pipe, CI, any
-# group flag, or a remembered selection all leave the run exactly as scripted.
+# An unanswered question does not degrade to a decline, it stops the install
+# until something kills it, so every condition here fails towards silence.
 should_prompt_for_groups() {
-	[[ -t 0 ]] || return 1
+	# Only a global install has anywhere to record an answer, and a question
+	# whose answer cannot be kept is a nag repeated at every project.
+	[[ "$GLOBAL" == true ]] || return 1
+	# Both descriptors, not just stdin: output routed into a pipe or a log means
+	# an operator who cannot see the question, whatever is attached to stdin.
+	[[ -t 0 && -t 1 ]] || return 1
+	# A terminal is not evidence of a person. Docker executors, `docker run -it`
+	# and Jenkins all hand a job a pty with nobody behind it.
+	[[ -z "${CI:-}" ]] || return 1
+	[[ "$PROMPT" == true ]] || return 1
 	[[ "$ALL_GROUPS" == false ]] || return 1
 	[[ -z "$EXTRA_GROUPS" && -z "$DROP_GROUPS" ]] || return 1
-	# Only a global install has somewhere to remember an answer; where the file
-	# exists the question was already put, and an empty one means "core only".
-	if [[ "$GLOBAL" == true && -f "$GROUPS_STATE_FILE" ]]; then
-		return 1
+	# Where the file exists the question was already put, and an empty one is
+	# the recorded answer "core only" rather than an absent answer.
+	[[ ! -f "$GROUPS_STATE_FILE" ]] || return 1
+	return 0
+}
+
+# The question belongs on the terminal, not in whatever the caller is capturing.
+# `exec` redirections are permanent, so openability is probed in a subshell: a
+# failed probe must not leave the installer's own stderr pointing at /dev/null.
+open_prompt_channel() {
+	if (exec 3<>/dev/tty) 2>/dev/null; then
+		exec 3<>/dev/tty
+		exec 4<&3
+		return 0
 	fi
+	# No controlling terminal to address directly. The gate has already proved
+	# both of these are terminals, so they remain a safe place to ask.
+	exec 3>&2
+	exec 4<&0
 	return 0
 }
 
 prompt_for_groups() {
 	local group description reply header=false
+	open_prompt_channel
 	for group in $(declared_groups); do
 		if [[ "$group" == core ]]; then continue; fi
 		if [[ "$header" == false ]]; then
-			echo "[groups] Optional skill groups — core installs either way."
+			echo "[groups] Optional skill groups — core installs either way." >&3
 			header=true
 		fi
 		description="$(group_description "$group")"
-		echo "[groups]   $group: $description"
-		printf '[groups]   Install %s? [y/N] ' "$group"
+		echo "[groups]   $group: $description" >&3
+		printf '[groups]   Install %s? [y/N] ' "$group" >&3
 		# A closed terminal answers nothing; taking the default beats looping on
 		# an empty read or aborting an install that is otherwise fine.
-		if ! read -r reply; then
+		if ! read -r reply <&4; then
 			reply=""
-			echo ""
+			echo "" >&3
 		fi
 		case "$reply" in
 		[yY] | [yY][eE][sS]) EXTRA_GROUPS="${EXTRA_GROUPS:+$EXTRA_GROUPS }$group" ;;
 		esac
 	done
-	if [[ "$header" == true ]]; then echo ""; fi
+	if [[ "$header" == true ]]; then echo "" >&3; fi
+	exec 3>&- 4<&-
 	return 0
 }
 

@@ -181,10 +181,17 @@ the plugin generator, and the tests all read it rather than hard-coding names.
 ./agentkit/install.sh --global --all            # every declared group
 ```
 
-Run bare on a terminal with nothing remembered yet, the installer asks about each optional
-group rather than quietly settling for `core`: answer `y` to add one, and anything else —
-including a bare enter — declines it. A pipe, a CI runner, any group flag, or a selection
-already remembered skips the question, so scripted installs stay unattended.
+A **global** install run bare on a terminal with nothing remembered yet asks about each
+optional group rather than quietly settling for `core`: answer `y` to add one, and anything
+else — including a bare enter — declines it. The question goes to `/dev/tty`, so a captured
+transcript never swallows it.
+
+Everything else stays unattended, because an unanswered question stops an install rather than
+declining for you. The wizard is suppressed when stdin or stdout is not a terminal, when `CI`
+is set to anything non-empty (runners hand out ptys, so a terminal is no evidence of a person),
+when `--no-prompt` or `AGENTKIT_SKIP_PROMPT` is given, when any group flag is passed, and when
+a selection is already remembered. Project installs never ask either: they persist nothing, so
+the answer could not be kept and every run would ask again — pass `--with` there instead.
 
 A global install records the chosen groups in `~/.agentkit/groups`, so a later bare
 `install.sh --global` upgrades the same set with no flags to remember — `--with` adds to that

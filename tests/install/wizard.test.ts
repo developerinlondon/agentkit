@@ -19,6 +19,9 @@ const globalInstallTimeoutMs = 60_000;
 // greps the whole transcript for it, so it has to be the literal the installer
 // prints rather than a paraphrase of it.
 const promptMarker = '? [y/N]';
+// A blocked wizard is not slow, it is stopped. A bare install takes about a
+// second, so a run still alive after this was waiting for a keystroke.
+const hangTimeoutMs = 20_000;
 
 function installEnv(home: string) {
   return {
@@ -44,19 +47,28 @@ function install(home: string, extraArgs: string[] = []) {
 
 // `script` hands the installer a pseudo-terminal, which is the only way to
 // exercise the `-t 0` gate: a piped stdin is what every other test already has.
-function installOnTty(home: string, keystrokes: string, extraArgs: string[] = []) {
-  const command = ['bash', installScript, ...baseArgs, ...extraArgs].join(' ');
+function installOnTty(
+  home: string,
+  keystrokes: string,
+  extraArgs: string[] = [],
+  options: { env?: Record<string, string>; shell?: string; timeoutMs?: number } = {},
+) {
+  const command = options.shell ??
+    ['bash', installScript, ...baseArgs, ...extraArgs].join(' ');
   const result = spawnSync('script', ['-qec', command, '/dev/null'], {
     cwd: repoRoot,
-    env: installEnv(home),
+    env: { ...installEnv(home), ...(options.env ?? {}) },
     input: keystrokes,
     encoding: 'utf-8',
-    timeout: globalInstallTimeoutMs,
+    timeout: options.timeoutMs ?? globalInstallTimeoutMs,
   });
   // A pty terminates lines with CRLF; comparing against installer output that
   // was written with plain LF would fail on the carriage returns alone.
   return {
     status: result.status,
+    // A wizard that asks where nobody can answer does not fail, it stops: the
+    // only evidence is the harness killing it, so the signal has to be visible.
+    signal: result.signal,
     stdout: (result.stdout ?? '').replaceAll('\r', ''),
     stderr: (result.stderr ?? '').replaceAll('\r', ''),
   };
@@ -177,6 +189,103 @@ describe('installer skill-group wizard', () => {
     } finally {
       rmSync(declined, { force: true, recursive: true });
       rmSync(piped, { force: true, recursive: true });
+    }
+  }, globalInstallTimeoutMs);
+
+  test('a CI runner that allocated a terminal is never asked', () => {
+    const home = mkdtempSync(join(tmpdir(), 'agentkit-wizard-'));
+
+    try {
+      // Plenty of runners hand the job a pty — a docker executor, `docker run
+      // -it`, Jenkins — so a terminal is not evidence that anyone is watching
+      // it. Asking there does not degrade to a decline, it blocks the job until
+      // something kills it, which is the one failure direction an installer
+      // must not have.
+      const result = installOnTty(home, '', [], {
+        env: { CI: '1' },
+        timeoutMs: hangTimeoutMs,
+      });
+
+      expect(result.signal, 'CI install blocked on an unanswered question').toBe(null);
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.stdout).not.toContain(promptMarker);
+      expect(result.stdout).toContain('Skill groups:    core');
+    } finally {
+      rmSync(home, { force: true, recursive: true });
+    }
+  }, globalInstallTimeoutMs);
+
+  test('a captured stdout is a non-interactive consumer, terminal stdin or not', () => {
+    const home = mkdtempSync(join(tmpdir(), 'agentkit-wizard-'));
+
+    try {
+      // `install.sh | tee install.log` is ordinary ops practice, and it leaves
+      // stdin a terminal while the output the operator would read goes into a
+      // pipe. A question asked into that pipe is invisible and unanswerable.
+      const log = join(home, 'install.log');
+      const result = installOnTty(home, '', [], {
+        shell: `bash ${installScript} ${baseArgs.join(' ')} 2>&1 | tee ${log}`,
+        timeoutMs: hangTimeoutMs,
+      });
+
+      expect(result.signal, 'the piped-stdout install blocked on a question').toBe(null);
+      // Both places, and the terminal is the one that matters: routing the
+      // question to /dev/tty already keeps it out of the log, so a log-only
+      // assertion passes whether or not the gate consults stdout at all.
+      expect(result.stdout, 'asked on the terminal anyway').not.toContain(promptMarker);
+      const captured = readFileSync(log, 'utf-8').replaceAll('\r', '');
+      expect(captured).not.toContain(promptMarker);
+      // Reaching the summary is what separates "declined and carried on" from
+      // "asked, and the transcript simply had not got there yet".
+      expect(captured).toContain('Skill groups:    core');
+    } finally {
+      rmSync(home, { force: true, recursive: true });
+    }
+  }, globalInstallTimeoutMs);
+
+  test('the explicit opt-outs suppress the question on a terminal', () => {
+    for (
+      const optOut of [
+        { label: '--no-prompt', args: ['--no-prompt'], env: {} },
+        { label: 'AGENTKIT_SKIP_PROMPT', args: [], env: { AGENTKIT_SKIP_PROMPT: '1' } },
+      ]
+    ) {
+      const home = mkdtempSync(join(tmpdir(), 'agentkit-wizard-'));
+      try {
+        const result = installOnTty(home, '', optOut.args, {
+          env: optOut.env,
+          timeoutMs: hangTimeoutMs,
+        });
+
+        expect(result.signal, `${optOut.label} blocked`).toBe(null);
+        expect(result.status, `${optOut.label}: ${result.stderr}`).toBe(0);
+        expect(result.stdout, `${optOut.label} must not prompt`).not.toContain(promptMarker);
+        expect(result.stdout).toContain('Skill groups:    core');
+      } finally {
+        rmSync(home, { force: true, recursive: true });
+      }
+    }
+  }, globalInstallTimeoutMs);
+
+  test('a project install does not ask, because it has nowhere to remember', () => {
+    const home = mkdtempSync(join(tmpdir(), 'agentkit-wizard-'));
+    const project = mkdtempSync(join(tmpdir(), 'agentkit-wizard-project-'));
+
+    try {
+      // Project installs persist nothing, so a wizard there would re-ask on
+      // every single run — a nag, not a choice.
+      const result = installOnTty(home, '', [], {
+        shell: `bash ${installScript} ${project}`,
+        timeoutMs: hangTimeoutMs,
+      });
+
+      expect(result.signal, 'the project install blocked on a question').toBe(null);
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.stdout).not.toContain(promptMarker);
+      expect(existsSync(join(home, '.agentkit', 'groups'))).toBe(false);
+    } finally {
+      rmSync(home, { force: true, recursive: true });
+      rmSync(project, { force: true, recursive: true });
     }
   }, globalInstallTimeoutMs);
 
