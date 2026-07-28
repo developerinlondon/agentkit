@@ -1,3 +1,4 @@
+# shellcheck shell=bash disable=SC2034  # sourced: TEST_VERDICT_* are the caller's.
 # Judge a bun test run by its printed pass/fail counts, never by its exit code.
 # A runner that dies before executing anything — a lock it cannot take, a
 # scrubbed environment variable — prints no marker at all, and a caller reading
