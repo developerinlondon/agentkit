@@ -95,6 +95,24 @@ prefix_rule(
 )
 
 prefix_rule(
+    pattern = ["moon", ["ci", "check", "run"]],
+    decision = "forbidden",
+    justification = "Run Moon task workloads with bounded-run.",
+)
+
+prefix_rule(
+    pattern = ["moon", ["query", "config"]],
+    decision = "allow",
+    justification = "Moon metadata inspection does not execute project tasks.",
+)
+
+prefix_rule(
+    pattern = ["moon", "--version"],
+    decision = "allow",
+    justification = "Reading the installed Moon version does not execute project tasks.",
+)
+
+prefix_rule(
     pattern = ["pytest"],
     decision = "forbidden",
     justification = "Run Python test suites with bounded-run.",

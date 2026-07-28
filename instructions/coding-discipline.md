@@ -78,6 +78,20 @@ These rules are behavioral; the agentkit hook portfolio enforces the adjacent co
 
 Everything else is on the agent to honor.
 
+## Evidence-Gated Review
+
+For non-trivial work, the maker never grades its own artifact. Use the
+`adversarial-review` skill from a fresh context, feed it primary artifacts, and require a
+concrete failing input or replayable trace for every finding. Run `product-review` separately
+when the change affects something people install, operate, or experience.
+
+When a forge target contains `.agentkit/review-policy.json`, load policy from the exact target
+commit, never the proposed source checkout. Bind the local v2 evidence index to the forge
+repository and change, source/target SHAs, and policy digest. Missing or malformed required
+evidence fails closed; critical work cannot use a local consent claim. The record is an
+agent-writable consistency gate, not proof of reviewer identity or evidence truth — protected
+forge checks and approvals remain the trust boundary.
+
 ## Branch Hygiene
 
 After a merge request / PR merges, immediately return to the repo's default branch, pull, and

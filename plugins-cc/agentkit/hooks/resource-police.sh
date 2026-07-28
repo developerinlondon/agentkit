@@ -13,6 +13,7 @@ RE_DOCKER_READONLY='^(diff|events|history|images|info|inspect|logs|port|ps|stats
 RE_GO_HEAVY='^(build|test)$'
 RE_KUBECTL_READONLY='^(api-resources|api-versions|auth|cluster-info|describe|explain|get|logs|top|version)$'
 RE_MACHINECTL_READONLY='^(list|show|status)$'
+RE_MOON_HEAVY='^(ci|check|run)$'
 RE_NPM_HEAVY='^(add|install|i|ci|update|upgrade|test)$'
 RE_ORCHESTRATOR='^(buildah|docker|kubectl|machinectl|nerdctl|podman|service|systemctl)$'
 RE_BUILDAH_READONLY='^(containers|images|info|inspect|version)$'
@@ -276,6 +277,7 @@ is_heavy() {
 	playwright) [[ "$first" == test ]] ;;
 	cargo) [[ "$first" =~ $RE_CARGO_HEAVY ]] ;;
 	go) [[ "$first" =~ $RE_GO_HEAVY ]] ;;
+	moon) [[ "$first" =~ $RE_MOON_HEAVY ]] ;;
 	pip | pip3) [[ "$first" == install ]] ;;
 	uv)
 		[[ "$first" =~ $RE_UV_HEAVY ]] && return 0

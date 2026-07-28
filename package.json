@@ -3,7 +3,9 @@
   "private": true,
   "license": "Apache-2.0",
   "scripts": {
-    "test": "bun test"
+    "test": "bun test",
+    "test:full": "bun test",
+    "test:slices": "bun run scripts/check-test-slices.ts --check"
   },
   "devDependencies": {
     "@opencode-ai/plugin": "^1.1.65",

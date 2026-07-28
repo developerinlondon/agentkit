@@ -1,4 +1,5 @@
 #!/bin/bash -p
+# agentkit:platforms linux
 set -euo pipefail
 
 # Runs an interactive agent CLI inside its own systemd scope so one session

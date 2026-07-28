@@ -14,6 +14,7 @@ import { spawn, spawnSync } from 'node:child_process';
 
 const repoRoot = dirname(import.meta.dir);
 const productionRunner = join(repoRoot, 'tools', 'bounded-run');
+const describeLinux = process.platform === 'linux' ? describe : describe.skip;
 
 let root: string;
 let binDir: string;
@@ -171,7 +172,9 @@ describe('bounded-run argument contract', () => {
     expect(source).not.toContain('AGENTKIT_RUN_TESTING');
     expect(source).not.toContain('AGENTKIT_RUN_PROC_ROOT');
   });
+});
 
+describeLinux('bounded-run Linux argument behavior', () => {
   test('ignores hostile PATH control binaries and BASH_ENV startup code', () => {
     const hostileDir = join(root, 'hostile-bin');
     const pathMarker = join(root, 'hostile-systemd-run-used');
@@ -341,7 +344,7 @@ printf 'secret=<%s>\n' "\${UNSAFE_SECRET:-}" >> "${output}"
   });
 });
 
-describe('bounded-run resource boundary', () => {
+describeLinux('bounded-run Linux resource boundary', () => {
   test('maps every profile to explicit systemd cgroup and timeout properties', () => {
     const expected = {
       canary: ['MemoryHigh=1G', 'MemoryMax=2G', 'CPUQuota=200%', 'TasksMax=64', 'RuntimeMaxSec=75s'],

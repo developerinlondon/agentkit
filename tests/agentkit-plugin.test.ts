@@ -38,11 +38,14 @@ function commandBasenames(entries: { command: string }[]): string[] {
 }
 
 describe('agentkit plugin manifest', () => {
-  test('plugin.json declares name agentkit and wires hooks, skills, and mcpServers', () => {
+  test('plugin.json declares agentkit without duplicating its standard hooks path', () => {
     const plugin = readJson('.claude-plugin', 'plugin.json');
     expect(plugin.name).toBe('agentkit');
-    expect(plugin.version).toBe('0.2.0');
-    expect(plugin.hooks).toBe('./hooks/hooks.json');
+    expect(plugin.version).toBe('0.3.0');
+    // Claude automatically loads hooks/hooks.json. Declaring that same path in
+    // the manifest makes a fresh install appear enabled while hook loading
+    // fails with "Duplicate hooks file detected".
+    expect(plugin.hooks).toBeUndefined();
     expect(plugin.skills).toBe('./skills/');
     expect(plugin.mcpServers).toBe('./.mcp.json');
   });
@@ -115,6 +118,8 @@ describe('agentkit plugin hooks', () => {
       expect(readFileSync(join(pluginDir, 'hooks', script), 'utf-8')).toBe(
         readFileSync(join(sourceHooks, script), 'utf-8'),
       );
+      expect(statSync(join(pluginDir, 'hooks', script)).mode & 0o111, `${script} is executable`)
+        .not.toBe(0);
     }
   });
 });
@@ -138,6 +143,7 @@ describe('agentkit plugin skills', () => {
   test('ships the agentkit skills, each with a SKILL.md', () => {
     const expectedSkills = [
       'autonomous-workflow',
+      'adversarial-review',
       'code-quality',
       'documentation',
       'gitops-master',
@@ -184,12 +190,14 @@ describe('agentkit plugin skills', () => {
 });
 
 describe('agentkit plugin tools', () => {
-  test('bundles the bounded runner and keeps it executable', () => {
-    const bundledRunner = join(pluginDir, 'tools', 'bounded-run');
-    expect(readFileSync(bundledRunner, 'utf-8')).toBe(
-      readFileSync(join(repoRoot, 'tools', 'bounded-run'), 'utf-8'),
-    );
-    expect(statSync(bundledRunner).mode & 0o111).not.toBe(0);
+  test('bundles the portable tools and keeps them executable', () => {
+    for (const tool of ['bounded-run', 'review-gate']) {
+      const bundled = join(pluginDir, 'tools', tool);
+      expect(readFileSync(bundled, 'utf-8')).toBe(
+        readFileSync(join(repoRoot, 'tools', tool), 'utf-8'),
+      );
+      expect(statSync(bundled).mode & 0o111).not.toBe(0);
+    }
   });
 });
 
@@ -204,7 +212,8 @@ describe('marketplace lists the agentkit plugin', () => {
 
     const agentkit = marketplace.plugins.find((p: { name: string }) => p.name === 'agentkit');
     expect(agentkit.source).toBe('./plugins-cc/agentkit');
-    expect(agentkit.version).toBe('0.2.0');
+    expect(agentkit.version).toBe(readJson('.claude-plugin', 'plugin.json').version);
+    expect(agentkit.version).toBe('0.3.0');
     expect(agentkit.description).toContain('bounded-run');
     expect(agentkit.description).toContain('agent-work.slice');
     expect(agentkit.description).toContain('Linux bounded execution additionally requires');

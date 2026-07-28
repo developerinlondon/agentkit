@@ -54,6 +54,20 @@ function runHook(command: string, platform?: string): string {
   }).stdout ?? '';
 }
 
+const heavyMoonCommands = [
+  'moon ci',
+  'moon check',
+  'moon run agentkit:test-hooks',
+  "bash -lc 'moon run agentkit:test-full'",
+];
+
+const inspectionMoonCommands = [
+  'moon query projects',
+  'moon --version',
+  'moon config',
+  'moon config --json',
+];
+
 describe('OpenCode Linux resource policy', () => {
   for (const command of blockedResourceCommands) {
     test(`blocks unbounded command: ${command}`, () => {
@@ -82,6 +96,18 @@ describe('OpenCode Linux resource policy', () => {
 
   test('allows wrapped, lightweight, and inspection commands', () => {
     for (const command of allowedResourceCommands) {
+      expect(() => enforceResourcePolicy(command, 'linux')).not.toThrow();
+    }
+  });
+
+  test('blocks Moon task execution unless it is contained', () => {
+    for (const command of heavyMoonCommands) {
+      expect(() => enforceResourcePolicy(command, 'linux')).toThrow('bounded-run');
+    }
+  });
+
+  test('allows Moon metadata inspection without containment', () => {
+    for (const command of inspectionMoonCommands) {
       expect(() => enforceResourcePolicy(command, 'linux')).not.toThrow();
     }
   });
@@ -191,6 +217,18 @@ describeShellHook('Claude resource-police', () => {
       expect(runHook(command)).not.toContain('deny');
     }
   });
+
+  test('blocks Moon task execution unless it is contained', () => {
+    for (const command of heavyMoonCommands) {
+      expect(runHook(command)).toContain('bounded-run');
+    }
+  });
+
+  test('allows Moon metadata inspection without containment', () => {
+    for (const command of inspectionMoonCommands) {
+      expect(runHook(command)).not.toContain('deny');
+    }
+  });
 });
 
 describe('Codex resource policies', () => {
@@ -204,7 +242,7 @@ describe('Codex resource policies', () => {
     expect(contents).toContain('pattern = ["bounded-run"]');
     expect(contents).toContain('pattern = ["agentkit-run"]');
     expect(contents).toContain('decision = "allow"');
-    for (const command of ['bun', 'bunx', 'tsc', 'playwright', 'cargo', 'go']) {
+    for (const command of ['bun', 'bunx', 'tsc', 'playwright', 'cargo', 'go', 'moon']) {
       expect(contents).toContain(`pattern = ["${command}"`);
     }
     for (const command of [
@@ -252,6 +290,12 @@ describe('Codex resource policies', () => {
       [['npx', 'tsc', '--noEmit'], 'forbidden'],
       [['pip', 'install', 'requests'], 'forbidden'],
       [['uv', 'sync'], 'forbidden'],
+      [['moon', 'ci'], 'forbidden'],
+      [['moon', 'check'], 'forbidden'],
+      [['moon', 'run', 'agentkit:test-hooks'], 'forbidden'],
+      [['moon', 'query', 'projects'], 'allow'],
+      [['moon', 'config'], 'allow'],
+      [['moon', '--version'], 'allow'],
       [['bounded-run', '--profile', 'compile', '--', 'bun', 'run', 'build'], 'allow'],
       [['agentkit-run', '--profile', 'compile', '--', 'bun', 'run', 'build'], 'allow'],
     ]);

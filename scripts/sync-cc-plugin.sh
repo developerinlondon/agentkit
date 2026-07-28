@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # One-way sync: top-level sources → the Claude Code plugin (plugins-cc/agentkit).
-# The generic units (hooks/claude, skills) are the source of truth (ADR #45);
+# The generic units (hooks/claude, skills, selected tools) are the source of truth (ADR #45);
 # the plugin wraps them for one-step install. Run after changing either source
 # tree and commit the result — the plugin must never be edited directly.
 set -euo pipefail
@@ -36,6 +36,14 @@ for skill in "$REPO_DIR"/skills/*/; do
 	cp -r "$skill" "$PLUGIN_DIR/skills/$name"
 done
 echo "[sync] skills/* -> plugins-cc/agentkit/skills/"
+
+# Portable tools used by bundled hooks. Keep this allowlist explicit: other
+# top-level tools are not necessarily plugin-facing commands.
+for tool in bounded-run review-gate; do
+	cp "$REPO_DIR/tools/$tool" "$PLUGIN_DIR/tools/$tool"
+	chmod +x "$PLUGIN_DIR/tools/$tool"
+done
+echo "[sync] portable hook tools -> plugins-cc/agentkit/tools/"
 
 # Fail loudly if the result is an invalid plugin (best-effort: needs claude CLI).
 if command -v claude &>/dev/null; then

@@ -1,0 +1,26 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "AGENTKIT_HOOK_TARGET=codex __AGENTKIT_CODEX_HOOKS_ROOT__/fail-closed-hook.sh 45 __AGENTKIT_CODEX_HOOKS_ROOT__/review-police.sh",
+            "timeout": 60
+          }
+        ]
+      },
+      {
+        "matcher": ".*[Mm]erge.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "AGENTKIT_HOOK_TARGET=codex __AGENTKIT_CODEX_HOOKS_ROOT__/fail-closed-hook.sh 45 __AGENTKIT_CODEX_HOOKS_ROOT__/review-police.sh",
+            "timeout": 60
+          }
+        ]
+      }
+    ]
+  }
+}

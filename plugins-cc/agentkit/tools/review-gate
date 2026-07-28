@@ -1,0 +1,356 @@
+#!/usr/bin/env bash
+# review-gate — validate a strict AgentKit review record against trusted policy.
+#
+# This is a structural and semantic consistency gate, not an authentication
+# boundary. It cannot prove reviewer identity, independence, command execution,
+# redaction, or the truth of referenced evidence. Forge protections own those.
+set -euo pipefail
+
+RECORD=""
+POLICY=""
+CHANGED_PATHS=""
+EXPECTED_FORGE=""
+EXPECTED_REPOSITORY=""
+EXPECTED_REPOSITORY_ID=""
+EXPECTED_CHANGE_ID=""
+EXPECTED_SOURCE_BRANCH=""
+EXPECTED_TARGET_BRANCH=""
+EXPECTED_SOURCE_SHA=""
+EXPECTED_TARGET_SHA=""
+
+deny() {
+	printf 'BLOCKED: %s\n' "$1" >&2
+	exit 1
+}
+
+usage() {
+	local status="${1:-2}"
+	printf '%s\n' 'usage: review-gate --record FILE --policy FILE --changed-paths FILE' \
+		'  --forge github|gitlab --repository URL --repository-id ID --change-id N' \
+		'  --source-branch NAME --target-branch NAME' \
+		'  --source-sha SHA --target-sha SHA' >&2
+	exit "$status"
+}
+
+[[ "${1:-}" == "--help" ]] && usage 0
+
+while [[ $# -gt 0 ]]; do
+	[[ $# -ge 2 ]] || usage 2
+	case "$1" in
+	--record) RECORD="$2" ;;
+	--policy) POLICY="$2" ;;
+	--changed-paths) CHANGED_PATHS="$2" ;;
+	--forge) EXPECTED_FORGE="$2" ;;
+	--repository) EXPECTED_REPOSITORY="$2" ;;
+	--repository-id) EXPECTED_REPOSITORY_ID="$2" ;;
+	--change-id) EXPECTED_CHANGE_ID="$2" ;;
+	--source-branch) EXPECTED_SOURCE_BRANCH="$2" ;;
+	--target-branch) EXPECTED_TARGET_BRANCH="$2" ;;
+	--source-sha) EXPECTED_SOURCE_SHA="$2" ;;
+	--target-sha) EXPECTED_TARGET_SHA="$2" ;;
+	*) usage 2 ;;
+	esac
+	shift 2
+done
+
+for required in RECORD POLICY CHANGED_PATHS EXPECTED_FORGE EXPECTED_REPOSITORY EXPECTED_REPOSITORY_ID \
+	EXPECTED_CHANGE_ID EXPECTED_SOURCE_BRANCH EXPECTED_TARGET_BRANCH \
+	EXPECTED_SOURCE_SHA EXPECTED_TARGET_SHA; do
+	[[ -n "${!required}" ]] || usage 2
+done
+
+command -v jq >/dev/null 2>&1 || deny 'review-gate requires jq'
+command -v git >/dev/null 2>&1 || deny 'review-gate requires git'
+[[ -r "$RECORD" ]] || deny "review record is unreadable: $RECORD"
+[[ -r "$POLICY" ]] || deny "target policy is unreadable: $POLICY"
+[[ -r "$CHANGED_PATHS" ]] || deny "changed-path enumeration is unreadable: $CHANGED_PATHS"
+[[ "$EXPECTED_FORGE" == "github" || "$EXPECTED_FORGE" == "gitlab" ]] || usage 2
+[[ "$EXPECTED_CHANGE_ID" =~ ^[1-9][0-9]*$ ]] || usage 2
+
+validate_policy() {
+	jq -e '
+def nonblank: type == "string" and test("\\S");
+def tier: . == "trivial" or . == "standard" or . == "critical";
+def identifier: type == "string" and test("^[a-z][a-z0-9-]*$");
+def analysis_kind:
+  . == "claims_audit" or . == "falsification" or . == "failure_trace" or
+  . == "analogy_differences" or . == "pattern_sweep" or
+  . == "new_assumptions" or . == "artifact_lifetime";
+def coverage:
+  . == "none" or . == "not_applicable" or . == "partial" or . == "complete";
+. as $p |
+type == "object" and .schema_version == 1 and
+(.risk | type == "object") and ($p.risk.default_tier | tier) and
+($p.risk.zones | type == "array") and
+($p.risk.zones | map(.id) | length == (unique | length)) and
+($p.risk.zones | all(.[];
+  . as $zone |
+  ($zone | type == "object") and ($zone.id | identifier) and
+  ($zone.tier | tier) and
+  ($zone.path_regexes | type == "array" and length > 0 and
+    (length == (unique | length)) and
+    all(.[]; . as $regex |
+      ($regex | nonblank) and ($regex | startswith("^")) and
+      ($regex | endswith("$")) and
+      (try ("" | test($regex) | type == "boolean") catch false))))) and
+($p.checks | type == "object") and
+($p.checks | to_entries | all(.[];
+  (.key | identifier) and (.value | type == "object") and
+  (.value.command | nonblank))) and
+($p.tiers | type == "object") and
+(["trivial", "standard", "critical"] | all(.[];
+  . as $name | $p.tiers[$name] as $cfg |
+  ($cfg | type == "object") and
+  ($cfg.required_checks | type == "array" and
+    (length == (unique | length)) and
+    all(.[]; . as $id | ($id | identifier) and ($p.checks[$id] != null))) and
+  ($cfg.analyses | type == "object") and
+  ($cfg.analyses | to_entries | all(.[];
+    (.key | analysis_kind) and (.value | type == "object") and
+    (.value.allow_not_applicable | type == "boolean"))) and
+  ($cfg.allowed_product_coverage | type == "array" and length > 0 and
+    (length == (unique | length)) and all(.[]; coverage)) and
+  ($cfg.require_verified_claims | type == "boolean") and
+  ($cfg.allow_unverified_claims | type == "boolean") and
+  ($cfg.allow_local_consent | type == "boolean") and
+  ($cfg.require_product_review | type == "boolean") and
+  ($cfg.require_evidence_ref | type == "boolean"))) and
+($p.tiers.critical.allow_unverified_claims == false) and
+($p.tiers.critical.require_verified_claims == true) and
+($p.tiers.critical.allow_local_consent == false) and
+($p.tiers.critical.require_product_review == true) and
+($p.tiers.critical.require_evidence_ref == true) and
+($p.tiers.critical.required_checks | length > 0) and
+($p.tiers.critical.allowed_product_coverage |
+  all(.[]; . == "partial" or . == "complete")) and
+(["claims_audit", "falsification", "failure_trace", "analogy_differences",
+  "pattern_sweep", "new_assumptions", "artifact_lifetime"] |
+  all(.[]; $p.tiers.critical.analyses[.] != null))
+' "$POLICY" >/dev/null 2>&1
+}
+
+validate_record_shape() {
+	jq -e '
+def nonblank: type == "string" and test("\\S");
+def sha: type == "string" and test("^[0-9a-f]{40}([0-9a-f]{24})?$");
+def tier: . == "trivial" or . == "standard" or . == "critical";
+def lane: . == "diff" or . == "product";
+def finding:
+  type == "object" and (.lane | lane) and
+  (.severity == "BLOCKER" or .severity == "HIGH" or
+   .severity == "MEDIUM" or .severity == "LOW") and
+  (.summary | nonblank) and (.scenario | nonblank) and
+  (.resolved | type == "boolean");
+def claim:
+  type == "object" and (.lane | lane) and (.claim | nonblank) and
+  ((.status == "verified" and (.evidence | nonblank)) or
+   (.status == "unverified" and (.reason | nonblank)));
+def check:
+  type == "object" and (.id | type == "string") and (.command | nonblank) and
+  ((.status == "pass" and (.exit_code | type == "number") and
+    (.exit_code | floor == .) and .exit_code == 0 and (.output_summary | nonblank)) or
+   (.status == "fail" and (.exit_code | type == "number") and
+    (.exit_code | floor == .) and (.reason | nonblank)) or
+   (.status == "not_run" and .exit_code == null and (.reason | nonblank)));
+def analysis_kind:
+  . == "claims_audit" or . == "falsification" or . == "failure_trace" or
+  . == "analogy_differences" or . == "pattern_sweep" or
+  . == "new_assumptions" or . == "artifact_lifetime";
+def analysis:
+  type == "object" and (.kind | analysis_kind) and
+  ((.status == "verified" and (.summary | nonblank) and (.evidence | nonblank)) or
+   ((.status == "unverified" or .status == "not_applicable") and
+    (.reason | nonblank)));
+def consent:
+  type == "object" and .granted == true and (.quote | nonblank) and
+  (.at | type == "string" and test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[^ ]+Z$"));
+type == "object" and .schema_version == 2 and
+(.verdict == "pass" or .verdict == "blocked") and
+(.context | type == "object") and
+(.context.forge == "github" or .context.forge == "gitlab") and
+(.context.repository | nonblank) and
+(.context.repository_id | nonblank) and
+(.context.change_id | type == "number" and floor == . and . > 0) and
+(.context.source_branch | nonblank) and (.context.target_branch | nonblank) and
+(.context.source_sha | sha) and (.context.target_sha | sha) and
+(.context.policy_digest | sha) and
+(.risk | type == "object") and (.risk.tier | tier) and (.risk.rationale | nonblank) and
+(.lanes | type == "object") and
+(.lanes.diff | type == "object") and
+(.lanes.diff.verdict == "pass" or .lanes.diff.verdict == "blocked" or
+ .lanes.diff.verdict == "unable_to_verify") and
+(.lanes.diff.summary | nonblank) and
+(.lanes.product | type == "object") and
+(.lanes.product.verdict == "pass" or .lanes.product.verdict == "blocked" or
+ .lanes.product.verdict == "unable_to_verify" or
+ .lanes.product.verdict == "not_applicable") and
+(.lanes.product.coverage == "none" or .lanes.product.coverage == "not_applicable" or
+ .lanes.product.coverage == "partial" or .lanes.product.coverage == "complete") and
+(.lanes.product.summary | nonblank) and
+((.lanes.product.verdict == "not_applicable") ==
+ (.lanes.product.coverage == "not_applicable")) and
+((.lanes.product.verdict != "pass") or
+ (.lanes.product.coverage == "partial" or .lanes.product.coverage == "complete")) and
+(.findings | type == "array" and all(.[]; finding)) and
+(.claims | type == "array" and all(.[]; claim)) and
+(.checks | type == "array" and all(.[]; check) and
+  (map(.id) | length == (unique | length))) and
+(.analyses | type == "array" and all(.[]; analysis) and
+  (map(.kind) | length == (unique | length))) and
+((has("evidence_ref") | not) or (.evidence_ref | nonblank)) and
+((has("user_consent") | not) or (.user_consent | consent))
+' "$RECORD" >/dev/null 2>&1
+}
+
+jq -e . "$POLICY" >/dev/null 2>&1 || deny 'target policy is malformed JSON'
+validate_policy || deny 'target policy schema is invalid or unsupported'
+jq -e 'type == "array" and length > 0 and all(.[]; type == "string" and test("\\S")) and (length == (unique | length))' \
+	"$CHANGED_PATHS" >/dev/null 2>&1 || deny 'changed-path enumeration is malformed, empty, or duplicated'
+jq -e . "$RECORD" >/dev/null 2>&1 || deny 'review record is malformed JSON'
+validate_record_shape || deny 'review record schema is invalid or unsupported'
+
+POLICY_DIGEST=$(git hash-object --no-filters "$POLICY" 2>/dev/null) || \
+	deny 'target policy digest could not be computed'
+
+if ! jq -e \
+	--arg forge "$EXPECTED_FORGE" \
+	--arg repository "$EXPECTED_REPOSITORY" \
+	--arg repository_id "$EXPECTED_REPOSITORY_ID" \
+	--argjson change_id "$EXPECTED_CHANGE_ID" \
+	--arg source_branch "$EXPECTED_SOURCE_BRANCH" \
+	--arg target_branch "$EXPECTED_TARGET_BRANCH" \
+	--arg source_sha "$EXPECTED_SOURCE_SHA" \
+	--arg target_sha "$EXPECTED_TARGET_SHA" \
+	--arg policy_digest "$POLICY_DIGEST" '
+  .context == {
+    forge: $forge,
+    repository: $repository,
+    repository_id: $repository_id,
+    change_id: $change_id,
+    source_branch: $source_branch,
+    target_branch: $target_branch,
+    source_sha: $source_sha,
+    target_sha: $target_sha,
+    policy_digest: $policy_digest
+  }
+' "$RECORD" >/dev/null 2>&1; then
+	deny 'review record does not match the exact forge change context or target-policy digest'
+fi
+
+MINIMUM_TIER=$(jq -nr --slurpfile policy "$POLICY" --slurpfile paths "$CHANGED_PATHS" '
+def rank: if . == "trivial" then 0 elif . == "standard" then 1 else 2 end;
+$policy[0] as $p | $paths[0] as $changed |
+[
+  $p.risk.default_tier,
+  ($p.risk.zones[] as $zone |
+    select([$zone.path_regexes[] as $regex | $changed[] as $path |
+      select($path | test($regex))] | length > 0) |
+    $zone.tier),
+  (if ($changed | index(".agentkit/review-policy.json")) != null
+   then "critical" else empty end)
+] | sort_by(rank) | last
+') || deny 'minimum risk tier could not be derived from target policy'
+
+RECORD_TIER=$(jq -r '.risk.tier' "$RECORD")
+tier_rank() {
+	case "$1" in
+	trivial) printf '0' ;;
+	standard) printf '1' ;;
+	critical) printf '2' ;;
+	*) printf '%s' '-1' ;;
+	esac
+}
+if [[ $(tier_rank "$RECORD_TIER") -lt $(tier_rank "$MINIMUM_TIER") ]]; then
+	deny "record declares $RECORD_TIER but the minimum risk tier is $MINIMUM_TIER"
+fi
+
+REQUIRE_VERIFIED_CLAIMS=$(jq -r --arg tier "$RECORD_TIER" \
+	'.tiers[$tier].require_verified_claims' "$POLICY")
+VERIFIED_CLAIMS=$(jq '[.claims[] | select(.status == "verified")] | length' "$RECORD")
+if [[ "$REQUIRE_VERIFIED_CLAIMS" == "true" && "$VERIFIED_CLAIMS" -eq 0 ]]; then
+	deny "$RECORD_TIER tier requires at least one verified claim"
+fi
+
+BAD_CHECK=$(jq -r --arg tier "$RECORD_TIER" --slurpfile policy "$POLICY" '
+. as $record | $policy[0] as $p |
+[$record.checks[] as $check |
+  select(($p.checks[$check.id] == null) or
+    ($p.checks[$check.id].command != $check.command)) | $check.id][0] // empty
+' "$RECORD")
+[[ -z "$BAD_CHECK" ]] || deny "check '$BAD_CHECK' is unknown or its command differs from target policy"
+
+MISSING_CHECK=$(jq -r --arg tier "$RECORD_TIER" --slurpfile policy "$POLICY" '
+. as $record | $policy[0].tiers[$tier] as $cfg |
+[$cfg.required_checks[] as $id |
+  select(any($record.checks[]; .id == $id) | not) | $id][0] // empty
+' "$RECORD")
+[[ -z "$MISSING_CHECK" ]] || deny "required check '$MISSING_CHECK' is missing"
+
+MISSING_ANALYSIS=$(jq -r --arg tier "$RECORD_TIER" --slurpfile policy "$POLICY" '
+. as $record | $policy[0].tiers[$tier] as $cfg |
+[$cfg.analyses | to_entries[] as $requirement |
+  select(any($record.analyses[];
+    .kind == $requirement.key and
+    (.status == "verified" or
+      (.status == "not_applicable" and $requirement.value.allow_not_applicable))) | not) |
+  $requirement.key][0] // empty
+' "$RECORD")
+[[ -z "$MISSING_ANALYSIS" ]] || deny "required analysis '$MISSING_ANALYSIS' is missing or unsatisfied"
+
+PRODUCT_COVERAGE=$(jq -r '.lanes.product.coverage' "$RECORD")
+if ! jq -en --arg tier "$RECORD_TIER" --arg coverage "$PRODUCT_COVERAGE" \
+	--slurpfile policy "$POLICY" '$policy[0].tiers[$tier].allowed_product_coverage | index($coverage) != null' \
+	/dev/null >/dev/null 2>&1; then
+	deny "product coverage '$PRODUCT_COVERAGE' is not allowed for $RECORD_TIER tier"
+fi
+
+REQUIRE_EVIDENCE=$(jq -r --arg tier "$RECORD_TIER" '.tiers[$tier].require_evidence_ref' "$POLICY")
+if [[ "$REQUIRE_EVIDENCE" == "true" ]] && ! jq -e '.evidence_ref | type == "string" and test("\\S")' \
+	"$RECORD" >/dev/null 2>&1; then
+	deny "an evidence_ref is required for $RECORD_TIER tier"
+fi
+
+ALLOW_UNVERIFIED=$(jq -r --arg tier "$RECORD_TIER" '.tiers[$tier].allow_unverified_claims' "$POLICY")
+UNVERIFIED_CLAIMS=$(jq '[.claims[] | select(.status == "unverified")] | length' "$RECORD")
+
+DERIVED_VERDICT=$(jq -r --arg tier "$RECORD_TIER" --slurpfile policy "$POLICY" '
+. as $record | $policy[0].tiers[$tier] as $cfg |
+if
+  $record.lanes.diff.verdict != "pass" or
+  $record.lanes.product.verdict == "blocked" or
+  ($cfg.require_product_review and $record.lanes.product.verdict != "pass") or
+  any($record.findings[];
+    (.severity == "BLOCKER" or .severity == "HIGH") and (.resolved == false)) or
+  any($record.checks[]; .status != "pass" or .exit_code != 0) or
+  (($cfg.allow_unverified_claims | not) and
+    any($record.claims[]; .status == "unverified")) or
+  ([$cfg.analyses | keys[] as $kind | $record.analyses[] |
+    select(.kind == $kind and .status == "unverified")] | length > 0)
+then "blocked" else "pass" end
+' "$RECORD") || deny 'evidence-derived verdict could not be computed'
+
+STORED_VERDICT=$(jq -r '.verdict' "$RECORD")
+if [[ "$STORED_VERDICT" != "$DERIVED_VERDICT" ]]; then
+	if [[ "$ALLOW_UNVERIFIED" == "false" && "$UNVERIFIED_CLAIMS" -gt 0 ]]; then
+		deny "unverified claims are forbidden for $RECORD_TIER tier; derived verdict is $DERIVED_VERDICT but record says $STORED_VERDICT"
+	fi
+	deny "derived verdict is $DERIVED_VERDICT but record says $STORED_VERDICT"
+fi
+
+HAS_CONSENT=$(jq -r 'has("user_consent")' "$RECORD")
+if [[ "$DERIVED_VERDICT" == "pass" ]]; then
+	[[ "$HAS_CONSENT" == "false" ]] || deny 'user_consent must be absent from a passing record'
+	printf 'PASS: strict review evidence is valid for %s tier\n' "$RECORD_TIER"
+	exit 0
+fi
+
+ALLOW_CONSENT=$(jq -r --arg tier "$RECORD_TIER" '.tiers[$tier].allow_local_consent' "$POLICY")
+if [[ "$HAS_CONSENT" == "true" && "$ALLOW_CONSENT" != "true" ]]; then
+	deny "local consent is disabled for $RECORD_TIER tier"
+fi
+if [[ "$HAS_CONSENT" == "true" && "$ALLOW_CONSENT" == "true" ]]; then
+	printf 'CONSENT_OVERRIDE: valid %s record is blocked, with an explicit local consent claim\n' "$RECORD_TIER"
+	exit 0
+fi
+
+deny "review evidence derives a blocked verdict for $RECORD_TIER tier"
