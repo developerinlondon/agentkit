@@ -1,0 +1,22 @@
+ledger_version: "1.0"
+generated_by: product-intelligence
+generated_at: "2026-07-28T09:00:00Z"
+claims:
+  - id: C-001
+    statement: The engine runs without the console.
+    class: observed
+    confidence: high
+    sources:
+      - locator: "repo:engine:README.md:8"
+        quote: "The console is optional; acme-engine serves rules headless."
+        stance: supports
+        as_of: "2026-07-28"
+  - id: C-002
+    statement: The console is distributed as a separate repository.
+    class: observed
+    confidence: high
+    sources:
+      - locator: "repo:console:README.md:1"
+        quote: "Operator console for acme-engine."
+        stance: supports
+        as_of: "2026-07-28"

@@ -1,0 +1,45 @@
+product_version: "0.1"
+
+product:
+  name: acme-platform
+  one_liner: >-
+    Rules engine plus operator console, sold and supported as one platform
+    rather than as two tools that happen to share a name.
+  homepage: https://acme.example
+
+composition:
+  parts:
+    - id: engine
+      role: core
+      kind: repo
+      target: acme/engine
+      visibility: public
+      description: >-
+        The rules engine itself, its CLI, and the wire format the console
+        speaks. The part a user installs.
+
+    - id: console
+      role: operator UI
+      kind: repo
+      target: acme/console
+      visibility: public
+      description: >-
+        Web console for authoring and inspecting rule sets. Ships separately
+        because it is optional; the engine runs headless.
+
+    - id: cloud
+      role: hosted deployment
+      kind: service
+      target: https://app.acme.example
+      visibility: private
+      description: >-
+        The managed instance. Not a repository — it is where the two repos
+        above are observed running together.
+
+evidence:
+  brief: brief.yaml
+  ledger: ledger.yaml
+
+site:
+  entry: index.md
+  published_at: https://pages.acme.example/acme-platform

@@ -12,28 +12,23 @@ diagram is five identical boxes with different names, it has said nothing.
 Method inspired by coleam00/excalidraw-diagram-skill; text and tooling here are
 original.
 
-## 0 — Pick the register
+## 1 — Classify, then decide the depth
 
-Established engineering notation — **ERD, C4 context/container, deployment
-topology** — goes to the technical register, which renders D2 to a
-self-contained SVG. Everything conceptual, argumentative or explanatory stays
-here in the hand-drawn register.
+**Open `references/selection.md` and copy the notation recipe for the type you
+land on.** It defines the three axes, crosses altitude against relationship
+into the named type, and holds the recipes — crow's-foot cardinality, C4
+boundary semantics, trust zones — that make the figure correct rather than
+merely tidy. Write the classification line first:
 
-```bash
-bun <skill-dir>/scripts/d2-render.ts --in topology.d2 --out topology.svg \
-  --png topology.png --label "Production deployment topology"
-```
+`altitude / relationship / audience → type`
 
-Renderer is pinned to **d2 v0.7.1**; the wrapper refuses any other version,
-inlines vendored CC0 icons (`icon: @postgres`), and fails the render if the
-output is not self-contained. Same render-LOOK-fix loop as below — read the
-PNG, never the SVG. Authoring rules, notation conventions, the icon manifest
-and the trademark rule: `references/technical-register.md`.
+Generic boxes-and-arrows is what comes out when this step was skipped, and a
+figure that mixes two altitudes is misclassified rather than thorough.
 
-Vendor logos are never recoloured or theme-filtered; that is why D2 output is
-exempt from the page's light-mode inversion.
-
-## 1 — Decide the depth
+The type also picks the register. **ERD, C4 context, C4 container and
+deployment topology** route to the technical register below; every other type
+stays in the sketch register this file describes, where a correct glyph teaches
+more than any icon. Then set the depth, which the audience term drives:
 
 - **Conceptual**: mental models, philosophies, quick overviews. Abstract shapes
   and relationships are enough.
@@ -44,10 +39,33 @@ exempt from the page's light-mode inversion.
   Placeholder labels like "API" or "Event 1" are a failure; write
   `PUT /api/pages/:slug` and `RUN_STARTED`, not "endpoint" and "event".
 
+### The technical register
+
+Those four types render D2 to a self-contained SVG instead of hand-written
+Excalidraw:
+
+```bash
+bun <skill-dir>/scripts/d2-render.ts --in topology.d2 --out topology.svg \
+  --png topology.png --label "Production deployment topology"
+```
+
+Renderer is pinned to **d2 v0.7.1**; the wrapper refuses any other version,
+inlines vendored CC0 icons (`icon: @postgres`), and fails the render if the
+output is not self-contained. The render-LOOK-fix discipline of step 5 applies
+unchanged — read the PNG, never the SVG. Vendor logos are never recoloured or
+theme-filtered; that is why D2 output is exempt from the page's light-mode
+inversion.
+
+Steps 2–6 below are the sketch register's. A technical figure leaves here and
+follows `references/technical-register.md` end to end — authoring rules,
+notation conventions, the icon manifest, the trademark rule and how the SVG is
+inlined into a page.
+
 ## 2 — Map each concept to a structural pattern
 
-Pick the shape that behaves like the concept. In one diagram, no two major
-concepts should reuse the same pattern.
+The type from step 1 fixes the notation; this table picks the shape for each
+concept drawn inside it. Pick the shape that behaves like the concept. In one
+diagram, no two major concepts should reuse the same pattern.
 
 | Concept behaves like…       | Draw it as…                                                |
 | --------------------------- | ---------------------------------------------------------- |
@@ -176,6 +194,9 @@ needs a local Chromium — set `AGENTKIT_CHROMIUM` if it isn't auto-found.)
 
 - **Depth**: researched real names/formats? evidence artifacts present
   (technical)? multi-zoom present (large)? teaches something concrete?
+- **Type**: classification line written? notation of that type correct —
+  cardinality glyph at the end touching its entity, boundaries drawn by trust
+  not by team, exactly one altitude in the figure?
 - **Concept**: structure would still communicate with labels removed? shows
   what prose could not? every major concept a different pattern? no uniform
   card grid anywhere?

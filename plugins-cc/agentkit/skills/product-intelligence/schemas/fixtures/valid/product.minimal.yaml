@@ -1,0 +1,8 @@
+product_version: "0.1"
+product:
+  name: acme-notes
+composition:
+  parts:
+    - id: app
+      kind: repo
+      target: acme/notes

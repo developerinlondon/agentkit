@@ -1,0 +1,23 @@
+brief_version: "1.0"
+subject:
+  name: acme-platform
+  homepage: https://acme.example
+  one_liner: Rules engine plus operator console, sold and supported as one platform.
+  origins:
+    - id: engine
+      kind: repo
+      target: acme/engine
+    - id: console
+      kind: repo
+      target: acme/console
+    - id: cloud
+      kind: site
+      target: https://app.acme.example
+evidence:
+  ledger: ledger.yaml
+  acquired_at: "2026-07-28"
+positioning:
+  target_customer: platform teams
+  need: one supported surface across engine and console
+  category: rules platform
+  claims: [C-001]

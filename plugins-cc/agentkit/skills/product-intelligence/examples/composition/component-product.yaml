@@ -1,0 +1,22 @@
+# What `acme/engine` commits as its own `.agentkit/product.yaml`. The `part_of`
+# block is the back-pointer; everything below it is the product-review manifest
+# that file already carries, shown here so the two are visibly one file.
+
+part_of:
+  product: acme-platform
+  product_repo: acme/product
+  part: engine
+
+summary: >-
+  Rules engine and CLI. Serves rule sets headless; the operator console is a
+  separate part of the same product.
+
+surfaces:
+  - name: engine
+    kind: cli
+    build: cargo build --release
+    verify: cargo test --workspace
+    run: ./target/release/acme-engine serve --rules examples/basic.yaml
+    expect: |
+      Binds a local port and answers a rule evaluation with a decision rather
+      than an error.
