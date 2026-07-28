@@ -10,6 +10,7 @@ BASE="origin/main"
 PATHS_FROM=""
 SLICE=""
 FAILED=0
+GROUPS_FAULT=""
 
 # shellcheck source=lib/test-verdict.sh
 source "$SCRIPT_DIR/lib/test-verdict.sh"
@@ -125,12 +126,20 @@ check_bash_status() {
 	return 0
 }
 
+# Runs at shellcheck's default severity, info included, deliberately: SC2016 and
+# SC1091 are info-level and both name real mistakes — a variable that will not
+# expand, and a sourced file whose contents were never analysed. Raising the
+# threshold to warning would buy a quieter gate by not looking.
+#
+# SCRIPTDIR resolves each `# shellcheck source=` directive against the file being
+# checked rather than the caller's working directory, so the sourced libraries
+# are followed instead of reported as unreadable.
 check_shellcheck() {
 	if ! command -v shellcheck >/dev/null 2>&1; then
 		skip "shellcheck not installed — bash-status-check still covers the status-leak class"
 		return 0
 	fi
-	if ! shellcheck -x "$@"; then
+	if ! shellcheck -x --source-path=SCRIPTDIR "$@"; then
 		bad "shellcheck reported findings"
 		return 0
 	fi
@@ -138,17 +147,97 @@ check_shellcheck() {
 	return 0
 }
 
+# Install groups ship as separate plugins, so a skill's mirror lives under its
+# own group's plugin. The manifest readers are shared with the installer and the
+# sync script; a second parser here could disagree with what actually ships.
+plugin_for_skill() {
+	local skill="$1"
+	(
+		SKILL_GROUPS_FILE="$REPO/skills/GROUPS"
+		# shellcheck source=../lib/skill-groups.sh
+		source "$REPO/lib/skill-groups.sh"
+		group_plugin_id "$(skill_group "$skill")"
+	)
+}
+
+# Present is not the same as parseable: a manifest that exists but is malformed
+# would otherwise fall through to core and surface as a mirror failure, blaming
+# the wrong file. The manifest's own validator decides.
+groups_readable() {
+	if [[ ! -f "$REPO/lib/skill-groups.sh" || ! -f "$REPO/skills/GROUPS" ]]; then
+		GROUPS_FAULT="missing lib/skill-groups.sh or skills/GROUPS"
+		return 1
+	fi
+	local complaint
+	if complaint="$(
+		SKILL_GROUPS_FILE="$REPO/skills/GROUPS"
+		# shellcheck source=../lib/skill-groups.sh
+		source "$REPO/lib/skill-groups.sh"
+		validate_skill_groups 2>&1 >/dev/null
+	)"; then
+		return 0
+	fi
+	GROUPS_FAULT="skills/GROUPS does not validate: ${complaint:-unknown fault}"
+	return 1
+}
+
+# plugins-cc also holds plugins that are not group mirrors of skills/ at all, so
+# only a declared group's plugin maps back to a source skill.
+is_group_plugin() {
+	local plugin="$1" declared
+	for declared in $(
+		SKILL_GROUPS_FILE="$REPO/skills/GROUPS"
+		# shellcheck source=../lib/skill-groups.sh
+		source "$REPO/lib/skill-groups.sh"
+		declared_groups
+	); do
+		if [[ "$plugin" == "$(plugin_for_group "$declared")" ]]; then
+			return 0
+		fi
+	done
+	return 1
+}
+
+plugin_for_group() {
+	(
+		SKILL_GROUPS_FILE="$REPO/skills/GROUPS"
+		# shellcheck source=../lib/skill-groups.sh
+		source "$REPO/lib/skill-groups.sh"
+		group_plugin_id "$1"
+	)
+}
+
 mirror_of() {
-	local path="$1"
+	local path="$1" skill plugin
 	case "$path" in
-	skills/*) printf 'plugins-cc/agentkit/%s' "$path" ;;
-	plugins-cc/agentkit/skills/*) printf '%s' "${path#plugins-cc/agentkit/}" ;;
+	skills/*/*)
+		skill="${path#skills/}"
+		skill="${skill%%/*}"
+		printf 'plugins-cc/%s/%s' "$(plugin_for_skill "$skill")" "$path"
+		;;
+	plugins-cc/*/skills/*/*)
+		plugin="${path#plugins-cc/}"
+		plugin="${plugin%%/*}"
+		if is_group_plugin "$plugin"; then
+			printf 'skills/%s' "${path#plugins-cc/*/skills/}"
+		fi
+		;;
 	*) printf '' ;;
 	esac
 }
 
 check_mirror() {
 	local path mirror checked=0 status=0
+	if ! groups_readable; then
+		for path in "$@"; do
+			case "$path" in
+			skills/*/* | plugins-cc/*/skills/*/*)
+				bad "cannot resolve skill groups ($GROUPS_FAULT) — mirror parity unchecked"
+				return 0
+				;;
+			esac
+		done
+	fi
 	for path in "$@"; do
 		mirror="$(mirror_of "$path")"
 		if [[ -z "$mirror" ]]; then
@@ -251,7 +340,7 @@ check_format() {
 	for path in "$@"; do
 		case "$path" in
 		*.md | *.json | *.toml | *.yaml | *.yml)
-			formattable[$count]="$path"
+			formattable[count]="$path"
 			count=$((count + 1))
 			;;
 		esac
@@ -320,13 +409,33 @@ normalise_path() {
 	return 0
 }
 
-# A skill is the unit that ships, and install groups can put two skills in
-# different plugins. An import reaching out of its own skill therefore survives
-# every same-repo check and dangles only in the artifact a user installs — and a
-# byte-parity mirror check copies it faithfully, because parity is sameness, not
-# loadability.
+# A skill is the unit that ships, and install groups put skills in different
+# plugins. An import reaching out of its own skill survives every same-repo check
+# and dangles only in the artifact a user installs — byte parity copies it
+# faithfully, because parity is sameness, not loadability. The shipped tree is
+# therefore the only authority: the sync deliberately carries a consumed module
+# into the consumer's plugin, so an escaping import is fine exactly when the
+# importing skill's own plugin contains the target.
+#
+# Only static imports are fatal: they resolve at module load, so a missing target
+# kills the plugin outright. A dynamic import() is a runtime branch its author
+# already has to handle, and the sync carries only the statically imported leaf.
+# Relative specifiers that resolve when the module loads, in every spelling that
+# does so: a from-clause, a bare side-effect import, and require, which is
+# synchronous and throws where it sits. A dynamic import() is excluded because it
+# is a runtime branch its caller already has to handle. A type-only import is
+# excluded because it is erased before the code ever runs.
+static_specifiers() {
+	local file="$1"
+	code_lines "$file" |
+		grep -vE "^[0-9]+:[[:space:]]*(import|export)[[:space:]]+type[[:space:]]" |
+		grep -oE "^[0-9]+:[[:space:]]*(import|export)[^;]*[[:space:]]from[[:space:]]*['\"]\.[^'\"]*['\"]|^[0-9]+:[[:space:]]*import[[:space:]]*['\"]\.[^'\"]*['\"]|require[[:space:]]*\([[:space:]]*['\"]\.[^'\"]*['\"]" |
+		grep -oE "['\"]\.[^'\"]*['\"]" | tr -d "\"'" || true
+	return 0
+}
+
 check_cross_skill_import() {
-	local path status=0 skill dir spec target
+	local path status=0 skill dir spec target plugin shipped
 	for path in "$@"; do
 		case "$path" in
 		skills/*/*.ts | skills/*/*.js | skills/*/*.mjs) ;;
@@ -335,22 +444,26 @@ check_cross_skill_import() {
 		skill="${path#skills/}"
 		skill="skills/${skill%%/*}"
 		dir="$(dirname "$path")"
+		plugin=""
 		while IFS= read -r spec; do
 			if [[ -z "$spec" ]]; then
 				continue
 			fi
 			target="$(normalise_path "$dir" "$spec")"
 			case "$target" in
-			"$skill"/*) ;;
-			*)
-				bad "$path imports $spec, outside $skill — it dangles wherever the skills ship apart"
-				status=1
-				;;
+			"$skill"/*) continue ;;
 			esac
+			if [[ -z "$plugin" ]]; then
+				plugin="$(plugin_for_skill "${skill#skills/}")"
+			fi
+			shipped="plugins-cc/$plugin/$target"
+			if [[ -f "$REPO/$shipped" ]]; then
+				continue
+			fi
+			bad "$path statically imports $spec, which $plugin does not ship at $shipped"
+			status=1
 		done <<EOF
-$(code_lines "$REPO/$path" |
-			grep -oE "(from|import|require)[[:space:]]*\(?[[:space:]]*['\"]\.[^'\"]*['\"]" |
-			grep -oE "['\"]\.[^'\"]*['\"]" | tr -d "\"'" || true)
+$(static_specifiers "$REPO/$path")
 EOF
 	done
 	if [[ "$status" -eq 0 ]]; then
@@ -392,6 +505,7 @@ check_restore_by_checkout() {
 		discard="$discard"'|git[[:space:]]+restore[[:space:]]+[^-[:space:]]'
 		discard="$discard"'|git[[:space:]]+(stash|clean)([[:space:]]|$)'
 		exec_verb='(^|[^A-Za-z])(execSync|execFileSync|execFile|spawnSync|spawn|exec|system)[[:space:]]*\('
+		# shellcheck disable=SC2016  # regex literal: $ is an anchor, not expansion.
 		exec_verb="$exec_verb"'|Bun\.\$|(^|[[:space:]])\$([[:space:]]|$)|(sh|bash)[[:space:]]+-c'
 		if is_shell_file "$REPO/$path"; then
 			hits="$(printf '%s\n' "$flat" | grep -E "$discard" || true)"
@@ -440,7 +554,7 @@ check_negative_path() {
 	local path status=0
 	for path in "$@"; do
 		case "$path" in
-		tests/*.ts | tests/*/*.ts) ;;
+		tests/*.ts) ;;
 		*) continue ;;
 		esac
 		if ! grep -qiE 'cannot find (package|module)' "$REPO/$path"; then
@@ -465,7 +579,7 @@ check_real_home() {
 	local path status=0
 	for path in "$@"; do
 		case "$path" in
-		tests/*.ts | tests/*/*.ts) ;;
+		tests/*.ts) ;;
 		*) continue ;;
 		esac
 		if ! code_lines "$REPO/$path" | grep -qE 'install\.sh|AGENTKIT_HOME'; then
@@ -504,10 +618,10 @@ while IFS= read -r candidate; do
 	if [[ -z "$candidate" || ! -f "$REPO/$candidate" ]]; then
 		continue
 	fi
-	EXISTING[$EXISTING_COUNT]="$candidate"
+	EXISTING[EXISTING_COUNT]="$candidate"
 	EXISTING_COUNT=$((EXISTING_COUNT + 1))
 	if is_shell_file "$REPO/$candidate"; then
-		SHELL_FILES[$SHELL_COUNT]="$REPO/$candidate"
+		SHELL_FILES[SHELL_COUNT]="$REPO/$candidate"
 		SHELL_COUNT=$((SHELL_COUNT + 1))
 	fi
 done <<EOF

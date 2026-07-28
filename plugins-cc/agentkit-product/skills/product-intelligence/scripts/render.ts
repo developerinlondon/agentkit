@@ -1,20 +1,27 @@
 #!/usr/bin/env bun
-// Renders a brief + ledger into the form a human reads, evidence woven in.
-// Every interpolation is UNTRUSTED — quotes are verbatim crawled excerpts and
-// the output publishes under a CSP that permits inline script. esc() stops
-// HTML from forming; mdEsc() also stops markdown, since the page is markdown
-// rendered later by marked — metacharacters would go live or eat characters.
+// The deck rendering, and the CLI both lanes ship behind. A deck lands in
+// publish-page's slide grammar — markdown the publisher reparses — so every
+// untrusted value here is escaped into markdown as well as into HTML. The doc
+// page carries no such second parse and lives in doc.ts.
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import {
+  artifacts,
+  chunk,
+  collapse,
+  contradictionPairs,
+  type Dict,
+  missingTerminalPeriod,
+  positioningSentences,
+} from './brief.ts';
+import { briefTitle, renderBrief } from './doc.ts';
 // The deck lands in publish-page's slide grammar, so the rule for what cuts a
 // slide is read from the publisher rather than restated here.
 import { outsideFences, slideBreaks } from '../../publish-page/slides.ts';
 
-type Dict = Record<string, any>;
-
 // GFM autolinks a bare URL, www host or email with no link syntax at all, which
-// would let a crawled source place a live outbound link on the page and swallow
+// would let a crawled source place a live outbound link on a slide and swallow
 // a following escape into the link text. These zero-width positions take a
 // backslash, which the renderer resolves away, so the reader sees the original.
 const AUTOLINK = /(?<=https?|ftp|mailto)(?=:)|(?<=www)(?=\.)|(?=@)/gi;
@@ -32,16 +39,6 @@ const ENTITY: Record<string, string> = {
   "'": '&#39;',
   '|': '&#124;',
 };
-
-// Markdown containers — table rows, list items, HTML blocks — are
-// line-structured: a newline ends the row or block and a blank line lets
-// crawled text continue at document level, minting headings that read as the
-// analyst's own. A lone CR counts: marked's lexer normalises it to LF, so CRCR
-// is a blank line. source() splits a quote into lines first, so multi-line
-// quotes keep their shape.
-function collapse(value: unknown): string {
-  return String(value ?? '').replace(/\s*[\r\n]\s*/g, ' ');
-}
 
 // The pipe is entity-encoded so escaped text cannot split a GFM table cell.
 function esc(value: unknown): string {
@@ -82,215 +79,14 @@ function code(value: unknown): string {
   return `<code>${mdEsc(value)}</code>`;
 }
 
-// Citation ids come from the brief, not only from the ledger, so a hostile
-// one reaches the label. marked runs inline markdown between inline HTML
-// tags, so the label needs the metacharacters encoded, not just esc().
-function link(ref: string): string {
-  return `<a href="#${escText(ref).toLowerCase()}">${escText(ref)}</a>`;
-}
-
-function cites(claims?: string[]): string {
-  if (!claims || claims.length === 0) return '';
-  return ` <sup>${claims.map(link).join(' ')}</sup>`;
+// Inside a raw-HTML island marked runs no inline pass, so code()'s backslash
+// escapes would reach the reader literally. Entities decode to themselves there.
+function codeText(value: unknown): string {
+  return `<code>${escText(value)}</code>`;
 }
 
 function chip(label: string, value: string): string {
   return `<span class="chip"><strong>${escText(label)}</strong> ${escText(value)}</span>`;
-}
-
-function subjectTitle(brief: Dict): string {
-  return `${collapse(brief.subject?.name ?? 'Untitled product')}: what the evidence says`;
-}
-
-function header(brief: Dict, ledger: Dict): string {
-  const subject = brief.subject ?? {};
-  const claims = (ledger.claims ?? []) as Dict[];
-  const byClass = new Map<string, number>();
-  for (const c of claims) byClass.set(c.class, (byClass.get(c.class) ?? 0) + 1);
-  const mix = [...byClass.entries()].map(([k, n]) => `${n} ${k}`).join(' · ');
-  const count = `${claims.length} claim${claims.length === 1 ? '' : 's'}${mix ? ` — ${mix}` : ''}`;
-  const chips = [
-    subject.repo ? chip('Repo', subject.repo) : '',
-    subject.homepage ? chip('Site', subject.homepage) : '',
-    chip('Evidence', count),
-    brief.evidence?.acquired_at
-      ? chip('Acquired', brief.evidence.acquired_at)
-      : ledger.generated_at
-      ? chip('Generated', ledger.generated_at)
-      : '',
-    (subject.origins?.length ?? 0) > 1
-      ? chip('Origins', subject.origins.map((o: Dict) => o.id).join(' + '))
-      : '',
-  ].filter(Boolean).join('');
-  const sourced = claims.some((c) => (c.sources ?? []).length > 0);
-  const promise = sourced
-    ? 'every observed and inferred claim carries a verbatim quote from an acquired source'
-    : 'each claim states its kind and how solid its basis is';
-  const lines = [`# ${mdEsc(subjectTitle(brief))}`, ''];
-  lines.push(`<div class="chips">${chips}</div>`, '');
-  if (subject.one_liner) lines.push(`**${mdEsc(subject.one_liner)}**`, '');
-  lines.push(
-    `<div class="callout"><strong>How to read this.</strong> Every material statement links to a numbered claim in the evidence section — ${promise}. Statements are labeled by kind (observed, inferred, proposed, unverified) and never stronger than their evidence. What could not be established is said plainly instead of papered over.</div>`,
-    '',
-  );
-  return lines.join('\n');
-}
-
-function missingTerminalPeriod(value: unknown): string {
-  return /[.!?]$/.test(String(value ?? '').trim()) ? '' : '.';
-}
-
-// Moore's six slots are all optional, so compose only complete thoughts: a
-// half-filled slot set must read as a short sentence, never as a fragment
-// ending in a comma — and no slot may be silently dropped.
-function positioningSentences(brief: Dict): string[] {
-  const p = brief.positioning;
-  if (!p) return [];
-  const name = mdEsc(brief.subject?.name ?? 'It');
-  const sentences: string[] = [];
-  const lead = p.target_customer && p.need
-    ? `**For** ${mdEsc(p.target_customer)} **who need** ${mdEsc(p.need)}`
-    : '';
-  const subject = p.category ? `**${name}** is ${/^[aeiou]/i.test(p.category) ? 'an' : 'a'} ${mdEsc(p.category)}` : `**${name}**`;
-  const benefit = p.key_benefit ? ` that delivers ${mdEsc(p.key_benefit)}` : '';
-  if (lead || p.category || p.key_benefit) sentences.push(`${lead ? `${lead}, ` : ''}${subject}${benefit}.`);
-  if (p.alternative && p.differentiation) {
-    sentences.push(`**Unlike** ${mdEsc(p.alternative)}, ${mdEsc(p.differentiation)}.`);
-  } else if (p.alternative) {
-    sentences.push(`The alternative it is measured against: ${mdEsc(p.alternative)}.`);
-  } else if (p.differentiation) {
-    sentences.push(`What sets it apart: ${mdEsc(p.differentiation)}.`);
-  }
-  if (!lead && p.need) sentences.push(`The need it answers: ${mdEsc(p.need)}.`);
-  if (!lead && p.target_customer) sentences.push(`Who it is for: ${mdEsc(p.target_customer)}.`);
-  return sentences;
-}
-
-function positioning(brief: Dict): string {
-  const sentences = positioningSentences(brief);
-  if (sentences.length === 0) return '';
-  return `## What it is\n\n${sentences.join(' ')}${cites(brief.positioning?.claims)}\n`;
-}
-
-function valueMap(brief: Dict): string {
-  const rows = (brief.value_map ?? []) as Dict[];
-  if (rows.length === 0) return '';
-  const cards = rows.map((r) => {
-    const proof = r.proof ? `<p><em>Check it: ${escText(r.proof)}.</em>${cites(r.claims)}</p>` : '';
-    const tail = proof || (r.claims?.length ? `<p>${cites(r.claims)}</p>` : '');
-    return `<div class="card"><h3>${escText(r.attribute)}</h3><p>${escText(r.value)}.</p>${tail}</div>`;
-  }).join('\n');
-  return `## What that gets you\n\n<div class="cards">\n${cards}\n</div>\n`;
-}
-
-// The schema's job-story template already supplies "I want"/"so I can", so the
-// field values are the bare clauses — don't restate the verbs around them.
-function jobStories(brief: Dict): string {
-  const rows = (brief.job_stories ?? []) as Dict[];
-  if (rows.length === 0) return '';
-  const items = rows.map((r) =>
-    `- **When** ${mdEsc(r.situation)} — ${mdEsc(r.motivation)}, **so that** ${mdEsc(r.outcome)}.${cites(r.claims)}`
-  ).join('\n');
-  return `## In a user's words\n\n${items}\n`;
-}
-
-function workflows(brief: Dict): string {
-  const flows = (brief.workflows ?? []) as Dict[];
-  if (flows.length === 0) return '';
-  const blocks = flows.map((f) => {
-    const steps = ((f.steps ?? []) as Dict[]).map((s) =>
-      `| ${code(s.step)} | ${mdEsc(s.description)}${cites(s.claims)} |`
-    ).join('\n');
-    return `**${mdEsc(f.name)}**\n\n| step | what happens |\n| --- | --- |\n${steps}`;
-  }).join('\n\n');
-  return `## Where it sits in the work\n\n${blocks}\n`;
-}
-
-function siteInventory(brief: Dict): string {
-  const rows = (brief.site_inventory ?? []) as Dict[];
-  if (rows.length === 0) return '';
-  const body = rows.map((r) => {
-    const page = r.title ? `${code(r.locator)}<br/>${mdEsc(r.title)}` : code(r.locator);
-    return `| ${page} | ${mdEsc(r.page_type)} | ${mdEsc(r.disposition ?? '—')} | ${mdEsc(r.rationale ?? '—')}${cites(r.claims)} |`;
-  }).join('\n');
-  return `## Public surface, page by page\n\n| page | type | verdict | why |\n| --- | --- | --- | --- |\n${body}\n`;
-}
-
-// A dangling or self-referential target would render an empty bold span and a
-// dead anchor. renderBrief validates nothing, so unvalidated input reaches
-// here; drop the pair rather than print a broken row. Dedupe runs on positions,
-// never on ids joined by a delimiter: an id carrying that delimiter split back
-// into two ids matching no claim, and the consumers dereferenced undefined.
-function contradictionPairs(ledger: Dict): Array<[Dict, Dict]> {
-  const claims = (ledger.claims ?? []) as Dict[];
-  const indexById = new Map<string, number>();
-  claims.forEach((c, i) => indexById.set(c.id, i));
-  const seen = new Set<string>();
-  const pairs: Array<[Dict, Dict]> = [];
-  for (const [self, c] of claims.entries()) {
-    for (const other of (c.contradicts ?? []) as string[]) {
-      const target = indexById.get(other);
-      if (other === c.id || target === undefined || target === self) continue;
-      const key = self < target ? `${self}:${target}` : `${target}:${self}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      // Ordered by id so a pair reads the same whichever side declared it.
-      const [one, two] = [c, claims[target]];
-      pairs.push(String(one.id) <= String(two.id) ? [one, two] : [two, one]);
-    }
-  }
-  return pairs;
-}
-
-function contradictions(ledger: Dict): string {
-  const pairs = contradictionPairs(ledger);
-  if (pairs.length === 0) return '';
-  const rows = pairs.map(([one, two]) => {
-    return `- ${link(one.id)} says **${mdEsc(one.statement)}** — `
-      + `while ${link(two.id)} says **${mdEsc(two.statement)}**${missingTerminalPeriod(two.statement)} `
-      + 'Both sources are recorded; neither is silently preferred.';
-  }).join('\n');
-  return `## Unresolved contradictions\n\n<div class="callout"><strong>Recorded, not reconciled.</strong> The sources disagree and the disagreement is the finding.</div>\n\n${rows}\n`;
-}
-
-function cannotVerify(brief: Dict): string {
-  const rows = (brief.cannot_verify ?? []) as Dict[];
-  if (rows.length === 0) return '';
-  const items = rows.map((r) => `- **${mdEsc(r.what)}** — ${mdEsc(r.why)}.`).join('\n');
-  return `## What we could not verify\n\n<div class="callout"><strong>Said plainly.</strong> Absence of a section above means <em>unknown</em>, never <em>does not exist</em>.</div>\n\n${items}\n`;
-}
-
-// findings.md carries crawled quotes, so its structure is trusted but its
-// inline content is not. Outside code fences, HTML and link syntax are both
-// neutralised: no anchor can form, so no destination needs judging. Filtering
-// destinations instead re-decides per line, before entity decoding, what the
-// parser decides later and across lines — a scheme survives as an entity or a
-// split reference. Fence interiors stay untouched: marked escapes them.
-function sanitizeFindings(body: string): string {
-  return body
-    // Backslash FIRST: an input `\[` would otherwise pair with the backslash
-    // added below, and the brackets would go back to being live link syntax.
-    .replace(/\\/g, '\\\\')
-    .replace(/[[\]()<]/g, '\\$&')
-    .replace(AUTOLINK, '\\');
-}
-
-// An unclosed fence here renders the rest of THIS section as code and nothing
-// else, because the section is last. Deciding whether to append a closer meant
-// a second fence scanner shadowing the one that renders the page, and it
-// disagreed on line endings, mixed runs and fences inside list items — each
-// time appending a run that opened a fence over everything below.
-function findings(dir: string): string {
-  const path = join(dir, 'findings.md');
-  if (!existsSync(path)) return '';
-  const body = sanitizeFindings(
-    readFileSync(path, 'utf-8')
-      .replace(/\r\n?/g, '\n')
-      .replace(/^# .*\n/, '')
-      .replace(/^## /gm, '### ')
-      .trim(),
-  );
-  return `## What the analyze pass flagged\n\n${body}\n`;
 }
 
 const STANCE_LABEL: Record<string, string> = {
@@ -316,76 +112,19 @@ function source(s: Dict): string {
   return `${quoted}\n>\n> — ${stance}, ${code(s.locator)}, as of ${mdEsc(s.as_of)}`;
 }
 
-function evidence(brief: Dict, ledger: Dict): string {
-  const claims = (ledger.claims ?? []) as Dict[];
-  if (claims.length === 0) return '';
-  const known = new Set(claims.map((c) => c.id));
-  const refs = (ids: unknown, self: string) =>
-    ((ids ?? []) as string[]).filter((id) => id !== self && known.has(id));
-  const blocks = claims.map((c) => {
-    const badge = `<span class="chip"><strong>${escText(c.class)}</strong> ${escText(c.confidence)}</span>`;
-    const from = refs(c.derived_from, c.id);
-    const against = refs(c.contradicts, c.id);
-    const derived = from.length ? ` <em>inferred from ${from.map(link).join(', ')}</em>` : '';
-    const conflict = against.length ? ` <em>contradicts ${against.map(link).join(', ')}</em>` : '';
-    const sources = (c.sources ?? []) as Dict[];
-    const body = sources.length > 0
-      ? sources.map(source).join('\n>\n')
-      : `> _No source — this claim is ${mdEsc(c.class)}, carried as such rather than dressed up._`;
-    return `<span id="${escText(c.id).toLowerCase()}"></span>**${mdEsc(c.id)}** ${badge} — ${mdEsc(c.statement)}${derived}${conflict}\n\n${body}`;
-  }).join('\n\n');
-  const origins = ((brief.subject?.origins ?? []) as Dict[])
-    .map((o) => `**${mdEsc(o.id)}** (${mdEsc(o.kind)}) ${code(o.target)}`).join(' · ');
-  const acq = ((brief.evidence?.acquisition ?? []) as Dict[])
-    .map((a) => `${code(a.tool)} → ${mdEsc(a.target)} (${mdEsc(a.retrieved_at)})`).join(' · ');
-  const generated = [
-    ledger.generated_by ? `by ${code(ledger.generated_by)}` : '',
-    ledger.generated_at ? `at ${mdEsc(ledger.generated_at)}` : '',
-  ].filter(Boolean).join(' ');
-  const trail = [
-    origins ? `Origins: ${origins}.` : '',
-    acq ? `Acquired with: ${acq}.` : '',
-    generated ? `Ledger generated ${generated}.` : '',
-  ].filter(Boolean).join('\n\n');
-  const provenance = trail ? `\n${trail}\n` : '';
-  return `## The evidence, claim by claim\n\n${blocks}\n${provenance}`;
-}
-
-function artifacts(dir: string): { brief: Dict; ledger: Dict } {
-  const briefPath = join(dir, 'brief.yaml');
-  const ledgerPath = join(dir, 'ledger.yaml');
-  for (const p of [briefPath, ledgerPath]) {
-    if (!existsSync(p)) throw new Error(`missing ${p} — render needs both brief.yaml and ledger.yaml`);
-  }
-  return {
-    brief: Bun.YAML.parse(readFileSync(briefPath, 'utf-8')) as Dict,
-    ledger: Bun.YAML.parse(readFileSync(ledgerPath, 'utf-8')) as Dict,
-  };
-}
-
-// The page's own <title>, taken before markdown escaping: the h1 carries
-// backslash escapes that a title bar would show literally.
-export function briefTitle(dir: string): string {
-  return subjectTitle(artifacts(dir).brief);
-}
-
-export function renderBrief(dir: string): string {
-  const { brief, ledger } = artifacts(dir);
-  const sections = [
-    header(brief, ledger),
-    positioning(brief),
-    valueMap(brief),
-    jobStories(brief),
-    workflows(brief),
-    siteInventory(brief),
-    contradictions(ledger),
-    cannotVerify(brief),
-    evidence(brief, ledger),
-    // Last: it is the one section whose block structure comes from a file we
-    // did not generate, so nothing downstream can be damaged by it.
-    findings(dir),
-  ];
-  return sections.filter(Boolean).join('\n');
+// Outside code fences, HTML and link syntax are both neutralised: no anchor can
+// form, so no destination needs judging. Filtering destinations instead
+// re-decides per line, before entity decoding, what the parser decides later and
+// across lines — a scheme survives as an entity or a split reference. A fence
+// interior is escaped too, which the reader sees, because a code block resolves
+// no escape: the doc lane emits HTML for exactly this reason.
+function sanitizeFindings(body: string): string {
+  return body
+    // Backslash FIRST: an input `\[` would otherwise pair with the backslash
+    // added below, and the brackets would go back to being live link syntax.
+    .replace(/\\/g, '\\\\')
+    .replace(/[[\]()<]/g, '\\$&')
+    .replace(AUTOLINK, '\\');
 }
 
 // The deck theme owns the URL hash — it numbers slides there and rewrites it on
@@ -393,18 +132,6 @@ export function renderBrief(dir: string): string {
 // followed. Claim ids travel as mono text markers, never as links.
 function citeIds(claims?: unknown): string {
   return ((claims ?? []) as string[]).join(' · ');
-}
-
-// Inside a raw-HTML island marked runs no inline pass, so code()'s backslash
-// escapes would reach the reader literally. Entities decode to themselves there.
-function codeText(value: unknown): string {
-  return `<code>${escText(value)}</code>`;
-}
-
-function chunk<T>(items: T[], size: number): T[][] {
-  const out: T[][] = [];
-  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
-  return out;
 }
 
 // One idea per slide: a mono kicker, one h2, then the shape. Both labels are
@@ -463,8 +190,10 @@ function cover(brief: Dict, ledger: Dict): string {
   ].filter(Boolean).join('\n');
 }
 
+const DECK_VOICE = { esc: mdEsc, strong: (md: string) => `**${md}**` };
+
 function positioningSlide(brief: Dict): string {
-  const sentences = positioningSentences(brief);
+  const sentences = positioningSentences(brief, DECK_VOICE);
   if (sentences.length === 0) return '';
   const ids = citeIds(brief.positioning?.claims);
   const cited = ids ? `<div class="chips">${chip('claims', ids)}</div>` : '';
@@ -741,10 +470,12 @@ if (import.meta.main) {
       : html
       ? await (await import('./html.ts')).renderBriefHtml(dir)
       : renderBrief(dir);
-    const target = outPath ?? join(dir, deck ? 'brief-deck.md' : html ? 'index.html' : 'brief-page.md');
+    const target = outPath ?? join(dir, deck ? 'brief-deck.md' : html ? 'index.html' : 'brief-page.html');
     writeFileSync(target, page);
     if (deck) {
       console.error('note: publish with --template deck --title "<subject>" — a deck has no document heading');
+    } else if (!html) {
+      console.error(`note: publish with --title ${JSON.stringify(briefTitle(dir))} — the page is HTML, not markdown`);
     }
     console.log(target);
   } catch (error) {

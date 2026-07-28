@@ -10,6 +10,7 @@ export const TEST_SLICES = {
     'tests/diagram/extract-sources.test.ts',
     'tests/diagram/icons.test.ts',
     'tests/diagram/render.test.ts',
+    'tests/diagram/vendor-icons.test.ts',
   ],
   hooks: [
     'tests/agentkit-plugin.test.ts',
@@ -47,6 +48,7 @@ export const TEST_SLICES = {
     'tests/product-intelligence/schemas.test.ts',
     'tests/publish-page/deck-template.test.ts',
     'tests/publish-page/lint.test.ts',
+    'tests/publish-page/mermaid-runtime.test.ts',
     'tests/publish-page/pages-police.test.ts',
   ],
   resources: [

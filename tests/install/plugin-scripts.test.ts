@@ -32,9 +32,10 @@ describe('shipped plugin scripts resolve where they ship', () => {
   // The entry point SKILL.md tells the reader to run, actually loaded: the
   // build above proves the graph resolves, this proves the module evaluates.
   test('the product brief renderer loads from its shipped copy', async () => {
-    const renderer = join(pluginsRoot, 'agentkit-product/skills/product-intelligence/scripts/render.ts');
-    const module = await import(renderer);
-    expect(typeof module.renderDeck).toBe('function');
-    expect(typeof module.renderBrief).toBe('function');
+    const scripts = join(pluginsRoot, 'agentkit-product/skills/product-intelligence/scripts');
+    expect(typeof (await import(join(scripts, 'render.ts'))).renderDeck).toBe('function');
+    const doc = await import(join(scripts, 'doc.ts'));
+    expect(typeof doc.renderBrief).toBe('function');
+    expect(typeof doc.briefTitle).toBe('function');
   });
 });
