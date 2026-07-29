@@ -16,9 +16,10 @@ surfaces:
     build: scripts/product-command default -- bun install
     verify: scripts/product-command default -- bun test
     expect: |
-      The suite passes with 0 failures (a few skips are expected). Deliberately
-      not a pinned count — this file exists to catch stale expectations, so it
-      should not carry one that drifts on every PR that adds a test.
+      The suite passes with 0 failures. Platform-specific skips are expected and
+      must be reported by surface rather than summarized as a small fixed count.
+      Deliberately not a pinned count — this file exists to catch stale
+      expectations, so it should not carry one that drifts on every PR that adds a test.
       The suite is the real gate on this repo: it asserts the plugin wiring,
       that every police hook parses under `bash -n`, and that `skills/` stays
       byte-identical to the plugin mirror.
@@ -41,6 +42,45 @@ surfaces:
       evidence through the bundled `review-gate` validator. A timeout, crash,
       or malformed response from that policy hook is converted to an explicit
       deny before the host hook deadline.
+
+  - name: opencode-plugin
+    kind: cli
+    run: |
+      set -eu
+      project="$(mktemp -d)"
+      trap 'rm -rf "$project"' EXIT
+      probe_home="$project/home"
+      mkdir -p "$probe_home"
+      CI=1 AGENTKIT_SKIP_PROMPT=1 ./install.sh "$project"
+      if ! output="$(
+        cd "$project"
+        HOME="$probe_home" \
+          XDG_CONFIG_HOME="$project/xdg-config" \
+          XDG_DATA_HOME="$project/xdg-data" \
+          XDG_CACHE_HOME="$project/xdg-cache" \
+          opencode debug config --print-logs --log-level DEBUG 2>&1
+      )"; then
+        printf '%s\n' "$output"
+        exit 1
+      fi
+      printf '%s\n' "$output"
+      for error in 'failed to load plugin' 'plugin config hook failed' 'plugin dispose hook failed'; do
+        if printf '%s\n' "$output" | grep -Fq "$error"; then
+          exit 1
+        fi
+      done
+      for plugin in plugins/*.ts; do
+        name="${plugin##*/}"
+        if ! printf '%s\n' "$output" | grep -Fq "/.opencode/plugins/$name"; then
+          exit 1
+        fi
+      done
+    expect: |
+      A project-local install completes without touching the reviewer's normal
+      OpenCode configuration. OpenCode starts with every shipped OpenCode plugin
+      in its resolved configuration and emits no load, config-hook, or dispose-hook
+      error. The probe fails even though `opencode debug config` itself can exit 0
+      after logging one of those errors.
 
   - name: review-gate
     kind: cli
@@ -92,10 +132,11 @@ requires:
   hardware: []
   credentials: []
   notes:
-    - Claude Code (or OpenCode) must be installed to exercise the `plugin`
-      surface. The exact test-suite commands need bun. On Linux,
-      `scripts/product-command` also requires the installed `agentkit-run`
-      entry point and fails closed if it is absent.
+    - Claude Code must be installed to exercise the `plugin` surface. OpenCode
+      must be installed to exercise the `opencode-plugin` surface. The exact
+      test-suite commands need bun. On Linux, `scripts/product-command` also
+      requires the installed `agentkit-run` entry point and fails closed if it
+      is absent.
     - >-
       Local containment is Linux-only and requires cgroup v2, a systemd user
       manager, and a provisioned agent-work.slice. On non-Linux hosts the

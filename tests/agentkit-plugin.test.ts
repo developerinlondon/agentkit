@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+import type { PluginInput } from '@opencode-ai/plugin';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { pluginIdFor, readSkillGroups, skillsInGroup } from '../scripts/skill-groups';
@@ -27,6 +28,59 @@ const filesUnder = (dir: string, prefix = ''): string[] =>
 
 const repoRoot = join(import.meta.dir, '..');
 const pluginDir = join(repoRoot, 'plugins-cc', 'agentkit');
+const openCodePluginDir = join(repoRoot, 'plugins');
+
+type PluginServer = (input: PluginInput) => Promise<unknown>;
+
+function openCodeServers(plugin: Record<string, unknown>, id: string): PluginServer[] {
+  const entry = plugin.default;
+  if (
+    entry !== null
+    && typeof entry === 'object'
+    && ('id' in entry || 'server' in entry || 'tui' in entry)
+  ) {
+    const module = entry as Record<string, unknown>;
+    expect(module.id).toBe(id);
+    expect(typeof module.server).toBe('function');
+    if (typeof module.server !== 'function') throw new TypeError('Plugin server is not a function');
+    return [module.server as PluginServer];
+  }
+
+  const seen = new Set<unknown>();
+  return Object.values(plugin).flatMap((value) => {
+    if (seen.has(value)) return [];
+    seen.add(value);
+    const server = typeof value === 'function'
+      ? value
+      : value !== null && typeof value === 'object' && 'server' in value
+      && typeof value.server === 'function'
+      ? value.server
+      : undefined;
+    if (!server) throw new TypeError('Plugin export is not a function');
+    return [server as PluginServer];
+  });
+}
+
+describe('OpenCode policy plugin modules', () => {
+  for (const file of readdirSync(openCodePluginDir).filter((name) => name.endsWith('.ts')).sort()) {
+    test(`${file} loads exactly one active hook object`, async () => {
+      const plugin = await import(join(openCodePluginDir, file)) as Record<string, unknown>;
+      const input = { directory: repoRoot, worktree: repoRoot } as PluginInput;
+      const hooks = await Promise.all(
+        openCodeServers(plugin, file.replace(/\.ts$/, '')).map((server) => server(input)),
+      );
+
+      expect(hooks).toHaveLength(1);
+      expect(hooks[0]).not.toBeNull();
+      expect(typeof hooks[0]).toBe('object');
+      if (file !== 'format-police.ts') {
+        expect(Object.values(hooks[0] as Record<string, unknown>).some((hook) =>
+          typeof hook === 'function'
+        )).toBe(true);
+      }
+    });
+  }
+});
 
 // The police hooks wired by hooks/claude/settings.json — exactly what the plugin
 // must re-wire under ${CLAUDE_PLUGIN_ROOT}. There is no comment-police.sh: the

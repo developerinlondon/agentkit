@@ -1,4 +1,4 @@
-import type { PluginInput } from '@opencode-ai/plugin';
+import type { PluginInput, PluginModule } from '@opencode-ai/plugin';
 import { readFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join, isAbsolute, resolve, basename } from 'node:path';
 import { homedir } from 'node:os';
@@ -427,7 +427,7 @@ function blockMessage(blocks: string[]): string {
 // Plugin entry point
 // ---------------------------------------------------------------------------
 
-export default async function versionPolice(ctx: PluginInput) {
+export async function versionPolice(ctx: PluginInput) {
   const config = loadConfig();
 
   return {
@@ -476,3 +476,8 @@ export default async function versionPolice(ctx: PluginInput) {
     },
   };
 }
+
+export default {
+  id: 'version-police',
+  server: versionPolice,
+} satisfies PluginModule;

@@ -1,4 +1,4 @@
-import type { PluginInput } from '@opencode-ai/plugin';
+import type { PluginInput, PluginModule } from '@opencode-ai/plugin';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
@@ -405,7 +405,7 @@ export function checkCrossRepoRelativePaths(
 // Plugin entry point
 // ---------------------------------------------------------------------------
 
-export default async function codingPolice(ctx: PluginInput) {
+export async function codingPolice(ctx: PluginInput) {
   const config = loadConfig();
 
   return {
@@ -520,3 +520,8 @@ export default async function codingPolice(ctx: PluginInput) {
     },
   };
 }
+
+export default {
+  id: 'coding-police',
+  server: codingPolice,
+} satisfies PluginModule;
