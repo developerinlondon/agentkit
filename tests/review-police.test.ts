@@ -43,11 +43,18 @@ interface StrictReviewFixture {
 
 function runHook(
   command: string,
-  opts: { tool?: string; cwd?: string; supervised?: boolean } = {},
+  opts: { tool?: string; cwd?: string; supervised?: boolean; toolWorkdir?: string } = {},
 ): string {
+  const toolInput =
+    opts.tool && opts.tool !== 'Bash'
+      ? { pull_number: 12 }
+      : {
+          command,
+          ...(opts.toolWorkdir === undefined ? {} : { workdir: opts.toolWorkdir }),
+        };
   const input = JSON.stringify({
     tool_name: opts.tool ?? 'Bash',
-    tool_input: opts.tool && opts.tool !== 'Bash' ? { pull_number: 12 } : { command },
+    tool_input: toolInput,
     session_id: 'test-session',
   });
   const args = opts.supervised ? [SUPERVISOR, '5', HOOK] : [HOOK];
@@ -410,6 +417,21 @@ describe('review-police: intended semantics', () => {
   test('allows a clean pass for the exact head', () => {
     record(passing);
     expect(runHook(MERGE)).toBe('');
+  });
+
+  test('uses the tool working directory when the hook process starts above the repo', () => {
+    record(passing);
+    expect(runHook(MERGE, { cwd: join(repo, '..'), toolWorkdir: repo })).toBe('');
+  });
+
+  test('rejects a relative tool working directory instead of borrowing the hook cwd', () => {
+    record(passing);
+    expect(runHook(MERGE, { toolWorkdir: '.' })).toContain('working directory');
+  });
+
+  test('rejects a tool working directory that is not a Git worktree', () => {
+    record(passing);
+    expect(runHook(MERGE, { toolWorkdir: home })).toContain('working directory');
   });
 
   test('accepts case-insensitive legacy pass verdicts', () => {

@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Shared Pre/PostToolUse input helpers for Claude Code and Grok CLI.
 # Source from a police hook:
 #   # shellcheck source=lib/hook-input.sh
@@ -33,6 +34,13 @@ agentkit_tool_name() {
 
 agentkit_command() {
 	agentkit_jq_raw -r '.tool_input.command // .toolInput.command // empty'
+}
+
+agentkit_workdir() {
+	agentkit_jq_raw -r '
+    .tool_input.workdir // .tool_input.cwd //
+    .toolInput.workdir // .toolInput.cwd //
+    .cwd // empty'
 }
 
 agentkit_session_id() {
@@ -78,6 +86,7 @@ agentkit_is_file_write_tool() {
 # Dual-emit Claude (hookSpecificOutput) and Grok ({decision, reason}) deny shapes.
 agentkit_deny_json() {
 	local reason="$1"
+	# shellcheck disable=SC2016 # jq program; dollar-prefixed names are jq variables.
 	_agentkit_jq -n --arg r "$reason" '{
     decision: "deny",
     reason: $r,
@@ -91,6 +100,7 @@ agentkit_deny_json() {
 
 agentkit_advise_json() {
 	local msg="$1"
+	# shellcheck disable=SC2016 # jq program; dollar-prefixed names are jq variables.
 	_agentkit_jq -n --arg m "$msg" '{
     systemMessage: $m,
     hookSpecificOutput: {

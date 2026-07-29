@@ -95,6 +95,7 @@ SESSION=$(agentkit_session_id)
 # fall back to whitespace-splitting with quote characters stripped. Keeping the
 # quotes glued on (`"glab`) makes exact-token matching miss, which fails OPEN —
 # the one direction this must never take.
+# shellcheck disable=SC2016 # Python source is intentionally single-quoted shell data.
 COMMAND=$(printf '%s' "$RAW_COMMAND" | python3 -c '
 import os, shlex, sys
 
@@ -195,8 +196,6 @@ has_basename() {
 }
 # Any token matching a regex (URLs keep their value through tokenisation).
 tok_match() { printf '%s' "$COMMAND" | grep -qiE -- "$1"; }
-# The token following the first occurrence of a given token.
-after() { printf '%s' "$COMMAND" | awk -v k="$1" 'p { print; exit } $0 == k { p = 1 }'; }
 
 # `gh api graphql` can take its request body from a file or stdin. The mutation
 # name then never appears in RAW_COMMAND/COMMAND, and inspecting the current
@@ -535,7 +534,26 @@ fi
 # --- Resolve WHAT is being merged, from the forge ---------------------------
 # Fail CLOSED: if the target cannot be resolved, the gate denies. An
 # unresolvable merge is exactly when a mistake is most likely.
+REQUEST_WORKDIR=$(agentkit_workdir)
 REPO_DIR="$PWD"
+if [[ -n "$REQUEST_WORKDIR" ]]; then
+	if [[ "$REQUEST_WORKDIR" != /* ]]; then
+		deny "BLOCKED: the merge tool working directory must be an absolute Git worktree.
+
+  tool working directory: $REQUEST_WORKDIR"
+	fi
+	REPO_DIR="$REQUEST_WORKDIR"
+fi
+if ! REPO_ROOT=$(git -C "$REPO_DIR" rev-parse --show-toplevel 2>/dev/null) || [[ -z "$REPO_ROOT" ]]; then
+	deny "BLOCKED: the merge tool working directory is not a readable Git worktree.
+
+  tool working directory: ${REQUEST_WORKDIR:-$PWD}
+
+The review record and target policy must be resolved from the repository that
+the forge change will land in. Run the merge with that repository as the tool
+working directory."
+fi
+REPO_DIR="$REPO_ROOT"
 
 forge_json() {
 	if [[ "$CLI" == "gh" ]]; then
@@ -668,7 +686,7 @@ Retry '$CLI $GROUP merge $MR_ID' after adding '$HEAD_FLAG $HEAD_SHA'. The forge 
 then refuse the merge if the source branch changes after this hook checks it."
 fi
 
-SLUG=$(echo "$BRANCH" | sed 's#/#__#g')
+SLUG=${BRANCH//\//__}
 RECORD="$REPO_DIR/.agentkit/reviews/$SLUG.json"
 
 if [[ ! -f "$RECORD" ]]; then
@@ -716,7 +734,7 @@ if ! POLICY_ENTRY=$(git -C "$REPO_DIR" ls-tree "$TARGET_SHA" -- "$POLICY_PATH" 2
 	deny 'BLOCKED: the exact target commit cannot be inspected for review policy.'
 fi
 if [[ -n "$POLICY_ENTRY" ]]; then
-	read -r POLICY_MODE POLICY_TYPE POLICY_BLOB POLICY_NAME <<<"$POLICY_ENTRY"
+	read -r POLICY_MODE POLICY_TYPE _ POLICY_NAME <<<"$POLICY_ENTRY"
 	if [[ "$POLICY_TYPE" != "blob" ||
 		( "$POLICY_MODE" != "100644" && "$POLICY_MODE" != "100755" ) ||
 		"$POLICY_NAME" != "$POLICY_PATH" ]]; then
@@ -728,6 +746,7 @@ if [[ -n "$POLICY_ENTRY" ]]; then
 		rm -f "$POLICY_TMP"
 		deny 'BLOCKED: cannot allocate a temporary file for changed-path validation.'
 	}
+	# shellcheck disable=SC2329 # invoked by the EXIT trap below.
 	cleanup_review_gate_files() {
 		rm -f "$POLICY_TMP" "$PATHS_TMP"
 	}
