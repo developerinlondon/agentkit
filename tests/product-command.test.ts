@@ -23,7 +23,7 @@ function invoke(platform: string, profile: string, command: string[]) {
   ].join('; ');
   return spawnSync('bash', ['-c', shell, 'product-command-test', ...command], {
     encoding: 'utf-8',
-    env: { ...process.env, PATH: `${root}:/usr/bin:/bin` },
+    env: { ...process.env, HOME: root, PATH: `${root}:/usr/bin:/bin` },
     timeout: commandTimeoutMs,
   });
 }
@@ -68,7 +68,7 @@ describe('portable product command', () => {
       [commandScript, 'default', '--', workload, 'one', 'two'],
       {
         encoding: 'utf-8',
-        env: { ...process.env, PATH: `${root}:/usr/bin:/bin` },
+        env: { ...process.env, HOME: root, PATH: `${root}:/usr/bin:/bin` },
         timeout: commandTimeoutMs,
       },
     );
@@ -86,5 +86,21 @@ describe('portable product command', () => {
     expect(product).toContain(
       'run: scripts/product-command default -- bun plugins-cc/agentkit/server/index.ts',
     );
+  });
+
+  test('product review starts a project-local OpenCode install and rejects loader errors', () => {
+    const product = Bun.YAML.parse(
+      readFileSync(join(repoRoot, '.agentkit', 'product.yaml'), 'utf-8'),
+    ) as { surfaces: Array<{ name: string; run?: string; expect: string }> };
+    const surface = product.surfaces.find(({ name }) => name === 'opencode-plugin');
+
+    expect(surface).toBeDefined();
+    expect(surface?.run).toContain('./install.sh "$project"');
+    expect(surface?.run).toContain('opencode debug config');
+    expect(surface?.run).toContain('failed to load plugin');
+    expect(surface?.run).toContain('plugin config hook failed');
+    expect(surface?.run).toContain('plugin dispose hook failed');
+    expect(surface?.run).toContain('plugins/*.ts');
+    expect(surface?.expect).toContain('every shipped OpenCode plugin');
   });
 });
