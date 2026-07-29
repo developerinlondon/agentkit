@@ -125,6 +125,48 @@ describe("shared ~/.agentkit root + client symlinks", () => {
     }
   }, globalInstallTimeoutMs);
 
+  test("re-install preserves foreign helpers in the shared hooks lib dir", () => {
+    const home = mkdtempSync(join(tmpdir(), "agentkit-shared-"));
+
+    try {
+      const env = {
+        ...process.env,
+        HOME: home,
+        XDG_CONFIG_HOME: join(home, ".config"),
+        AGENTKIT_HOME: join(home, ".agentkit"),
+      };
+      const first = spawnSync("bash", [installScript, "--global", "--no-session-scope"], {
+        cwd: repoRoot,
+        env,
+        encoding: "utf-8",
+        timeout: globalInstallTimeoutMs,
+      });
+      expect(first.status, first.stderr + "\n" + first.stdout).toBe(0);
+
+      // Another toolkit (OMC) installs its own helpers via the client path,
+      // which resolves through the directory symlink into canon.
+      const clientLibDir = join(home, ".claude", "hooks", "lib");
+      const foreign = join(clientLibDir, "stdin.mjs");
+      writeFileSync(foreign, "export function readStdin() {}\n");
+
+      const second = spawnSync("bash", [installScript, "--global", "--no-session-scope"], {
+        cwd: repoRoot,
+        env,
+        encoding: "utf-8",
+        timeout: globalInstallTimeoutMs,
+      });
+      expect(second.status, second.stderr + "\n" + second.stdout).toBe(0);
+
+      expect(existsSync(foreign)).toBe(true);
+      expect(readFileSync(foreign, "utf-8")).toContain("readStdin");
+      expect(
+        readFileSync(join(clientLibDir, "hook-input.sh"), "utf-8"),
+      ).toContain("agentkit_command");
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
   test("resolves the Bun executable before entering an installed skill directory", () => {
     const root = mkdtempSync(join(tmpdir(), "agentkit-bun-resolution-"));
     const fixtureRepo = join(root, "repo");

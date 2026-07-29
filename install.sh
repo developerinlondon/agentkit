@@ -947,9 +947,12 @@ install_claude_hooks() {
 	# link_children below as a *directory* symlink — never re-link files
 	# inside lib/, or path resolution turns into self-symlinks.
 	if [[ -d "$REPO_DIR/hooks/claude/lib" ]]; then
-		# `:?` rather than a bare expansion: an empty install_dir here would make
-		# this `rm -rf /lib`.
-		rm -rf "${install_dir:?}/lib"
+		# Other toolkits (e.g. OMC) install their own helpers into this dir
+		# through the client-dir symlink — copy agentkit's files over, never
+		# wipe the dir. A retired agentkit helper must be removed by name here.
+		if [[ -L "$install_dir/lib" && ! -e "$install_dir/lib" ]]; then
+			rm -f "$install_dir/lib"
+		fi
 		mkdir -p "$install_dir/lib"
 		cp -a "$REPO_DIR"/hooks/claude/lib/. "$install_dir/lib/"
 		echo "[claude] Installed hook lib/ helpers"
