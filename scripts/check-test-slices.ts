@@ -34,6 +34,7 @@ export const TEST_SLICES = {
     'tests/install-prompt.test.ts',
     'tests/install-shared-root.test.ts',
     'tests/install-tools.test.ts',
+    'tests/install/bootstrap.test.ts',
     'tests/install/manifest-readers.test.ts',
     'tests/install/plugin-scripts.test.ts',
     'tests/install/skill-groups.test.ts',

@@ -92,6 +92,7 @@ fileGroups:
 
   installInputs:
     - "config.example.yaml"
+    - "bootstrap.sh"
     - "hooks/**/*"
     - "install.sh"
     - "instructions/**/*"
