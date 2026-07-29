@@ -14,7 +14,7 @@ main() {
 
 	if [[ -d "$src_dir/.git" ]]; then
 		[[ -z "$(git -C "$src_dir" status --porcelain -uno)" ]] \
-			|| die "$src_dir has local changes — commit or stash them, or point AGENTKIT_SRC at a clean dir"
+			|| die "$src_dir has local changes — stash or move them aside, or point AGENTKIT_SRC at a clean dir"
 		echo "[bootstrap] Updating $src_dir"
 		git -C "$src_dir" fetch --depth 1 origin || die "fetch failed — check network and $src_dir"
 		git -C "$src_dir" reset --hard origin/HEAD >/dev/null \

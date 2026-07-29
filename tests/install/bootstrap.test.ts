@@ -1,5 +1,5 @@
-import { describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { afterAll, describe, expect, test } from "bun:test";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -7,6 +7,47 @@ import { spawnSync } from "node:child_process";
 const repoRoot = dirname(dirname(import.meta.dir));
 const bootstrap = join(repoRoot, "bootstrap.sh");
 const timeoutMs = 120_000;
+const gitIdentity = {
+  GIT_AUTHOR_NAME: "t",
+  GIT_AUTHOR_EMAIL: "t@t",
+  GIT_COMMITTER_NAME: "t",
+  GIT_COMMITTER_EMAIL: "t@t",
+};
+
+function git(args: string[], opts: Record<string, unknown> = {}) {
+  const result = spawnSync("git", args, {
+    encoding: "utf-8",
+    timeout: timeoutMs,
+    env: { ...process.env, ...gitIdentity },
+    maxBuffer: 64 * 1024 * 1024,
+    ...opts,
+  });
+  expect(result.status, `git ${args.join(" ")}: ${result.stderr}`).toBe(0);
+  return result;
+}
+
+// CI checks out a partial (promisor) clone that cannot serve full clones of
+// itself, so the tests build one self-contained origin from the tracked files
+// and bootstrap from that.
+let originDir: string | null = null;
+function sharedOrigin(): string {
+  if (originDir) return originDir;
+  const dir = mkdtempSync(join(tmpdir(), "agentkit-bootstrap-origin-"));
+  const files = git(["-C", repoRoot, "ls-files", "-z"]).stdout.split("\0").filter(Boolean);
+  for (const file of files) {
+    const dst = join(dir, file);
+    mkdirSync(dirname(dst), { recursive: true });
+    cpSync(join(repoRoot, file), dst);
+  }
+  git(["init", "-q", "-b", "main", dir]);
+  git(["-C", dir, "add", "-A"]);
+  git(["-C", dir, "commit", "-q", "--no-verify", "-m", "synthetic origin"]);
+  originDir = dir;
+  return dir;
+}
+afterAll(() => {
+  if (originDir) rmSync(originDir, { recursive: true, force: true });
+});
 
 function runBootstrap(home: string, extraEnv: Record<string, string> = {}, extraArgs: string[] = []) {
   return spawnSync("bash", [bootstrap, "--no-session-scope", "--no-prompt", ...extraArgs], {
@@ -16,7 +57,7 @@ function runBootstrap(home: string, extraEnv: Record<string, string> = {}, extra
       HOME: home,
       XDG_CONFIG_HOME: join(home, ".config"),
       AGENTKIT_HOME: join(home, ".agentkit"),
-      AGENTKIT_REPO_URL: `file://${repoRoot}`,
+      AGENTKIT_REPO_URL: `file://${sharedOrigin()}`,
       AGENTKIT_SRC: join(home, ".agentkit-src"),
       ...extraEnv,
     },
@@ -66,23 +107,14 @@ describe("curl-pipe bootstrap", () => {
 
     try {
       const origin = join(home, "origin");
-      const clone = spawnSync("git", ["clone", "--no-local", repoRoot, origin], {
-        encoding: "utf-8",
-        timeout: timeoutMs,
-      });
-      expect(clone.status, clone.stderr).toBe(0);
+      git(["clone", "-q", "--no-local", sharedOrigin(), origin]);
 
       const first = runBootstrap(home, { AGENTKIT_REPO_URL: `file://${origin}` });
       expect(first.status, first.stderr + "\n" + first.stdout).toBe(0);
 
       writeFileSync(join(origin, "UPSTREAM_MARKER"), "new\n");
-      const env = { GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@t", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@t" };
-      spawnSync("git", ["-C", origin, "add", "UPSTREAM_MARKER"], { encoding: "utf-8" });
-      const commit = spawnSync("git", ["-C", origin, "commit", "--no-verify", "-m", "upstream marker"], {
-        encoding: "utf-8",
-        env: { ...process.env, ...env },
-      });
-      expect(commit.status, commit.stderr).toBe(0);
+      git(["-C", origin, "add", "UPSTREAM_MARKER"]);
+      git(["-C", origin, "commit", "-q", "--no-verify", "-m", "upstream marker"]);
 
       const second = runBootstrap(home, { AGENTKIT_REPO_URL: `file://${origin}` });
       expect(second.status, second.stderr + "\n" + second.stdout).toBe(0);
