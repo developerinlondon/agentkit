@@ -636,6 +636,8 @@ raw = sys.stdin.read().strip()
 if not raw:
     raise SystemExit(1)
 
+scheme = "ssh"
+port = None
 if "://" not in raw:
     match = re.match(r"^(?:[^@/]+@)?([^:/]+):(.+)$", raw)
     if not match:
@@ -643,14 +645,26 @@ if "://" not in raw:
     host, path = match.groups()
 else:
     parsed = urlsplit(raw)
+    scheme = parsed.scheme.lower()
     host, path = parsed.hostname or "", parsed.path
+    try:
+        port = parsed.port
+    except ValueError:
+        raise SystemExit(1)
 
 path = path.strip("/")
 if path.endswith(".git"):
     path = path[:-4]
 if not host or not path:
     raise SystemExit(1)
-print(f"{host.lower()}/{path}")
+
+host = host.lower()
+if ":" in host:
+    host = f"[{host}]"
+default_ports = {"http": 80, "https": 443, "ssh": 22, "git": 9418}
+if port is not None and port != default_ports.get(scheme):
+    host = f"{host}:{port}"
+print(f"{host}/{path}")
 '
 }
 

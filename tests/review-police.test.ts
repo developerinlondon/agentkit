@@ -298,6 +298,10 @@ afterAll(() => rmSync(join(repo, '..'), { force: true, recursive: true }));
 beforeEach(() => {
   rmSync(join(repo, '.agentkit'), { force: true, recursive: true });
   rmSync(join(repo, '..', 'duplicate'), { force: true, recursive: true });
+  execSync('git remote set-url origin git@github.example:owner/repo.git', {
+    cwd: repo,
+    stdio: 'pipe',
+  });
   execSync(`git reset --hard ${baseTarget}`, { cwd: repo, stdio: 'pipe' });
   targetSha = baseTarget;
   githubBaseRefSha = baseTarget;
@@ -479,6 +483,34 @@ describe('review-police: intended semantics', () => {
 
     expect(runHook(MERGE_WITH_REPO, { cwd: workspace, payloadCwd: workspace })).toBe('');
   });
+
+  for (const [transport, remote] of [
+    ['HTTPS', 'https://github.example:8443/owner/repo.git'],
+    ['SSH', 'ssh://git@github.example:2222/owner/repo.git'],
+  ] as const) {
+    test(`does not conflate a non-default ${transport} port with the forge host`, () => {
+      record(passing);
+      execSync(`git remote set-url origin ${remote}`, { cwd: repo, stdio: 'pipe' });
+      const workspace = join(repo, '..');
+
+      expect(runHook(MERGE_WITH_REPO, { cwd: workspace, payloadCwd: workspace })).toContain(
+        'uniquely',
+      );
+    });
+  }
+
+  for (const [transport, remote] of [
+    ['HTTPS', 'https://github.example:443/owner/repo.git'],
+    ['SSH', 'ssh://git@github.example:22/owner/repo.git'],
+  ] as const) {
+    test(`normalizes the explicit default ${transport} port`, () => {
+      record(passing);
+      execSync(`git remote set-url origin ${remote}`, { cwd: repo, stdio: 'pipe' });
+      const workspace = join(repo, '..');
+
+      expect(runHook(MERGE_WITH_REPO, { cwd: workspace, payloadCwd: workspace })).toBe('');
+    });
+  }
 
   test('rejects two reviewed clones of the same forge repo below the session cwd', () => {
     record(passing);
