@@ -45,6 +45,11 @@ function env(PAGES: Bucket, overrides: Record<string, string | undefined> = {}) 
   return { PAGES, SITE_TOKEN, PUBLISH_TOKEN, ...overrides };
 }
 
+const SEEDED: Record<string, string> = {
+  '_site/docs/index.html': '<h1>seeded site</h1>',
+  'pages/deadbeef/index.html': '<h1>seeded page</h1>',
+};
+
 function get(url: string) {
   return new Request(url);
 }
@@ -288,14 +293,90 @@ describe('token separation', () => {
     expect(store.writes.get('pages/deadbeef/index.html')?.body).toBe('<h1>page</h1>');
   });
 
-  test.each([
-    ['_site/docs', 'SITE_TOKEN'],
-    ['deadbeef', 'PUBLISH_TOKEN'],
-  ])('%s fails closed when %s is unset', (slug, unset) =>
-    expectWriteRejected(slug, '', { [unset]: undefined }));
-
   test('an unauthenticated site write is rejected', () =>
     expectWriteRejected('_site/docs', null));
+
+  // `constructor` is the only Object.prototype member SLUG_RE admits, so it is
+  // the one slug that can tell an own-property reserved-slug lookup apart from
+  // a prototype-walking one.
+  test('a page slug named after an Object.prototype member is publishable', async () => {
+    const store = bucket();
+    const res = await worker.fetch(
+      write('https://agentkit.sbs/api/pages/constructor', PUBLISH_TOKEN, '<h1>ctor</h1>'),
+      env(store),
+    );
+
+    expect(res.status).toBe(200);
+    expect([...store.writes.keys()]).toEqual(['pages/constructor/index.html']);
+    expect(store.writes.get('pages/constructor/index.html')?.body).toBe('<h1>ctor</h1>');
+  });
+
+  test('SITE_TOKEN cannot write the Object.prototype slug either', () =>
+    expectWriteRejected('constructor', SITE_TOKEN));
+
+  // Site-space membership is anchored at position 0. A slug that merely
+  // contains the prefix is a page slug; treating it as site-space would slice
+  // it at the wrong offset and land the write on an unrelated key.
+  test.each(['a/_site/b', 'docs/_site/install'])(
+    'the slug %s only contains the site prefix, so it is not site-space',
+    (slug) => expectWriteRejected(slug, SITE_TOKEN),
+  );
+});
+
+// An unset secret is already rejected by the equality check, because no token
+// equals undefined. An empty secret is the state that check cannot judge —
+// `'' !== ''` is false — so the emptiness guard is the only thing standing
+// between an empty binding and anonymous writes to either keyspace.
+const ABSENT_SECRET = [['unset', undefined], ['empty', '']] as const;
+const WRITE_TARGETS = [
+  ['_site/docs', '_site/docs/index.html', 'SITE_TOKEN'],
+  ['deadbeef', 'pages/deadbeef/index.html', 'PUBLISH_TOKEN'],
+] as const;
+const ANONYMOUS_CASES = WRITE_TARGETS.flatMap(([slug, key, secret]) =>
+  ABSENT_SECRET.flatMap(([state, value]) =>
+    (['PUT', 'DELETE'] as const).map(
+      (method) =>
+        [`${method} ${slug} with ${secret} ${state}`, method, slug, key, secret, value] as const,
+    ),
+  ),
+);
+
+describe('writes fail closed when the secret is missing', () => {
+  test.each(ANONYMOUS_CASES)(
+    'an anonymous %s is refused and leaves the object untouched',
+    async (_label, method, slug, key, secret, value) => {
+      const store = bucket(SEEDED);
+      const res = await worker.fetch(
+        new Request(`https://agentkit.sbs/api/pages/${slug}`, {
+          method,
+          ...(method === 'PUT' ? { body: '<h1>anonymous</h1>' } : {}),
+        }),
+        env(store, { [secret]: value }),
+      );
+
+      expect(res.status).toBe(401);
+      expect(store.writes.get(key)?.body).toBe(SEEDED[key]);
+    },
+  );
+});
+
+describe('method allowlist', () => {
+  test.each([
+    ['POST', 'https://agentkit.sbs/'],
+    ['POST', 'https://agentkit.sbs/docs'],
+    ['PATCH', 'https://agentkit.sbs/docs'],
+    ['OPTIONS', 'https://agentkit.sbs/docs'],
+    ['POST', 'https://pages.agentkit.sbs/deadbeef'],
+    ['PATCH', 'https://agentkit.sbs/api/pages/_site/docs'],
+    ['POST', 'https://agentkit.sbs/api/pages/deadbeef'],
+  ])('%s %s is refused without touching R2', async (method, url) => {
+    const store = bucket(SEEDED);
+    const res = await worker.fetch(new Request(url, { method }), env(store));
+
+    expect(res.status).toBe(405);
+    expect(store.reads).toEqual([]);
+    expect([...store.writes.keys()].sort()).toEqual(Object.keys(SEEDED).sort());
+  });
 });
 
 describe('size limits', () => {
