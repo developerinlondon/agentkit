@@ -158,6 +158,9 @@ curl -fsSL https://raw.githubusercontent.com/developerinlondon/agentkit/main/boo
 # with options:  … | bash -s -- --with product
 ```
 
+Piped stdin is not a terminal, so the optional-group question is skipped —
+the curl path installs core only unless you pass `--with <group>`.
+
 Or clone first and read before running:
 
 ```bash
