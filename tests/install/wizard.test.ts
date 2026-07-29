@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { beforeAll, describe, expect, test } from 'bun:test';
 import {
   existsSync,
   lstatSync,
@@ -7,6 +7,7 @@ import {
   readFileSync,
   readlinkSync,
   rmSync,
+  statSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -149,7 +150,31 @@ function listTree(root: string, prefix = ''): string[] {
   return listed;
 }
 
+// Each temp HOME is a full install, dependency trees included, on a shared
+// tmpfs with a finite inode budget; a run killed mid-test never reaches its
+// cleanup. Age-gated because a concurrent suite's live directories are minutes
+// old, and deleting one out from under it would be worse than the leak.
+const homePrefixes = ['agentkit-wizard-', 'agentkit-wizard-declined-', 'agentkit-wizard-piped-'];
+const staleAfterMs = 60 * 60 * 1000;
+
+function reapAbandonedHomes() {
+  const now = Date.now();
+  for (const entry of readdirSync(tmpdir())) {
+    if (!homePrefixes.some((prefix) => entry.startsWith(prefix))) continue;
+    const path = join(tmpdir(), entry);
+    try {
+      if (now - statSync(path).mtimeMs < staleAfterMs) continue;
+      rmSync(path, { force: true, recursive: true });
+    } catch {
+      // Raced with its owner, or not ours to remove. Reaping is opportunistic
+      // hygiene; failing the suite over it would trade a leak for a red build.
+    }
+  }
+}
+
 describe('installer skill-group wizard', () => {
+  beforeAll(reapAbandonedHomes);
+
   test('the pty wrapper runs on this machine, whichever script is installed', () => {
     expect(scriptArgv('CMD', 'util-linux')).toEqual(['-qec', 'CMD', '/dev/null']);
     expect(scriptArgv('CMD', 'bsd')).toEqual(['-q', '/dev/null', 'bash', '-c', 'CMD']);
