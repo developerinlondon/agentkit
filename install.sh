@@ -18,6 +18,11 @@ Options:
                        are declared in skills/GROUPS; every unlisted skill is
                        in the always-installed `core` group.
                          --with product   product-intelligence, product-review
+                       A global install run on a terminal with no group flags
+                       and nothing remembered yet asks about each optional
+                       group instead; every other run is unattended.
+  --no-prompt          Never ask about optional groups, even on a terminal.
+                       AGENTKIT_SKIP_PROMPT=1 and a non-empty CI do the same.
   --without <group>    Drop a group from the selection and from the remembered
                        set (repeatable). Skills already installed are left in
                        place; `core` cannot be dropped.
@@ -76,12 +81,20 @@ SESSION_SCOPE=true
 EXTRA_GROUPS=""
 DROP_GROUPS=""
 ALL_GROUPS=false
+PROMPT=true
+# Environment that makes a run unattended whatever is attached to it. Declared
+# as one list because it is also what a test asserting the prompt fires has to
+# clear from its own environment — a CI runner exports CI to everything it
+# starts, so a second copy of these names would drift and silence the wizard
+# in exactly the place it is being tested.
+PROMPT_SUPPRESSING_ENV="CI AGENTKIT_SKIP_PROMPT"
 while [[ $# -gt 0 ]]; do
 	case "$1" in
 	-h | --help) usage ;;
 	--global) GLOBAL=true ;;
 	--claude-plugin) CLAUDE_PLUGIN=true ;;
 	--no-session-scope) SESSION_SCOPE=false ;;
+	--no-prompt) PROMPT=false ;;
 	--with)
 		shift
 		if [[ $# -eq 0 ]]; then
@@ -186,6 +199,85 @@ group_dropped() {
 	return 1
 }
 
+prompt_suppressed_by_env() {
+	local name
+	for name in $PROMPT_SUPPRESSING_ENV; do
+		if [[ -n "${!name:-}" ]]; then
+			return 0
+		fi
+	done
+	return 1
+}
+
+# An unanswered question does not degrade to a decline, it stops the install
+# until something kills it, so every condition here fails towards silence.
+should_prompt_for_groups() {
+	# Only a global install has anywhere to record an answer, and a question
+	# whose answer cannot be kept is a nag repeated at every project.
+	[[ "$GLOBAL" == true ]] || return 1
+	# Both descriptors, not just stdin: output routed into a pipe or a log means
+	# an operator who cannot see the question, whatever is attached to stdin.
+	[[ -t 0 && -t 1 ]] || return 1
+	# A terminal is not evidence of a person. Docker executors, `docker run -it`
+	# and Jenkins all hand a job a pty with nobody behind it.
+	if prompt_suppressed_by_env; then
+		return 1
+	fi
+	[[ "$PROMPT" == true ]] || return 1
+	[[ "$ALL_GROUPS" == false ]] || return 1
+	[[ -z "$EXTRA_GROUPS" && -z "$DROP_GROUPS" ]] || return 1
+	# Where the file exists the question was already put, and an empty one is
+	# the recorded answer "core only" rather than an absent answer.
+	[[ ! -f "$GROUPS_STATE_FILE" ]] || return 1
+	return 0
+}
+
+# The question belongs on the terminal, not in whatever the caller is capturing.
+# `exec` redirections are permanent, so openability is probed in a subshell: a
+# failed probe must not leave the installer's own stderr pointing at /dev/null.
+open_prompt_channel() {
+	if (exec 3<>/dev/tty) 2>/dev/null; then
+		exec 3<>/dev/tty
+		exec 4<&3
+		return 0
+	fi
+	return 1
+}
+
+prompt_for_groups() {
+	local group description reply header=false
+	# Nowhere to hold the conversation. Asking anyway would put the question
+	# somewhere nobody is reading and then wait forever for the answer, so this
+	# declines like every other unattended shape and says so once, out loud.
+	if ! open_prompt_channel; then
+		echo "[groups] No controlling terminal — installing core only." >&2
+		echo "[groups] Use --with <group> to add an optional group." >&2
+		return 0
+	fi
+	for group in $(declared_groups); do
+		if [[ "$group" == core ]]; then continue; fi
+		if [[ "$header" == false ]]; then
+			echo "[groups] Optional skill groups — core installs either way." >&3
+			header=true
+		fi
+		description="$(group_description "$group")"
+		echo "[groups]   $group: $description" >&3
+		printf '[groups]   Install %s? [y/N] ' "$group" >&3
+		# A closed terminal answers nothing; taking the default beats looping on
+		# an empty read or aborting an install that is otherwise fine.
+		if ! read -r reply <&4; then
+			reply=""
+			echo "" >&3
+		fi
+		case "$reply" in
+		[yY] | [yY][eE][sS]) EXTRA_GROUPS="${EXTRA_GROUPS:+$EXTRA_GROUPS }$group" ;;
+		esac
+	done
+	if [[ "$header" == true ]]; then echo "" >&3; fi
+	exec 3>&- 4<&-
+	return 0
+}
+
 select_groups() {
 	local candidates group
 	if [[ "$ALL_GROUPS" == true ]]; then
@@ -201,6 +293,10 @@ select_groups() {
 	done
 	return 0
 }
+
+if should_prompt_for_groups; then
+	prompt_for_groups
+fi
 
 select_groups
 
@@ -696,7 +792,9 @@ install_claude_hooks() {
 	# link_children below as a *directory* symlink — never re-link files
 	# inside lib/, or path resolution turns into self-symlinks.
 	if [[ -d "$REPO_DIR/hooks/claude/lib" ]]; then
-		rm -rf "$install_dir/lib"
+		# `:?` rather than a bare expansion: an empty install_dir here would make
+		# this `rm -rf /lib`.
+		rm -rf "${install_dir:?}/lib"
 		mkdir -p "$install_dir/lib"
 		cp -a "$REPO_DIR"/hooks/claude/lib/. "$install_dir/lib/"
 		echo "[claude] Installed hook lib/ helpers"
@@ -966,8 +1064,13 @@ install_shim_path() {
 	{
 		printf '\n%s\n' "$begin"
 		printf '# Runs each agent CLI session in its own systemd scope.\n'
+		# $PATH stays unexpanded on purpose: what lands in the rc file has to be
+		# read at the reader's shell startup, not resolved to the installer's
+		# PATH and frozen there.
+		# shellcheck disable=SC2016
 		printf 'case ":$PATH:" in\n'
 		printf '  *":%s:"*) ;;\n' "$shim_dir"
+		# shellcheck disable=SC2016
 		printf '  *) PATH="%s:$PATH" ;;\n' "$shim_dir"
 		printf 'esac\n'
 		printf '%s\n' "$end"
