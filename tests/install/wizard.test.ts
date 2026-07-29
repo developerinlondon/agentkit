@@ -165,16 +165,23 @@ function canonSkill(home: string, name: string) {
   return join(home, '.agentkit', 'skills', name);
 }
 
-// Symlink targets embed the temporary home, so the tree is compared by relative
-// path and entry kind: what got installed, not where the fixture happens to be.
+// Compared by relative path and entry kind, since symlink targets embed the
+// temporary home. Bun hoists or nests the same transitive dependency
+// differently between two installs of one manifest and caches it under .bun;
+// group selection decides neither, so the interior it arranges is dropped. The
+// node_modules entry itself stays, so a skill that never got its dependencies
+// installed still breaks parity.
 function listTree(root: string, prefix = ''): string[] {
   const entries = readdirSync(join(root, prefix), { withFileTypes: true });
   const listed: string[] = [];
   for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
+    if (entry.name === '.bun') continue;
     const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
     const stats = lstatSync(join(root, relative));
     listed.push(`${stats.isSymbolicLink() ? 'link' : stats.isDirectory() ? 'dir ' : 'file'} ${relative}`);
-    if (stats.isDirectory()) listed.push(...listTree(root, relative));
+    if (stats.isDirectory() && entry.name !== 'node_modules') {
+      listed.push(...listTree(root, relative));
+    }
   }
   return listed;
 }
