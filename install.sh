@@ -924,6 +924,9 @@ install_claude_hooks() {
 				fi
 				continue
 			fi
+			if [[ ! -e "$install_dir/$name" && ! -L "$install_dir/$name" ]]; then
+				continue
+			fi
 			echo "[claude] WARNING: jq missing — keeping $name so its settings.json entries stay functional." >&2
 		fi
 
