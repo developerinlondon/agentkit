@@ -2,8 +2,12 @@ const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,63}(\/[a-z0-9][a-z0-9-]{0,63}){0,3}$/;
 const MAX_PAGE_BYTES = 5 * 1024 * 1024;
 
 // Slugs the site deploy flow may write, gated by SITE_TOKEN instead of
-// PUBLISH_TOKEN so a leaked page-publish token cannot deface the site.
+// PUBLISH_TOKEN so a leaked page-publish token cannot deface the site. Sub-page
+// writes address `_site/<path>`; the two keyspaces cannot cross, because
+// SLUG_RE's alphabet has no leading underscore for a PUBLISH_TOKEN slug to
+// reach `_site/*` with, and every site key is rooted at `_site/`.
 const SITE_SLUGS = { "_site": "_site/index.html", "_pages-index": "_site/pages-index.html" };
+const SITE_PREFIX = "_site/";
 
 const BASE_HEADERS = {
   "content-type": "text/html; charset=utf-8",
@@ -31,21 +35,39 @@ async function servePage(env, key, headers) {
   return html(200, obj.body, headers);
 }
 
+// null when the slug is not site-space at all. An empty string keeps a
+// malformed sub-path inside site-space, so it is still SITE_TOKEN that must
+// authenticate before the 400 tells anyone the path was rejected.
+function siteKey(slug) {
+  if (Object.hasOwn(SITE_SLUGS, slug)) return SITE_SLUGS[slug];
+  if (!slug.startsWith(SITE_PREFIX)) return null;
+  const path = slug.slice(SITE_PREFIX.length);
+  return SLUG_RE.test(path) ? `_site/${path}/index.html` : "";
+}
+
 // Shared write-path gate: bearer auth (site slugs need SITE_TOKEN, pages need
 // PUBLISH_TOKEN, both fail closed when unset) + slug validation + R2 key.
 // Returns a Response on rejection, else { isSite, key }.
 function authorizeWrite(request, env, slug) {
   const auth = request.headers.get("authorization") ?? "";
   const token = auth.replace(/^Bearer\s+/i, "");
-  const isSite = Object.hasOwn(SITE_SLUGS, slug);
+  const site = siteKey(slug);
+  const isSite = site !== null;
   const expected = isSite ? env.SITE_TOKEN : env.PUBLISH_TOKEN;
   if (!expected || token !== expected) {
     return new Response("unauthorized\n", { status: 401 });
   }
-  if (!isSite && !SLUG_RE.test(slug)) {
+  if (isSite ? site === "" : !SLUG_RE.test(slug)) {
     return new Response("invalid slug\n", { status: 400 });
   }
-  return { isSite, key: isSite ? SITE_SLUGS[slug] : `pages/${slug}/index.html` };
+  return { isSite, key: isSite ? site : `pages/${slug}/index.html` };
+}
+
+function publishedUrl(slug, isSite) {
+  if (!isSite) return `https://pages.agentkit.sbs/${slug}`;
+  if (slug === "_pages-index") return "https://pages.agentkit.sbs/";
+  if (slug === "_site") return "https://agentkit.sbs/";
+  return `https://agentkit.sbs/${slug.slice(SITE_PREFIX.length)}`;
 }
 
 async function handlePublish(request, env, slug) {
@@ -62,12 +84,7 @@ async function handlePublish(request, env, slug) {
   await env.PAGES.put(gate.key, body, {
     httpMetadata: { contentType: "text/html; charset=utf-8" },
   });
-  const url = slug === "_site"
-    ? "https://agentkit.sbs/"
-    : slug === "_pages-index"
-    ? "https://pages.agentkit.sbs/"
-    : `https://pages.agentkit.sbs/${slug}`;
-  return Response.json({ ok: true, slug, url });
+  return Response.json({ ok: true, slug, url: publishedUrl(slug, gate.isSite) });
 }
 
 async function handleDelete(request, env, slug) {
@@ -96,8 +113,9 @@ export default {
     }
 
     if (host === "agentkit.sbs" || host === "www.agentkit.sbs") {
-      if (path !== "") return html(404, NOT_FOUND);
-      return servePage(env, "_site/index.html", BASE_HEADERS);
+      if (path === "") return servePage(env, "_site/index.html", BASE_HEADERS);
+      if (!SLUG_RE.test(path)) return html(404, NOT_FOUND);
+      return servePage(env, `_site/${path}/index.html`, BASE_HEADERS);
     }
     if (path === "") {
       return servePage(env, "_site/pages-index.html", PAGE_HEADERS);
