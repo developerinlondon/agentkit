@@ -91,7 +91,10 @@ describe('portable product command', () => {
   test('product review starts a project-local OpenCode install and rejects loader errors', () => {
     const product = Bun.YAML.parse(
       readFileSync(join(repoRoot, '.agentkit', 'product.yaml'), 'utf-8'),
-    ) as { surfaces: Array<{ name: string; run?: string; expect: string }> };
+    ) as {
+      surfaces: Array<{ name: string; run?: string; expect: string }>;
+      requires: { notes: string[] };
+    };
     const surface = product.surfaces.find(({ name }) => name === 'opencode-plugin');
 
     expect(surface).toBeDefined();
@@ -102,5 +105,8 @@ describe('portable product command', () => {
     expect(surface?.run).toContain('plugin dispose hook failed');
     expect(surface?.run).toContain('plugins/*.ts');
     expect(surface?.expect).toContain('every shipped OpenCode plugin');
+    const requirements = product.requires.notes.join('\n');
+    expect(requirements).toContain('Claude Code must be installed to exercise the `plugin` surface');
+    expect(requirements).toContain('OpenCode must be installed to exercise the `opencode-plugin` surface');
   });
 });

@@ -132,10 +132,11 @@ requires:
   hardware: []
   credentials: []
   notes:
-    - Claude Code (or OpenCode) must be installed to exercise the `plugin`
-      surface. The exact test-suite commands need bun. On Linux,
-      `scripts/product-command` also requires the installed `agentkit-run`
-      entry point and fails closed if it is absent.
+    - Claude Code must be installed to exercise the `plugin` surface. OpenCode
+      must be installed to exercise the `opencode-plugin` surface. The exact
+      test-suite commands need bun. On Linux, `scripts/product-command` also
+      requires the installed `agentkit-run` entry point and fails closed if it
+      is absent.
     - >-
       Local containment is Linux-only and requires cgroup v2, a systemd user
       manager, and a provisioned agent-work.slice. On non-Linux hosts the
