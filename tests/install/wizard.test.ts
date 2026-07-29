@@ -85,10 +85,38 @@ function scriptFlavour(): ScriptFlavour {
   return scriptFlavourCache;
 }
 
-function scriptArgv(command: string, flavour: ScriptFlavour = scriptFlavour()): string[] {
-  return flavour === 'util-linux'
-    ? ['-qec', command, '/dev/null']
-    : ['-q', '/dev/null', 'bash', '-c', command];
+function singleQuote(value: string): string {
+  return `'${value.replaceAll("'", `'\\''`)}'`;
+}
+
+interface PtyInvocation {
+  file: string;
+  args: string[];
+  // Only the util-linux form takes the keystrokes on the spawner's stdin. The
+  // BSD form feeds them from inside the shell, and handing them over twice
+  // would leave a second copy nobody reads.
+  input?: string;
+}
+
+// BSD script clones termios from its own stdin onto the pty it allocates, and
+// bun delivers spawnSync's `input` as a socketpair: tcgetattr on a socket fails
+// outright, killing script before it execs anything. A pipe answers ENOTTY,
+// which it tolerates, so the keystrokes go in through a pipe built by the shell.
+function ptyInvocation(
+  command: string,
+  keystrokes: string,
+  flavour: ScriptFlavour = scriptFlavour(),
+): PtyInvocation {
+  if (flavour === 'util-linux') {
+    return { file: 'script', args: ['-qec', command, '/dev/null'], input: keystrokes };
+  }
+  return {
+    file: 'bash',
+    args: [
+      '-c',
+      `printf %s ${singleQuote(keystrokes)} | script -q /dev/null bash -c ${singleQuote(command)}`,
+    ],
+  };
 }
 
 // BSD and util-linux `script` do not agree on whether the child's exit status
@@ -112,10 +140,11 @@ function installOnTty(
 ) {
   const inner = options.shell ??
     ['bash', installScript, ...baseArgs, ...extraArgs].join(' ');
-  const result = spawnSync('script', scriptArgv(`${inner}; printf '\\n${exitMarker}%s\\n' "$?"`), {
+  const invocation = ptyInvocation(`${inner}; printf '\\n${exitMarker}%s\\n' "$?"`, keystrokes);
+  const result = spawnSync(invocation.file, invocation.args, {
     cwd: repoRoot,
     env: { ...installEnv(home), ...(options.env ?? {}) },
-    input: keystrokes,
+    input: invocation.input,
     encoding: 'utf-8',
     timeout: options.timeoutMs ?? globalInstallTimeoutMs,
   });
@@ -176,18 +205,45 @@ describe('installer skill-group wizard', () => {
   beforeAll(reapAbandonedHomes);
 
   test('the pty wrapper runs on this machine, whichever script is installed', () => {
-    expect(scriptArgv('CMD', 'util-linux')).toEqual(['-qec', 'CMD', '/dev/null']);
-    expect(scriptArgv('CMD', 'bsd')).toEqual(['-q', '/dev/null', 'bash', '-c', 'CMD']);
+    const utilLinux = ptyInvocation('CMD', 'y\n', 'util-linux');
+    expect(utilLinux.file).toBe('script');
+    expect(utilLinux.args).toEqual(['-qec', 'CMD', '/dev/null']);
+    expect(utilLinux.input).toBe('y\n');
+
+    const bsd = ptyInvocation('CMD', 'y\n', 'bsd');
+    expect(bsd.file).toBe('bash');
+    expect(bsd.args[0]).toBe('-c');
+    expect(bsd.args[1]).toBe(`printf %s 'y\n' | script -q /dev/null bash -c 'CMD'`);
+    // Handing the keystrokes to spawnSync as well is the whole defect: on macOS
+    // that stdin is a socketpair, and BSD script dies reading its attributes.
+    expect(bsd.input).toBeUndefined();
 
     // The rest of this file is unreadable when the wrapper itself is wrong: a
     // rejected argv means empty output, so assertions about absent prompts pass
     // and only the ones expecting output fail. This says so in one line instead.
-    const probe = spawnSync('script', scriptArgv('exit 0'), {
+    const invocation = ptyInvocation('exit 0', '');
+    const probe = spawnSync(invocation.file, invocation.args, {
+      input: invocation.input,
       encoding: 'utf-8',
       timeout: hangTimeoutMs,
     });
     expect(probe.error, `script flavour '${scriptFlavour()}' would not run`).toBeUndefined();
     expect(probe.status, probe.stderr).toBe(0);
+  });
+
+  test('the BSD form quotes keystrokes and command so neither can break out', () => {
+    // The BSD path is the only one that builds a shell string, so its escaping
+    // is the only place an apostrophe in a path or a reply becomes execution.
+    // Round-tripped through a real shell, which proves the rule rather than
+    // restating it — and this runs on the flavour that cannot be tested here.
+    for (const hostile of ['y\n', '', "it's", 'a\'b"c$d', '$(touch escaped-marker)', '`id`']) {
+      const echoed = spawnSync('bash', ['-c', `printf %s ${singleQuote(hostile)}`], {
+        encoding: 'utf-8',
+      });
+      expect(echoed.status, echoed.stderr).toBe(0);
+      expect(echoed.stdout).toBe(hostile);
+    }
+    expect(existsSync(join(repoRoot, 'escaped-marker'))).toBe(false);
   });
 
   test('a bare install on a terminal offers each optional group and remembers the answer', () => {
