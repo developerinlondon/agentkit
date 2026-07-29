@@ -535,25 +535,30 @@ fi
 # Fail CLOSED: if the target cannot be resolved, the gate denies. An
 # unresolvable merge is exactly when a mistake is most likely.
 REQUEST_WORKDIR=$(agentkit_workdir)
-REPO_DIR="$PWD"
-if [[ -n "$REQUEST_WORKDIR" ]]; then
-	if [[ "$REQUEST_WORKDIR" != /* ]]; then
-		deny "BLOCKED: the merge tool working directory must be an absolute Git worktree.
+SEARCH_DIR=${REQUEST_WORKDIR:-$PWD}
+if [[ "$SEARCH_DIR" != /* ]]; then
+	deny "BLOCKED: the merge tool working directory must be an absolute path.
 
-  tool working directory: $REQUEST_WORKDIR"
-	fi
-	REPO_DIR="$REQUEST_WORKDIR"
+  tool working directory: $SEARCH_DIR"
 fi
-if ! REPO_ROOT=$(git -C "$REPO_DIR" rev-parse --show-toplevel 2>/dev/null) || [[ -z "$REPO_ROOT" ]]; then
-	deny "BLOCKED: the merge tool working directory is not a readable Git worktree.
+if [[ ! -d "$SEARCH_DIR" ]]; then
+	deny "BLOCKED: the merge tool working directory is not a readable directory.
 
-  tool working directory: ${REQUEST_WORKDIR:-$PWD}
+  tool working directory: $SEARCH_DIR"
+fi
+
+REPO_DIR=""
+if REPO_ROOT=$(git -C "$SEARCH_DIR" rev-parse --show-toplevel 2>/dev/null) && [[ -n "$REPO_ROOT" ]]; then
+	REPO_DIR="$REPO_ROOT"
+elif [[ -z "$REPO_FLAG" ]]; then
+	deny "BLOCKED: the merge tool working directory is not a Git worktree and the command has no explicit repository.
+
+  tool working directory: $SEARCH_DIR
 
 The review record and target policy must be resolved from the repository that
-the forge change will land in. Run the merge with that repository as the tool
-working directory."
+the forge change will land in. Add an explicit --repo owner/name selector, or
+run the agent from the repository itself."
 fi
-REPO_DIR="$REPO_ROOT"
 
 forge_json() {
 	if [[ "$CLI" == "gh" ]]; then
@@ -621,6 +626,84 @@ forge_json() {
 	fi
 }
 
+canonical_repository_url() {
+	# shellcheck disable=SC2016 # Python source is intentionally single-quoted shell data.
+	python3 -c '
+import re, sys
+from urllib.parse import urlsplit
+
+raw = sys.stdin.read().strip()
+if not raw:
+    raise SystemExit(1)
+
+if "://" not in raw:
+    match = re.match(r"^(?:[^@/]+@)?([^:/]+):(.+)$", raw)
+    if not match:
+        raise SystemExit(1)
+    host, path = match.groups()
+else:
+    parsed = urlsplit(raw)
+    host, path = parsed.hostname or "", parsed.path
+
+path = path.strip("/")
+if path.endswith(".git"):
+    path = path[:-4]
+if not host or not path:
+    raise SystemExit(1)
+print(f"{host.lower()}/{path}")
+'
+}
+
+repo_matches_repository() {
+	local repo_root="$1"
+	local expected="$2"
+	local remotes remote url actual
+
+	remotes=$(git -C "$repo_root" remote 2>/dev/null || true)
+	while IFS= read -r remote; do
+		[[ -n "$remote" ]] || continue
+		while IFS= read -r url; do
+			if actual=$(printf '%s' "$url" | canonical_repository_url 2>/dev/null) &&
+				[[ "$actual" == "$expected" ]]; then
+				return 0
+			fi
+		done < <(git -C "$repo_root" remote get-url --all "$remote" 2>/dev/null || true)
+	done <<<"$remotes"
+	return 1
+}
+
+discover_review_repo() {
+	local search_root="$1"
+	local slug="$2"
+	local repository="$3"
+	local expected record reviews_dir agentkit_dir candidate repo_root candidate_real root_real
+	local -a matches=()
+
+	expected=$(printf '%s' "$repository" | canonical_repository_url 2>/dev/null) || return 1
+	while IFS= read -r -d '' record; do
+		[[ "${record##*/}" == "$slug.json" ]] || continue
+		reviews_dir=${record%/*}
+		[[ "${reviews_dir##*/}" == "reviews" ]] || continue
+		agentkit_dir=${reviews_dir%/*}
+		[[ "${agentkit_dir##*/}" == ".agentkit" ]] || continue
+		candidate=${agentkit_dir%/*}
+		repo_root=$(git -C "$candidate" rev-parse --show-toplevel 2>/dev/null) || continue
+		candidate_real=$(cd "$candidate" 2>/dev/null && pwd -P) || continue
+		root_real=$(cd "$repo_root" 2>/dev/null && pwd -P) || continue
+		[[ "$candidate_real" == "$root_real" ]] || continue
+		if repo_matches_repository "$root_real" "$expected"; then
+			matches+=("$root_real")
+		fi
+	done < <(find "$search_root" \
+		-type d \( -name .git -o -name node_modules -o -name target -o -name .cache \
+		-o -name .moon -o -name .turbo -o -name .next -o -name dist -o -name build \
+		-o -name vendor -o -name .venv -o -name venv -o -name .kube -o -name lost+found \) \
+		-prune -o -type f -name '*.json' -path '*/.agentkit/reviews/*' -print0 2>/dev/null)
+
+	[[ ${#matches[@]} -eq 1 ]] || return 1
+	printf '%s\n' "${matches[0]}"
+}
+
 BRANCH=""
 HEAD_SHA=""
 TARGET_BRANCH=""
@@ -631,7 +714,8 @@ REPOSITORY_ID=""
 MERGE_QUEUE=""
 SHA_PATTERN='^[0-9a-f]{40}([0-9a-f]{24})?$'
 if [[ -n "$MR_ID" ]]; then
-	RESOLVED=$(cd "$REPO_DIR" 2>/dev/null && forge_json || true)
+	FORGE_RESOLVE_DIR=${REPO_DIR:-$SEARCH_DIR}
+	RESOLVED=$(cd "$FORGE_RESOLVE_DIR" 2>/dev/null && forge_json || true)
 	BRANCH=$(jq -r '.source_branch // empty' <<<"$RESOLVED" 2>/dev/null || true)
 	HEAD_SHA=$(jq -r '.source_sha // empty' <<<"$RESOLVED" 2>/dev/null || true)
 	TARGET_BRANCH=$(jq -r '.target_branch // empty' <<<"$RESOLVED" 2>/dev/null || true)
@@ -649,13 +733,27 @@ if [[ -z "$BRANCH" || -z "$HEAD_SHA" || -z "$TARGET_BRANCH" || -z "$TARGET_SHA" 
 	! "$TARGET_SHA" =~ $SHA_PATTERN ]]; then
 	deny "BLOCKED: cannot resolve what this merge would land, so it cannot be gated.
 
-  command dir: $REPO_DIR
+  command dir: $SEARCH_DIR
   mr/pr id:    ${MR_ID:-<none found>}
 
 The gate must read the change's source/target branches and exact SHAs from the
 forge — the local checkout alone says nothing about the commit being merged.
 Run the merge from the repo directory with an explicit MR/PR number and an
 authenticated forge CLI."
+fi
+
+SLUG=${BRANCH//\//__}
+if [[ -z "$REPO_DIR" ]]; then
+	if ! REPO_DIR=$(discover_review_repo "$SEARCH_DIR" "$SLUG" "$REPOSITORY"); then
+		deny "BLOCKED: the reviewed repository could not be resolved uniquely below the client working directory.
+
+  client working directory: $SEARCH_DIR
+  forge repository:         $REPOSITORY
+
+Codex can expose its workspace directory instead of the nested command
+directory. Keep exactly one local clone for this forge repository and branch
+review record below that workspace, or run the agent from the repository."
+	fi
 fi
 
 if [[ "$CLI" == "gh" && "$MERGE_QUEUE" == "true" ]]; then
@@ -686,7 +784,6 @@ Retry '$CLI $GROUP merge $MR_ID' after adding '$HEAD_FLAG $HEAD_SHA'. The forge 
 then refuse the merge if the source branch changes after this hook checks it."
 fi
 
-SLUG=${BRANCH//\//__}
 RECORD="$REPO_DIR/.agentkit/reviews/$SLUG.json"
 
 if [[ ! -f "$RECORD" ]]; then

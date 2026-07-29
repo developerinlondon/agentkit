@@ -43,19 +43,30 @@ interface StrictReviewFixture {
 
 function runHook(
   command: string,
-  opts: { tool?: string; cwd?: string; supervised?: boolean; toolWorkdir?: string } = {},
+  opts: {
+    tool?: string;
+    cwd?: string;
+    supervised?: boolean;
+    toolWorkdir?: string;
+    toolWorkdirField?: 'workdir' | 'cwd';
+    camelToolInput?: boolean;
+    payloadCwd?: string;
+  } = {},
 ): string {
   const toolInput =
     opts.tool && opts.tool !== 'Bash'
       ? { pull_number: 12 }
       : {
           command,
-          ...(opts.toolWorkdir === undefined ? {} : { workdir: opts.toolWorkdir }),
+          ...(opts.toolWorkdir === undefined
+            ? {}
+            : { [opts.toolWorkdirField ?? 'workdir']: opts.toolWorkdir }),
         };
   const input = JSON.stringify({
-    tool_name: opts.tool ?? 'Bash',
-    tool_input: toolInput,
-    session_id: 'test-session',
+    ...(opts.camelToolInput
+      ? { toolName: opts.tool ?? 'Bash', toolInput, sessionId: 'test-session' }
+      : { tool_name: opts.tool ?? 'Bash', tool_input: toolInput, session_id: 'test-session' }),
+    ...(opts.payloadCwd === undefined ? {} : { cwd: opts.payloadCwd }),
   });
   const args = opts.supervised ? [SUPERVISOR, '5', HOOK] : [HOOK];
   const res = spawnSync('bash', args, {
@@ -118,6 +129,9 @@ function record(body: unknown, slug = 'feat__thing'): void {
 
 const passing = { head_sha: HEAD, verdict: 'pass', findings: [] };
 const MERGE = `glab mr merge 12 --squash --yes --sha ${HEAD} --auto-merge=false`;
+const MERGE_WITH_REPO = `${MERGE} --repo owner/repo`;
+const GITHUB_MERGE_WITH_REPO =
+  `gh pr merge 12 --squash --delete-branch --match-head-commit ${HEAD} --repo owner/repo`;
 
 function mergeForHead(head: string): string {
   return `glab mr merge 12 --squash --yes --sha ${head} --auto-merge=false`;
@@ -265,7 +279,10 @@ beforeAll(() => {
   execSync('git init -q -b main', { cwd: repo, stdio: 'pipe' });
   execSync('git config user.email agentkit-tests@example.invalid', { cwd: repo, stdio: 'pipe' });
   execSync('git config user.name "AgentKit Tests"', { cwd: repo, stdio: 'pipe' });
-  execSync(`git remote add origin ${REPOSITORY}`, { cwd: repo, stdio: 'pipe' });
+  execSync('git remote add origin git@github.example:owner/repo.git', {
+    cwd: repo,
+    stdio: 'pipe',
+  });
   writeFileSync(join(repo, 'README.md'), 'fixture\n');
   execSync('git add README.md', { cwd: repo, stdio: 'pipe' });
   execSync('git commit -qm "test: base target"', { cwd: repo, stdio: 'pipe' });
@@ -280,6 +297,7 @@ beforeAll(() => {
 afterAll(() => rmSync(join(repo, '..'), { force: true, recursive: true }));
 beforeEach(() => {
   rmSync(join(repo, '.agentkit'), { force: true, recursive: true });
+  rmSync(join(repo, '..', 'duplicate'), { force: true, recursive: true });
   execSync(`git reset --hard ${baseTarget}`, { cwd: repo, stdio: 'pipe' });
   targetSha = baseTarget;
   githubBaseRefSha = baseTarget;
@@ -419,9 +437,72 @@ describe('review-police: intended semantics', () => {
     expect(runHook(MERGE)).toBe('');
   });
 
-  test('uses the tool working directory when the hook process starts above the repo', () => {
+  for (const [label, options] of [
+    ['tool_input.workdir', {}],
+    ['tool_input.cwd', { toolWorkdirField: 'cwd' as const }],
+    ['toolInput.workdir', { camelToolInput: true }],
+    ['toolInput.cwd', { camelToolInput: true, toolWorkdirField: 'cwd' as const }],
+  ] as const) {
+    test(`uses ${label} when the hook process starts above the repo`, () => {
+      record(passing);
+      expect(runHook(MERGE, { cwd: join(repo, '..'), toolWorkdir: repo, ...options })).toBe('');
+    });
+  }
+
+  for (const [forge, command] of [
+    ['GitLab', MERGE_WITH_REPO],
+    ['GitHub', GITHUB_MERGE_WITH_REPO],
+  ] as const) {
+    test(`discovers the reviewed ${forge} repo below the Codex session cwd`, () => {
+      record(passing);
+      const workspace = join(repo, '..');
+      expect(
+        runHook(command, { cwd: workspace, payloadCwd: workspace, supervised: true }),
+      ).toBe('');
+    });
+  }
+
+  test('ignores a same-branch review record in a repo for another forge remote', () => {
     record(passing);
-    expect(runHook(MERGE, { cwd: join(repo, '..'), toolWorkdir: repo })).toBe('');
+    const workspace = join(repo, '..');
+    const duplicate = join(workspace, 'duplicate');
+    mkdirSync(join(duplicate, '.agentkit', 'reviews'), { recursive: true });
+    execSync('git init -q -b main', { cwd: duplicate, stdio: 'pipe' });
+    execSync('git remote add origin https://github.example/other/repo', {
+      cwd: duplicate,
+      stdio: 'pipe',
+    });
+    writeFileSync(
+      join(duplicate, '.agentkit', 'reviews', 'feat__thing.json'),
+      JSON.stringify(passing),
+    );
+
+    expect(runHook(MERGE_WITH_REPO, { cwd: workspace, payloadCwd: workspace })).toBe('');
+  });
+
+  test('rejects two reviewed clones of the same forge repo below the session cwd', () => {
+    record(passing);
+    const workspace = join(repo, '..');
+    const duplicate = join(workspace, 'duplicate');
+    mkdirSync(join(duplicate, '.agentkit', 'reviews'), { recursive: true });
+    execSync('git init -q -b main', { cwd: duplicate, stdio: 'pipe' });
+    execSync(`git remote add origin ${REPOSITORY}`, { cwd: duplicate, stdio: 'pipe' });
+    writeFileSync(
+      join(duplicate, '.agentkit', 'reviews', 'feat__thing.json'),
+      JSON.stringify(passing),
+    );
+
+    expect(runHook(MERGE_WITH_REPO, { cwd: workspace, payloadCwd: workspace })).toContain(
+      'uniquely',
+    );
+  });
+
+  test('requires an explicit forge repo when the client cwd is only a workspace', () => {
+    record(passing);
+    const workspace = join(repo, '..');
+    expect(runHook(MERGE, { cwd: workspace, payloadCwd: workspace })).toContain(
+      'explicit repository',
+    );
   });
 
   test('rejects a relative tool working directory instead of borrowing the hook cwd', () => {
