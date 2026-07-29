@@ -954,6 +954,17 @@ install_claude_hooks() {
 			rm -f "$install_dir/lib"
 		fi
 		mkdir -p "$install_dir/lib"
+		# Fold a pre-shared-root real client lib/ into canon before
+		# link_children swaps the directory for a symlink and loses it.
+		if [[ "$hooks_dir" != "$install_dir" && -d "$hooks_dir/lib" && ! -L "$hooks_dir/lib" ]]; then
+			cp -a "$hooks_dir/lib/." "$install_dir/lib/"
+			rm -rf "${hooks_dir:?}/lib"
+		fi
+		# rm by name first: a read-only or self-symlinked leftover aborts cp under set -e.
+		local lib_file
+		for lib_file in "$REPO_DIR"/hooks/claude/lib/*; do
+			rm -f "$install_dir/lib/$(basename "$lib_file")"
+		done
 		cp -a "$REPO_DIR"/hooks/claude/lib/. "$install_dir/lib/"
 		echo "[claude] Installed hook lib/ helpers"
 	fi
