@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import resourcePolice, { enforceResourcePolicy } from '../plugins/resource-police';
+import { enforceResourcePolicy, resourcePolice } from '../plugins/resource-police';
 import {
   allowedResourceCommands,
   blockedResourceCommands,

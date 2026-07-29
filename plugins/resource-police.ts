@@ -1,4 +1,4 @@
-import type { PluginInput } from '@opencode-ai/plugin';
+import type { Plugin, PluginModule } from '@opencode-ai/plugin';
 
 interface Launch {
   token: string;
@@ -347,7 +347,7 @@ export function enforceResourcePolicy(command: string, platform = process.platfo
   );
 }
 
-export default async function resourcePolice(_ctx: PluginInput) {
+export const resourcePolice: Plugin = async () => {
   return {
     'tool.execute.before': async (
       input: { tool: string; sessionID: string; callID: string },
@@ -359,4 +359,9 @@ export default async function resourcePolice(_ctx: PluginInput) {
       enforceResourcePolicy(command, process.platform);
     },
   };
-}
+};
+
+export default {
+  id: 'resource-police',
+  server: resourcePolice,
+} satisfies PluginModule;

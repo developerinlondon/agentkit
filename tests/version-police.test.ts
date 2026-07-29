@@ -1,6 +1,7 @@
 import { describe, test, expect } from 'bun:test';
 import type { Pin } from '../plugins/version-police';
-import versionPolice, {
+import {
+  versionPolice,
   analyzePin,
   cachedVersion,
   changedPins,

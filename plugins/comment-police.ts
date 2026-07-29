@@ -1,4 +1,4 @@
-import type { PluginInput } from '@opencode-ai/plugin';
+import type { PluginInput, PluginModule } from '@opencode-ai/plugin';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
@@ -194,67 +194,67 @@ export function checkRatio(
   return null;
 }
 
-export const CommentPolice = {
-  name: 'comment-police',
-  hooks: ({ ctx }: PluginInput) => {
-    return {
-      'tool.execute.after': async (
-        input: { tool: string },
-        output: { title?: string; output?: string },
-      ) => {
-        if (!['edit', 'write'].includes(input.tool)) return;
-        const rel = output.title;
-        if (!rel) return;
-        if (!TARGET_FILE.test(rel)) return;
-        if (SKIP_FILES.test(rel)) return;
+export async function commentPolice(ctx: PluginInput) {
+  return {
+    'tool.execute.after': async (
+      input: { tool: string },
+      output: { title?: string; output?: string },
+    ) => {
+      if (!['edit', 'write'].includes(input.tool)) return;
+      const rel = output.title;
+      if (!rel) return;
+      if (!TARGET_FILE.test(rel)) return;
+      if (SKIP_FILES.test(rel)) return;
 
-        const config = loadConfig();
-        if (config.excludePatterns.some((p) => rel.includes(p))) return;
+      const config = loadConfig();
+      if (config.excludePatterns.some((p) => rel.includes(p))) return;
 
-        const abs = path.isAbsolute(rel)
-          ? rel
-          : path.resolve(ctx.worktree, rel);
-        let content: string;
-        try {
-          content = readFileSync(abs, 'utf-8');
-        } catch {
-          return;
-        }
-        const lines = content.split('\n');
-        const marker = lineCommentMarkers(rel);
-        const blocks = findCommentBlocks(lines, marker);
-        const forbidden = config.forbiddenPatterns.map(
-          (p) => new RegExp(p, 'i'),
-        );
+      const abs = path.isAbsolute(rel)
+        ? rel
+        : path.resolve(ctx.worktree, rel);
+      let content: string;
+      try {
+        content = readFileSync(abs, 'utf-8');
+      } catch {
+        return;
+      }
+      const lines = content.split('\n');
+      const marker = lineCommentMarkers(rel);
+      const blocks = findCommentBlocks(lines, marker);
+      const forbidden = config.forbiddenPatterns.map(
+        (p) => new RegExp(p, 'i'),
+      );
 
-        const warnings: string[] = [];
-        warnings.push(
-          ...checkBlocks(
-            blocks,
-            config.maxBlockLines,
-            config.maxHeaderLines,
-            forbidden,
-          ),
-        );
-        const ratioWarning = checkRatio(
-          lines,
-          marker,
-          config.maxCommentRatio,
-        );
-        if (ratioWarning) warnings.push(ratioWarning);
+      const warnings: string[] = [];
+      warnings.push(
+        ...checkBlocks(
+          blocks,
+          config.maxBlockLines,
+          config.maxHeaderLines,
+          forbidden,
+        ),
+      );
+      const ratioWarning = checkRatio(
+        lines,
+        marker,
+        config.maxCommentRatio,
+      );
+      if (ratioWarning) warnings.push(ratioWarning);
 
-        if (warnings.length === 0) return;
+      if (warnings.length === 0) return;
 
-        output.output =
-          (output.output ?? '') +
-          `\n\nCOMMENT DISCIPLINE (comment-police)\n` +
-          `${'='.repeat(50)}\n` +
-          warnings.map((w, i) => `${i + 1}. ${w}`).join('\n\n') +
-          `\n\n` +
-          `Default to no comments. Add only when WHY is non-obvious and removing the comment would confuse a future reader without conversation context. PR description / commit message is the durable home for "why this change was made". See agentkit rules/comment-discipline.md.`;
-      },
-    };
-  },
-};
+      output.output =
+        (output.output ?? '') +
+        `\n\nCOMMENT DISCIPLINE (comment-police)\n` +
+        `${'='.repeat(50)}\n` +
+        warnings.map((w, i) => `${i + 1}. ${w}`).join('\n\n') +
+        `\n\n` +
+        `Default to no comments. Add only when WHY is non-obvious and removing the comment would confuse a future reader without conversation context. PR description / commit message is the durable home for "why this change was made". See agentkit rules/comment-discipline.md.`;
+    },
+  };
+}
 
-export default CommentPolice;
+export default {
+  id: 'comment-police',
+  server: commentPolice,
+} satisfies PluginModule;

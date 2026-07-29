@@ -1,5 +1,9 @@
 import { describe, test, expect } from 'bun:test';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
+  commentPolice,
   findCommentBlocks,
   commentLineCount,
   codeLineCount,
@@ -138,5 +142,30 @@ describe('commentLineCount + codeLineCount', () => {
     const src = ['// a', '', 'const x = 1;', 'const y = 2;', '// b'];
     expect(commentLineCount(src, TS)).toBe(2);
     expect(codeLineCount(src, TS)).toBe(2);
+  });
+});
+
+describe('comment-police plugin', () => {
+  test('checks writes relative to the PluginInput worktree', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'agentkit-comment-police-'));
+    const previousConfigHome = process.env.XDG_CONFIG_HOME;
+    process.env.XDG_CONFIG_HOME = join(root, 'config');
+    writeFileSync(join(root, 'example.ts'), '// closes #1\nconst value = 1;\n');
+
+    try {
+      const ctx = { worktree: root } as Parameters<typeof commentPolice>[0];
+      const hooks = await commentPolice(ctx);
+      const input = { tool: 'write', sessionID: 'test', callID: 'test' };
+      const output = { title: 'example.ts', output: 'done', metadata: {} };
+
+      await hooks['tool.execute.after']!(input, output);
+
+      expect(output.output).toContain('COMMENT DISCIPLINE (comment-police)');
+      expect(output.output).toContain('rotting reference');
+    } finally {
+      if (previousConfigHome === undefined) delete process.env.XDG_CONFIG_HOME;
+      else process.env.XDG_CONFIG_HOME = previousConfigHome;
+      rmSync(root, { force: true, recursive: true });
+    }
   });
 });
