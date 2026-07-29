@@ -1,0 +1,209 @@
+{
+  "format_version": "1.0",
+  "terraform_version": "1.12.5",
+  "values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "local_file.kubeconfig",
+          "mode": "managed",
+          "type": "local_file",
+          "name": "kubeconfig",
+          "provider_name": "registry.opentofu.org/hashicorp/local",
+          "schema_version": 0,
+          "values": {
+            "content": "280a421a-a37d-d2e0-102e-4039bbd13447",
+            "content_base64": null,
+            "content_base64sha256": "VKkxO6rtS9JOlhDmdTYgFAXMu4xgTTj63aV+rWBLEaw=",
+            "content_base64sha512": "AJP7ieFxcGky+Vbbr8UiJcp9fXZOFGIwEXKN57sAbR+EItw4Z0mmvJcE5t3R/IbPtuObd0pDgm2w0PARorDXMQ==",
+            "content_md5": "ae6e2bc3d50b7cf203951190bea02bca",
+            "content_sha1": "a48670f82c838c6ca027efebc7e2a39e75242a8d",
+            "content_sha256": "54a9313baaed4bd24e9610e67536201405ccbb8c604d38fadda57ead604b11ac",
+            "content_sha512": "0093fb89e171706932f956dbafc52225ca7d7d764e14623011728de7bb006d1f8422dc386749a6bc9704e6ddd1fc86cfb6e39b774a43826db0d0f011a2b0d731",
+            "directory_permission": "0777",
+            "file_permission": "0777",
+            "filename": "./out/kubeconfig-obliging-mustang",
+            "id": "a48670f82c838c6ca027efebc7e2a39e75242a8d",
+            "sensitive_content": null,
+            "source": null
+          },
+          "sensitive_values": { "sensitive_content": true },
+          "depends_on": ["random_pet.cluster", "random_uuid.ingress_token"]
+        },
+        {
+          "address": "local_file.node_manifest[0]",
+          "mode": "managed",
+          "type": "local_file",
+          "name": "node_manifest",
+          "index": 0,
+          "provider_name": "registry.opentofu.org/hashicorp/local",
+          "schema_version": 0,
+          "values": {
+            "content": "node: obliging-mustang-0\n",
+            "content_base64": null,
+            "content_base64sha256": "M+iXZbnboRxEISz/ugkXR2iIzomM5runeWM01n6SJ1M=",
+            "content_base64sha512": "CsXFlUKMYK43MZaaM39e7fMC8T4k9dfD9ifs114TDsd7TpjSm44UgxrbWGIgalSKf4DiK7WmFm1DGvTsKq1Gng==",
+            "content_md5": "be2e6de3bccd1995859f44a7bdee1f6e",
+            "content_sha1": "35a315c423f9c89ff2a0524f590dc150531fa233",
+            "content_sha256": "33e89765b9dba11c44212cffba0917476888ce898ce6bba7796334d67e922753",
+            "content_sha512": "0ac5c595428c60ae3731969a337f5eedf302f13e24f5d7c3f627ecd75e130ec77b4e98d29b8e14831adb5862206a548a7f80e22bb5a6166d431af4ec2aad469e",
+            "directory_permission": "0777",
+            "file_permission": "0777",
+            "filename": "./out/node-0.yaml",
+            "id": "35a315c423f9c89ff2a0524f590dc150531fa233",
+            "sensitive_content": null,
+            "source": null
+          },
+          "sensitive_values": { "sensitive_content": true },
+          "depends_on": ["random_pet.cluster"]
+        },
+        {
+          "address": "local_file.node_manifest[1]",
+          "mode": "managed",
+          "type": "local_file",
+          "name": "node_manifest",
+          "index": 1,
+          "provider_name": "registry.opentofu.org/hashicorp/local",
+          "schema_version": 0,
+          "values": {
+            "content": "node: obliging-mustang-1\n",
+            "content_base64": null,
+            "content_base64sha256": "RAiFf8/+541xX5Q4EYoYNP8mrF2tX0k6avZZ7pHfP5w=",
+            "content_base64sha512": "zaFd6thyNdmpHJhBV5lBtqPUBFHUzYFVXRvOhtacpYoAvI0sh4GcoQEe2ZPOPbY0svodz+TaE7MVZuUeG4wldw==",
+            "content_md5": "1440d430c2a460d38961fef68a5e1fd8",
+            "content_sha1": "5080ada62f3b9df25f005e6b1e0532f3ae67e24c",
+            "content_sha256": "4408857fcffee78d715f9438118a1834ff26ac5dad5f493a6af659ee91df3f9c",
+            "content_sha512": "cda15dead87235d9a91c9841579941b6a3d40451d4cd81555d1bce86d69ca58a00bc8d2c87819ca1011ed993ce3db634b2fa1dcfe4da13b31566e51e1b8c2577",
+            "directory_permission": "0777",
+            "file_permission": "0777",
+            "filename": "./out/node-1.yaml",
+            "id": "5080ada62f3b9df25f005e6b1e0532f3ae67e24c",
+            "sensitive_content": null,
+            "source": null
+          },
+          "sensitive_values": { "sensitive_content": true },
+          "depends_on": ["random_pet.cluster"]
+        },
+        {
+          "address": "random_pet.cluster",
+          "mode": "managed",
+          "type": "random_pet",
+          "name": "cluster",
+          "provider_name": "registry.opentofu.org/hashicorp/random",
+          "schema_version": 0,
+          "values": { "id": "obliging-mustang", "keepers": null, "length": 2, "prefix": null, "separator": "-" },
+          "sensitive_values": {}
+        },
+        {
+          "address": "random_uuid.ingress_token",
+          "mode": "managed",
+          "type": "random_uuid",
+          "name": "ingress_token",
+          "provider_name": "registry.opentofu.org/hashicorp/random",
+          "schema_version": 0,
+          "values": {
+            "id": "280a421a-a37d-d2e0-102e-4039bbd13447",
+            "keepers": null,
+            "result": "280a421a-a37d-d2e0-102e-4039bbd13447"
+          },
+          "sensitive_values": {}
+        }
+      ],
+      "child_modules": [
+        {
+          "resources": [
+            {
+              "address": "module.store.local_file.bucket_policy",
+              "mode": "managed",
+              "type": "local_file",
+              "name": "bucket_policy",
+              "provider_name": "registry.opentofu.org/hashicorp/local",
+              "schema_version": 0,
+              "values": {
+                "content": "{\"bucket\":\"obliging-mustang\"}",
+                "content_base64": null,
+                "content_base64sha256": "pgKD7Pkd/biaDNKFQHSam/IwfRBj9NXjTSpK0xQjFYE=",
+                "content_base64sha512": "D8Q+x0JtIJSSws+bq0Kq/GeG7kBDW/5IJho7NHjxe94ttPgBJTVp3gHiW65fxxicHA7tUgvWRmZBcqBADsxZ8A==",
+                "content_md5": "2ac55313a41e331d78bd55b38c1358a3",
+                "content_sha1": "11a79f72c797eef63780dc8d77fb7e7204e662c6",
+                "content_sha256": "a60283ecf91dfdb89a0cd28540749a9bf2307d1063f4d5e34d2a4ad314231581",
+                "content_sha512": "0fc43ec7426d209492c2cf9bab42aafc6786ee40435bfe48261a3b3478f17bde2db4f801253569de01e25bae5fc7189c1c0eed520bd646664172a0400ecc59f0",
+                "directory_permission": "0777",
+                "file_permission": "0777",
+                "filename": "modules/store/out/obliging-mustang-3qq5u5x9.json",
+                "id": "11a79f72c797eef63780dc8d77fb7e7204e662c6",
+                "sensitive_content": null,
+                "source": null
+              },
+              "sensitive_values": { "sensitive_content": true },
+              "depends_on": ["module.store.random_string.bucket_suffix", "random_pet.cluster"]
+            },
+            {
+              "address": "module.store.random_string.bucket_suffix",
+              "mode": "managed",
+              "type": "random_string",
+              "name": "bucket_suffix",
+              "provider_name": "registry.opentofu.org/hashicorp/random",
+              "schema_version": 2,
+              "values": {
+                "id": "3qq5u5x9",
+                "keepers": null,
+                "length": 8,
+                "lower": true,
+                "min_lower": 0,
+                "min_numeric": 0,
+                "min_special": 0,
+                "min_upper": 0,
+                "number": true,
+                "numeric": true,
+                "override_special": null,
+                "result": "3qq5u5x9",
+                "special": false,
+                "upper": false
+              },
+              "sensitive_values": {}
+            }
+          ],
+          "address": "module.store",
+          "child_modules": [
+            {
+              "resources": [
+                {
+                  "address": "module.store.module.backup.local_file.retention",
+                  "mode": "managed",
+                  "type": "local_file",
+                  "name": "retention",
+                  "provider_name": "registry.opentofu.org/hashicorp/local",
+                  "schema_version": 0,
+                  "values": {
+                    "content": "{\"source\":\"modules/store/out/obliging-mustang-3qq5u5x9.json\",\"days\":30}",
+                    "content_base64": null,
+                    "content_base64sha256": "YgcKl5Eyq5ebuhykFiA7roiBSgyhQXwsT1PlHzJsnDs=",
+                    "content_base64sha512": "Pkg3/WQisIKSZcRP43+DnQEjFuop+bNOHoMfjemeOvxqaOq5zIS9ISSrcnpsbTwy44xmRG1iHA/UiPBcDDE2dA==",
+                    "content_md5": "4c2da69679eed1bcdbf98d004a3cfed7",
+                    "content_sha1": "c56faa1cf041949fa3e9a748d4aac9c0b098072e",
+                    "content_sha256": "62070a979132ab979bba1ca416203bae88814a0ca1417c2c4f53e51f326c9c3b",
+                    "content_sha512": "3e4837fd6422b0829265c44fe37f839d012316ea29f9b34e1e831f8de99e3afc6a68eab9cc84bd2124ab727a6c6d3c32e38c66446d621c0fd488f05c0c313674",
+                    "directory_permission": "0777",
+                    "file_permission": "0777",
+                    "filename": "modules/store/modules/backup/out/retention.json",
+                    "id": "c56faa1cf041949fa3e9a748d4aac9c0b098072e",
+                    "sensitive_content": null,
+                    "source": null
+                  },
+                  "sensitive_values": { "sensitive_content": true },
+                  "depends_on": [
+                    "module.store.local_file.bucket_policy",
+                    "module.store.random_string.bucket_suffix",
+                    "random_pet.cluster"
+                  ]
+                }
+              ],
+              "address": "module.store.module.backup"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
