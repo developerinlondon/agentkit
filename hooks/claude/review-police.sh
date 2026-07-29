@@ -950,10 +950,24 @@ Commits landed after the review, or the record is malformed. Re-review the
 current head and update .agentkit/reviews/$SLUG.json."
 fi
 
-BLOCKING=$(jq -r '
+# Which severities block is configurable from the repo's own policy file; a
+# missing, malformed, or invalid-valued setting keeps the default.
+BLOCKING_SEVERITIES='["BLOCKER","HIGH"]'
+LOCAL_POLICY="$REPO_DIR/.agentkit/review-policy.json"
+if [[ -f "$LOCAL_POLICY" ]]; then
+	CONFIGURED_SEVERITIES=$(jq -c '.gate.blocking_severities // empty' "$LOCAL_POLICY" 2>/dev/null || true)
+	if [[ -n "$CONFIGURED_SEVERITIES" ]] &&
+		jq -e 'type == "array" and length > 0 and
+		       all(.[]; type == "string" and
+		           (ascii_upcase | IN("BLOCKER","HIGH","MEDIUM","LOW","NIT","INFO")))' \
+			<<<"$CONFIGURED_SEVERITIES" >/dev/null 2>&1; then
+		BLOCKING_SEVERITIES=$(jq -c 'map(ascii_upcase)' <<<"$CONFIGURED_SEVERITIES")
+	fi
+fi
+
+BLOCKING=$(jq -r --argjson blocking "$BLOCKING_SEVERITIES" '
   [ .findings[]?
-    | select((.severity // "" | ascii_upcase) as $s
-             | $s == "BLOCKER" or $s == "HIGH")
+    | select((.severity // "" | ascii_upcase) as $s | $blocking | index($s))
     | select((.resolved // false) == false)
     | "  - \(.severity | ascii_upcase): \(.summary // "(no summary)")"
   ] | join("\n")' "$RECORD" 2>/dev/null || true)

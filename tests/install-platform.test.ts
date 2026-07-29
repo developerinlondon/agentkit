@@ -46,7 +46,10 @@ function createFixture(): Fixture {
   }
   writeFixtureFile(join(repo, 'config.example.yaml'), '{}\n');
   writeFixtureFile(join(repo, 'skills', 'sample', 'SKILL.md'), '# Sample\n');
-  writeFixtureFile(join(repo, 'skills', 'GROUPS'), 'group core Sample core group\n');
+  writeFixtureFile(
+    join(repo, 'skills', 'GROUPS'),
+    'group core Sample core group\ngroup review Sample review group\nexplicit review\n',
+  );
   writeFixtureFile(join(repo, 'rules', 'sample.md'), '# Sample\n');
   mkdirSync(join(repo, 'instructions'), { recursive: true });
   mkdirSync(join(repo, 'plugins'), { recursive: true });
@@ -87,6 +90,7 @@ function runInstall(
   platform: string,
   global: boolean,
   disableSessionScope = true,
+  withReview = false,
 ) {
   const args = global
     ? [
@@ -95,6 +99,7 @@ function runInstall(
         ...(disableSessionScope ? ['--no-session-scope'] : []),
       ]
     : [join(fixture.repo, 'install.sh'), fixture.target];
+  if (withReview) args.push('--with', 'review');
   return spawnSync('bash', args, {
     cwd: fixture.repo,
     env: {
@@ -117,8 +122,8 @@ function installedPaths(fixture: Fixture, global: boolean) {
 }
 
 function expectMissing(path: string): void {
-  expect(existsSync(path)).toBe(false);
-  expect(() => lstatSync(path)).toThrow();
+  expect(existsSync(path), path).toBe(false);
+  expect(() => lstatSync(path), path).toThrow();
 }
 
 describe('platform-aware artifact installation', () => {
@@ -128,7 +133,7 @@ describe('platform-aware artifact installation', () => {
     test(`${mode} install includes Linux-only and universal artifacts on Linux`, () => {
       const fixture = createFixture();
       try {
-        const result = runInstall(fixture, 'linux', global);
+        const result = runInstall(fixture, 'linux', global, true, true);
         expect(result.status, result.stderr).toBe(0);
 
         const { codex, policies, tools } = installedPaths(fixture, global);
@@ -168,7 +173,7 @@ describe('platform-aware artifact installation', () => {
           }
         }
 
-        const result = runInstall(fixture, 'darwin', global);
+        const result = runInstall(fixture, 'darwin', global, true, true);
         expect(result.status, result.stderr).toBe(0);
 
         expectMissing(join(tools, 'bounded-run'));
@@ -188,6 +193,63 @@ describe('platform-aware artifact installation', () => {
             expectMissing(join(base, 'agentkit-run'));
           }
         }
+      } finally {
+        rmSync(fixture.root, { force: true, recursive: true });
+      }
+    });
+
+    test(`${mode} default install removes review artifacts it never selected`, () => {
+      const fixture = createFixture();
+      const { codex, tools } = installedPaths(fixture, global);
+      const reviewArtifacts = [
+        join(tools, 'review-gate'),
+        join(tools, 'review-profile'),
+        join(codex, 'hooks', 'fail-closed-hook.sh'),
+        join(codex, 'hooks', 'review-police.sh'),
+        join(codex, 'tools', 'review-gate'),
+        join(codex, 'tools', 'review-profile'),
+      ];
+      if (global) {
+        for (const base of [
+          join(fixture.home, '.agentkit', 'tools'),
+          join(fixture.home, '.claude', 'tools'),
+        ]) {
+          reviewArtifacts.push(join(base, 'review-gate'), join(base, 'review-profile'));
+        }
+      }
+
+      try {
+        for (const path of reviewArtifacts) writeFixtureFile(path, 'stale\n');
+        writeFixtureFile(
+          join(codex, 'hooks.json'),
+          JSON.stringify({
+            hooks: {
+              PreToolUse: [
+                {
+                  matcher: 'Bash',
+                  hooks: [
+                    { type: 'command', command: '/tmp/unrelated-policy' },
+                    {
+                      type: 'command',
+                      command:
+                        'AGENTKIT_HOOK_TARGET=codex /old/fail-closed-hook.sh 45 /old/review-police.sh',
+                    },
+                  ],
+                },
+              ],
+            },
+          }),
+        );
+
+        const result = runInstall(fixture, 'linux', global);
+        expect(result.status, result.stderr).toBe(0);
+
+        for (const path of reviewArtifacts) expectMissing(path);
+        expect(existsSync(join(tools, 'bounded-run'))).toBe(true);
+        expect(existsSync(join(tools, 'portable-tool'))).toBe(true);
+        const codexHooks = readFileSync(join(codex, 'hooks.json'), 'utf-8');
+        expect(codexHooks).toContain('/tmp/unrelated-policy');
+        expect(codexHooks).not.toContain('AGENTKIT_HOOK_TARGET=codex');
       } finally {
         rmSync(fixture.root, { force: true, recursive: true });
       }

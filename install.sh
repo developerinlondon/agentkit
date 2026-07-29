@@ -18,9 +18,16 @@ Options:
                        are declared in skills/GROUPS; every unlisted skill is
                        in the always-installed `core` group.
                          --with product   product-intelligence, product-review
+                         --with review    adversarial-review + hard merge gate
                        A global install run on a terminal with no group flags
                        and nothing remembered yet asks about each optional
                        group instead; every other run is unattended.
+                       Groups marked `explicit` in skills/GROUPS (review) are
+                       never offered by that prompt and are excluded from
+                       --all: only a literal --with installs them, and when
+                       one is not selected the installer REMOVES its
+                       previously installed hooks, tools, skills, and prompt
+                       wiring.
   --no-prompt          Never ask about optional groups, even on a terminal.
                        AGENTKIT_SKIP_PROMPT=1 and a non-empty CI do the same.
   --without <group>    Drop a group from the selection and from the remembered
@@ -256,6 +263,9 @@ prompt_for_groups() {
 	fi
 	for group in $(declared_groups); do
 		if [[ "$group" == core ]]; then continue; fi
+		# Explicit groups are consent-gated: a y at a prompt is too easy to give
+		# without reading what it wires in. Only a literal --with installs them.
+		if group_explicit "$group"; then continue; fi
 		if [[ "$header" == false ]]; then
 			echo "[groups] Optional skill groups — core installs either way." >&3
 			header=true
@@ -281,7 +291,14 @@ prompt_for_groups() {
 select_groups() {
 	local candidates group
 	if [[ "$ALL_GROUPS" == true ]]; then
-		candidates="$(declared_groups)"
+		# --all never covers explicit groups; those still arrive only via a
+		# literal --with (or a selection previously persisted from one).
+		candidates=""
+		for group in $(declared_groups); do
+			if group_explicit "$group"; then continue; fi
+			candidates="${candidates:+$candidates }$group"
+		done
+		candidates="$candidates $EXTRA_GROUPS $(read_persisted_groups)"
 	else
 		candidates="core $EXTRA_GROUPS $(read_persisted_groups)"
 	fi
@@ -330,6 +347,29 @@ link_path() {
 	echo "[link] $dest -> $src"
 }
 
+# Remove symlinks in a client dir whose target no longer exists under the
+# shared root — the client-side counterpart of removing a canon entry. Only
+# agentkit-owned links (targets inside AGENTKIT_HOME) are touched; a broken
+# link the user made by hand is not ours to delete.
+prune_dangling_links() {
+	local dir="$1"
+	[[ -d "$dir" ]] || return 0
+	local entry target
+	for entry in "$dir"/*; do
+		[[ -L "$entry" ]] || continue
+		target="$(readlink "$entry")"
+		case "$target" in
+		"$AGENTKIT_HOME"/*) ;;
+		*) continue ;;
+		esac
+		if [[ ! -e "$target" ]]; then
+			rm -f "$entry"
+			echo "[link] Pruned dangling: $entry"
+		fi
+	done
+	return 0
+}
+
 # Symlink every direct child of canon into each client dir (by basename).
 link_children() {
 	local canon="$1"
@@ -366,8 +406,19 @@ install_skills() {
 
 		# An unselected group that is already installed is still refreshed:
 		# dropping it on upgrade would silently take a skill away from someone
-		# who is using it, and leaving it unupdated rots it instead.
+		# who is using it, and leaving it unupdated rots it instead. Explicit
+		# groups invert that: they are consent-gated, and presence without a
+		# recorded selection is not consent — remove them.
 		if ! group_selected "$group"; then
+			if group_explicit "$group"; then
+				if [[ -e "$target" ]]; then
+					echo "[skills] Removing (explicit group '$group' not selected): $skill_name"
+					rm -rf "$target"
+				else
+					echo "[skills] Skipping (explicit group '$group' — add --with $group): $skill_name"
+				fi
+				continue
+			fi
 			if [[ -e "$target" ]]; then
 				echo "[skills] Keeping installed (group '$group' not selected): $skill_name"
 			else
@@ -681,6 +732,77 @@ install_grok_prompt() {
 	link_path "$prompt_file" "$rules_dir/$name"
 }
 
+instruction_group() {
+	case "$(basename "$1")" in
+	evidence-gated-review.md) printf 'review' ;;
+	*) printf 'core' ;;
+	esac
+}
+
+remove_claude_prompt() {
+	local name="$1"
+	local title="$2"
+	local claude_file="$HOME/.claude/CLAUDE.md"
+	local tmp="${claude_file}.tmp"
+	local marker_start="<!-- agentkit:${name%.md}:start -->"
+	local marker_end="<!-- agentkit:${name%.md}:end -->"
+
+	[[ -f "$claude_file" ]] || return 0
+
+	if grep -Fq "$marker_start" "$claude_file"; then
+		awk -v start="$marker_start" -v end="$marker_end" '
+			$0 == start { skip = 1; next }
+			skip && $0 == end { skip = 0; next }
+			!skip { print }
+		' "$claude_file" >"$tmp"
+	elif [[ -n "$title" ]] && grep -Fxq "# $title" "$claude_file"; then
+		# Legacy blocks were appended without markers; the prompt is one
+		# top-level section, so strip from its heading to the next one.
+		awk -v heading="# $title" '
+			$0 == heading { skip = 1; next }
+			skip && /^# / { skip = 0 }
+			!skip { print }
+		' "$claude_file" >"$tmp"
+	else
+		return 0
+	fi
+	mv "$tmp" "$claude_file"
+	echo "[claude] Removed prompt block ($name): $claude_file"
+}
+
+remove_opencode_prompt() {
+	local prompt_file="$1"
+	local config_file="$HOME/.config/opencode/opencode.json"
+	local tmp="${config_file}.tmp"
+
+	[[ -f "$config_file" ]] || return 0
+	command -v jq &>/dev/null || return 0
+	jq -e --arg prompt "$prompt_file" '(.instructions // []) | index($prompt)' \
+		"$config_file" >/dev/null 2>&1 || return 0
+
+	jq --arg prompt "$prompt_file" \
+		'.instructions = ((.instructions // []) | map(select(. != $prompt)))' \
+		"$config_file" >"$tmp"
+	mv "$tmp" "$config_file"
+	echo "[opencode] Removed global prompt: $config_file"
+}
+
+remove_agent_prompt_file() {
+	local instructions_dir="$1"
+	local name="$2"
+	local canon_file="$instructions_dir/$name"
+	local title=""
+	[[ -f "$REPO_DIR/instructions/$name" ]] && title="$(prompt_title "$REPO_DIR/instructions/$name")"
+
+	remove_claude_prompt "$name" "$title"
+	remove_opencode_prompt "$canon_file"
+	rm -f "$HOME/.grok/rules/$name" "$HOME/.agents/instructions/$name"
+	if [[ -e "$canon_file" ]]; then
+		rm -f "$canon_file"
+		echo "[prompt] Removed (group not selected): $canon_file"
+	fi
+}
+
 install_global_agent_prompt() {
 	local instructions_dir="${1:-$AGENTKIT_HOME/instructions}"
 	mkdir -p "$instructions_dir"
@@ -689,6 +811,10 @@ install_global_agent_prompt() {
 	local found=false
 	for source_file in "$REPO_DIR"/instructions/*.md; do
 		[[ -f "$source_file" ]] || continue
+		if ! group_selected "$(instruction_group "$source_file")"; then
+			remove_agent_prompt_file "$instructions_dir" "$(basename "$source_file")"
+			continue
+		fi
 		install_agent_prompt_file "$instructions_dir" "$source_file"
 		found=true
 	done
@@ -754,6 +880,14 @@ install_opencode_plugins() {
 
 # ─── Claude Code: Bash Hook Scripts ──────────────────────────────────────────
 
+# fail-closed-hook counts as review: its only wiring is as review-police's supervisor.
+review_hook() {
+	case "$1" in
+	review-police.sh | fail-closed-hook.sh) return 0 ;;
+	esac
+	return 1
+}
+
 # Install hook scripts into the shared root (canon), then optionally symlink
 # each into a client hooks dir (e.g. ~/.claude/hooks) so settings.json paths
 # keep working without a second full copy.
@@ -774,6 +908,20 @@ install_claude_hooks() {
 		[[ -f "$hook_file" ]] || continue
 		local name
 		name="$(basename "$hook_file")"
+
+		# A removed script with a surviving settings.json entry would fail-closed
+		# DENY every Bash call — the settings merge below strips entries in the
+		# same run.
+		if review_hook "$name" && ! group_selected review; then
+			if [[ -e "$install_dir/$name" || -L "$install_dir/$name" ]]; then
+				echo "[claude] Removing hook (review group not selected): $name"
+				rm -f "$install_dir/$name"
+			fi
+			if [[ "$hooks_dir" != "$install_dir" && (-e "$hooks_dir/$name" || -L "$hooks_dir/$name") ]]; then
+				rm -f "$hooks_dir/$name"
+			fi
+			continue
+		fi
 
 		if [[ -f "$install_dir/$name" && ! -L "$install_dir/$name" ]]; then
 			echo "[claude] Updating hook: $name"
@@ -830,12 +978,19 @@ merge_claude_settings() {
 		echo "[claude] ERROR: missing $canonical — cannot wire hooks." >&2
 		return 1
 	fi
+	# The merge below replaces the whole hooks section, so filtering review
+	# entries here both withholds them on fresh installs and strips previously
+	# merged ones on upgrade — the settings side of removing the scripts above.
+	local review_selected=true
+	group_selected review || review_selected=false
+
 	local hooks_json
-	hooks_json=$(jq --arg dir "$hooks_dir" '
+	hooks_json=$(jq --arg dir "$hooks_dir" --argjson review "$review_selected" '
     {hooks: (.hooks | with_entries(
-      .value |= map(.hooks |= map(
-        .command |= gsub("\\$HOME/\\.claude/hooks"; $dir)
-      ))
+      .value |= (map(.hooks |= map(
+        select($review or ((.command // "") | contains("review-police") | not))
+        | .command |= gsub("\\$HOME/\\.claude/hooks"; $dir)
+      )) | map(select((.hooks | length) > 0)))
     ))}
   ' "$canonical")
 
@@ -953,6 +1108,46 @@ install_codex_review_hooks() {
 
 	merge_codex_hooks "$codex_dir/hooks.json" "$hooks_dir"
 	echo "[codex] Review or re-trust the AgentKit hooks with /hooks in a new Codex session."
+}
+
+remove_codex_review_hooks() {
+	local codex_dir="$1"
+	local hooks_file="$codex_dir/hooks.json"
+	local name removed=false
+
+	for name in fail-closed-hook.sh review-police.sh; do
+		if [[ -e "$codex_dir/hooks/$name" ]]; then
+			rm -f "$codex_dir/hooks/$name"
+			removed=true
+		fi
+	done
+	rm -f "$codex_dir/hooks/lib/hook-input.sh"
+	for name in review-gate review-profile; do
+		if [[ -e "$codex_dir/tools/$name" ]]; then
+			rm -f "$codex_dir/tools/$name"
+			removed=true
+		fi
+	done
+
+	if [[ -f "$hooks_file" ]] && command -v jq >/dev/null 2>&1; then
+		if jq -e '(.hooks.PreToolUse // []) | map(.hooks // []) | flatten
+		          | any(.command // "" | contains("AGENTKIT_HOOK_TARGET=codex"))' \
+			"$hooks_file" >/dev/null 2>&1; then
+			jq '
+        .hooks.PreToolUse = ((.hooks.PreToolUse // []) |
+          map(
+            .hooks = ((.hooks // []) |
+              map(select(((.command // "") | contains("AGENTKIT_HOOK_TARGET=codex")) | not)))
+            | select((.hooks | length) > 0)
+          ))
+      ' "$hooks_file" >"${hooks_file}.tmp" && mv "${hooks_file}.tmp" "$hooks_file"
+			removed=true
+		fi
+	fi
+
+	if [[ "$removed" == true ]]; then
+		echo "[codex] Removed review gate hooks (review group not selected)."
+	fi
 }
 
 # ─── Per-Session Resource Shims ──────────────────────────────────────────────
@@ -1092,9 +1287,18 @@ install_codex_skills() {
 		target="$prompts_dir/$name.md"
 		group="$(skill_group "$name")"
 
-		if ! group_selected "$group" && [[ ! -f "$target" ]]; then
-			echo "[codex] Skipping prompt (group '$group' — add --with $group): $name.md"
-			continue
+		if ! group_selected "$group"; then
+			if group_explicit "$group"; then
+				if [[ -f "$target" ]]; then
+					echo "[codex] Removing prompt (explicit group '$group' not selected): $name.md"
+					rm -f "$target"
+				fi
+				continue
+			fi
+			if [[ ! -f "$target" ]]; then
+				echo "[codex] Skipping prompt (group '$group' — add --with $group): $name.md"
+				continue
+			fi
 		fi
 
 		if [[ -f "$target" ]]; then
@@ -1272,6 +1476,9 @@ if [[ "$GLOBAL" == true ]]; then
 		"$HOME/.agents/skills" \
 		"$HOME/.claude/skills" \
 		"$HOME/.grok/skills"
+	prune_dangling_links "$HOME/.agents/skills"
+	prune_dangling_links "$HOME/.claude/skills"
+	prune_dangling_links "$HOME/.grok/skills"
 	echo ""
 
 	echo "--- Client rule links ---"
@@ -1310,6 +1517,7 @@ if [[ "$GLOBAL" == true ]]; then
 	# second full copy). Keep ~/.local/bin as real files for PATH.
 	link_children "$TOOLS_CANON" "$CLAUDE_TOOLS"
 	reconcile_tool_links "$CLAUDE_TOOLS"
+	prune_dangling_links "$CLAUDE_TOOLS"
 	echo ""
 
 	# ── Per-session resource scoping ──
@@ -1327,7 +1535,11 @@ if [[ "$GLOBAL" == true ]]; then
 	CODEX_RULES="$CODEX_ROOT/rules"
 	CODEX_PROMPTS="$CODEX_ROOT/prompts"
 	echo "--- Codex CLI (review gate hook) ---"
-	install_codex_review_hooks "$CODEX_ROOT"
+	if group_selected review; then
+		install_codex_review_hooks "$CODEX_ROOT"
+	else
+		remove_codex_review_hooks "$CODEX_ROOT"
+	fi
 	echo ""
 	echo "--- Codex CLI (Starlark policies) ---"
 	install_codex_policies "$CODEX_RULES"
@@ -1399,7 +1611,11 @@ else
 	CODEX_ROOT="$TARGET_DIR/.codex"
 	CODEX_RULES="$CODEX_ROOT/rules"
 	echo "--- Codex CLI (review gate hook) ---"
-	install_codex_review_hooks "$CODEX_ROOT"
+	if group_selected review; then
+		install_codex_review_hooks "$CODEX_ROOT"
+	else
+		remove_codex_review_hooks "$CODEX_ROOT"
+	fi
 	echo ""
 	echo "--- Codex CLI (Starlark policies) ---"
 	install_codex_policies "$CODEX_RULES"

@@ -9,6 +9,14 @@ declared_groups() {
 	awk '$1 == "group" && NF >= 2 { print $2 }' "$SKILL_GROUPS_FILE"
 }
 
+explicit_groups() {
+	awk '$1 == "explicit" && NF >= 2 { print $2 }' "$SKILL_GROUPS_FILE"
+}
+
+group_explicit() {
+	explicit_groups | grep -Fxq "$1"
+}
+
 group_description() {
 	awk -v want="$1" '$1 == "group" && $2 == want {
 		$1 = ""; $2 = ""; sub(/^[ \t]+/, ""); print; exit
@@ -22,7 +30,7 @@ group_declared() {
 skill_group() {
 	local name="$1" entry group
 	while read -r entry group _; do
-		case "$entry" in '' | '#'* | group) continue ;; esac
+		case "$entry" in '' | '#'* | group | explicit) continue ;; esac
 		if [[ "$entry" == "$name" && -n "$group" ]]; then
 			printf '%s' "$group"
 			return 0
@@ -32,7 +40,7 @@ skill_group() {
 }
 
 assigned_groups() {
-	awk '$1 != "group" && $1 !~ /^#/ && NF >= 2 { print $2 }' "$SKILL_GROUPS_FILE" | sort -u
+	awk '$1 != "group" && $1 != "explicit" && $1 !~ /^#/ && NF >= 2 { print $2 }' "$SKILL_GROUPS_FILE" | sort -u
 }
 
 # One plugin per group, named from the manifest: core ships as `agentkit`, every
@@ -55,19 +63,27 @@ validate_skill_groups() {
 	local group orphan duplicate
 	# A membership line that lost its group name would otherwise fall through to
 	# core, shipping that skill to everyone by default.
-	orphan="$(awk '$1 != "group" && $1 !~ /^#/ && NF == 1 { print $1 }' "$SKILL_GROUPS_FILE")"
+	orphan="$(awk '$1 != "group" && $1 != "explicit" && $1 !~ /^#/ && NF == 1 { print $1 }' "$SKILL_GROUPS_FILE")"
 	if [[ -n "$orphan" ]]; then
 		echo "ERROR: $SKILL_GROUPS_FILE has membership lines without a group: $orphan" >&2
 		return 1
 	fi
 	# Two memberships for one skill resolve first-match here and last-match in
 	# the TypeScript reader, so the two would ship different sets.
-	duplicate="$(awk '$1 != "group" && $1 !~ /^#/ && NF >= 2 { print $1 }' \
+	duplicate="$(awk '$1 != "group" && $1 != "explicit" && $1 !~ /^#/ && NF >= 2 { print $1 }' \
 		"$SKILL_GROUPS_FILE" | sort | uniq -d)"
 	if [[ -n "$duplicate" ]]; then
 		echo "ERROR: $SKILL_GROUPS_FILE names more than one group for: $duplicate" >&2
 		return 1
 	fi
+	# An explicit marker for an undeclared group is a manifest typo that would
+	# otherwise gate nothing.
+	for group in $(explicit_groups); do
+		if ! group_declared "$group"; then
+			echo "ERROR: $SKILL_GROUPS_FILE marks undeclared group '$group' explicit." >&2
+			return 1
+		fi
+	done
 	for group in $(assigned_groups); do
 		if ! group_declared "$group"; then
 			echo "ERROR: $SKILL_GROUPS_FILE assigns skills to undeclared group '$group'." >&2

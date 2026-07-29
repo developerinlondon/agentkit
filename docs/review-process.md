@@ -1,5 +1,14 @@
 # Agent review process
 
+The review machinery ships in the explicit `review` skill group: `install.sh
+--global --with review` installs it, nothing else does — not the interactive
+group prompt, not `--all`. An install run without the group selected removes
+previously installed review hooks, tools, prompts, and skills. Which finding
+severities block a merge is configurable per target repository via
+`gate.blocking_severities` in `.agentkit/review-policy.json` (default:
+`["BLOCKER","HIGH"]`); the reviewer's reporting floor comes from
+`review-profile`'s `min_reported_severity`.
+
 `review-police` is a local merge-interception gate. In strict mode it validates
 an evidence index for the exact forge change against policy read from the exact
 protected target commit.
