@@ -911,16 +911,20 @@ install_claude_hooks() {
 
 		# A removed script with a surviving settings.json entry would fail-closed
 		# DENY every Bash call — the settings merge below strips entries in the
-		# same run.
+		# same run. Without jq that merge cannot run, so the scripts must stay
+		# until it can: they live and die together.
 		if review_hook "$name" && ! group_selected review; then
-			if [[ -e "$install_dir/$name" || -L "$install_dir/$name" ]]; then
-				echo "[claude] Removing hook (review group not selected): $name"
-				rm -f "$install_dir/$name"
+			if command -v jq &>/dev/null; then
+				if [[ -e "$install_dir/$name" || -L "$install_dir/$name" ]]; then
+					echo "[claude] Removing hook (review group not selected): $name"
+					rm -f "$install_dir/$name"
+				fi
+				if [[ "$hooks_dir" != "$install_dir" && (-e "$hooks_dir/$name" || -L "$hooks_dir/$name") ]]; then
+					rm -f "$hooks_dir/$name"
+				fi
+				continue
 			fi
-			if [[ "$hooks_dir" != "$install_dir" && (-e "$hooks_dir/$name" || -L "$hooks_dir/$name") ]]; then
-				rm -f "$hooks_dir/$name"
-			fi
-			continue
+			echo "[claude] WARNING: jq missing — keeping $name so its settings.json entries stay functional." >&2
 		fi
 
 		if [[ -f "$install_dir/$name" && ! -L "$install_dir/$name" ]]; then
@@ -1114,6 +1118,13 @@ remove_codex_review_hooks() {
 	local codex_dir="$1"
 	local hooks_file="$codex_dir/hooks.json"
 	local name removed=false
+
+	# Scripts and their hooks.json entries live and die together; without jq
+	# the entries cannot be stripped, so nothing may be deleted.
+	if [[ -f "$hooks_file" ]] && ! command -v jq >/dev/null 2>&1; then
+		echo "[codex] WARNING: jq missing — leaving review hooks installed so hooks.json stays functional." >&2
+		return 0
+	fi
 
 	for name in fail-closed-hook.sh review-police.sh; do
 		if [[ -e "$codex_dir/hooks/$name" ]]; then
@@ -1479,6 +1490,19 @@ if [[ "$GLOBAL" == true ]]; then
 	prune_dangling_links "$HOME/.agents/skills"
 	prune_dangling_links "$HOME/.claude/skills"
 	prune_dangling_links "$HOME/.grok/skills"
+	# A real directory under a client skills dir has no agentkit provenance —
+	# it may be the user's own fork, so removal only gets a loud warning.
+	for skill_dir in "$REPO_DIR"/skills/*/; do
+		skill_name="$(basename "$skill_dir")"
+		skill_group_name="$(skill_group "$skill_name")"
+		if group_explicit "$skill_group_name" && ! group_selected "$skill_group_name"; then
+			for client_skills in "$HOME/.agents/skills" "$HOME/.claude/skills" "$HOME/.grok/skills"; do
+				if [[ -e "$client_skills/$skill_name" && ! -L "$client_skills/$skill_name" ]]; then
+					echo "[skills] WARNING: leaving $client_skills/$skill_name in place (not installed by this installer); remove it manually if unwanted." >&2
+				fi
+			done
+		fi
+	done
 	echo ""
 
 	echo "--- Client rule links ---"

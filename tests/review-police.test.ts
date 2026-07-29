@@ -436,6 +436,19 @@ describe('review-police: intended semantics', () => {
     expect(out).toContain('no backend');
   });
 
+  test('a source-side policy file cannot weaken the bootstrap blocking severities', () => {
+    record({ ...passing, findings: [{ severity: 'HIGH', summary: 'no backend', resolved: false }] });
+    mkdirSync(join(repo, '.agentkit'), { recursive: true });
+    writeFileSync(
+      join(repo, '.agentkit', 'review-policy.json'),
+      JSON.stringify({ gate: { blocking_severities: ['INFO'] } }),
+    );
+    const out = runHook(MERGE);
+    expect(out).toContain('"deny"');
+    expect(out).toContain('no backend');
+    rmSync(join(repo, '.agentkit', 'review-policy.json'));
+  });
+
   test('allows a clean pass for the exact head', () => {
     record(passing);
     expect(runHook(MERGE)).toBe('');
