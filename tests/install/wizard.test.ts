@@ -69,54 +69,85 @@ function install(home: string, extraArgs: string[] = []) {
   });
 }
 
-// util-linux `script` takes the command via -c with the transcript file last;
-// BSD `script`, which macOS ships, has no -c at all and takes the command as
-// trailing positional arguments. Probe the invocation rather than reading
-// uname: what decides the syntax is which binary is on PATH, not which kernel
-// is under it, and either flavour can be installed on either system.
-type ScriptFlavour = 'util-linux' | 'bsd';
-let scriptFlavourCache: ScriptFlavour | undefined;
+// util-linux `script` drives a pty from `-c`; BSD `script`, which macOS ships,
+// has no -c and clones termios from its own stdin, so blind-piped keystrokes
+// race the reader there. expect allocates its own pty and only answers once it
+// has seen the prompt, so macOS uses it instead of script entirely. Probe the
+// tools rather than reading uname: what decides this is what is on PATH.
+type PtyDriver = 'script' | 'expect' | 'none';
+let ptyDriverCache: PtyDriver | undefined;
 
-function scriptFlavour(): ScriptFlavour {
-  if (!scriptFlavourCache) {
-    const probe = spawnSync('script', ['-qec', 'true', '/dev/null'], { encoding: 'utf-8' });
-    scriptFlavourCache = probe.status === 0 ? 'util-linux' : 'bsd';
+function ptyDriver(): PtyDriver {
+  const forced = process.env.AGENTKIT_TEST_PTY_DRIVER;
+  if (forced === 'script' || forced === 'expect' || forced === 'none') return forced;
+  if (!ptyDriverCache) {
+    if (spawnSync('script', ['-qec', 'true', '/dev/null'], { encoding: 'utf-8' }).status === 0) {
+      ptyDriverCache = 'script';
+    } else {
+      ptyDriverCache = spawnSync('expect', ['-v'], { encoding: 'utf-8' }).status === 0
+        ? 'expect'
+        : 'none';
+    }
   }
-  return scriptFlavourCache;
+  return ptyDriverCache;
 }
 
-function singleQuote(value: string): string {
-  return `'${value.replaceAll("'", `'\\''`)}'`;
+// Inside a Tcl double-quoted string these are substitution, not text: an
+// unescaped [ in the prompt pattern would run its contents as a command.
+function tclQuote(value: string): string {
+  return `"${value.replaceAll(/[\\$[\]"]/g, (character) => `\\${character}`)}"`;
+}
+
+// Answer only after the prompt has actually been printed — the whole point of
+// the driver. exp_continue loops so each declared group gets its own answer,
+// and a run that never prompts falls straight through to eof.
+function expectProgram(command: string, keystrokes: string, timeoutSeconds: number): string {
+  const lines = [
+    `set timeout ${timeoutSeconds}`,
+    'log_user 1',
+    `spawn bash -c ${tclQuote(command)}`,
+    'expect {',
+  ];
+  if (keystrokes.length > 0) {
+    const typed = keystrokes.replaceAll('\n', '\r');
+    lines.push(`  -ex ${tclQuote(promptMarker)} { send -- ${tclQuote(typed)}; exp_continue }`);
+  }
+  lines.push('  eof {}', '  timeout { exit 99 }', '}');
+  return lines.join('\n');
 }
 
 interface PtyInvocation {
   file: string;
   args: string[];
-  // Only the util-linux form takes the keystrokes on the spawner's stdin. The
-  // BSD form feeds them from inside the shell, and handing them over twice
-  // would leave a second copy nobody reads.
+  // Only the script form takes keystrokes on the spawner's stdin; expect types
+  // them itself, and a second copy here would sit unread.
   input?: string;
 }
 
-// BSD script clones termios from its own stdin onto the pty it allocates, and
-// bun delivers spawnSync's `input` as a socketpair: tcgetattr on a socket fails
-// outright, killing script before it execs anything. A pipe answers ENOTTY,
-// which it tolerates, so the keystrokes go in through a pipe built by the shell.
 function ptyInvocation(
   command: string,
   keystrokes: string,
-  flavour: ScriptFlavour = scriptFlavour(),
+  timeoutMs: number,
+  driver: PtyDriver = ptyDriver(),
 ): PtyInvocation {
-  if (flavour === 'util-linux') {
+  if (driver === 'script') {
     return { file: 'script', args: ['-qec', command, '/dev/null'], input: keystrokes };
   }
   return {
-    file: 'bash',
-    args: [
-      '-c',
-      `printf %s ${singleQuote(keystrokes)} | script -q /dev/null bash -c ${singleQuote(command)}`,
-    ],
+    file: 'expect',
+    args: ['-c', expectProgram(command, keystrokes, Math.ceil(timeoutMs / 1000))],
   };
+}
+
+// The agreed endpoint rather than a silent pass: without a pty driver the
+// interactive cases cannot run anywhere, and the suite has to say which tool is
+// missing instead of reporting green.
+function noPtyDriver(): boolean {
+  if (ptyDriver() !== 'none') return false;
+  console.warn(
+    '[wizard] no pty driver: script lacks -c and expect is not installed — interactive cases not exercised',
+  );
+  return true;
 }
 
 // BSD and util-linux `script` do not agree on whether the child's exit status
@@ -140,13 +171,18 @@ function installOnTty(
 ) {
   const inner = options.shell ??
     ['bash', installScript, ...baseArgs, ...extraArgs].join(' ');
-  const invocation = ptyInvocation(`${inner}; printf '\\n${exitMarker}%s\\n' "$?"`, keystrokes);
+  const timeoutMs = options.timeoutMs ?? globalInstallTimeoutMs;
+  const invocation = ptyInvocation(
+    `${inner}; printf '\\n${exitMarker}%s\\n' "$?"`,
+    keystrokes,
+    timeoutMs,
+  );
   const result = spawnSync(invocation.file, invocation.args, {
     cwd: repoRoot,
     env: { ...installEnv(home), ...(options.env ?? {}) },
     input: invocation.input,
     encoding: 'utf-8',
-    timeout: options.timeoutMs ?? globalInstallTimeoutMs,
+    timeout: timeoutMs,
   });
   // A pty terminates lines with CRLF; comparing against installer output that
   // was written with plain LF would fail on the carriage returns alone.
@@ -211,49 +247,62 @@ function reapAbandonedHomes() {
 describe('installer skill-group wizard', () => {
   beforeAll(reapAbandonedHomes);
 
-  test('the pty wrapper runs on this machine, whichever script is installed', () => {
-    const utilLinux = ptyInvocation('CMD', 'y\n', 'util-linux');
-    expect(utilLinux.file).toBe('script');
-    expect(utilLinux.args).toEqual(['-qec', 'CMD', '/dev/null']);
-    expect(utilLinux.input).toBe('y\n');
+  test('the pty driver runs on this machine, whichever tools are installed', () => {
+    const viaScript = ptyInvocation('CMD', 'y\n', 20_000, 'script');
+    expect(viaScript.file).toBe('script');
+    expect(viaScript.args).toEqual(['-qec', 'CMD', '/dev/null']);
+    expect(viaScript.input).toBe('y\n');
 
-    const bsd = ptyInvocation('CMD', 'y\n', 'bsd');
-    expect(bsd.file).toBe('bash');
-    expect(bsd.args[0]).toBe('-c');
-    expect(bsd.args[1]).toBe(`printf %s 'y\n' | script -q /dev/null bash -c 'CMD'`);
-    // Handing the keystrokes to spawnSync as well is the whole defect: on macOS
-    // that stdin is a socketpair, and BSD script dies reading its attributes.
-    expect(bsd.input).toBeUndefined();
+    // Pinned in full because macOS is where this runs and Linux is where it is
+    // read: the condition (-ex on the prompt) is what makes the answer arrive
+    // after the question instead of racing it.
+    const viaExpect = ptyInvocation('CMD', 'y\n', 20_000, 'expect');
+    expect(viaExpect.file).toBe('expect');
+    expect(viaExpect.input).toBeUndefined();
+    expect(viaExpect.args[0]).toBe('-c');
+    expect(viaExpect.args[1]).toBe(
+      [
+        'set timeout 20',
+        'log_user 1',
+        'spawn bash -c "CMD"',
+        'expect {',
+        '  -ex "? \\[y/N\\]" { send -- "y\r"; exp_continue }',
+        '  eof {}',
+        '  timeout { exit 99 }',
+        '}',
+      ].join('\n'),
+    );
 
-    // The rest of this file is unreadable when the wrapper itself is wrong: a
+    // No keystrokes means no answering branch at all: a send of nothing under
+    // exp_continue would spin on the same prompt forever.
+    expect(ptyInvocation('CMD', '', 20_000, 'expect').args[1]).not.toContain('exp_continue');
+
+    if (noPtyDriver()) return;
+    // The rest of this file is unreadable when the driver itself is wrong: a
     // rejected argv means empty output, so assertions about absent prompts pass
     // and only the ones expecting output fail. This says so in one line instead.
-    const invocation = ptyInvocation('exit 0', '');
+    const invocation = ptyInvocation('exit 0', '', hangTimeoutMs);
     const probe = spawnSync(invocation.file, invocation.args, {
       input: invocation.input,
       encoding: 'utf-8',
       timeout: hangTimeoutMs,
     });
-    expect(probe.error, `script flavour '${scriptFlavour()}' would not run`).toBeUndefined();
+    expect(probe.error, `pty driver '${ptyDriver()}' would not run`).toBeUndefined();
     expect(probe.status, probe.stderr).toBe(0);
   });
 
-  test('the BSD form quotes keystrokes and command so neither can break out', () => {
-    // The BSD path is the only one that builds a shell string, so its escaping
-    // is the only place an apostrophe in a path or a reply becomes execution.
-    // Round-tripped through a real shell, which proves the rule rather than
-    // restating it — and this runs on the flavour that cannot be tested here.
-    for (const hostile of ['y\n', '', "it's", 'a\'b"c$d', '$(touch escaped-marker)', '`id`']) {
-      const echoed = spawnSync('bash', ['-c', `printf %s ${singleQuote(hostile)}`], {
-        encoding: 'utf-8',
-      });
-      expect(echoed.status, echoed.stderr).toBe(0);
-      expect(echoed.stdout).toBe(hostile);
-    }
-    expect(existsSync(join(repoRoot, 'escaped-marker'))).toBe(false);
+  test('Tcl substitution characters in a command cannot escape the expect program', () => {
+    // The expect path is the only one building a Tcl program, so its quoting is
+    // where a bracket in a temp path becomes command substitution.
+    expect(tclQuote('a[b]c')).toBe('"a\\[b\\]c"');
+    expect(tclQuote('$HOME "x" \\y')).toBe('"\\$HOME \\"x\\" \\\\y"');
+    expect(ptyInvocation('echo [exec id]', '', 20_000, 'expect').args[1]).toContain(
+      'spawn bash -c "echo \\[exec id\\]"',
+    );
   });
 
   test('a bare install on a terminal offers each optional group and remembers the answer', () => {
+    if (noPtyDriver()) return;
     const home = mkdtempSync(join(tmpdir(), 'agentkit-wizard-'));
 
     try {
@@ -306,6 +355,7 @@ describe('installer skill-group wizard', () => {
   }, globalInstallTimeoutMs);
 
   test('a flagged install on a terminal is still unattended', () => {
+    if (noPtyDriver()) return;
     // A flag is an answer already given; asking again would make a scripted
     // terminal run — the shape a Makefile or a setup script takes — hang. Each
     // flag gets an untouched home so it is the flag being proven, not the
@@ -323,6 +373,7 @@ describe('installer skill-group wizard', () => {
   }, globalInstallTimeoutMs);
 
   test('declining every group installs exactly what a bare piped install installs', () => {
+    if (noPtyDriver()) return;
     const declined = mkdtempSync(join(tmpdir(), 'agentkit-wizard-declined-'));
     const piped = mkdtempSync(join(tmpdir(), 'agentkit-wizard-piped-'));
 
@@ -353,6 +404,7 @@ describe('installer skill-group wizard', () => {
   }, globalInstallTimeoutMs);
 
   test('a CI runner that allocated a terminal is never asked', () => {
+    if (noPtyDriver()) return;
     const home = mkdtempSync(join(tmpdir(), 'agentkit-wizard-'));
 
     try {
@@ -376,6 +428,7 @@ describe('installer skill-group wizard', () => {
   }, globalInstallTimeoutMs);
 
   test('a captured stdout is a non-interactive consumer, terminal stdin or not', () => {
+    if (noPtyDriver()) return;
     const home = mkdtempSync(join(tmpdir(), 'agentkit-wizard-'));
 
     try {
@@ -404,6 +457,7 @@ describe('installer skill-group wizard', () => {
   }, globalInstallTimeoutMs);
 
   test('no controlling terminal declines rather than asking into the void', () => {
+    if (noPtyDriver()) return;
     const home = mkdtempSync(join(tmpdir(), 'agentkit-wizard-'));
 
     try {
@@ -433,6 +487,7 @@ describe('installer skill-group wizard', () => {
   }, globalInstallTimeoutMs);
 
   test('the explicit opt-outs suppress the question on a terminal', () => {
+    if (noPtyDriver()) return;
     for (
       const optOut of [
         { label: '--no-prompt', args: ['--no-prompt'], env: {} },
@@ -457,6 +512,7 @@ describe('installer skill-group wizard', () => {
   }, globalInstallTimeoutMs);
 
   test('a project install does not ask, because it has nowhere to remember', () => {
+    if (noPtyDriver()) return;
     const home = mkdtempSync(join(tmpdir(), 'agentkit-wizard-'));
     const project = mkdtempSync(join(tmpdir(), 'agentkit-wizard-project-'));
 
@@ -479,6 +535,7 @@ describe('installer skill-group wizard', () => {
   }, globalInstallTimeoutMs);
 
   test('a terminal upgrade after a declined install does not re-ask', () => {
+    if (noPtyDriver()) return;
     const home = mkdtempSync(join(tmpdir(), 'agentkit-wizard-'));
 
     try {
