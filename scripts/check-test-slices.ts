@@ -51,6 +51,7 @@ export const TEST_SLICES = {
     'tests/publish-page/lint.test.ts',
     'tests/publish-page/mermaid-runtime.test.ts',
     'tests/publish-page/pages-police.test.ts',
+    'tests/publish-page/worker.test.ts',
   ],
   resources: [
     'tests/resource-police.test.ts',

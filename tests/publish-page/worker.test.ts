@@ -1,0 +1,347 @@
+import { describe, expect, test } from 'bun:test';
+import worker from '../../pages/worker/src/worker.js';
+
+const SITE_TOKEN = 'site-secret';
+const PUBLISH_TOKEN = 'publish-secret';
+const MAX_PAGE_BYTES = 5 * 1024 * 1024;
+
+interface Bucket {
+  reads: string[];
+  writes: Map<string, { body: string; contentType: string }>;
+  get(key: string): Promise<{ body: string } | null>;
+  put(key: string, body: ArrayBuffer, options: { httpMetadata: { contentType: string } }): Promise<void>;
+  head(key: string): Promise<Record<string, never> | null>;
+  delete(key: string): Promise<void>;
+}
+
+function bucket(seed: Record<string, string> = {}): Bucket {
+  const writes = new Map(
+    Object.entries(seed).map(([key, body]) => [key, { body, contentType: 'seed' }]),
+  );
+  return {
+    reads: [],
+    writes,
+    async get(key) {
+      this.reads.push(key);
+      const stored = writes.get(key);
+      return stored ? { body: stored.body } : null;
+    },
+    async put(key, body, options) {
+      writes.set(key, {
+        body: new TextDecoder().decode(body),
+        contentType: options.httpMetadata.contentType,
+      });
+    },
+    async head(key) {
+      return writes.has(key) ? {} : null;
+    },
+    async delete(key) {
+      writes.delete(key);
+    },
+  };
+}
+
+function env(PAGES: Bucket, overrides: Record<string, string | undefined> = {}) {
+  return { PAGES, SITE_TOKEN, PUBLISH_TOKEN, ...overrides };
+}
+
+function get(url: string) {
+  return new Request(url);
+}
+
+function write(url: string, token: string | null, body = '<!doctype html>hi', headers: Record<string, string> = {}) {
+  return new Request(url, {
+    method: 'PUT',
+    body,
+    headers: token === null ? headers : { authorization: `Bearer ${token}`, ...headers },
+  });
+}
+
+describe('apex site routing', () => {
+  test('root serves the site index, indexable', async () => {
+    const store = bucket({ '_site/index.html': '<h1>home</h1>' });
+    const res = await worker.fetch(get('https://agentkit.sbs/'), env(store));
+
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe('<h1>home</h1>');
+    expect(res.headers.get('x-robots-tag')).toBeNull();
+    expect(res.headers.get('content-type')).toBe('text/html; charset=utf-8');
+    expect(res.headers.get('content-security-policy')).toContain("default-src 'none'");
+  });
+
+  test('www root serves the same key', async () => {
+    const store = bucket({ '_site/index.html': '<h1>home</h1>' });
+    const res = await worker.fetch(get('https://www.agentkit.sbs/'), env(store));
+
+    expect(res.status).toBe(200);
+    expect(store.reads).toEqual(['_site/index.html']);
+  });
+
+  test.each([
+    ['https://agentkit.sbs/docs', '_site/docs/index.html'],
+    ['https://agentkit.sbs/docs/install', '_site/docs/install/index.html'],
+    ['https://agentkit.sbs/docs/install/', '_site/docs/install/index.html'],
+    ['https://www.agentkit.sbs/guides/a-b-c', '_site/guides/a-b-c/index.html'],
+  ])('%s serves %s with no noindex', async (url, key) => {
+    const store = bucket({ [key]: '<h1>page</h1>' });
+    const res = await worker.fetch(get(url), env(store));
+
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe('<h1>page</h1>');
+    expect(res.headers.get('x-robots-tag')).toBeNull();
+    expect(store.reads).toEqual([key]);
+  });
+
+  test('absent sub-path 404s with the site 404 page', async () => {
+    const store = bucket({ '_site/index.html': '<h1>home</h1>' });
+    const res = await worker.fetch(get('https://agentkit.sbs/docs/missing'), env(store));
+
+    expect(res.status).toBe(404);
+    expect(await res.text()).toContain('No page lives at this address');
+    expect(res.headers.get('x-robots-tag')).toBeNull();
+  });
+
+  test.each([
+    'https://agentkit.sbs/Docs',
+    'https://agentkit.sbs/-docs',
+    'https://agentkit.sbs/docs//install',
+    'https://agentkit.sbs/a/b/c/d/e',
+    'https://agentkit.sbs/index.html',
+    'https://agentkit.sbs/pages-index.html',
+    'https://agentkit.sbs/docs%2Finstall',
+  ])('%s never reaches R2', async (url) => {
+    const store = bucket();
+    const res = await worker.fetch(get(url), env(store));
+
+    expect(res.status).toBe(404);
+    expect(store.reads).toEqual([]);
+  });
+
+  // The URL parser decodes and collapses dot segments before the worker sees a
+  // path, so traversal cannot survive to the key — it resolves within the site.
+  test.each([
+    ['https://agentkit.sbs/docs/%2e%2e/secret', '_site/secret/index.html'],
+    ['https://agentkit.sbs/docs/../secret', '_site/secret/index.html'],
+    ['https://agentkit.sbs/../../pages/evil', '_site/pages/evil/index.html'],
+  ])('%s stays inside the site keyspace', async (url, key) => {
+    const store = bucket();
+    await worker.fetch(get(url), env(store));
+
+    expect(store.reads).toEqual([key]);
+  });
+});
+
+describe('published pages stay noindex', () => {
+  test('a page slug serves with noindex', async () => {
+    const store = bucket({ 'pages/deadbeef/index.html': '<h1>artifact</h1>' });
+    const res = await worker.fetch(get('https://pages.agentkit.sbs/deadbeef'), env(store));
+
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe('<h1>artifact</h1>');
+    expect(res.headers.get('x-robots-tag')).toBe('noindex, nofollow');
+  });
+
+  test('the pages index serves with noindex', async () => {
+    const store = bucket({ '_site/pages-index.html': '<h1>index</h1>' });
+    const res = await worker.fetch(get('https://pages.agentkit.sbs/'), env(store));
+
+    expect(res.status).toBe(200);
+    expect(store.reads).toEqual(['_site/pages-index.html']);
+    expect(res.headers.get('x-robots-tag')).toBe('noindex, nofollow');
+  });
+});
+
+describe('site writes', () => {
+  test.each([
+    ['_site', '_site/index.html', 'https://agentkit.sbs/'],
+    ['_pages-index', '_site/pages-index.html', 'https://pages.agentkit.sbs/'],
+    ['_site/docs', '_site/docs/index.html', 'https://agentkit.sbs/docs'],
+    ['_site/docs/install', '_site/docs/install/index.html', 'https://agentkit.sbs/docs/install'],
+  ])('SITE_TOKEN writes %s to %s', async (slug, key, url) => {
+    const store = bucket();
+    const res = await worker.fetch(
+      write(`https://agentkit.sbs/api/pages/${slug}`, SITE_TOKEN, '<h1>new</h1>'),
+      env(store),
+    );
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, slug, url });
+    expect(store.writes.get(key)?.body).toBe('<h1>new</h1>');
+    expect(store.writes.get(key)?.contentType).toBe('text/html; charset=utf-8');
+  });
+
+  test('a site write is served back from the apex host', async () => {
+    const store = bucket();
+    await worker.fetch(
+      write('https://agentkit.sbs/api/pages/_site/docs/install', SITE_TOKEN, '<h1>install</h1>'),
+      env(store),
+    );
+    const res = await worker.fetch(get('https://agentkit.sbs/docs/install'), env(store));
+
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe('<h1>install</h1>');
+    expect(res.headers.get('x-robots-tag')).toBeNull();
+  });
+
+  test('SITE_TOKEN deletes a site sub-path', async () => {
+    const store = bucket({ '_site/docs/index.html': '<h1>docs</h1>' });
+    const res = await worker.fetch(
+      new Request('https://agentkit.sbs/api/pages/_site/docs', {
+        method: 'DELETE',
+        headers: { authorization: `Bearer ${SITE_TOKEN}` },
+      }),
+      env(store),
+    );
+
+    expect(res.status).toBe(200);
+    expect(store.writes.has('_site/docs/index.html')).toBe(false);
+  });
+
+  test.each([
+    '_site/Docs',
+    '_site/-docs',
+    '_site/_site',
+    '_site/docs//install',
+    '_site/docs%2Finstall',
+    '_site/a/b/c/d/e',
+    `_site/${'a'.repeat(65)}`,
+    '_site/docs/index.html',
+  ])('rejects the malformed site path %s', async (slug) => {
+    const store = bucket();
+    const res = await worker.fetch(
+      write(`https://agentkit.sbs/api/pages/${slug}`, SITE_TOKEN),
+      env(store),
+    );
+
+    expect(res.status).toBe(400);
+    expect([...store.writes.keys()]).toEqual([]);
+  });
+
+  test('a trailing slash still addresses the site index', async () => {
+    const store = bucket();
+    const res = await worker.fetch(
+      write('https://agentkit.sbs/api/pages/_site/', SITE_TOKEN, '<h1>home</h1>'),
+      env(store),
+    );
+
+    expect(res.status).toBe(200);
+    expect(store.writes.get('_site/index.html')?.body).toBe('<h1>home</h1>');
+  });
+});
+
+async function expectWriteRejected(slug: string, token: string | null, overrides = {}) {
+  const store = bucket();
+  const res = await worker.fetch(
+    write(`https://agentkit.sbs/api/pages/${slug}`, token, '<h1>defaced</h1>'),
+    env(store, overrides),
+  );
+
+  expect(res.status).toBe(401);
+  expect([...store.writes.keys()]).toEqual([]);
+}
+
+describe('token separation', () => {
+  test.each(['_site', '_pages-index', '_site/docs', '_site/docs/install'])(
+    'PUBLISH_TOKEN cannot write %s',
+    (slug) => expectWriteRejected(slug, PUBLISH_TOKEN),
+  );
+
+  test('PUBLISH_TOKEN cannot delete site content', async () => {
+    const store = bucket({ '_site/docs/index.html': '<h1>docs</h1>' });
+    const res = await worker.fetch(
+      new Request('https://agentkit.sbs/api/pages/_site/docs', {
+        method: 'DELETE',
+        headers: { authorization: `Bearer ${PUBLISH_TOKEN}` },
+      }),
+      env(store),
+    );
+
+    expect(res.status).toBe(401);
+    expect(store.writes.has('_site/docs/index.html')).toBe(true);
+  });
+
+  test.each(['deadbeef', 'design/agentkit-pages', 'pages/evil'])(
+    'SITE_TOKEN cannot write the page slug %s',
+    (slug) => expectWriteRejected(slug, SITE_TOKEN),
+  );
+
+  // The URL parser collapses the traversal before the worker sees it, leaving a
+  // plain page slug — which SITE_TOKEN must still not be able to write.
+  test.each(['_site/../evil', '_site/%2e%2e/evil', '_site/../pages/evil'])(
+    'the traversal write %s normalises to a page slug SITE_TOKEN cannot reach',
+    (slug) => expectWriteRejected(slug, SITE_TOKEN),
+  );
+
+  test('PUBLISH_TOKEN still writes a page slug', async () => {
+    const store = bucket();
+    const res = await worker.fetch(
+      write('https://agentkit.sbs/api/pages/deadbeef', PUBLISH_TOKEN, '<h1>page</h1>'),
+      env(store),
+    );
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      ok: true,
+      slug: 'deadbeef',
+      url: 'https://pages.agentkit.sbs/deadbeef',
+    });
+    expect(store.writes.get('pages/deadbeef/index.html')?.body).toBe('<h1>page</h1>');
+  });
+
+  test.each([
+    ['_site/docs', 'SITE_TOKEN'],
+    ['deadbeef', 'PUBLISH_TOKEN'],
+  ])('%s fails closed when %s is unset', (slug, unset) =>
+    expectWriteRejected(slug, '', { [unset]: undefined }));
+
+  test('an unauthenticated site write is rejected', () =>
+    expectWriteRejected('_site/docs', null));
+});
+
+describe('size limits', () => {
+  test('a declared oversize site write is rejected before the body is read', async () => {
+    const store = bucket();
+    const res = await worker.fetch(
+      write('https://agentkit.sbs/api/pages/_site/docs', SITE_TOKEN, 'small', {
+        'content-length': String(MAX_PAGE_BYTES + 1),
+      }),
+      env(store),
+    );
+
+    expect(res.status).toBe(413);
+    expect([...store.writes.keys()]).toEqual([]);
+  });
+
+  test('an oversize site body is rejected', async () => {
+    const store = bucket();
+    const res = await worker.fetch(
+      write('https://agentkit.sbs/api/pages/_site/docs', SITE_TOKEN, 'a'.repeat(MAX_PAGE_BYTES + 1)),
+      env(store),
+    );
+
+    expect(res.status).toBe(413);
+    expect([...store.writes.keys()]).toEqual([]);
+  });
+
+  test('an empty site body is rejected', async () => {
+    const store = bucket();
+    const res = await worker.fetch(
+      write('https://agentkit.sbs/api/pages/_site/docs', SITE_TOKEN, ''),
+      env(store),
+    );
+
+    expect(res.status).toBe(413);
+    expect([...store.writes.keys()]).toEqual([]);
+  });
+
+  test('a body at the cap is accepted', async () => {
+    const store = bucket();
+    const res = await worker.fetch(
+      write('https://agentkit.sbs/api/pages/_site/docs', SITE_TOKEN, 'a'.repeat(MAX_PAGE_BYTES)),
+      env(store),
+    );
+
+    expect(res.status).toBe(200);
+    expect(store.writes.get('_site/docs/index.html')?.body.length).toBe(MAX_PAGE_BYTES);
+  });
+});
