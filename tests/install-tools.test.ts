@@ -6,6 +6,7 @@ import { spawnSync } from 'node:child_process';
 
 const repoRoot = dirname(import.meta.dir);
 const installScript = join(repoRoot, 'install.sh');
+const reviewPluginDir = join(repoRoot, 'plugins-cc', 'agentkit-review');
 // A global install intentionally installs and builds dependency-bearing skills.
 const globalInstallTimeoutMs = 60_000;
 
@@ -14,7 +15,13 @@ describe('standalone tool installation', () => {
     const home = mkdtempSync(join(tmpdir(), 'agentkit-tools-'));
 
     try {
-      const result = spawnSync('bash', [installScript, '--global', '--no-session-scope'], {
+      const result = spawnSync('bash', [
+        installScript,
+        '--global',
+        '--no-session-scope',
+        '--with',
+        'review',
+      ], {
         cwd: repoRoot,
         env: {
           ...process.env,
@@ -63,17 +70,21 @@ describe('standalone tool installation', () => {
     expect(statSync(bundled).mode & 0o111).not.toBe(0);
   });
 
-  test('ships the evidence validator inside the one-shot Claude plugin', () => {
+  test('ships the evidence validator inside the opt-in review plugin', () => {
     const source = readFileSync(join(repoRoot, 'tools', 'review-gate'), 'utf-8');
-    const bundled = join(repoRoot, 'plugins-cc', 'agentkit', 'tools', 'review-gate');
+    const bundled = join(reviewPluginDir, 'tools', 'review-gate');
     expect(readFileSync(bundled, 'utf-8')).toBe(source);
     expect(statSync(bundled).mode & 0o111).not.toBe(0);
+    expect(existsSync(join(repoRoot, 'plugins-cc', 'agentkit', 'tools', 'review-gate'))).toBe(false);
   });
 
-  test('ships the review profile resolver inside the one-shot Claude plugin', () => {
+  test('ships the review profile resolver inside the opt-in review plugin', () => {
     const source = readFileSync(join(repoRoot, 'tools', 'review-profile'), 'utf-8');
-    const bundled = join(repoRoot, 'plugins-cc', 'agentkit', 'tools', 'review-profile');
+    const bundled = join(reviewPluginDir, 'tools', 'review-profile');
     expect(readFileSync(bundled, 'utf-8')).toBe(source);
     expect(statSync(bundled).mode & 0o111).not.toBe(0);
+    expect(existsSync(join(repoRoot, 'plugins-cc', 'agentkit', 'tools', 'review-profile'))).toBe(
+      false,
+    );
   });
 });

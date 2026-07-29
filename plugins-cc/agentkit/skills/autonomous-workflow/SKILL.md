@@ -41,6 +41,12 @@ Exceptions: bug fixes in already-approved work, read-only research, formatting.
 
 ## Review Gates The Merge
 
+This section and the review-effort resolver below apply when the explicit
+`review` skill group is installed (`install.sh --with review` or the
+`agentkit-review` plugin). Without it there is no merge gate and no
+`review-profile`/`adversarial-review` lane: verify your work with tests and a
+separate code-reviewer pass, then merge.
+
 Review is a gate, not a parallel task and not advice. `review-police.sh` allows
 one standalone `gh pr merge` or `glab mr merge` only with a passing record for
 the exact source head selected by the forge. The command must carry that head

@@ -314,13 +314,20 @@ ALLOW_UNVERIFIED=$(jq -r --arg tier "$RECORD_TIER" '.tiers[$tier].allow_unverifi
 UNVERIFIED_CLAIMS=$(jq '[.claims[] | select(.status == "unverified")] | length' "$RECORD")
 
 DERIVED_VERDICT=$(jq -r --arg tier "$RECORD_TIER" --slurpfile policy "$POLICY" '
-. as $record | $policy[0].tiers[$tier] as $cfg |
+def blocking_severities:
+  ($policy[0].gate.blocking_severities // ["BLOCKER","HIGH"]) as $configured |
+  if ($configured | type == "array" and length > 0 and
+      all(.[]; type == "string" and
+          (ascii_upcase | IN("BLOCKER","HIGH","MEDIUM","LOW","NIT","INFO"))))
+  then $configured | map(ascii_upcase)
+  else ["BLOCKER","HIGH"] end;
+. as $record | $policy[0].tiers[$tier] as $cfg | blocking_severities as $blocking |
 if
   $record.lanes.diff.verdict != "pass" or
   $record.lanes.product.verdict == "blocked" or
   ($cfg.require_product_review and $record.lanes.product.verdict != "pass") or
   any($record.findings[];
-    (.severity == "BLOCKER" or .severity == "HIGH") and (.resolved == false)) or
+    ((.severity // "" | ascii_upcase) as $s | $blocking | index($s)) and (.resolved == false)) or
   any($record.checks[]; .status != "pass" or .exit_code != 0) or
   (($cfg.allow_unverified_claims | not) and
     any($record.claims[]; .status == "unverified")) or

@@ -950,10 +950,14 @@ Commits landed after the review, or the record is malformed. Re-review the
 current head and update .agentkit/reviews/$SLUG.json."
 fi
 
-BLOCKING=$(jq -r '
+# Bootstrap blocks on the defaults only: with no policy at the target commit
+# there is no target-owned config to honor, and a source-side file (committed
+# or not) must never weaken the gate. Severity config is a strict-mode feature.
+BLOCKING_SEVERITIES='["BLOCKER","HIGH"]'
+
+BLOCKING=$(jq -r --argjson blocking "$BLOCKING_SEVERITIES" '
   [ .findings[]?
-    | select((.severity // "" | ascii_upcase) as $s
-             | $s == "BLOCKER" or $s == "HIGH")
+    | select((.severity // "" | ascii_upcase) as $s | $blocking | index($s))
     | select((.resolved // false) == false)
     | "  - \(.severity | ascii_upcase): \(.summary // "(no summary)")"
   ] | join("\n")' "$RECORD" 2>/dev/null || true)

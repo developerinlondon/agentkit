@@ -48,7 +48,10 @@ executed or computed ground truth is.
 ## Findings standard
 
 A finding exists only with a concrete failing input or a replayable trace. Give
-at most the three highest-severity findings per pass. Each finding contains:
+at most the three highest-severity findings per pass. Report only findings at or
+above the profile's `min_reported_severity` (from `review-profile`; balanced
+default `low`) — observations below the floor are dropped, not logged. Each
+finding contains:
 
 - lane: `diff` or `product`;
 - severity: `BLOCKER`, `HIGH`, `MEDIUM`, or `LOW`;

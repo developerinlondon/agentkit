@@ -22,9 +22,15 @@ const codexFunctions = installSource.slice(
 );
 // A global install intentionally installs and builds dependency-bearing skills.
 const globalInstallTimeoutMs = 60_000;
+// The review gate is an explicit opt-in group: nothing installs it implicitly.
+const WITH_REVIEW = ['--with', 'review'];
 
-function runGlobalInstall(home: string, extraEnv: Record<string, string> = {}) {
-  return spawnSync('bash', [installScript, '--global', '--no-session-scope'], {
+function runGlobalInstall(
+  home: string,
+  extraEnv: Record<string, string> = {},
+  extraArgs: string[] = [],
+) {
+  return spawnSync('bash', [installScript, '--global', '--no-session-scope', ...extraArgs], {
     cwd: repoRoot,
     env: {
       ...process.env,
@@ -41,6 +47,17 @@ function commandNames(entries: { command: string }[]): string[] {
   return entries.map((entry) => entry.command.split('/').pop() ?? '');
 }
 
+function installedSettings(claudeDir: string): any {
+  return JSON.parse(readFileSync(join(claudeDir, 'settings.json'), 'utf-8'));
+}
+
+// The installed wiring must equal the canonical file, not a second copy
+// maintained by hand — the drift between them left review-police shipped
+// but never wired, so the merge gate was inert wherever this installer ran.
+const canonical = JSON.parse(
+  readFileSync(join(repoRoot, 'hooks', 'claude', 'settings.json'), 'utf-8'),
+);
+
 describe('Claude Code and Codex hook wiring', () => {
   test('wires every shipped police hook into settings.json', () => {
     const home = mkdtempSync(join(tmpdir(), 'agentkit-hooks-'));
@@ -49,19 +66,10 @@ describe('Claude Code and Codex hook wiring', () => {
       const claudeDir = join(home, '.claude');
       mkdirSync(claudeDir, { recursive: true });
 
-      const result = runGlobalInstall(home);
+      const result = runGlobalInstall(home, {}, WITH_REVIEW);
       expect(result.status, result.stderr.toString()).toBe(0);
 
-      const settings = JSON.parse(
-        readFileSync(join(claudeDir, 'settings.json'), 'utf-8'),
-      );
-
-      // The installed wiring must equal the canonical file, not a second copy
-      // maintained by hand — the drift between them left review-police shipped
-      // but never wired, so the merge gate was inert wherever this installer ran.
-      const canonical = JSON.parse(
-        readFileSync(join(repoRoot, 'hooks', 'claude', 'settings.json'), 'utf-8'),
-      );
+      const settings = installedSettings(claudeDir);
       for (const event of Object.keys(canonical.hooks)) {
         const want = canonical.hooks[event];
         const got = settings.hooks[event];
@@ -112,6 +120,55 @@ describe('Claude Code and Codex hook wiring', () => {
     }
   }, globalInstallTimeoutMs);
 
+  test('leaves the review gate out of a default install', () => {
+    const home = mkdtempSync(join(tmpdir(), 'agentkit-hooks-'));
+    const claudeDir = join(home, '.claude');
+
+    try {
+      const result = runGlobalInstall(home);
+      expect(result.status, result.stderr.toString()).toBe(0);
+      const settings = installedSettings(claudeDir);
+
+      // The canonical file carries the whole wiring; a default install ships it
+      // minus the review gate, so the Bash group loses one entry and the
+      // merge-shaped matcher group goes with it.
+      expect(canonical.hooks.PreToolUse).toHaveLength(2);
+      expect(settings.hooks.PreToolUse.map((group: any) => group.matcher)).toEqual(['Bash']);
+      expect(commandNames(settings.hooks.PreToolUse[0].hooks)).toEqual(
+        commandNames(canonical.hooks.PreToolUse[0].hooks).filter(
+          (name) => name !== 'review-police.sh',
+        ),
+      );
+      expect(commandNames(settings.hooks.PostToolUse[0].hooks)).toEqual(
+        commandNames(canonical.hooks.PostToolUse[0].hooks),
+      );
+      for (const groups of Object.values<any>(settings.hooks)) {
+        for (const group of groups) {
+          for (const entry of group.hooks) {
+            expect(entry.command).not.toContain('review-police.sh');
+            expect(entry.command).not.toContain('fail-closed-hook.sh');
+          }
+        }
+      }
+
+      for (const path of [
+        join(claudeDir, 'hooks', 'review-police.sh'),
+        join(claudeDir, 'hooks', 'fail-closed-hook.sh'),
+        join(claudeDir, 'tools', 'review-gate'),
+        join(claudeDir, 'tools', 'review-profile'),
+        join(home, '.codex', 'hooks.json'),
+        join(home, '.codex', 'hooks', 'review-police.sh'),
+        join(home, '.codex', 'hooks', 'fail-closed-hook.sh'),
+        join(home, '.codex', 'tools', 'review-gate'),
+        join(home, '.codex', 'tools', 'review-profile'),
+      ]) {
+        expect(existsSync(path), path).toBe(false);
+      }
+    } finally {
+      rmSync(home, { force: true, recursive: true });
+    }
+  }, globalInstallTimeoutMs);
+
   test('preserves existing top-level settings keys when merging hooks', () => {
     const home = mkdtempSync(join(tmpdir(), 'agentkit-hooks-'));
 
@@ -150,14 +207,12 @@ describe('Claude Code and Codex hook wiring', () => {
         }),
       );
 
-      let result = runGlobalInstall(home);
+      let result = runGlobalInstall(home, {}, WITH_REVIEW);
       expect(result.status, result.stderr.toString()).toBe(0);
-      result = runGlobalInstall(home);
+      result = runGlobalInstall(home, {}, WITH_REVIEW);
       expect(result.status, result.stderr.toString()).toBe(0);
 
-      const settings = JSON.parse(
-        readFileSync(join(claudeDir, 'settings.json'), 'utf-8'),
-      );
+      const settings = installedSettings(claudeDir);
       expect(settings.model).toBe('opus');
       expect(settings.permissions.allow).toEqual(['Bash(ls:*)']);
       expect(settings.hooks.PreToolUse).toBeDefined();
@@ -186,7 +241,7 @@ describe('Claude Code and Codex hook wiring', () => {
     const codexHome = join(home, 'custom-codex-home');
 
     try {
-      const result = runGlobalInstall(home, { CODEX_HOME: codexHome });
+      const result = runGlobalInstall(home, { CODEX_HOME: codexHome }, WITH_REVIEW);
       expect(result.status, result.stderr.toString()).toBe(0);
       expect(existsSync(join(codexHome, 'hooks.json'))).toBe(true);
       expect(existsSync(join(codexHome, 'config.toml'))).toBe(true);
@@ -207,7 +262,7 @@ describe('Claude Code and Codex hook wiring', () => {
     );
 
     try {
-      const install = runGlobalInstall(home, { CODEX_HOME: codexHome });
+      const install = runGlobalInstall(home, { CODEX_HOME: codexHome }, WITH_REVIEW);
       expect(install.status, install.stderr.toString()).toBe(0);
 
       const codexHooks = JSON.parse(readFileSync(join(codexHome, 'hooks.json'), 'utf-8'));

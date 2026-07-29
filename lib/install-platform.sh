@@ -52,6 +52,21 @@ install_tools() {
 		[[ -f "$tool_file" ]] || continue
 		local name
 		name="$(basename "$tool_file")"
+		# Callers without group selection (tests sourcing this lib directly)
+		# get the default: review excluded.
+		case "$name" in
+		review-gate | review-profile)
+			if ! declare -F group_selected >/dev/null || ! group_selected review; then
+				if [[ -e "$tools_dir/$name" || -L "$tools_dir/$name" ]]; then
+					rm -f "$tools_dir/$name"
+					echo "[tools] Removing (review group not selected): $name"
+				else
+					echo "[tools] Skipping (review group — add --with review): $name"
+				fi
+				continue
+			fi
+			;;
+		esac
 		if ! artifact_supports_platform "$tool_file" "$PLATFORM"; then
 			if [[ -e "$tools_dir/$name" || -L "$tools_dir/$name" ]]; then
 				rm -f "$tools_dir/$name"
@@ -85,8 +100,17 @@ reconcile_tool_links() {
 	local tool_file name
 	for tool_file in "$REPO_DIR"/tools/*; do
 		[[ -f "$tool_file" ]] || continue
-		artifact_supports_platform "$tool_file" "$PLATFORM" && continue
 		name="$(basename "$tool_file")"
+		if artifact_supports_platform "$tool_file" "$PLATFORM"; then
+			case "$name" in
+			review-gate | review-profile)
+				if declare -F group_selected >/dev/null && group_selected review; then
+					continue
+				fi
+				;;
+			*) continue ;;
+			esac
+		fi
 		[[ -e "$tools_dir/$name" || -L "$tools_dir/$name" ]] && rm -f "$tools_dir/$name"
 	done
 	if [[ ! -f "$tools_dir/bounded-run" && ( -e "$tools_dir/agentkit-run" || -L "$tools_dir/agentkit-run" ) ]]; then

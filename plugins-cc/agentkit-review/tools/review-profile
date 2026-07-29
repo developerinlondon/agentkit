@@ -170,6 +170,7 @@ preset() {
 		CI_EVIDENCE=reuse
 		LOCAL_CHECKS=affected
 		EVIDENCE_NOTE=critical
+		MIN_SEVERITY=medium
 		;;
 	balanced)
 		PRIMARY_REVIEW=nontrivial
@@ -178,6 +179,7 @@ preset() {
 		CI_EVIDENCE=reuse
 		LOCAL_CHECKS=affected
 		EVIDENCE_NOTE=always
+		MIN_SEVERITY=low
 		;;
 	strict)
 		PRIMARY_REVIEW=always
@@ -186,6 +188,7 @@ preset() {
 		CI_EVIDENCE=rerun
 		LOCAL_CHECKS=full
 		EVIDENCE_NOTE=always
+		MIN_SEVERITY=info
 		;;
 	*) fail "invalid profile '$PROFILE' (expected fast, balanced, or strict)" ;;
 	esac
@@ -217,6 +220,9 @@ set_value() {
 		;;
 	evidence-note)
 		case "$value" in critical | always) EVIDENCE_NOTE="$value" ;; *) fail "$label evidence-note: invalid value '$value'" ;; esac
+		;;
+	min-severity)
+		case "$value" in info | low | medium | high) MIN_SEVERITY="$value" ;; *) fail "$label min-severity: invalid value '$value'" ;; esac
 		;;
 	__ERROR__ | '') ;;
 	*) fail "$label: unknown review key '$key'" ;;
@@ -267,6 +273,7 @@ RESULT=$(jq -cn \
 	--arg ci "$CI_EVIDENCE" \
 	--arg local_checks "$LOCAL_CHECKS" \
 	--arg evidence "$EVIDENCE_NOTE" \
+	--arg min_severity "$MIN_SEVERITY" \
 	--argjson primary_required "$PRIMARY_REQUIRED" \
 	--argjson specialist_required "$SPECIALIST_REQUIRED" \
 	--argjson product_required "$PRODUCT_REQUIRED" \
@@ -289,7 +296,8 @@ RESULT=$(jq -cn \
       product_review: $product,
       ci_evidence: $ci,
       local_checks: $local_checks,
-      evidence_note: $evidence
+      evidence_note: $evidence,
+      min_reported_severity: $min_severity
     },
     required: {
       primary_review: $primary_required,

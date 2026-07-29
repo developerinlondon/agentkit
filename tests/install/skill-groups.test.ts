@@ -113,7 +113,7 @@ describe('skill group selection', () => {
     }
   }, globalInstallTimeoutMs);
 
-  test('--all installs every declared group', () => {
+  test('--all installs every non-explicit group and withholds explicit ones', () => {
     const home = mkdtempSync(join(tmpdir(), 'agentkit-groups-'));
 
     try {
@@ -123,15 +123,30 @@ describe('skill group selection', () => {
       const manifest = readSkillGroups(repoRoot);
       for (const group of manifest.groups) {
         for (const skill of skillsInGroup(manifest, repoRoot, group.id)) {
-          expect(existsSync(join(canonSkill(home, skill), 'SKILL.md')), `${skill} installed`).toBe(
-            true,
-          );
+          expect(
+            existsSync(join(canonSkill(home, skill), 'SKILL.md')),
+            `${skill} ${group.explicit ? 'withheld' : 'installed'}`,
+          ).toBe(!group.explicit);
         }
       }
     } finally {
       rmSync(home, { force: true, recursive: true });
     }
   }, globalInstallTimeoutMs);
+
+  test('a literal --with installs an explicit group; deselecting it removes the skills', () => {
+    const home = mkdtempSync(join(tmpdir(), 'agentkit-groups-'));
+
+    try {
+      expect(install(home, ['--with', 'review']).status).toBe(0);
+      expect(existsSync(join(canonSkill(home, 'adversarial-review'), 'SKILL.md'))).toBe(true);
+
+      expect(install(home, ['--without', 'review']).status).toBe(0);
+      expect(existsSync(canonSkill(home, 'adversarial-review'))).toBe(false);
+    } finally {
+      rmSync(home, { force: true, recursive: true });
+    }
+  }, globalInstallTimeoutMs * 2);
 
   test('a later bare install keeps the groups chosen once', () => {
     const home = mkdtempSync(join(tmpdir(), 'agentkit-groups-'));

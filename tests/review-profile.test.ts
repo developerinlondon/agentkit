@@ -83,6 +83,7 @@ describe('review-profile', () => {
       ci_evidence: 'reuse',
       local_checks: 'affected',
       evidence_note: 'always',
+      min_reported_severity: 'low',
     });
     expect(result.required).toEqual({
       primary_review: true,

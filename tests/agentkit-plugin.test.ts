@@ -28,6 +28,7 @@ const filesUnder = (dir: string, prefix = ''): string[] =>
 
 const repoRoot = join(import.meta.dir, '..');
 const pluginDir = join(repoRoot, 'plugins-cc', 'agentkit');
+const reviewPluginDir = join(repoRoot, 'plugins-cc', 'agentkit-review');
 const openCodePluginDir = join(repoRoot, 'plugins');
 
 type PluginServer = (input: PluginInput) => Promise<unknown>;
@@ -93,13 +94,34 @@ const PRE_TOOL_USE_HOOKS = [
   'pages-police.sh',
   'mr-police.sh',
   'resource-police.sh',
-  'review-police.sh',
 ];
 const POST_TOOL_USE_HOOKS = ['format-police.sh', 'coding-police.sh', 'comment-police.sh'];
 const ALL_POLICE_HOOKS = [...PRE_TOOL_USE_HOOKS, ...POST_TOOL_USE_HOOKS];
+// The merge gate is consent-gated: it ships in agentkit-review, never in core.
+const REVIEW_HOOKS = ['fail-closed-hook.sh', 'review-police.sh'];
 
 function readJson(...parts: string[]): any {
   return JSON.parse(readFileSync(join(pluginDir, ...parts), 'utf-8'));
+}
+
+function readReviewJson(...parts: string[]): any {
+  return JSON.parse(readFileSync(join(reviewPluginDir, ...parts), 'utf-8'));
+}
+
+function wiringFor(settings: any, plugin: 'core' | 'review'): any {
+  const hooks: Record<string, unknown[]> = {};
+  for (const [event, groups] of Object.entries<any[]>(settings.hooks)) {
+    const kept = groups
+      .map((group) => ({
+        ...group,
+        hooks: group.hooks.filter((entry: { command: string }) =>
+          entry.command.includes('review-police.sh') === (plugin === 'review')
+        ),
+      }))
+      .filter((group) => group.hooks.length > 0);
+    if (kept.length > 0) hooks[event] = kept;
+  }
+  return { hooks };
 }
 
 function commandBasenames(entries: { command: string }[]): string[] {
@@ -124,20 +146,10 @@ describe('agentkit plugin hooks', () => {
   test('hooks.json wires exactly the police hooks under ${CLAUDE_PLUGIN_ROOT}', () => {
     const hooks = readJson('hooks', 'hooks.json').hooks;
 
-    // Bash block, plus a block matching merge-shaped tool names so MCP merge
-    // tools actually reach review-police (its MCP branch was unreachable dead
-    // code while only the Bash matcher existed).
-    expect(hooks.PreToolUse).toHaveLength(2);
+    // One Bash block: the merge-shaped matcher exists only to reach
+    // review-police, so it leaves with it.
+    expect(hooks.PreToolUse).toHaveLength(1);
     expect(hooks.PreToolUse[0].matcher).toBe('Bash');
-    const mcpBlock = hooks.PreToolUse[1];
-    // Assert what the matcher DOES, not how it is spelled: it must route real
-    // MCP merge tool names to review-police and leave everything else alone.
-    const routes = new RegExp(mcpBlock.matcher);
-    expect(routes.test('mcp__github__merge_pull_request')).toBe(true);
-    expect(routes.test('mcp__gitlab__merge_merge_request')).toBe(true);
-    expect(routes.test('Bash')).toBe(false);
-    expect(routes.test('Edit')).toBe(false);
-    expect(commandBasenames(mcpBlock.hooks)).toEqual(['review-police.sh']);
     expect(commandBasenames(hooks.PreToolUse[0].hooks).sort()).toEqual([...PRE_TOOL_USE_HOOKS].sort());
 
     expect(hooks.PostToolUse).toHaveLength(1);
@@ -151,6 +163,7 @@ describe('agentkit plugin hooks', () => {
       expect(entry.command).not.toContain('.claude/hooks');
       expect(entry.type).toBe('command');
       expect(typeof entry.timeout).toBe('number');
+      for (const script of REVIEW_HOOKS) expect(entry.command).not.toContain(script);
     }
   });
 
@@ -158,7 +171,10 @@ describe('agentkit plugin hooks', () => {
     const source = readFileSync(join(repoRoot, 'hooks', 'claude', 'settings.json'), 'utf-8');
     const expected = JSON.parse(source.replaceAll('$HOME/.claude', '${CLAUDE_PLUGIN_ROOT}'));
 
-    expect(readJson('hooks', 'hooks.json')).toEqual(expected);
+    // settings.json stays the whole wiring; the two plugins split it, and every
+    // entry has to land in exactly one of them.
+    expect(readJson('hooks', 'hooks.json')).toEqual(wiringFor(expected, 'core'));
+    expect(readReviewJson('hooks', 'hooks.json')).toEqual(wiringFor(expected, 'review'));
   });
 
   test('every referenced police script exists and is executable', () => {
@@ -174,22 +190,87 @@ describe('agentkit plugin hooks', () => {
       const mode = statSync(join(pluginDir, 'hooks', script)).mode;
       expect((mode & 0o111) !== 0, `${script} is executable`).toBe(true);
     }
+
+    // The review plugin wires both of its scripts in one command: the
+    // supervisor runs review-police, so a basename check would miss the former.
+    const reviewCommands: string[] = readReviewJson('hooks', 'hooks.json').hooks.PreToolUse
+      .flatMap((group: any) => group.hooks.map((entry: { command: string }) => entry.command));
+    for (const script of REVIEW_HOOKS) {
+      expect(
+        reviewCommands.every((command) => command.includes(`/${script}`)),
+        `${script} referenced in hooks.json`,
+      ).toBe(true);
+      const mode = statSync(join(reviewPluginDir, 'hooks', script)).mode;
+      expect((mode & 0o111) !== 0, `${script} is executable`).toBe(true);
+    }
   });
 
   test('keeps every source hook byte-identical in the plugin mirror', () => {
     const sourceHooks = join(repoRoot, 'hooks', 'claude');
     const sourceScripts = readdirSync(sourceHooks).filter((name) => name.endsWith('.sh')).sort();
-    const pluginScripts = readdirSync(join(pluginDir, 'hooks'))
-      .filter((name) => name.endsWith('.sh'))
-      .sort();
-    expect(pluginScripts).toEqual(sourceScripts);
-    for (const script of sourceScripts) {
-      expect(readFileSync(join(pluginDir, 'hooks', script), 'utf-8')).toBe(
-        readFileSync(join(sourceHooks, script), 'utf-8'),
-      );
-      expect(statSync(join(pluginDir, 'hooks', script)).mode & 0o111, `${script} is executable`)
-        .not.toBe(0);
+    const coreScripts = sourceScripts.filter((name) => !REVIEW_HOOKS.includes(name));
+    expect(coreScripts).not.toEqual(sourceScripts);
+
+    for (const [dir, scripts] of [
+      [pluginDir, coreScripts],
+      [reviewPluginDir, [...REVIEW_HOOKS].sort()],
+    ] as [string, string[]][]) {
+      const pluginScripts = readdirSync(join(dir, 'hooks'))
+        .filter((name) => name.endsWith('.sh'))
+        .sort();
+      expect(pluginScripts).toEqual(scripts);
+      for (const script of scripts) {
+        expect(readFileSync(join(dir, 'hooks', script), 'utf-8')).toBe(
+          readFileSync(join(sourceHooks, script), 'utf-8'),
+        );
+        expect(statSync(join(dir, 'hooks', script)).mode & 0o111, `${script} is executable`)
+          .not.toBe(0);
+      }
     }
+  });
+});
+
+describe('agentkit-review plugin', () => {
+  test('hooks.json routes Bash and merge-shaped tools through the fail-closed supervisor', () => {
+    const hooks = readReviewJson('hooks', 'hooks.json').hooks;
+
+    // Bash block, plus a block matching merge-shaped tool names so MCP merge
+    // tools actually reach review-police (its MCP branch was unreachable dead
+    // code while only the Bash matcher existed).
+    expect(Object.keys(hooks)).toEqual(['PreToolUse']);
+    expect(hooks.PreToolUse).toHaveLength(2);
+    expect(hooks.PreToolUse[0].matcher).toBe('Bash');
+    // Assert what the matcher DOES, not how it is spelled: it must route real
+    // MCP merge tool names to review-police and leave everything else alone.
+    const routes = new RegExp(hooks.PreToolUse[1].matcher);
+    expect(routes.test('mcp__github__merge_pull_request')).toBe(true);
+    expect(routes.test('mcp__gitlab__merge_merge_request')).toBe(true);
+    expect(routes.test('Bash')).toBe(false);
+    expect(routes.test('Edit')).toBe(false);
+
+    for (const group of hooks.PreToolUse) {
+      expect(commandBasenames(group.hooks)).toEqual(['review-police.sh']);
+      expect(group.hooks[0].command).toStartWith(
+        '${CLAUDE_PLUGIN_ROOT}/hooks/fail-closed-hook.sh 45 ',
+      );
+      expect(group.hooks[0].command).not.toContain('.claude/hooks');
+      expect(group.hooks[0].type).toBe('command');
+    }
+  });
+
+  test('carries the review skill and tools the core plugin no longer ships', () => {
+    expect(readReviewJson('.claude-plugin', 'plugin.json').name).toBe('agentkit-review');
+    expect(statSync(join(reviewPluginDir, 'skills', 'adversarial-review', 'SKILL.md')).isFile())
+      .toBe(true);
+    expect(existsSync(join(pluginDir, 'skills', 'adversarial-review'))).toBe(false);
+
+    for (const tool of ['review-gate', 'review-profile']) {
+      const bundled = join(reviewPluginDir, 'tools', tool);
+      expect(readFileSync(bundled, 'utf-8')).toBe(readFileSync(join(repoRoot, 'tools', tool), 'utf-8'));
+      expect(statSync(bundled).mode & 0o111).not.toBe(0);
+      expect(existsSync(join(pluginDir, 'tools', tool))).toBe(false);
+    }
+    expect(existsSync(join(reviewPluginDir, 'hooks', 'lib', 'hook-input.sh'))).toBe(true);
   });
 });
 
@@ -212,7 +293,6 @@ describe('agentkit plugin skills', () => {
   test('ships the core agentkit skills, each with a SKILL.md', () => {
     const expectedSkills = [
       'autonomous-workflow',
-      'adversarial-review',
       'code-quality',
       'documentation',
       'gitops-master',
@@ -315,7 +395,7 @@ describe('agentkit plugin skills', () => {
 
 describe('agentkit plugin tools', () => {
   test('bundles the portable tools and keeps them executable', () => {
-    for (const tool of ['bounded-run', 'review-gate', 'review-profile']) {
+    for (const tool of ['bounded-run']) {
       const bundled = join(pluginDir, 'tools', tool);
       expect(readFileSync(bundled, 'utf-8')).toBe(
         readFileSync(join(repoRoot, 'tools', tool), 'utf-8'),

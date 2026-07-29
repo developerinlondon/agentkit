@@ -16,6 +16,10 @@ const resourceSafeExecution = readFileSync(
   'utf-8',
 );
 const codingDiscipline = readFileSync(join(instructionsDir, 'coding-discipline.md'), 'utf-8');
+const evidenceGatedReview = readFileSync(
+  join(instructionsDir, 'evidence-gated-review.md'),
+  'utf-8',
+);
 const testDrivenDevelopment = readFileSync(
   join(skillsDir, 'test-driven-development', 'SKILL.md'),
   'utf-8',
@@ -28,8 +32,8 @@ describe('review disciplines', () => {
     expect(productReview).toContain('Observed vs inferred');
     expect(adversarialReview).toContain('Trace before reading the maker narrative');
     expect(adversarialReview).toContain('concrete failing input or a replayable trace');
-    expect(codingDiscipline).toContain('Evidence-Gated Review');
-    expect(codingDiscipline).toMatch(/policy from the exact target\s+commit/);
+    expect(evidenceGatedReview).toContain('Evidence-Gated Review');
+    expect(evidenceGatedReview).toMatch(/policy from the exact target\s+commit/);
   });
 
   test('dispatches reviewers neutrally from primary artifacts', () => {

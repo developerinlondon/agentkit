@@ -4,6 +4,7 @@ import { join } from 'node:path';
 export interface SkillGroup {
   id: string;
   description: string;
+  explicit: boolean;
 }
 
 export interface SkillGroupManifest {
@@ -26,7 +27,14 @@ export function parseSkillGroups(contents: string): SkillGroupManifest {
     const [first, second, ...rest] = trimmed.split(/\s+/);
     if (first === 'group') {
       if (!second) throw new Error(`group record without an id: ${trimmed}`);
-      groups.push({ id: second, description: rest.join(' ') });
+      groups.push({ id: second, description: rest.join(' '), explicit: false });
+      continue;
+    }
+    if (first === 'explicit') {
+      if (!second) throw new Error(`explicit record without a group id: ${trimmed}`);
+      const target = groups.find((g) => g.id === second);
+      if (!target) throw new Error(`explicit marker for undeclared group: ${second}`);
+      target.explicit = true;
       continue;
     }
     if (!first || !second) throw new Error(`membership record without a group: ${trimmed}`);

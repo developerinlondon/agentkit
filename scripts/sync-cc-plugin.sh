@@ -19,17 +19,32 @@ if ! command -v jq >/dev/null 2>&1; then
 fi
 
 # Hooks: copy scripts only — hooks.json (the plugin's wiring) is plugin-owned.
+# The review gate scripts ship in the agentkit-review plugin, not core.
+REVIEW_PLUGIN_DIR="$REPO_DIR/plugins-cc/agentkit-review"
+review_hook_script() {
+	case "$(basename "$1")" in
+	review-police.sh | fail-closed-hook.sh) return 0 ;;
+	esac
+	return 1
+}
+mkdir -p "$REVIEW_PLUGIN_DIR/hooks" "$REVIEW_PLUGIN_DIR/tools"
 for hook in "$REPO_DIR"/hooks/claude/*.sh; do
-	cp "$hook" "$PLUGIN_DIR/hooks/$(basename "$hook")"
+	if review_hook_script "$hook"; then
+		cp "$hook" "$REVIEW_PLUGIN_DIR/hooks/$(basename "$hook")"
+		rm -f "$PLUGIN_DIR/hooks/$(basename "$hook")"
+	else
+		cp "$hook" "$PLUGIN_DIR/hooks/$(basename "$hook")"
+	fi
 done
-echo "[sync] hooks/claude/*.sh -> plugins-cc/agentkit/hooks/"
+echo "[sync] hooks/claude/*.sh -> plugins-cc/{agentkit,agentkit-review}/hooks/"
 
 # Shared helpers (dual Claude/Grok payload parsing). Must live next to the
 # scripts so `source "$(dirname …)/lib/hook-input.sh"` resolves.
 if [[ -d "$REPO_DIR/hooks/claude/lib" ]]; then
-	mkdir -p "$PLUGIN_DIR/hooks/lib"
+	mkdir -p "$PLUGIN_DIR/hooks/lib" "$REVIEW_PLUGIN_DIR/hooks/lib"
 	cp -a "$REPO_DIR"/hooks/claude/lib/. "$PLUGIN_DIR/hooks/lib/"
-	echo "[sync] hooks/claude/lib -> plugins-cc/agentkit/hooks/lib/"
+	cp -a "$REPO_DIR"/hooks/claude/lib/. "$REVIEW_PLUGIN_DIR/hooks/lib/"
+	echo "[sync] hooks/claude/lib -> core + review plugin hooks/lib/"
 fi
 
 # Skills: one plugin per declared group, membership straight from the manifest.
@@ -133,11 +148,16 @@ echo "[sync] group plugins -> .claude-plugin/marketplace.json"
 
 # Portable tools used by bundled hooks. Keep this allowlist explicit: other
 # top-level tools are not necessarily plugin-facing commands.
-for tool in bounded-run review-gate review-profile; do
+for tool in bounded-run; do
 	cp "$REPO_DIR/tools/$tool" "$PLUGIN_DIR/tools/$tool"
 	chmod +x "$PLUGIN_DIR/tools/$tool"
 done
-echo "[sync] portable hook tools -> plugins-cc/agentkit/tools/"
+for tool in review-gate review-profile; do
+	cp "$REPO_DIR/tools/$tool" "$REVIEW_PLUGIN_DIR/tools/$tool"
+	chmod +x "$REVIEW_PLUGIN_DIR/tools/$tool"
+	rm -f "$PLUGIN_DIR/tools/$tool"
+done
+echo "[sync] portable hook tools -> core (bounded-run) + review plugin (gate, profile)"
 
 # Fail loudly if the result is an invalid plugin (best-effort: needs claude CLI).
 if command -v claude &>/dev/null; then

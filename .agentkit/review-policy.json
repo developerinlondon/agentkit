@@ -7,7 +7,7 @@
         "id": "agent-enforcement",
         "tier": "critical",
         "path_regexes": [
-          "^(hooks/.*|policies/.*|tools/review-(gate|profile)|install\\.sh|lib/install-platform\\.sh|scripts/(product-command|sync-cc-plugin\\.sh)|plugins/.*\\.ts|plugins-cc/agentkit/(\\.claude-plugin/plugin\\.json|hooks/.*|tools/review-(gate|profile))|\\.agentkit/(config\\.yaml|product\\.yaml|review-policy\\.json)|\\.claude-plugin/marketplace\\.json|config\\.example\\.yaml)$"
+          "^(hooks/.*|policies/.*|tools/review-(gate|profile)|install\\.sh|lib/install-platform\\.sh|scripts/(product-command|sync-cc-plugin\\.sh)|plugins/.*\\.ts|plugins-cc/agentkit/(\\.claude-plugin/plugin\\.json|hooks/.*)|plugins-cc/agentkit-review/.*|\\.agentkit/(config\\.yaml|product\\.yaml|review-policy\\.json)|\\.claude-plugin/marketplace\\.json|config\\.example\\.yaml)$"
         ]
       },
       {
@@ -22,11 +22,12 @@
         "tier": "critical",
         "path_regexes": [
           "^skills/(adversarial-review|autonomous-workflow|product-review|test-driven-development)/.*$",
-          "^plugins-cc/agentkit/skills/(adversarial-review|autonomous-workflow|test-driven-development)/.*$",
+          "^plugins-cc/agentkit/skills/(autonomous-workflow|test-driven-development)/.*$",
           "^plugins-cc/agentkit-product/skills/product-review/.*$",
-          "^instructions/coding-discipline\\.md$",
+          "^instructions/(coding-discipline|evidence-gated-review)\\.md$",
           "^docs/review-process\\.md$",
-          "^tests/(agentkit-plugin|codex-review-hooks|hook-supervisor|install-claude-plugin|install-tools|review-gate|review-profile|review-police|review-disciplines)\\.test\\.ts$"
+          "^tests/(agentkit-plugin|codex-review-hooks|hook-supervisor|install-claude-plugin|install-tools|review-gate|review-profile|review-police|review-disciplines)\\.test\\.ts$",
+          "^plugins-cc/agentkit-review/skills/adversarial-review/.*$"
         ]
       }
     ]

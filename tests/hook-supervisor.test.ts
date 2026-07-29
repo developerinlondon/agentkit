@@ -111,7 +111,7 @@ sleep 5`,
   test('keeps the child deadline below both registered host deadlines', () => {
     const source = JSON.parse(readFileSync(join(ROOT, 'hooks', 'claude', 'settings.json'), 'utf-8'));
     const plugin = JSON.parse(
-      readFileSync(join(ROOT, 'plugins-cc', 'agentkit', 'hooks', 'hooks.json'), 'utf-8'),
+      readFileSync(join(ROOT, 'plugins-cc', 'agentkit-review', 'hooks', 'hooks.json'), 'utf-8'),
     );
     for (const settings of [source, plugin]) {
       const entries = settings.hooks.PreToolUse.flatMap((group: any) => group.hooks);
@@ -122,5 +122,7 @@ sleep 5`,
         expect(entry.timeout).toBe(60);
       }
     }
+    expect(readFileSync(join(ROOT, 'plugins-cc', 'agentkit', 'hooks', 'hooks.json'), 'utf-8'))
+      .not.toContain('fail-closed-hook.sh');
   });
 });

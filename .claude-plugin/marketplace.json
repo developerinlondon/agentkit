@@ -34,6 +34,12 @@
       "source": "./plugins-cc/agentkit-product",
       "description": "Product-model skills: evidence-backed briefs and product review",
       "version": "0.3.0"
+    },
+    {
+      "name": "agentkit-review",
+      "source": "./plugins-cc/agentkit-review",
+      "description": "Adversarial review lane + hard merge gate (heavyweight; explicit opt-in)",
+      "version": "0.3.0"
     }
   ]
 }
