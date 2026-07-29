@@ -150,6 +150,19 @@ This installs SKILL.md files for your AI agent (Claude Code, OpenCode, Cursor, e
 
 ### Option 2: Install globally (all projects)
 
+One line — clones to `~/.agentkit-src` (override: `AGENTKIT_SRC`) and runs the
+global install; re-running updates in place:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/developerinlondon/agentkit/main/bootstrap.sh | bash
+# with options:  … | bash -s -- --with product
+```
+
+Piped stdin is not a terminal, so the optional-group question is skipped —
+the curl path installs core only unless you pass `--with <group>`.
+
+Or clone first and read before running:
+
 ```bash
 git clone git@github.com:developerinlondon/agentkit.git
 ./agentkit/install.sh --global
