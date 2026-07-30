@@ -41,7 +41,7 @@ Reusable AI agent skills, rules, plugins, hooks, and tools for OpenCode, Claude 
 | **git-police.ts**      | Blocks commits to main/master, force push, --no-verify, AI attribution, push to protected branches                       |
 | **coding-police.ts**   | Enforces DRY code, modular files (<1000 lines), short functions, single responsibility, and capped directory file counts |
 | **comment-police.ts**  | Warns on long comment blocks, tutorial-style file headers, PR/plan/closes-#N references, and high comment-to-code ratios |
-| **pkg-police.ts**      | Enforces bun as package manager — blocks npm, npx, yarn, pnpm commands                                                   |
+| **pkg-police.ts**      | Enforces the project's declared package manager — blocks the other managers' commands                                    |
 | **resource-police.ts** | Requires bounded heavy commands on Linux; blocks delegated and undecidable commands everywhere                           |
 
 ### Runtime hooks (Claude Code; review gate is opt-in, also installed for Codex when selected)
@@ -52,7 +52,7 @@ Reusable AI agent skills, rules, plugins, hooks, and tools for OpenCode, Claude 
 | **kubectl-police.sh**  | PreToolUse        | Blocks kubectl create/apply on Kargo CRDs                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | **format-police.sh**   | PostToolUse       | Auto-formats files after edit/write using dprint                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | **coding-police.sh**   | PostToolUse       | Enforces DRY code, modular files (<1000 lines), short functions, single responsibility, and capped directory file counts                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| **pkg-police.sh**      | PreToolUse        | Enforces bun as package manager — blocks npm, npx, yarn, pnpm commands                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| **pkg-police.sh**      | PreToolUse        | Enforces the project's declared package manager — blocks the other managers' commands                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | **resource-police.sh** | PreToolUse        | With `jq`, `awk`, and `cat`, requires `bounded-run` for heavy commands on Linux and blocks delegated or undecidable commands on every platform; warns and fails open when a parser dependency is missing                                                                                                                                                                                                                                                                                                                                            |
 | **chime.sh**           | Notification/Stop | Audible nudge when Claude needs you: springy boing on permission prompts/questions, soft ping when a turn finishes. Mute: `touch ~/.claude/.chime-off` or `CLAUDE_CHIME=0`                                                                                                                                                                                                                                                                                                                                                                          |
 | **mr-police.sh**       | PreToolUse        | Blocks opening a new MR while you already have an open MR you authored on the repo — stops unmerged MRs from stacking up                                                                                                                                                                                                                                                                                                                                                                                                                            |
@@ -73,7 +73,7 @@ protections below remain literal command-prefix policies.
 | **git-police.rules**        | Blocks force push, --no-verify, direct push to protected branches                                            |
 | **kubectl-police.rules**    | Blocks kubectl create/apply on Kargo CRDs                                                                    |
 | **coding-police.rules**     | Coding standards guidance + prompts on heredoc/tee writes that may produce oversized files                   |
-| **pkg-police.rules**        | Enforces bun as package manager — blocks npm, npx, yarn, pnpm commands                                       |
+| **pkg-police.rules**        | Enforces bun as package manager — static policy, so it cannot honor the configured manager                   |
 | **delegation-police.rules** | Blocks direct mutating container, service-manager, privilege, and remote prefixes; allows direct diagnostics |
 | **resource-police.rules**   | On Linux, blocks direct heavy commands that do not start with the bounded runner                             |
 
@@ -499,20 +499,28 @@ platforms (OpenCode plugin, Claude Code hook, Codex policy). Checks:
 
 All thresholds are configurable via `coding-police` in your config. See [Configuration](#configuration).
 
-**pkg-police**: Enforces bun as the default JavaScript/TypeScript package manager and runtime.
-Intercepts bash commands before execution and blocks npm, npx, yarn, and pnpm. Available on all
-three platforms (OpenCode plugin, Claude Code hook, Codex policy).
+**pkg-police**: Keeps one JavaScript/TypeScript package manager per project. It intercepts bash
+commands before execution and blocks the managers the project does not use, naming the equivalent
+command in the one it does.
 
-Blocked commands and their bun equivalents:
+By default the enforced manager is inferred from the repository's lockfile, found by walking up
+from the working directory to the git root:
 
-| Blocked             | Use instead             |
-| ------------------- | ----------------------- |
-| `npm install`       | `bun install`           |
-| `npm install <pkg>` | `bun add <pkg>`         |
-| `npm run <script>`  | `bun run <script>`      |
-| `npx <cmd>`         | `bunx <cmd>`            |
-| `npm test`          | `bun test`              |
-| `yarn` / `pnpm`     | `bun` (same subcommand) |
+| Lockfile                     | Enforced manager |
+| ---------------------------- | ---------------- |
+| `bun.lock` / `bun.lockb`     | bun              |
+| `package-lock.json`          | npm              |
+| `pnpm-lock.yaml`             | pnpm             |
+| `yarn.lock`                  | yarn             |
+| none, or several that differ | nothing blocked  |
+
+Set `pkg-police.manager` in your agentkit config to `bun`, `npm`, `pnpm`, or `yarn` to enforce one
+everywhere regardless of the lockfile, `auto` for the lockfile default, or `off` to disable the
+unit. An unrecognized value disables it rather than guessing. (The older `enabled: false` still
+reads as `off`; `manager` wins when both are present.)
+
+Equivalents are mapped across managers, so a blocked `npx tsc` in a pnpm project asks for
+`pnpm dlx tsc`, and a blocked `npm i lodash` in a bun project asks for `bun add`.
 
 | Platform    | File                              | Hook type           |
 | ----------- | --------------------------------- | ------------------- |
@@ -520,8 +528,11 @@ Blocked commands and their bun equivalents:
 | Claude Code | `hooks/claude/pkg-police.sh`      | PreToolUse          |
 | Codex CLI   | `policies/codex/pkg-police.rules` | exec policy         |
 
-Disable per-project by setting `pkg-police.enabled: false` in your agentkit config.
-Override per-command when the user explicitly requests a different package manager.
+Codex exec policies are static and cannot read config or inspect a lockfile, so the Codex unit
+enforces bun unconditionally; only the OpenCode plugin and the Claude Code hook are configurable.
+
+Override a single command with `AGENTKIT_ALLOW_PKG=1` when the user explicitly approves a
+different package manager.
 
 ## Rules
 
