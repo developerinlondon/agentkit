@@ -1,0 +1,92 @@
+---
+title: agentkit
+description: Executable discipline for coding agents — hooks that refuse, skills
+  that instruct, across OpenCode, Claude Code, Codex CLI and Grok CLI.
+slug: "0.4"
+---
+
+An agent will force-push to `main`, reformat your whole repository to fix one file, and report
+"all tests pass" over a suite that never ran. Writing "don't do that" in a config file does not
+stop it. The instruction is advice, and advice is skippable.
+
+agentkit's position is that working discipline has to be executable: a hook that refuses at the
+tool call, a gate that denies the merge, a runner that makes exceeding a memory limit impossible.
+Everything in the kit is machinery. None of it depends on the agent remembering.
+
+## What it actually installs
+
+One canonical copy of skills, rules, instructions, hooks and tools under `~/.agentkit`, then
+per-client adapters into four harnesses — OpenCode, Claude Code, Codex CLI and Grok CLI. Skills
+and rules are symlinked, so editing the canon reaches every client that links it. Codex prompts,
+the OpenCode TypeScript plugins and the executables on your `PATH` are real copies, refreshed on
+the next install run.
+
+Nothing sweeps a client directory. Skills from other sources sit untouched alongside.
+
+## Four surfaces, in order of force
+
+| Surface          | Reach                             | What happens when it is ignored              |
+| ---------------- | --------------------------------- | -------------------------------------------- |
+| **Skill**        | loaded on demand, agent's choice  | the work is worse                            |
+| **Rule**         | always-on context, glob-scoped    | bad habits land, and show up in review       |
+| **Hook**         | refuses at the tool call          | nothing — ignoring it is not possible        |
+| **Tool**         | replaces the capability itself    | nothing — the limit is in the kernel         |
+
+Climb only as high as the failure justifies. [Four surfaces](/docs/0.4/concepts/four-surfaces/)
+explains the mechanics; [Thinking in agentkit](/docs/0.4/thinking/) is the judgment call about which
+one a given piece of discipline deserves.
+
+## The enforcement, concretely
+
+Twelve police units exist across three enforcement mechanisms: Claude-format hook scripts (also
+loaded by Grok through its Claude-compatibility path), OpenCode TypeScript plugins, and Codex
+exec policies. Coverage is deliberately uneven — a mechanism gets a unit only where it can
+express the check.
+
+| Mechanisms it exists in    | Units                                                          |
+| -------------------------- | -------------------------------------------------------------- |
+| all three                  | `coding` `git` `kubectl` `pkg` `resource`                       |
+| hook + OpenCode plugin     | `comment` `format`                                              |
+| hook only                  | `mr` `pages` `review`                                           |
+| OpenCode plugin only       | `version`                                                       |
+| Codex exec policy only     | `delegation`                                                    |
+
+The `review-police` hook script also reaches Codex, through its `PreToolUse` hook interface
+rather than as an exec policy. Codex requires an explicit trust review in `/hooks` after that
+definition is installed or changed.
+
+[Police hooks](/docs/0.4/concepts/police-hooks/) covers how one intercepts a tool call. Between them
+they block force pushes, `--no-verify`, AI-attribution trailers, commits to protected branches,
+`npm`/`npx`/`yarn`/`pnpm`, unbounded heavy builds on Linux, `kubectl apply` on Kargo CRDs,
+stacked merge requests, oversized files and functions, duplicated blocks, and rotting comment
+references. Every refusal names the legitimate override.
+
+## Say plainly what it is not
+
+:::caution[Not a security boundary]
+None of this contains a hostile agent.
+
+* Hooks are **guards**: they detect a pattern in a tool call and refuse it. They are not a
+  sandbox. An agent that writes the same effect a different way is not stopped by a guard that
+  did not match it.
+* Codex policies match literal argv prefixes. They do not recursively parse shell payloads, so a
+  script that delegates through an API or a socket walks straight past them.
+* The review record lives in the repository and the agent can write it. A determined agent can
+  forge a pass. Only forge-side required approvals actually prevent a merge; the gate makes the
+  honest path correct and a *stale* review mechanically impossible to merge past.
+* Containment excludes delegated workloads — `docker`, `podman`, `systemd-run`, `ssh` — by
+  design, because the child work can escape the cgroup.
+
+agentkit documents its own limits because a guard you wrongly believe in is worse than no guard:
+you stop watching.
+:::
+
+## Start here
+
+* [Install](/docs/0.4/getting-started/install/) — get it onto a machine and confirm the enforcement
+  is live.
+* [Thinking in agentkit](/docs/0.4/thinking/) — when a piece of discipline should be a skill, a rule,
+  a hook or a tool.
+* [Cookbook](/docs/0.4/cookbook/) — copyable shapes for the common workflows.
+* [Review and the gate](/docs/0.4/concepts/review-and-the-gate/) — the always-installed review
+  discipline, and the opt-in gate with teeth.

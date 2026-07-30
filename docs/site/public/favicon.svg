@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="agentkit">
+	<rect width="32" height="32" fill="#08090a" />
+	<path d="M6 9 L12 16 L6 23" fill="none" stroke="#f5a742" stroke-width="3" stroke-linecap="square" />
+	<rect x="16" y="19" width="10" height="4" fill="#f5a742" />
+</svg>

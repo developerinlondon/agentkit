@@ -1,5 +1,5 @@
-import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 
 const repoRoot = join(import.meta.dir, '..');
 const factsPath = join(repoRoot, 'docs', 'site', 'src', 'generated', 'kit-facts.json');
@@ -257,7 +257,36 @@ export function committedFacts(): string {
   return readFileSync(factsPath, 'utf-8');
 }
 
+// Cutting a version freezes the tables that version described. Without this the
+// archived pages would keep rendering the current tree, so a frozen release would
+// silently describe whatever main looks like today.
+export function freezeVersion(version: string, root: string = repoRoot): string {
+  const target = join(
+    root,
+    'docs',
+    'site',
+    'src',
+    'generated',
+    'frozen-facts',
+    `${version}.json`,
+  );
+  mkdirSync(dirname(target), { recursive: true });
+  writeFileSync(target, serialise(collectFacts(root)));
+  return target;
+}
+
 if (import.meta.main) {
+  const freezeIndex = process.argv.indexOf('--freeze');
+  if (freezeIndex !== -1) {
+    const version = process.argv[freezeIndex + 1];
+    if (!version) {
+      console.error('docs facts: --freeze needs a version, e.g. --freeze 0.4');
+      process.exit(1);
+    }
+    console.log(`docs facts: froze ${freezeVersion(version)}`);
+    process.exit(0);
+  }
+
   const fresh = serialise(collectFacts());
 
   if (process.argv.includes('--check')) {

@@ -1,5 +1,6 @@
 import starlight from "@astrojs/starlight";
 import { defineConfig } from "astro/config";
+import starlightVersions from "starlight-versions";
 
 // The hand-built pages these replaced are already indexed and linked. Each keeps
 // resolving to its nearest equivalent rather than 404ing, because a docs URL that
@@ -32,6 +33,11 @@ export default defineConfig({
 			description: "Discipline for coding agents: hooks that refuse, skills that instruct.",
 			customCss: ["./src/styles/agentkit.css"],
 			pagefind: true,
+			// The unversioned root documents `main`, which is what the curl-pipe
+			// installer actually gives you. Archived versions are frozen copies cut
+			// at a release, committed to the repository by the plugin on the next
+			// build after a version is declared here.
+			plugins: [starlightVersions({ versions: [{ slug: "0.4", label: "v0.4" }] })],
 			sidebar: [
 				{ label: "Introduction", link: "/" },
 				{

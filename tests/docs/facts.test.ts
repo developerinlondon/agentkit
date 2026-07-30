@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 import {
   collectFacts,
   collectWiring,
@@ -9,6 +9,11 @@ import {
   pluginHookDrift,
   serialise,
 } from '../../scripts/sync-docs-facts.ts';
+import {
+  factsFor,
+  frozenByVersion,
+  versionFromPathname,
+} from '../../docs/site/src/lib/version-facts.ts';
 
 let root: string;
 
@@ -304,5 +309,97 @@ describe('the prose that enumerates units stays complete', () => {
     const inTree = collectFacts().units.map((unit) => unit.name);
 
     expect(documented.slice().sort()).toEqual(inTree.slice().sort());
+  });
+});
+
+describe('content stays parseable by the version archiver', () => {
+  // starlight-versions applies remark-mdx to every page regardless of extension,
+  // so a CommonMark autolink — legal markdown, and accepted by the normal build —
+  // reads as a JSX tag and aborts archiving. That failure would otherwise surface
+  // only at the next release, long after the page was written.
+  test('no page uses a CommonMark autolink', () => {
+    const root = join(import.meta.dir, '..', '..', 'docs', 'site', 'src', 'content', 'docs');
+    const offenders: string[] = [];
+
+    const walk = (dir: string): void => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const path = join(dir, entry.name);
+        if (entry.isDirectory()) {
+          walk(path);
+          continue;
+        }
+        if (!/\.mdx?$/.test(entry.name)) continue;
+        const body = readFileSync(path, 'utf-8');
+        for (const match of body.matchAll(/<(https?|mailto):[^>\s]*>/g)) {
+          offenders.push(`${relative(root, path)}: ${match[0]}`);
+        }
+      }
+    };
+
+    walk(root);
+
+    expect(offenders).toEqual([]);
+  });
+});
+
+describe('a frozen version renders its own tables', () => {
+  test('a versioned path resolves to its frozen snapshot', () => {
+    const current = { units: ['now'], wiring: [], groups: [], skills: [], tools: [] };
+    const frozen = {
+      '0.4': { units: ['then'], wiring: [], groups: [], skills: [], tools: [] },
+    };
+
+    const resolved = factsFor('/docs/0.4/reference/hooks/', current, frozen);
+
+    expect(resolved.version).toBe('0.4');
+    expect(resolved.frozen).toBe(true);
+    expect(resolved.facts.units).toEqual(['then']);
+  });
+
+  test('the unversioned root resolves to the current tree', () => {
+    const current = { units: ['now'], wiring: [], groups: [], skills: [], tools: [] };
+    const frozen = {
+      '0.4': { units: ['then'], wiring: [], groups: [], skills: [], tools: [] },
+    };
+
+    const resolved = factsFor('/docs/reference/hooks/', current, frozen);
+
+    expect(resolved.version).toBeNull();
+    expect(resolved.frozen).toBe(false);
+    expect(resolved.facts.units).toEqual(['now']);
+  });
+
+  // Falling back to the current tree is the lesser wrong: an empty table would
+  // read as "this release had no units", which is a stronger and falser claim
+  // than "these are the current ones".
+  test('a declared version with no snapshot falls back and says so', () => {
+    const current = { units: ['now'], wiring: [], groups: [], skills: [], tools: [] };
+
+    const resolved = factsFor('/docs/9.9/reference/hooks/', current, {});
+
+    expect(resolved.version).toBe('9.9');
+    expect(resolved.frozen).toBe(false);
+    expect(resolved.facts.units).toEqual(['now']);
+  });
+
+  test.each([
+    ['/docs/', null],
+    ['/docs/concepts/pages/', null],
+    ['/docs/0.4/', '0.4'],
+    ['/docs/1/', '1'],
+    ['/docs/10.2.3/', '10.2.3'],
+    ['/docs/0.4rc/', null],
+    ['/docs/v0.4/', null],
+  ])('%s yields version %s', (pathname, expected) => {
+    expect(versionFromPathname(pathname)).toBe(expected);
+  });
+
+  test('a glob of snapshot modules is keyed by version', () => {
+    const modules = {
+      '../generated/frozen-facts/0.4.json': { default: { units: ['a'], wiring: [], groups: [], skills: [], tools: [] } },
+      '../generated/frozen-facts/0.5.json': { default: { units: ['b'], wiring: [], groups: [], skills: [], tools: [] } },
+    };
+
+    expect(Object.keys(frozenByVersion(modules)).sort()).toEqual(['0.4', '0.5']);
   });
 });
