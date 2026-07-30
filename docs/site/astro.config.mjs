@@ -4,31 +4,10 @@ import mermaid from "astro-mermaid";
 import starlightVersions from "starlight-versions";
 import starlightLinksValidator from "starlight-links-validator";
 
-// The hand-built pages these replaced are already indexed and linked. Each keeps
-// resolving to its nearest equivalent rather than 404ing, because a docs URL that
-// dies takes its inbound links with it.
-//
-// Keys are base-relative and targets are not: Astro prepends `base` to the route
-// it generates but writes the destination verbatim, so a key of `/docs/install`
-// would publish the redirect at `/docs/docs/install`.
-const MIGRATED = {
-	"/install": "/docs/getting-started/install/",
-	"/concepts": "/docs/concepts/four-surfaces/",
-	"/architecture": "/docs/concepts/four-surfaces/",
-	"/hooks": "/docs/reference/hooks/",
-	"/configuration": "/docs/reference/configuration/",
-	"/skills": "/docs/reference/skills/",
-	"/examples": "/docs/cookbook/",
-	"/pages": "/docs/concepts/pages/",
-	"/product": "/docs/concepts/product/",
-	"/diagrams": "/docs/concepts/diagrams/",
-};
-
 export default defineConfig({
 	site: "https://agentkit.sbs",
 	base: "/docs",
 	trailingSlash: "always",
-	redirects: MIGRATED,
 	integrations: [
 		mermaid({ theme: "dark", autoTheme: true }),
 		starlight({
