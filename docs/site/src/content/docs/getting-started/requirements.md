@@ -11,15 +11,32 @@ is touched.
 
 ## Dependencies
 
-| Dependency   | Role                                                                                                                                                                                                                            |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `jq`         | Required in practice. Config merges degrade to a warning without it. With `--with strict-review` it becomes hard: the Codex review-hook stage returns an error and the run aborts. A core-only install completes with warnings. |
-| `bun`        | Optional. Only skills shipping a `package.json` need it — a missing bun prints a warning naming the skill and the install continues.                                                                                            |
-| `python3`    | Runtime dependency of the fail-closed hook supervisor and the merge gate, not checked at install time.                                                                                                                          |
-| `awk`, `cat` | Required by `install.sh` itself — the group-manifest reader, the Codex prompt writer and the marker rewrite all use them — as well as by the hooks. Neither is probed, so a missing one fails mid-run.                          |
-| `git`        | Required by `bootstrap.sh`; otherwise a runtime dependency of the hooks and the review gate.                                                                                                                                    |
-| `claude`     | Only for `--claude-plugin`.                                                                                                                                                                                                     |
-| `dprint`     | Runtime dependency of `format-police`, which formats files after a write.                                                                                                                                                       |
+| Dependency   | Role                                                                                                                                                                                                   |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `jq`         | **Effectively mandatory** — see the warning below. A core-only install still exits 0 without it; `--with strict-review` aborts at the Codex review-hook stage.                                         |
+| `bun`        | Optional. Only skills shipping a `package.json` need it — a missing bun prints a warning naming the skill and the install continues.                                                                   |
+| `python3`    | Runtime dependency of the fail-closed hook supervisor and the merge gate, not checked at install time.                                                                                                 |
+| `awk`, `cat` | Required by `install.sh` itself — the group-manifest reader, the Codex prompt writer and the marker rewrite all use them — as well as by the hooks. Neither is probed, so a missing one fails mid-run. |
+| `git`        | Required by `bootstrap.sh`; otherwise a runtime dependency of the hooks and the review gate.                                                                                                           |
+| `claude`     | Only for `--claude-plugin`.                                                                                                                                                                            |
+| `dprint`     | Runtime dependency of `format-police`, which formats files after a write.                                                                                                                              |
+
+:::danger[Without `jq`, a core-only install succeeds and enforces nothing on Claude Code]
+Observed on a sandboxed install with `jq` removed from `PATH`: the run exits **0**, links all 13
+skills, all 5 rules and all 10 hook scripts into place — and then prints
+
+```text
+[claude] WARNING: jq not found. Cannot merge hooks into settings.json.
+[opencode] WARNING: jq not found. Cannot wire global prompt into opencode.json.
+```
+
+`~/.claude/settings.json` is **never created**. The hook scripts are all present under
+`~/.claude/hooks/`, but nothing registers them, so no guard fires. The OpenCode `instructions[]`
+wiring is skipped too. The closing summary says `Claude Code: manual` — that line is the only
+signal that the install did not finish the job.
+
+Install `jq` and re-run.
+:::
 
 `resource-police` needs `jq`, `awk` and `cat` to analyse a command. Without one of them it warns
 and **intentionally fails open** — it does not block every heavy command on a broken parser.
@@ -69,7 +86,8 @@ never overwrites it afterwards. `XDG_CONFIG_HOME` is respected.
 
 That file tunes thresholds — `coding-police` file, function, duplicate, export and directory
 limits; `comment-police` block, header and ratio limits and its forbidden-pattern regexes;
-`git-police` branch-protection exemptions; `pkg-police` and `version-police` on/off; and the
+`git-police` branch-protection exemptions; which package manager `pkg-police` enforces;
+`version-police` on/off; and the
 default review profile. Repositories may override the `review` section in `.agentkit/config.yaml`.
 
 `AGENTKIT_SKIP_HOOKS` turns hooks off for one session, by comma-separated name or with `all`. Only

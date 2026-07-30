@@ -38,11 +38,30 @@ difference is the whole point:
 - The interactive wizard never offers it. A `y` at a prompt is too easy to give without reading
   what it wires in.
 - `--all` does not include it.
-- When it is **not** selected, the installer **removes** its previously installed skills, hooks,
-  tools and prompt wiring.
+- When a run does **not** select it, the installer **removes** its previously installed skills,
+  hooks, tools and prompt wiring.
 
 That last rule is deliberate: presence without recorded selection is not consent. Finding the
 merge gate on disk is not evidence that anybody chose to be gated.
+
+A remembered selection still counts as selected, so a bare `install.sh --global` after
+`--with strict-review` **keeps** it. To take it away, drop it explicitly:
+
+```sh
+./agentkit/install.sh --global --without strict-review
+```
+
+Observed removal on that run — the skill, both hooks, both tools, the Codex prompt and hook
+wiring, the `CLAUDE.md` prompt block and the OpenCode `instructions[]` entry all go:
+
+```text
+[skills] Removing (explicit group 'strict-review' not selected): adversarial-review
+[claude] Removed prompt block (evidence-gated-review.md): …/.claude/CLAUDE.md
+[opencode] Removed global prompt: …/.config/opencode/opencode.json
+[claude] Removing hook (strict-review group not selected): review-police.sh
+[tools] Removing (strict-review group not selected): review-gate
+[codex] Removed review gate hooks (strict-review group not selected).
+```
 
 :::caution
 The review machinery is opt-in. Neither `--all` nor the picker installs it. If you want the merge

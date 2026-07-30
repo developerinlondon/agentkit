@@ -32,12 +32,11 @@ Four places where a documented key does less than it appears to. These are curre
 implementations, not design intent — a key that only some surfaces honour is a gap, and the tables
 below mark each one.
 
-| Gap                                                                        | Effect                                                |
-| -------------------------------------------------------------------------- | ----------------------------------------------------- |
-| `comment-police.forbidden-patterns` **replaces** the built-in list         | a seeded config silently drops 7 matchers             |
-| `comment-police.max-header-lines` + `forbidden-patterns` are OpenCode-only | no effect under Claude Code or Grok                   |
-| `pkg-police.enabled` is OpenCode-only                                      | cannot disable `pkg-police` under Claude Code or Grok |
-| repo-level `.agentkit/config.yaml` covers `review:` only                   | every other section is ignored there                  |
+| Gap                                                                        | Effect                                    |
+| -------------------------------------------------------------------------- | ----------------------------------------- |
+| `comment-police.forbidden-patterns` **replaces** the built-in list         | a seeded config silently drops 7 matchers |
+| `comment-police.max-header-lines` + `forbidden-patterns` are OpenCode-only | no effect under Claude Code or Grok       |
+| repo-level `.agentkit/config.yaml` covers `review:` only                   | every other section is ignored there      |
 
 ## Which implementation reads which section
 
@@ -49,7 +48,7 @@ A police unit is a policy with up to three implementations, and they do not read
 | `git-police`     | `allowed-repos`               | `allowed-repos`         | not read       |
 | `coding-police`  | all keys                      | all keys                | not read       |
 | `comment-police` | 3 of 5 keys (below)           | all keys                | not read       |
-| `pkg-police`     | **not read**                  | `enabled`               | not read       |
+| `pkg-police`     | `manager`                     | `manager`               | fixed to bun   |
 | `version-police` | no such hook                  | `enabled`, `exceptions` | no such policy |
 
 `format-police`, `kubectl-police`, `mr-police`, `pages-police` and `resource-police` read no config
@@ -180,18 +179,29 @@ extend-rather-than-replace syntax.
 
 ```yaml
 pkg-police:
-  enabled: true
+  # auto | bun | npm | pnpm | yarn | off
+  manager: auto
 ```
 
-`false` allows `npm`, `npx`, `yarn` and `pnpm`. Read by the OpenCode plugin only, which matches the
-literal shape `pkg-police:` followed by `enabled: false` — a regex, so a differently formatted but
-valid YAML `false` will not be seen.
+`auto` (the default) infers the manager from the repository's lockfile: `bun.lock` or `bun.lockb` →
+bun, `package-lock.json` → npm, `pnpm-lock.yaml` → pnpm, `yarn.lock` → yarn. Commands belonging to
+any _other_ manager are then refused, with the equivalent command in the inferred one. **No lockfile,
+or several that disagree, means there is no basis to judge and nothing is blocked.**
 
-:::caution[Current limitation: `enabled` is OpenCode-only]
-`hooks/claude/pkg-police.sh` reads no config file, so this key cannot disable `pkg-police` under
-Claude Code or Grok CLI. There, the only way past it is prefixing one command with
-`AGENTKIT_ALLOW_PKG=1`.
+Naming a manager enforces it whatever the lockfile says. `off` disables the unit.
+
+The walk starts at the working directory and stops at the git root, so a lockfile outside the
+repository never decides policy. `AGENTKIT_ALLOW_PKG=1` overrides a single command regardless of this
+setting, from the environment or as an inline prefix.
+
+:::caution[This is not "bun only"]
+In a repository whose only lockfile is `package-lock.json`, `bun install` is refused and `npm install`
+is required. The unit enforces _the project's_ manager, not a favourite one.
 :::
+
+Read by the Claude/Grok hook, the OpenCode plugin and — with one deliberate difference — the Codex
+policy. Codex rules match literal argv prefixes and cannot read a lockfile, so
+`policies/codex/pkg-police.rules` enforces bun unconditionally there. The rules file documents this.
 
 ## `version-police`
 

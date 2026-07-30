@@ -38,6 +38,10 @@ duplicate blocks. In `CLAUDE.md` those markers look like
 span. Blocks that older versions appended without markers are still found by their heading and
 removed.
 
+Observed on a second bare `--global` over the same install: exit 0, **29** `Updating:` lines and
+**0** `Installing:` lines, `[config] Existing config preserved`, and still exactly 5 marker blocks
+in `CLAUDE.md` and 5 entries in the OpenCode `instructions[]` array rather than 10.
+
 ## Removing it
 
 :::danger[There is no uninstaller]

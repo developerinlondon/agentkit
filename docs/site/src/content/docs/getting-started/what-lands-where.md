@@ -21,6 +21,14 @@ under `~/.grok/skills/` — sit untouched alongside.
 | Codex CLI        | `$CODEX_HOME` (default `~/.codex`) | real copies       | `developer_instructions` in `config.toml`; `PreToolUse` entries in `hooks.json` |
 | PATH tools       | `~/.local/bin/`                    | real copies       | —                                                                               |
 
+On a core-only Linux install this comes out as: 13 skill links and 5 rule links in each of
+`~/.agents/`, `~/.claude/` and `~/.grok/`; 5 instruction links in `~/.agents/instructions/`; 10
+hook links plus a `lib/` directory in `~/.claude/hooks/`; 13 real prompt files and 6 real policy
+files under `~/.codex/`; 8 real plugin files under `~/.config/opencode/plugins/`.
+
+`~/.grok/rules/` holds **10** entries — the 5 rules plus the 5 instructions, which land there as
+well because that directory loads always-on.
+
 Two placement details matter in practice.
 
 **Codex gets each skill as a prompt file with the YAML frontmatter stripped**, because Codex loads
@@ -66,17 +74,17 @@ separately. The installer never creates it, and `bounded-run` fails closed witho
 Passing a directory instead of `--global` writes into that project. The two modes are not the
 same install with a different prefix.
 
-|                                 | Global                                                                           | Project                                                      |
-| ------------------------------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------ |
-| Skills                          | one copy in canon, linked out                                                    | two real copies, one per client dir                          |
-| Rules                           | canon plus links to three clients                                                | the OpenCode rules directory only                            |
-| Instructions and global prompts | installed and wired into all four clients                                        | **not installed at all**                                     |
-| Codex                           | exec policies, markdown rules, skill prompts, review hooks, `config.toml` wiring | exec policies in `.codex/rules/`, review hooks, `hooks.json` |
-| Tools                           | `~/.local/bin`, canon, and Claude links                                          | the project's Claude tools directory                         |
-| Group memory                    | `~/.agentkit/groups`                                                             | never written                                                |
-| Wizard                          | possible                                                                         | never                                                        |
-| Session shims and slice         | yes, on Linux                                                                    | never                                                        |
-| `--claude-plugin`               | allowed                                                                          | rejected, exit 1                                             |
+|                                 | Global                                                                           | Project                                                                                   |
+| ------------------------------- | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| Skills                          | one copy in canon, linked out                                                    | two real copies, one per client dir                                                       |
+| Rules                           | canon plus links to three clients                                                | the OpenCode rules directory only                                                         |
+| Instructions and global prompts | installed and wired into all four clients                                        | **not installed at all**                                                                  |
+| Codex                           | exec policies, markdown rules, skill prompts, review hooks, `config.toml` wiring | exec policies in `.codex/rules/`; review hooks and `hooks.json` only with `strict-review` |
+| Tools                           | `~/.local/bin`, canon, and Claude links                                          | the project's Claude tools directory                                                      |
+| Group memory                    | `~/.agentkit/groups`                                                             | never written                                                                             |
+| Wizard                          | possible                                                                         | never                                                                                     |
+| Session shims and slice         | yes, on Linux                                                                    | never                                                                                     |
+| `--claude-plugin`               | allowed                                                                          | rejected, exit 1                                                                          |
 
 Project mode pins one repository to the kit's behaviour without touching the machine. Global mode
 is the normal one.

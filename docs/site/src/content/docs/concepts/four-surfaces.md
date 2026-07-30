@@ -42,7 +42,7 @@ versions of this documentation conflated them.
 ## One unit, up to three implementations
 
 A "police unit" is a policy, not a file. Each is compiled into the native extension mechanism of
-every harness that can hold it. `pkg-police` — one rule, _bun, never npm/yarn/pnpm_ — exists as:
+every harness that can hold it. `pkg-police` — one rule, _use the manager this project's lockfile names_ — exists as:
 
 | File                              | Mechanism                 | Reaches               |
 | --------------------------------- | ------------------------- | --------------------- |

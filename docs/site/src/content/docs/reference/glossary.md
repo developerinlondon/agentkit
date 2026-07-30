@@ -28,7 +28,7 @@ installed from elsewhere survive an upgrade.
 
 ## Police unit
 
-A named policy, not a file. `pkg-police` — _bun, never npm/yarn/pnpm_ — is one unit compiled into
+A named policy, not a file. `pkg-police` — _use the manager this project's lockfile names_ — is one unit compiled into
 each harness's native mechanism: `hooks/claude/pkg-police.sh`, `plugins/pkg-police.ts`,
 `policies/codex/pkg-police.rules`. The implementations are deliberately not equivalent; where the
 Codex argv-prefix policy cannot express a narrow rule, it is made broader instead.
