@@ -43,20 +43,22 @@ assigned_groups() {
 	awk '$1 != "group" && $1 != "explicit" && $1 !~ /^#/ && NF >= 2 { print $2 }' "$SKILL_GROUPS_FILE" | sort -u
 }
 
-# A group may gate instructions alone. Skills are the whole payload of a
-# generated group plugin, so one with none would publish an empty plugin.
-# Answered from the tree, not the membership records, so a record naming a
-# skill that does not exist cannot claim a payload.
+# Answered from the tree, so a record naming a missing skill claims no payload.
+# Callers act on "no" destructively (skip generation, prune plugin trees), so a
+# tree with no skill dirs at all means we are pointed at the wrong place — then
+# refuse to claim it is empty rather than answer "no" for every group.
 group_has_skills() {
-	local skills_dir skill
+	local skills_dir skill found=0
 	[[ "$1" == core ]] && return 0
 	skills_dir="$(dirname "$SKILL_GROUPS_FILE")"
 	for skill in "$skills_dir"/*/; do
 		[[ -d "$skill" ]] || continue
+		found=1
 		if [[ "$(skill_group "$(basename "$skill")")" == "$1" ]]; then
 			return 0
 		fi
 	done
+	[[ "$found" == 0 ]] && return 0
 	return 1
 }
 

@@ -62,13 +62,18 @@ export function pluginIdFor(group: string): string {
   return group === DEFAULT_GROUP ? 'agentkit' : `agentkit-${group}`;
 }
 
-// Mirrors group_has_skills in lib/skill-groups.sh.
+// Mirrors group_has_skills in lib/skill-groups.sh, fail-safe included: a skills
+// tree with no skill dirs at all is a misread, never an empty answer.
 export function groupHasSkills(
   manifest: SkillGroupManifest,
   repoRoot: string,
   group: string,
 ): boolean {
-  return group === DEFAULT_GROUP || skillsInGroup(manifest, repoRoot, group).length > 0;
+  if (group === DEFAULT_GROUP) return true;
+  const dirs = readdirSync(join(repoRoot, 'skills'), { withFileTypes: true })
+    .filter((entry) => entry.isDirectory());
+  if (dirs.length === 0) return true;
+  return dirs.some((entry) => groupOf(manifest, entry.name) === group);
 }
 
 export function skillsInGroup(

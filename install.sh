@@ -28,11 +28,10 @@ Options:
                        group instead; every other run is unattended.
                        Groups marked `explicit` in skills/GROUPS
                        (advisory-review, strict-review) are never offered by
-                       that prompt and are
-                       excluded from --all: only a literal --with installs
-                       them, and when one is not selected the installer REMOVES
-                       its previously installed hooks, tools, skills, and
-                       prompt wiring.
+                       that prompt and are excluded from --all: only a literal
+                       --with installs them, and when one is not selected the
+                       installer REMOVES its previously installed hooks, tools,
+                       skills, and prompt wiring.
   --no-prompt          Never ask about optional groups, even on a terminal.
                        AGENTKIT_SKIP_PROMPT=1 and a non-empty CI do the same.
   --without <group>    Drop a group from the selection and from the remembered

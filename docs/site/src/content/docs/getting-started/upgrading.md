@@ -28,9 +28,11 @@ Two more details:
 - **Deselecting an ordinary group never deletes anything.** An already-installed skill from an
   unselected group is still refreshed, and the installer says so. Deselection changes what is
   chosen, never what is on disk, so an upgrade never removes a skill you are using.
-- **An unselected explicit group is the exception.** `strict-review` is consent-gated: when it is
-  not selected, its hooks, tools, skills and prompt wiring are removed. Presence without recorded
-  selection is not consent.
+- **An unselected explicit group is the exception.** `advisory-review` and `strict-review` are
+  consent-gated: when one is not selected, its hooks, tools, skills and prompt wiring are removed.
+  Presence without recorded selection is not consent. In particular, upgrading from a version where
+  `review-discipline.md` was core removes that instruction on the next plain install — pass
+  `--with advisory-review` to keep it.
 
 Config files carrying your own content are guarded by markers or predicates, so re-runs do not
 duplicate blocks. In `CLAUDE.md` those markers look like
