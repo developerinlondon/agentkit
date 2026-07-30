@@ -69,12 +69,15 @@ strip_meta() {
 
 fail() { echo "build: $*" >&2; exit 1; }
 
-# The landing page states the kit's version, so a missing or stale kit.env would
-# publish a version claim with nothing behind it.
-[[ -s "$KIT_ENV" ]] || fail "$KIT_ENV is missing or empty — run scripts/sync-kit-facts.sh"
+[[ -s "$KIT_ENV" ]] || fail "$KIT_ENV is missing or empty — run pages/site/sync-kit-facts.sh"
 # shellcheck source=/dev/null
 . "$KIT_ENV"
-[[ -n "${KIT_VERSION:-}" ]] || fail "$KIT_ENV has no KIT_VERSION — re-run scripts/sync-kit-facts.sh"
+
+# Derived from the ref being built, never committed — a committed copy went
+# five releases stale while claiming to be current.
+KIT_VERSION="${AGENTKIT_SITE_VERSION:-$(git describe --tags --abbrev=0 2>/dev/null || true)}"
+[[ -n "$KIT_VERSION" ]] || fail "cannot resolve the kit version: set AGENTKIT_SITE_VERSION or fetch tags"
+case "$KIT_VERSION" in v[0-9]*) ;; *) fail "kit version does not look like a release tag: '$KIT_VERSION'" ;; esac
 
 # Identifies the commit the served bytes were built from. The commit date, not
 # the wall clock, so rebuilding a commit reproduces its output byte for byte —
