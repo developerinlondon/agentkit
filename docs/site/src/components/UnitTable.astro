@@ -1,0 +1,48 @@
+---
+import facts from "../generated/kit-facts.json";
+
+const YES = "yes";
+const NO = "—";
+---
+
+<div class="ak-table">
+	<table>
+		<thead>
+			<tr>
+				<th>Unit</th>
+				<th>Claude hook</th>
+				<th>OpenCode plugin</th>
+				<th>Codex policy</th>
+				<th>Packaged in</th>
+			</tr>
+		</thead>
+		<tbody>
+			{
+				facts.units.map((unit) => (
+					<tr>
+						<td>
+							<code>{unit.name}-police</code>
+						</td>
+						<td>{unit.mechanisms.includes("hook") ? YES : NO}</td>
+						<td>{unit.mechanisms.includes("plugin") ? YES : NO}</td>
+						<td>{unit.mechanisms.includes("codexPolicy") ? YES : NO}</td>
+						<td>
+							{unit.claudePlugins.length === 0
+								? NO
+								: unit.claudePlugins.map((plugin) => <code>{plugin}</code>)}
+						</td>
+					</tr>
+				))
+			}
+		</tbody>
+	</table>
+</div>
+
+<style>
+	.ak-table {
+		overflow-x: auto;
+	}
+	td code {
+		white-space: nowrap;
+	}
+</style>

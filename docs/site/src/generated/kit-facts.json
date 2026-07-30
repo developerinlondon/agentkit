@@ -5,30 +5,37 @@
       "mechanisms": [
         "hook",
         "plugin",
-        "codexPolicy",
-        "claudePlugin"
+        "codexPolicy"
+      ],
+      "claudePlugins": [
+        "agentkit"
       ]
     },
     {
       "name": "comment",
       "mechanisms": [
         "hook",
-        "plugin",
-        "claudePlugin"
+        "plugin"
+      ],
+      "claudePlugins": [
+        "agentkit"
       ]
     },
     {
       "name": "delegation",
       "mechanisms": [
         "codexPolicy"
-      ]
+      ],
+      "claudePlugins": []
     },
     {
       "name": "format",
       "mechanisms": [
         "hook",
-        "plugin",
-        "claudePlugin"
+        "plugin"
+      ],
+      "claudePlugins": [
+        "agentkit"
       ]
     },
     {
@@ -36,8 +43,10 @@
       "mechanisms": [
         "hook",
         "plugin",
-        "codexPolicy",
-        "claudePlugin"
+        "codexPolicy"
+      ],
+      "claudePlugins": [
+        "agentkit"
       ]
     },
     {
@@ -45,22 +54,28 @@
       "mechanisms": [
         "hook",
         "plugin",
-        "codexPolicy",
-        "claudePlugin"
+        "codexPolicy"
+      ],
+      "claudePlugins": [
+        "agentkit"
       ]
     },
     {
       "name": "mr",
       "mechanisms": [
-        "hook",
-        "claudePlugin"
+        "hook"
+      ],
+      "claudePlugins": [
+        "agentkit"
       ]
     },
     {
       "name": "pages",
       "mechanisms": [
-        "hook",
-        "claudePlugin"
+        "hook"
+      ],
+      "claudePlugins": [
+        "agentkit"
       ]
     },
     {
@@ -68,8 +83,10 @@
       "mechanisms": [
         "hook",
         "plugin",
-        "codexPolicy",
-        "claudePlugin"
+        "codexPolicy"
+      ],
+      "claudePlugins": [
+        "agentkit"
       ]
     },
     {
@@ -77,21 +94,106 @@
       "mechanisms": [
         "hook",
         "plugin",
-        "codexPolicy",
-        "claudePlugin"
+        "codexPolicy"
+      ],
+      "claudePlugins": [
+        "agentkit"
       ]
     },
     {
       "name": "review",
       "mechanisms": [
         "hook"
+      ],
+      "claudePlugins": [
+        "agentkit-strict-review"
       ]
     },
     {
       "name": "version",
       "mechanisms": [
         "plugin"
-      ]
+      ],
+      "claudePlugins": []
+    }
+  ],
+  "wiring": [
+    {
+      "unit": "coding",
+      "event": "PostToolUse",
+      "matcher": "Edit|Write",
+      "timeout": 15,
+      "failClosedBudget": null
+    },
+    {
+      "unit": "comment",
+      "event": "PostToolUse",
+      "matcher": "Edit|Write",
+      "timeout": 15,
+      "failClosedBudget": null
+    },
+    {
+      "unit": "format",
+      "event": "PostToolUse",
+      "matcher": "Edit|Write",
+      "timeout": 15,
+      "failClosedBudget": null
+    },
+    {
+      "unit": "git",
+      "event": "PreToolUse",
+      "matcher": "Bash",
+      "timeout": 10,
+      "failClosedBudget": null
+    },
+    {
+      "unit": "kubectl",
+      "event": "PreToolUse",
+      "matcher": "Bash",
+      "timeout": 10,
+      "failClosedBudget": null
+    },
+    {
+      "unit": "mr",
+      "event": "PreToolUse",
+      "matcher": "Bash",
+      "timeout": 15,
+      "failClosedBudget": null
+    },
+    {
+      "unit": "pages",
+      "event": "PreToolUse",
+      "matcher": "Bash",
+      "timeout": 10,
+      "failClosedBudget": null
+    },
+    {
+      "unit": "pkg",
+      "event": "PreToolUse",
+      "matcher": "Bash",
+      "timeout": 10,
+      "failClosedBudget": null
+    },
+    {
+      "unit": "resource",
+      "event": "PreToolUse",
+      "matcher": "Bash",
+      "timeout": 10,
+      "failClosedBudget": null
+    },
+    {
+      "unit": "review",
+      "event": "PreToolUse",
+      "matcher": ".*[Mm]erge.*",
+      "timeout": 60,
+      "failClosedBudget": 45
+    },
+    {
+      "unit": "review",
+      "event": "PreToolUse",
+      "matcher": "Bash",
+      "timeout": 60,
+      "failClosedBudget": 45
     }
   ],
   "groups": [

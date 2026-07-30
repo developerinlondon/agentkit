@@ -1,0 +1,77 @@
+---
+title: Hooks
+description: Every police unit, the mechanisms it exists in, and how it is wired into the harness.
+sidebar:
+  order: 1
+---
+
+import UnitTable from "../../../components/UnitTable.astro";
+import WiringTable from "../../../components/WiringTable.astro";
+
+A police unit is one piece of discipline expressed as a refusal. It inspects a tool call the agent
+is about to make, or a file it has just written, and either stays silent or denies with a message
+naming the legitimate override.
+
+Every table on this page is generated from this repository at build time. If a unit is added,
+removed, or rewired and this page is not regenerated, the build fails rather than publishing a
+table that used to be true.
+
+## Coverage
+
+Coverage across mechanisms is deliberately uneven. A unit exists in a mechanism only where that
+mechanism can express the check: Codex policies match literal argv prefixes, so a check that needs
+to read a file's contents cannot live there.
+
+<UnitTable />
+
+The last column is packaging, not a fourth mechanism. `scripts/sync-cc-plugin.sh` copies
+`hooks/claude/` into the Claude Code plugins verbatim, so a packaged hook is the same script
+reaching you by a different route. A test in this repository fails if the copy ever differs from
+its source.
+
+Note which plugin packages `review-police`: it ships in `agentkit-strict-review`, not in
+`agentkit`. The review gate is an opt-in group, and its absence from the default plugin is what
+that means in practice.
+
+## Wiring
+
+The event decides what a unit can still prevent. A `PreToolUse` hook runs *before* the call and can
+refuse it. A `PostToolUse` hook runs *after* the write has already happened; it reports, and the
+agent is expected to fix what it reports.
+
+<WiringTable />
+
+:::caution[Exit codes decide whether a refusal is heard]
+A `PostToolUse` hook that exits `0` is mute no matter what it printed — the harness discards the
+output. Refusal requires exit `2`. A unit that crashes, or whose dependency is missing, therefore
+reads as approval unless something makes it fail closed.
+:::
+
+The fail-closed budget in the last column is that something. `review-police` runs behind
+`fail-closed-hook.sh`, which denies the call if the guard has not answered inside the budget. The
+harness timeout sits above the budget on purpose: the wrapper must be the thing that decides, not
+the harness giving up.
+
+## What each unit refuses
+
+| Unit | Refuses |
+| --- | --- |
+| `coding-police` | files over the length cap, functions over the length cap, duplicated blocks, too many exports in one file |
+| `comment-police` | comment-to-code ratio over the limit, forge references in source, narration of what the code plainly does |
+| `format-police` | a write that leaves the file unformatted, by running the repository's formatter over it |
+| `git-police` | force pushes, `--no-verify`, AI-attribution trailers, commits to protected branches, branch creation in a shared clone |
+| `kubectl-police` | `kubectl apply` against Kargo custom resources, where the GitOps controller owns the state |
+| `mr-police` | opening another merge request while one you authored is already open on the repository |
+| `pages-police` | a direct write to the Pages API, which would bypass the publish-time figure lint and the canonical git history, and an unapproved `--allow-bare-svg` |
+| `pkg-police` | `npm`, `npx`, `yarn` and `pnpm` in a repository whose lockfile names a different manager |
+| `resource-police` | a heavy command that does not start with `bounded-run`, so that systemd owns and limits the process tree (Linux only) |
+| `review-police` | a forge merge unless review evidence passed for the forge-selected source head and the current target |
+| `version-police` | a dependency pin that lags the upstream latest by a major version; a pin merely behind within its major warns instead |
+| `delegation-police` | commands that delegate work off the local machine — `ansible`, `doas` and the rest — because the child work escapes local containment |
+
+:::note[These are guards, not a boundary]
+Every unit above detects a pattern and refuses it. None of them contains a hostile agent: an agent
+that writes the same effect a different way is not stopped by a guard that did not match it, and
+Codex policies do not recursively parse shell payloads. Treat them as the thing that stops the
+ordinary mistake, which is what almost every mistake is.
+:::

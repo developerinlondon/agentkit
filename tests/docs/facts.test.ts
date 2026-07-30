@@ -1,8 +1,14 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { collectFacts, committedFacts, serialise } from '../../scripts/sync-docs-facts.ts';
+import {
+  collectFacts,
+  collectWiring,
+  committedFacts,
+  pluginHookDrift,
+  serialise,
+} from '../../scripts/sync-docs-facts.ts';
 
 let root: string;
 
@@ -46,12 +52,70 @@ describe('the docs tables are derived from the tree', () => {
     const facts = collectFacts(root);
 
     expect(facts.units).toEqual([
-      { name: 'alpha', mechanisms: ['hook', 'plugin', 'codexPolicy', 'claudePlugin'] },
-      { name: 'beta', mechanisms: ['hook'] },
-      { name: 'gamma', mechanisms: ['plugin'] },
+      {
+        name: 'alpha',
+        mechanisms: ['hook', 'plugin', 'codexPolicy'],
+        claudePlugins: ['agentkit'],
+      },
+      { name: 'beta', mechanisms: ['hook'], claudePlugins: [] },
+      { name: 'gamma', mechanisms: ['plugin'], claudePlugins: [] },
     ]);
   });
 
+  // Packaging a hook is not a fourth mechanism: the plugin copy is generated
+  // from hooks/claude. A page that counted it as one would overstate coverage.
+  test('a plugin copy is packaging, not an extra mechanism', () => {
+    write('skills/GROUPS', 'group core Everyday\n');
+    write('hooks/claude/solo-police.sh', '#!/usr/bin/env bash\n');
+    write('plugins-cc/agentkit/hooks/solo-police.sh', '#!/usr/bin/env bash\n');
+    write('plugins-cc/agentkit-strict-review/hooks/solo-police.sh', '#!/usr/bin/env bash\n');
+    mkdirSync(join(root, 'skills'), { recursive: true });
+
+    const unit = collectFacts(root).units[0];
+
+    expect(unit?.mechanisms).toEqual(['hook']);
+    expect(unit?.claudePlugins).toEqual(['agentkit', 'agentkit-strict-review']);
+  });
+
+  test('a unit that exists only as a packaged hook is still reported', () => {
+    write('skills/GROUPS', 'group core Everyday\n');
+    write('plugins-cc/agentkit/hooks/orphan-police.sh', '#!/usr/bin/env bash\n');
+    mkdirSync(join(root, 'skills'), { recursive: true });
+
+    expect(collectFacts(root).units).toEqual([
+      { name: 'orphan', mechanisms: [], claudePlugins: ['agentkit'] },
+    ]);
+  });
+});
+
+describe('the packaged hooks match their source', () => {
+  test('this repository has no drift between a hook and its plugin copy', () => {
+    expect(pluginHookDrift()).toEqual([]);
+  });
+
+  test('an edited plugin copy is reported', () => {
+    write('hooks/claude/alpha-police.sh', '#!/usr/bin/env bash\necho source\n');
+    write('plugins-cc/agentkit/hooks/alpha-police.sh', '#!/usr/bin/env bash\necho edited\n');
+
+    expect(pluginHookDrift(root)).toEqual(['agentkit/alpha-police.sh']);
+  });
+
+  test('an identical plugin copy is not reported', () => {
+    const body = '#!/usr/bin/env bash\necho same\n';
+    write('hooks/claude/alpha-police.sh', body);
+    write('plugins-cc/agentkit/hooks/alpha-police.sh', body);
+
+    expect(pluginHookDrift(root)).toEqual([]);
+  });
+
+  test('a packaged hook with no source is reported rather than ignored', () => {
+    write('plugins-cc/agentkit/hooks/ghost-police.sh', '#!/usr/bin/env bash\n');
+
+    expect(pluginHookDrift(root)).toEqual(['agentkit/ghost-police.sh (no hooks/claude source)']);
+  });
+});
+
+describe('the skill and group tables come from skills/GROUPS', () => {
   test('an explicit group marks every skill inside it, so no page can imply it is a default', () => {
     write(
       'skills/GROUPS',
@@ -101,6 +165,29 @@ describe('the docs tables are derived from the tree', () => {
     expect(collectFacts(root).groups.map((group) => group.id)).toEqual(['core']);
   });
 
+  // Pins the contract rather than the current guard: today the tokenizer keeps
+  // `#` as the first field, so a comment cannot become a record even without the
+  // skip. A reader rewritten to strip comment markers instead would assign from
+  // the prose that documents the format, and this is what would catch it.
+  test('a commented-out membership never assigns a skill', () => {
+    write(
+      'skills/GROUPS',
+      [
+        '# <skill> <group> puts a skill in a declared group',
+        '# guarded locked',
+        'group core Everyday skills',
+        'group locked Consent-gated lane',
+        'explicit locked',
+      ].join('\n'),
+    );
+    skill('guarded', 'Should not be in the locked group.');
+
+    const guarded = collectFacts(root).skills.find((entry) => entry.name === 'guarded');
+
+    expect(guarded?.group).toBe('core');
+    expect(guarded?.explicit).toBe(false);
+  });
+
   // A missing description used to be publishable as an empty table cell. It has
   // to stop the build instead: a blank cell reads as "no description", not as
   // "the generator could not find one".
@@ -116,5 +203,106 @@ describe('the docs tables are derived from the tree', () => {
     write('skills/broken/SKILL.md', '# broken\n');
 
     expect(() => collectFacts(root)).toThrow('no frontmatter');
+  });
+});
+
+describe('the wiring table comes from the harness settings', () => {
+  // The interesting fact about this unit is not that it exists but that it runs
+  // behind fail-closed-hook.sh: if the gate cannot answer, the merge is denied
+  // rather than allowed. A page that omitted the budget would describe a guard
+  // that silently passes on timeout.
+  test('the review gate is wired fail-closed on every matcher it claims', () => {
+    const review = collectWiring().filter((entry) => entry.unit === 'review');
+
+    expect(review.length).toBeGreaterThan(0);
+    for (const entry of review) {
+      expect(entry.failClosedBudget).toBeGreaterThan(0);
+      expect(entry.timeout).toBeGreaterThan(entry.failClosedBudget ?? 0);
+    }
+  });
+
+  test('every wired unit exists as a hook in the tree', () => {
+    const units = new Set(
+      collectFacts().units.filter((unit) => unit.mechanisms.includes('hook')).map((u) => u.name),
+    );
+
+    for (const entry of collectWiring()) {
+      expect(units).toContain(entry.unit);
+    }
+  });
+
+  test('event, matcher, timeout and budget are read from the settings', () => {
+    write(
+      'hooks/claude/settings.json',
+      JSON.stringify({
+        hooks: {
+          PreToolUse: [
+            {
+              matcher: 'Bash',
+              hooks: [
+                { type: 'command', command: '$HOME/.claude/hooks/alpha-police.sh', timeout: 10 },
+                {
+                  type: 'command',
+                  command: '$HOME/.claude/hooks/fail-closed-hook.sh 45 $HOME/.claude/hooks/beta-police.sh',
+                  timeout: 60,
+                },
+                { type: 'command', command: '$HOME/.claude/hooks/chime.sh', timeout: 5 },
+              ],
+            },
+          ],
+        },
+      }),
+    );
+
+    expect(collectWiring(root)).toEqual([
+      { unit: 'alpha', event: 'PreToolUse', matcher: 'Bash', timeout: 10, failClosedBudget: null },
+      { unit: 'beta', event: 'PreToolUse', matcher: 'Bash', timeout: 60, failClosedBudget: 45 },
+    ]);
+  });
+
+  test('a wrapped hook is attributed to the guard, not to the wrapper', () => {
+    write(
+      'hooks/claude/settings.json',
+      JSON.stringify({
+        hooks: {
+          PreToolUse: [
+            {
+              matcher: 'Bash',
+              hooks: [
+                {
+                  type: 'command',
+                  command: '$HOME/.claude/hooks/fail-closed-hook.sh 30 $HOME/.claude/hooks/gamma-police.sh',
+                  timeout: 40,
+                },
+              ],
+            },
+          ],
+        },
+      }),
+    );
+
+    expect(collectWiring(root)[0]?.unit).toBe('gamma');
+  });
+
+  test('unreadable settings yield no wiring rather than a partial table', () => {
+    write('hooks/claude/settings.json', 'not json');
+
+    expect(collectWiring(root)).toEqual([]);
+  });
+});
+
+describe('the prose that enumerates units stays complete', () => {
+  // The "what each unit refuses" column cannot be generated — the wording lives
+  // nowhere machine-readable. Its completeness can be, so adding or removing a
+  // unit fails here instead of leaving the page quietly short of one.
+  test('the hooks reference documents exactly the units in the tree', () => {
+    const page = readFileSync(
+      join(import.meta.dir, '..', '..', 'docs', 'site', 'src', 'content', 'docs', 'reference', 'hooks.mdx'),
+      'utf-8',
+    );
+    const documented = [...page.matchAll(/^\| `([a-z-]+)-police` \|/gm)].map((match) => match[1]);
+    const inTree = collectFacts().units.map((unit) => unit.name);
+
+    expect(documented.slice().sort()).toEqual(inTree.slice().sort());
   });
 });

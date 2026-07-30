@@ -8,17 +8,19 @@ const MECHANISMS = {
   hook: { directory: join('hooks', 'claude'), suffix: '-police.sh' },
   plugin: { directory: 'plugins', suffix: '-police.ts' },
   codexPolicy: { directory: join('policies', 'codex'), suffix: '-police.rules' },
-  claudePlugin: {
-    directory: join('plugins-cc', 'agentkit', 'hooks'),
-    suffix: '-police.sh',
-  },
 } as const;
+
+const PLUGIN_HOOK_SUFFIX = '-police.sh';
 
 type Mechanism = keyof typeof MECHANISMS;
 
 export interface PoliceUnit {
   name: string;
   mechanisms: Mechanism[];
+  // Which Claude Code plugin packages the hook, if any. This is distribution,
+  // not a fourth mechanism: scripts/sync-cc-plugin.sh copies hooks/claude
+  // verbatim, so a column of its own would read as extra enforcement.
+  claudePlugins: string[];
 }
 
 export interface SkillFact {
@@ -34,11 +36,34 @@ export interface GroupFact {
   explicit: boolean;
 }
 
+export interface HookWiring {
+  unit: string;
+  event: string;
+  matcher: string;
+  timeout: number;
+  // Present when the hook runs behind fail-closed-hook.sh, which denies the tool
+  // call if the guard has not answered inside this many seconds. A guard that
+  // times out silently would read as approval.
+  failClosedBudget: number | null;
+}
+
 export interface KitFacts {
   units: PoliceUnit[];
+  wiring: HookWiring[];
   groups: GroupFact[];
   skills: SkillFact[];
   tools: string[];
+}
+
+function listDirectories(relative: string, root: string): string[] {
+  try {
+    return readdirSync(join(root, relative), { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name)
+      .sort();
+  } catch {
+    return [];
+  }
 }
 
 function listDirectory(relative: string, root: string): string[] {
@@ -49,6 +74,20 @@ function listDirectory(relative: string, root: string): string[] {
   } catch {
     return [];
   }
+}
+
+function collectPluginPackaging(root: string): Map<string, string[]> {
+  const packaged = new Map<string, string[]>();
+
+  for (const plugin of listDirectories('plugins-cc', root)) {
+    for (const file of listDirectory(join('plugins-cc', plugin, 'hooks'), root)) {
+      if (!file.endsWith(PLUGIN_HOOK_SUFFIX)) continue;
+      const name = file.slice(0, -PLUGIN_HOOK_SUFFIX.length);
+      packaged.set(name, [...(packaged.get(name) ?? []), plugin].sort());
+    }
+  }
+
+  return packaged;
 }
 
 function collectUnits(root: string): PoliceUnit[] {
@@ -63,10 +102,16 @@ function collectUnits(root: string): PoliceUnit[] {
     }
   }
 
+  const packaged = collectPluginPackaging(root);
+  for (const name of packaged.keys()) {
+    if (!found.has(name)) found.set(name, new Set());
+  }
+
   return [...found.entries()]
     .map(([name, mechanisms]) => ({
       name,
       mechanisms: (Object.keys(MECHANISMS) as Mechanism[]).filter((m) => mechanisms.has(m)),
+      claudePlugins: packaged.get(name) ?? [],
     }))
     .sort((left, right) => left.name.localeCompare(right.name));
 }
@@ -122,11 +167,82 @@ function collectSkills(groups: GroupFact[], membership: Map<string, string>, roo
     .sort((left, right) => left.name.localeCompare(right.name));
 }
 
+// scripts/sync-cc-plugin.sh copies hooks/claude into the plugins verbatim and its
+// header forbids editing the copy. Any difference means a plugin ships
+// enforcement that the documented source does not describe, so the tables would
+// be describing the wrong file.
+export function pluginHookDrift(root: string = repoRoot): string[] {
+  const drifted: string[] = [];
+
+  for (const plugin of listDirectories('plugins-cc', root)) {
+    for (const file of listDirectory(join('plugins-cc', plugin, 'hooks'), root)) {
+      if (!file.endsWith(PLUGIN_HOOK_SUFFIX)) continue;
+      const source = join(root, 'hooks', 'claude', file);
+      const copy = join(root, 'plugins-cc', plugin, 'hooks', file);
+      try {
+        if (readFileSync(source, 'utf-8') !== readFileSync(copy, 'utf-8')) {
+          drifted.push(`${plugin}/${file}`);
+        }
+      } catch {
+        drifted.push(`${plugin}/${file} (no hooks/claude source)`);
+      }
+    }
+  }
+
+  return drifted.sort();
+}
+
+// hooks/claude/settings.json is the wiring the harness actually reads. The header
+// comments describe the same thing in prose and disagree with it in places, so
+// the tables come from the JSON.
+export function collectWiring(root: string = repoRoot): HookWiring[] {
+  const path = join(root, 'hooks', 'claude', 'settings.json');
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(readFileSync(path, 'utf-8'));
+  } catch {
+    return [];
+  }
+
+  const hooks = (parsed as { hooks?: Record<string, unknown> }).hooks ?? {};
+  const wiring: HookWiring[] = [];
+
+  for (const [event, groups] of Object.entries(hooks)) {
+    if (!Array.isArray(groups)) continue;
+    for (const group of groups) {
+      const matcher = typeof group?.matcher === 'string' ? group.matcher : '';
+      const entries = Array.isArray(group?.hooks) ? group.hooks : [];
+      for (const entry of entries) {
+        if (typeof entry?.command !== 'string') continue;
+        const tokens = entry.command.split(/\s+/);
+        const script = [...tokens].reverse().find((token: string) => token.endsWith('.sh'));
+        if (!script?.endsWith(PLUGIN_HOOK_SUFFIX)) continue;
+        const wrapper = tokens.findIndex((token: string) => token.endsWith('fail-closed-hook.sh'));
+        const budget = wrapper === -1 ? null : Number(tokens[wrapper + 1]);
+        wiring.push({
+          unit: (script.split('/').pop() ?? '').slice(0, -PLUGIN_HOOK_SUFFIX.length),
+          event,
+          matcher,
+          timeout: typeof entry.timeout === 'number' ? entry.timeout : 0,
+          failClosedBudget: budget !== null && Number.isFinite(budget) ? budget : null,
+        });
+      }
+    }
+  }
+
+  return wiring.sort((left, right) =>
+    `${left.unit}${left.event}${left.matcher}`.localeCompare(
+      `${right.unit}${right.event}${right.matcher}`,
+    )
+  );
+}
+
 export function collectFacts(root: string = repoRoot): KitFacts {
   const { groups, membership } = readGroups(root);
 
   return {
     units: collectUnits(root),
+    wiring: collectWiring(root),
     groups,
     skills: collectSkills(groups, membership, root),
     tools: listDirectory('tools', root).sort(),
