@@ -14,8 +14,9 @@ they claim to cover and confirm they fail — an assertion that cannot fail is n
 
 Findings come back ranked by severity, each with a concrete failure scenario, and the author fixes
 them rather than arguing them down. After fixes, ask the same reviewer for a delta re-review; full
-re-reviews are for new scope, not fixups. Merge on approval. The pass is advisory — no mechanism
-blocks the merge, so its cost is one review per substantive change, with no re-binding churn.
+re-reviews are for new scope, not fixups. Merge on approval. Absent the `review` group, the pass
+is advisory — no mechanism blocks the merge — so the cost is one review per substantive change,
+and nothing forces a re-review for every fixup commit.
 
 Trivial changes — typos, labels, comment wording, config value tweaks — are exempt. Repos where a
 bad merge is expensive escalate by opting into the `review` group (`--with review`), which layers

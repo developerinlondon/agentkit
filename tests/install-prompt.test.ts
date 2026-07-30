@@ -165,6 +165,9 @@ describe('global prompt installation', () => {
         'utf-8',
       );
       expect(claudeInstructions).toContain('Keep this line.');
+      expect(
+        countOccurrences(claudeInstructions, 'agentkit:review-discipline:start'),
+      ).toBe(1);
       expect(claudeInstructions).toContain(
         'Anti-Glaze Global Agent Instructions',
       );
