@@ -155,14 +155,53 @@ jobs:
       - name: Run the docs test slice
         run: bun test tests/docs/
 
+  worker-publish:
+    name: Publish the Pages worker
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # Deployed on every push to main rather than only when pages/worker changes:
+    # this is the job that guarantees the live worker matches main. A drifted
+    # worker is invisible until a deploy fails against it, which is exactly how
+    # the docs publish path broke the first time.
+    needs:
+      - full
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out the commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Install pinned Moon, Bun and Node toolchains
+        uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
+        with:
+          auto-install: true
+
+      - name: Install worker dependencies from the lockfile
+        run: bun install --frozen-lockfile --cwd pages/worker
+
+      - name: Deploy the worker
+        working-directory: pages/worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo 'worker: Cloudflare credentials are not configured' >&2
+            exit 1
+          fi
+          # wrangler under node, never bun: under bun it exits 0 having done nothing.
+          node node_modules/wrangler/bin/wrangler.js deploy
+
   docs-publish:
     name: Publish the docs site
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     # Publishing waits for the whole suite, not just the docs slice: without this
     # the deploy races the tests and can put a site live that they then reject.
+    # It also waits for the worker, which must be able to accept the upload
+    # before the upload is attempted.
     needs:
       - docs
       - full
+      - worker-publish
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -198,6 +237,7 @@ jobs:
       - docs
       - docs-publish
       - full
+      - worker-publish
     runs-on: ubuntu-24.04
     permissions: {}
     steps:
@@ -206,6 +246,7 @@ jobs:
           AFFECTED_RESULT: ${{ needs.affected.result }}
           DOCS_RESULT: ${{ needs.docs.result }}
           DOCS_PUBLISH_RESULT: ${{ needs.docs-publish.result }}
+          WORKER_PUBLISH_RESULT: ${{ needs.worker-publish.result }}
           EVENT_NAME: ${{ github.event_name }}
           GIT_REF: ${{ github.ref }}
           FULL_RESULT: ${{ needs.full.result }}
@@ -215,12 +256,12 @@ jobs:
             exit 1
           fi
           if [ "$EVENT_NAME" = 'push' ] && [ "$GIT_REF" = 'refs/heads/main' ]; then
-            if [ "$DOCS_PUBLISH_RESULT" != 'success' ]; then
-              echo "Docs publish result: $DOCS_PUBLISH_RESULT"
+            if [ "$DOCS_PUBLISH_RESULT" != 'success' ] || [ "$WORKER_PUBLISH_RESULT" != 'success' ]; then
+              echo "Publish results: worker=$WORKER_PUBLISH_RESULT docs=$DOCS_PUBLISH_RESULT"
               exit 1
             fi
-          elif [ "$DOCS_PUBLISH_RESULT" != 'skipped' ]; then
-            echo "Docs publish ran outside main: $DOCS_PUBLISH_RESULT"
+          elif [ "$DOCS_PUBLISH_RESULT" != 'skipped' ] || [ "$WORKER_PUBLISH_RESULT" != 'skipped' ]; then
+            echo "Publish ran outside main: worker=$WORKER_PUBLISH_RESULT docs=$DOCS_PUBLISH_RESULT"
             exit 1
           fi
           if [ "$EVENT_NAME" = 'pull_request' ]; then
