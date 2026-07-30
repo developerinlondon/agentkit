@@ -135,6 +135,11 @@ jobs:
     steps:
       - name: Check out the commit
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          # The docs label the current release. A shallow checkout has no tags, so
+          # a manual publish from main would show a bare "Latest".
+          fetch-tags: true
+          fetch-depth: 0
 
       - name: Install pinned Moon, Bun and Node toolchains
         uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
@@ -158,6 +163,8 @@ jobs:
 
       - name: Build the docs site
         working-directory: docs/site
+        env:
+          AGENTKIT_DOCS_VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
         run: node ./node_modules/astro/bin/astro.mjs build
 
       # Needs the build, so it is a check rather than a test: an extension nobody
@@ -186,6 +193,11 @@ jobs:
     steps:
       - name: Check out the commit
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          # The docs label the current release. A shallow checkout has no tags, so
+          # a manual publish from main would show a bare "Latest".
+          fetch-tags: true
+          fetch-depth: 0
 
       - name: Install pinned Moon, Bun and Node toolchains
         uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
@@ -226,6 +238,11 @@ jobs:
     steps:
       - name: Check out the commit
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          # The docs label the current release. A shallow checkout has no tags, so
+          # a manual publish from main would show a bare "Latest".
+          fetch-tags: true
+          fetch-depth: 0
 
       - name: Install pinned Moon, Bun and Node toolchains
         uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
@@ -238,6 +255,7 @@ jobs:
       - name: Build and publish the docs site
         env:
           AGENTKIT_SITE_TOKEN: ${{ secrets.AGENTKIT_SITE_TOKEN }}
+          AGENTKIT_DOCS_VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
         run: |
           if [ -z "$AGENTKIT_SITE_TOKEN" ]; then
             echo 'docs: AGENTKIT_SITE_TOKEN is not configured' >&2
