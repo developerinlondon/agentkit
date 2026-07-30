@@ -79,9 +79,9 @@ persists across it:
 
 - `~/.config/agentkit/config.yaml` is preserved untouched (a global install seeds it only when
   absent; a project install never writes it).
-- The group selection is remembered in `~/.agentkit/groups`, so a later bare
+- The kit selection is remembered in `~/.agentkit/kits`, so a later bare
   `install.sh --global` upgrades the same set without re-passing `--with`.
-- An **explicit** group that is not selected has its previously installed hooks, tools, skills and
+- An **explicit** kit that is not selected has its previously installed hooks, tools, skills and
   prompt wiring **removed**.
 
 See [Upgrading and removing](/docs/getting-started/upgrading/) for the per-file detail.
@@ -91,14 +91,14 @@ See [Upgrading and removing](/docs/getting-started/upgrading/) for the per-file 
 Because two different things share the word "review", and only one of them blocks anything.
 
 The advisory discipline — one non-authoring reviewer pass before merging substantive work — installs
-with the `advisory-review` group as `instructions/review-discipline.md`. Nothing enforces it, and it
+with the `advisory-review` kit as `instructions/review-discipline.md`. Nothing enforces it, and it
 is opt-in: an instruction is concatenated into every prompt, so a harness that already mandates a
 reviewer pass would be carrying the rule twice.
 
-The merge gate is the `strict-review` group, and it is marked `explicit` in `skills/GROUPS`. That
+The merge gate is the `adversarial-review` kit, and it is marked `explicit` in `skills/KITS`. That
 means: never offered by the interactive picker, excluded from `--all`, installed only by a literal
-`--with strict-review`. A gate that can refuse a merge is consent-gated, and a `y` at a prompt is too
-easy to give without reading what it wires in. The corollary is that an install run without the group
+`--with adversarial-review`. A gate that can refuse a merge is consent-gated, and a `y` at a prompt is too
+easy to give without reading what it wires in. The corollary is that an install run without the kit
 selected removes it again.
 
 ## Does agentkit need all four harnesses installed?

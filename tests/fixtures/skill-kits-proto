@@ -1,0 +1,5 @@
+# A skill name colliding with an Object.prototype key must behave like any
+# other name in both readers.
+kit core Enforcement, review, planning, and workflow skills for everyday use
+kit product Product-model skills: evidence-backed briefs and product review
+toString product

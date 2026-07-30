@@ -3,11 +3,11 @@ import type { PluginInput } from '@opencode-ai/plugin';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import {
-  groupHasSkills,
+  kitHasSkills,
   pluginIdFor,
-  readSkillGroups,
-  skillsInGroup,
-} from '../scripts/skill-groups';
+  readSkillKits,
+  skillsInKit,
+} from '../scripts/skill-kits';
 
 // Recursive: some skills carry a references/ subdirectory, and a nested file
 // that drifts is exactly as misleading as a top-level one. node_modules is
@@ -33,7 +33,7 @@ const filesUnder = (dir: string, prefix = ''): string[] =>
 
 const repoRoot = join(import.meta.dir, '..');
 const pluginDir = join(repoRoot, 'plugins-cc', 'agentkit');
-const reviewPluginDir = join(repoRoot, 'plugins-cc', 'agentkit-strict-review');
+const reviewPluginDir = join(repoRoot, 'plugins-cc', 'agentkit-adversarial-review');
 const openCodePluginDir = join(repoRoot, 'plugins');
 
 type PluginServer = (input: PluginInput) => Promise<unknown>;
@@ -102,7 +102,7 @@ const PRE_TOOL_USE_HOOKS = [
 ];
 const POST_TOOL_USE_HOOKS = ['format-police.sh', 'coding-police.sh', 'comment-police.sh'];
 const ALL_POLICE_HOOKS = [...PRE_TOOL_USE_HOOKS, ...POST_TOOL_USE_HOOKS];
-// The merge gate is consent-gated: it ships in agentkit-strict-review, never in core.
+// The merge gate is consent-gated: it ships in agentkit-adversarial-review, never in core.
 const REVIEW_HOOKS = ['fail-closed-hook.sh', 'review-police.sh'];
 
 function readJson(...parts: string[]): any {
@@ -113,17 +113,17 @@ function readReviewJson(...parts: string[]): any {
   return JSON.parse(readFileSync(join(reviewPluginDir, ...parts), 'utf-8'));
 }
 
-function wiringFor(settings: any, plugin: 'core' | 'strict-review'): any {
+function wiringFor(settings: any, plugin: 'core' | 'adversarial-review'): any {
   const hooks: Record<string, unknown[]> = {};
-  for (const [event, groups] of Object.entries<any[]>(settings.hooks)) {
-    const kept = groups
-      .map((group) => ({
-        ...group,
-        hooks: group.hooks.filter((entry: { command: string }) =>
-          entry.command.includes('review-police.sh') === (plugin === 'strict-review')
+  for (const [event, kits] of Object.entries<any[]>(settings.hooks)) {
+    const kept = kits
+      .map((kit) => ({
+        ...kit,
+        hooks: kit.hooks.filter((entry: { command: string }) =>
+          entry.command.includes('review-police.sh') === (plugin === 'adversarial-review')
         ),
       }))
-      .filter((group) => group.hooks.length > 0);
+      .filter((kit) => kit.hooks.length > 0);
     if (kept.length > 0) hooks[event] = kept;
   }
   return { hooks };
@@ -179,7 +179,7 @@ describe('agentkit plugin hooks', () => {
     // settings.json stays the whole wiring; the two plugins split it, and every
     // entry has to land in exactly one of them.
     expect(readJson('hooks', 'hooks.json')).toEqual(wiringFor(expected, 'core'));
-    expect(readReviewJson('hooks', 'hooks.json')).toEqual(wiringFor(expected, 'strict-review'));
+    expect(readReviewJson('hooks', 'hooks.json')).toEqual(wiringFor(expected, 'adversarial-review'));
   });
 
   test('every referenced police script exists and is executable', () => {
@@ -199,7 +199,7 @@ describe('agentkit plugin hooks', () => {
     // The review plugin wires both of its scripts in one command: the
     // supervisor runs review-police, so a basename check would miss the former.
     const reviewCommands: string[] = readReviewJson('hooks', 'hooks.json').hooks.PreToolUse
-      .flatMap((group: any) => group.hooks.map((entry: { command: string }) => entry.command));
+      .flatMap((kit: any) => kit.hooks.map((entry: { command: string }) => entry.command));
     for (const script of REVIEW_HOOKS) {
       expect(
         reviewCommands.every((command) => command.includes(`/${script}`)),
@@ -235,7 +235,7 @@ describe('agentkit plugin hooks', () => {
   });
 });
 
-describe('agentkit-strict-review plugin', () => {
+describe('agentkit-adversarial-review plugin', () => {
   test('hooks.json routes Bash and merge-shaped tools through the fail-closed supervisor', () => {
     const hooks = readReviewJson('hooks', 'hooks.json').hooks;
 
@@ -253,18 +253,18 @@ describe('agentkit-strict-review plugin', () => {
     expect(routes.test('Bash')).toBe(false);
     expect(routes.test('Edit')).toBe(false);
 
-    for (const group of hooks.PreToolUse) {
-      expect(commandBasenames(group.hooks)).toEqual(['review-police.sh']);
-      expect(group.hooks[0].command).toStartWith(
+    for (const kit of hooks.PreToolUse) {
+      expect(commandBasenames(kit.hooks)).toEqual(['review-police.sh']);
+      expect(kit.hooks[0].command).toStartWith(
         '${CLAUDE_PLUGIN_ROOT}/hooks/fail-closed-hook.sh 45 ',
       );
-      expect(group.hooks[0].command).not.toContain('.claude/hooks');
-      expect(group.hooks[0].type).toBe('command');
+      expect(kit.hooks[0].command).not.toContain('.claude/hooks');
+      expect(kit.hooks[0].type).toBe('command');
     }
   });
 
   test('carries the review skill and tools the core plugin no longer ships', () => {
-    expect(readReviewJson('.claude-plugin', 'plugin.json').name).toBe('agentkit-strict-review');
+    expect(readReviewJson('.claude-plugin', 'plugin.json').name).toBe('agentkit-adversarial-review');
     expect(statSync(join(reviewPluginDir, 'skills', 'adversarial-review', 'SKILL.md')).isFile())
       .toBe(true);
     expect(existsSync(join(pluginDir, 'skills', 'adversarial-review'))).toBe(false);
@@ -312,32 +312,32 @@ describe('agentkit plugin skills', () => {
     }
   });
 
-  test('gives every skill-bearing group its own plugin, generated from the manifest', () => {
-    const manifest = readSkillGroups(repoRoot);
-    expect(manifest.groups.map((group) => group.id)).toContain('core');
+  test('gives every skill-bearing kit its own plugin, generated from the manifest', () => {
+    const manifest = readSkillKits(repoRoot);
+    expect(manifest.kits.map((kit) => kit.id)).toContain('core');
 
-    for (const group of manifest.groups.filter((g) => groupHasSkills(manifest, repoRoot, g.id))) {
-      const dir = join(repoRoot, 'plugins-cc', pluginIdFor(group.id));
+    for (const kit of manifest.kits.filter((g) => kitHasSkills(manifest, repoRoot, g.id))) {
+      const dir = join(repoRoot, 'plugins-cc', pluginIdFor(kit.id));
       const plugin = JSON.parse(readFileSync(join(dir, '.claude-plugin', 'plugin.json'), 'utf-8'));
-      expect(plugin.name, `${group.id} plugin name`).toBe(pluginIdFor(group.id));
+      expect(plugin.name, `${kit.id} plugin name`).toBe(pluginIdFor(kit.id));
       // A skill lands in exactly one plugin; two copies is a double listing in
       // Claude Code and a second copy to rot. What makes a directory a listing
       // is its SKILL.md — a carried dependency has none and lists nowhere.
       const listed = readdirSync(join(dir, 'skills'))
         .filter((name) => existsSync(join(dir, 'skills', name, 'SKILL.md')));
-      expect(listed.sort()).toEqual(skillsInGroup(manifest, repoRoot, group.id));
+      expect(listed.sort()).toEqual(skillsInKit(manifest, repoRoot, kit.id));
     }
   });
 
-  // A skill importing across group boundaries needs its dependency shipped
+  // A skill importing across kit boundaries needs its dependency shipped
   // alongside, or the relative import cannot resolve where the plugin installs.
   // What rides along stays a copy of the canonical file and stays unlisted.
   test('a carried dependency is an unlisted, byte-identical leaf', () => {
-    const manifest = readSkillGroups(repoRoot);
+    const manifest = readSkillKits(repoRoot);
     let carried = 0;
-    for (const group of manifest.groups.filter((g) => groupHasSkills(manifest, repoRoot, g.id))) {
-      const skillsDir = join(repoRoot, 'plugins-cc', pluginIdFor(group.id), 'skills');
-      const declared = new Set(skillsInGroup(manifest, repoRoot, group.id));
+    for (const kit of manifest.kits.filter((g) => kitHasSkills(manifest, repoRoot, g.id))) {
+      const skillsDir = join(repoRoot, 'plugins-cc', pluginIdFor(kit.id), 'skills');
+      const declared = new Set(skillsInKit(manifest, repoRoot, kit.id));
       for (const name of readdirSync(skillsDir).filter((n) => !declared.has(n))) {
         expect(existsSync(join(skillsDir, name, 'SKILL.md')), `${name} would list as a skill`).toBe(false);
         for (const file of filesUnder(join(skillsDir, name))) {
@@ -349,11 +349,11 @@ describe('agentkit plugin skills', () => {
         }
       }
     }
-    expect(carried, 'the cross-group import has no carried dependency').toBeGreaterThan(0);
+    expect(carried, 'the cross-kit import has no carried dependency').toBeGreaterThan(0);
   });
 
-  test('lists every generated group plugin in the marketplace', () => {
-    const manifest = readSkillGroups(repoRoot);
+  test('lists every generated kit plugin in the marketplace', () => {
+    const manifest = readSkillKits(repoRoot);
     const marketplace = JSON.parse(
       readFileSync(join(repoRoot, '.claude-plugin', 'marketplace.json'), 'utf-8'),
     );
@@ -361,11 +361,11 @@ describe('agentkit plugin skills', () => {
       marketplace.plugins.map((plugin: any) => [plugin.name, plugin]),
     );
 
-    for (const group of manifest.groups) {
-      const id = pluginIdFor(group.id);
+    for (const kit of manifest.kits) {
+      const id = pluginIdFor(kit.id);
       const entry = byName.get(id);
-      if (!groupHasSkills(manifest, repoRoot, group.id)) {
-        // Skills are the whole payload of a generated group plugin. A group that
+      if (!kitHasSkills(manifest, repoRoot, kit.id)) {
+        // Skills are the whole payload of a generated kit plugin. A kit that
         // gates an instruction alone has none, and an entry for it would offer a
         // plugin that installs nothing.
         expect(entry, `${id} publishes an empty plugin`).toBeUndefined();
@@ -390,17 +390,17 @@ describe('agentkit plugin skills', () => {
     // nobody diffed them. Two copies with no mechanical check is one rotting
     // copy waiting to be read by someone.
     const sourceSkills = join(repoRoot, 'skills');
-    const manifest = readSkillGroups(repoRoot);
+    const manifest = readSkillKits(repoRoot);
 
-    for (const group of manifest.groups) {
-      const groupDir = join(repoRoot, 'plugins-cc', pluginIdFor(group.id), 'skills');
-      for (const name of skillsInGroup(manifest, repoRoot, group.id)) {
+    for (const kit of manifest.kits) {
+      const kitDir = join(repoRoot, 'plugins-cc', pluginIdFor(kit.id), 'skills');
+      for (const name of skillsInKit(manifest, repoRoot, kit.id)) {
         const files = filesUnder(join(sourceSkills, name)).sort();
-        expect(filesUnder(join(groupDir, name)).sort(), `${name}: file list differs`)
+        expect(filesUnder(join(kitDir, name)).sort(), `${name}: file list differs`)
           .toEqual(files);
         for (const file of files) {
           expect(
-            readFileSync(join(groupDir, name, file), 'utf-8'),
+            readFileSync(join(kitDir, name, file), 'utf-8'),
             `${name}/${file} differs between skills/ and the plugin mirror`,
           ).toBe(readFileSync(join(sourceSkills, name, file), 'utf-8'));
         }
@@ -428,11 +428,11 @@ describe('marketplace lists the agentkit plugin', () => {
     );
     const names = marketplace.plugins.map((p: { name: string }) => p.name);
     // Recommended one-shot first, then the à-la-carte plugins, then the
-    // manifest-generated group plugins appended by sync-cc-plugin.sh.
-    const manifest = readSkillGroups(repoRoot);
-    const generated = manifest.groups
-      .filter((group) => group.id !== 'core' && groupHasSkills(manifest, repoRoot, group.id))
-      .map((group) => pluginIdFor(group.id));
+    // manifest-generated kit plugins appended by sync-cc-plugin.sh.
+    const manifest = readSkillKits(repoRoot);
+    const generated = manifest.kits
+      .filter((kit) => kit.id !== 'core' && kitHasSkills(manifest, repoRoot, kit.id))
+      .map((kit) => pluginIdFor(kit.id));
     expect(names).toEqual(['agentkit', 'assay', 'infra-tools', ...generated]);
 
     const agentkit = marketplace.plugins.find((p: { name: string }) => p.name === 'agentkit');

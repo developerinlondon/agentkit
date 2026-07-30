@@ -1,0 +1,26 @@
+# Skill install kits. Three record types, whitespace separated:
+#   kit <id> <description>     declares a kit; the description is what an
+#                              installer, a plugin manifest, or a picker shows
+#   explicit <id>              marks a declared kit explicit: never offered by
+#                              the interactive picker, excluded from --all, and
+#                              installed ONLY via a literal --with <id>. When an
+#                              explicit kit is not selected, the installer
+#                              REMOVES its previously installed artifacts —
+#                              presence without recorded selection is not
+#                              consent for a consent-gated kit.
+#   <skill> <kit>              puts a skill in a declared kit
+# A skill with no record belongs to `core`, which always installs, and may name
+# only one kit. Keep LF line endings: the bash reader rejects CRLF loudly,
+# the TypeScript reader trims and tolerates it — they only agree on LF.
+# Adding a kit is a `kit` line plus its membership lines — nothing else.
+
+kit core Enforcement, planning, and workflow skills for everyday use
+kit product Product-model skills: evidence-backed briefs and product review
+kit adversarial-review Adversarial review: independent refutation lane + evidence records + hard merge gate (explicit opt-in)
+kit advisory-review Advisory review: one non-authoring reviewer pass per substantive change, as an always-loaded instruction (explicit opt-in)
+explicit adversarial-review
+explicit advisory-review
+
+product-intelligence product
+product-review product
+adversarial-review adversarial-review

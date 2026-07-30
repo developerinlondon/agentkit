@@ -1,10 +1,9 @@
 # Agent review process
 
-The review machinery ships in the explicit `strict-review` skill group:
-`install.sh --global --with strict-review` installs it, nothing else does — not
-the interactive group prompt, not `--all`. The group was called `review` before
-this rename and `--with review` is still accepted as an alias. An install run
-without the group selected removes previously installed review hooks, tools,
+The review machinery ships in the explicit `adversarial-review` skill kit:
+`install.sh --global --with adversarial-review` installs it, nothing else does — not
+the interactive kit prompt, not `--all`. An install run
+without the kit selected removes previously installed review hooks, tools,
 prompts, and skills. Which finding severities block a merge is configurable via
 `gate.blocking_severities` in
 `.agentkit/review-policy.json` — strict mode only, read from the exact

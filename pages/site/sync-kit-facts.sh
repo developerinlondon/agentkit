@@ -72,12 +72,12 @@ join() { printf '%s\n' "$@" | awk '!seen[$0]++' | tr '\n' '\001' | sed 's/\x01$/
 
 skills=$(find "$KIT/skills" -maxdepth 1 -mindepth 1 -type d | sed 's|.*/||' | sort)
 total=$(wc -l <<<"$skills")
-# Membership records are "<skill> <group>"; "group" and "explicit" are the
+# Membership records are "<skill> <kit>"; "kit" and "explicit" are the
 # other record types, never skill names.
-grouped=$(awk 'NF==2 && $1!~/^#/ && $1!="group" && $1!="explicit"{print $1, $2}' "$KIT/skills/GROUPS" | sort)
-product=$(awk '$2=="product"{print $1}' <<<"$grouped")
-review=$(awk '$2=="strict-review"{print $1}' <<<"$grouped")
-optin=$(awk '{print $1}' <<<"$grouped")
+membership=$(awk 'NF==2 && $1!~/^#/ && $1!="kit" && $1!="explicit"{print $1, $2}' "$KIT/skills/KITS" | sort)
+product=$(awk '$2=="product"{print $1}' <<<"$membership")
+review=$(awk '$2=="adversarial-review"{print $1}' <<<"$membership")
+optin=$(awk '{print $1}' <<<"$membership")
 # grep -c exits 1 on zero matches, which set -e turns into a silent death.
 nproduct=$(grep -c . <<<"$product" || true)
 nreview=$(grep -c . <<<"$review" || true)

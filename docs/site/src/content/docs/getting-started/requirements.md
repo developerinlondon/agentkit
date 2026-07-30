@@ -5,21 +5,21 @@ sidebar:
   order: 5
 ---
 
-The installer validates the group manifest before it writes anything — a membership line with no
-group, a skill in two groups, or a group used but never declared each abort the run before any file
+The installer validates the kit manifest before it writes anything — a membership line with no
+kit, a skill in two kits, or a kit used but never declared each abort the run before any file
 is touched.
 
 ## Dependencies
 
-| Dependency   | Role                                                                                                                                                                                                   |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `jq`         | **Effectively mandatory** — see the warning below. A core-only install still exits 0 without it; `--with strict-review` aborts at the Codex review-hook stage.                                         |
-| `bun`        | Optional. Only skills shipping a `package.json` need it — a missing bun prints a warning naming the skill and the install continues.                                                                   |
-| `python3`    | Runtime dependency of the fail-closed hook supervisor and the merge gate, not checked at install time.                                                                                                 |
-| `awk`, `cat` | Required by `install.sh` itself — the group-manifest reader, the Codex prompt writer and the marker rewrite all use them — as well as by the hooks. Neither is probed, so a missing one fails mid-run. |
-| `git`        | Required by `bootstrap.sh`; otherwise a runtime dependency of the hooks and the review gate.                                                                                                           |
-| `claude`     | Only for `--claude-plugin`.                                                                                                                                                                            |
-| `dprint`     | Runtime dependency of `format-police`, which formats files after a write.                                                                                                                              |
+| Dependency   | Role                                                                                                                                                                                                 |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `jq`         | **Effectively mandatory** — see the warning below. A core-only install still exits 0 without it; `--with adversarial-review` aborts at the Codex review-hook stage.                                  |
+| `bun`        | Optional. Only skills shipping a `package.json` need it — a missing bun prints a warning naming the skill and the install continues.                                                                 |
+| `python3`    | Runtime dependency of the fail-closed hook supervisor and the merge gate, not checked at install time.                                                                                               |
+| `awk`, `cat` | Required by `install.sh` itself — the kit-manifest reader, the Codex prompt writer and the marker rewrite all use them — as well as by the hooks. Neither is probed, so a missing one fails mid-run. |
+| `git`        | Required by `bootstrap.sh`; otherwise a runtime dependency of the hooks and the review gate.                                                                                                         |
+| `claude`     | Only for `--claude-plugin`.                                                                                                                                                                          |
+| `dprint`     | Runtime dependency of `format-police`, which formats files after a write.                                                                                                                            |
 
 :::danger[Without `jq`, a core-only install succeeds and enforces nothing on Claude Code]
 Observed on a sandboxed install with `jq` removed from `PATH`: the run exits **0**, links all 13
@@ -77,7 +77,7 @@ heavy-command policy are not installed, so cgroup containment stands down.
 
 The protections that do not need cgroups remain active: OpenCode still blocks delegated and
 undecidable commands, and the Claude hook does so when `jq`, `awk` and `cat` are present. The
-portable Codex review hook still installs when `strict-review` is selected.
+portable Codex review hook still installs when `adversarial-review` is selected.
 
 ## Configuration file
 

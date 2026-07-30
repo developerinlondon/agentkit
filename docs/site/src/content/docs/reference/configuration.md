@@ -97,7 +97,7 @@ The parser is strict and exits 2 rather than guessing:
 - A duplicate key, or a key with an empty value, is an error.
 
 :::note[Effort, not authority]
-Nothing in this section can weaken a merge. With the `strict-review` group installed, merge
+Nothing in this section can weaken a merge. With the `adversarial-review` kit installed, merge
 authority lives in the target commit's `.agentkit/review-policy.json`, which `review-gate` reads
 independently of any config file.
 :::

@@ -52,8 +52,8 @@ failure in one of two ways, confirmed against real bash rather than assumed:
 The two harms are opposite — one aborts silently, one proceeds silently — and
 both read as success to whoever wrote the line.
 
-**Seen as.** A persisted-group reader whose loop body was
-`group_declared "$entry" && printf ...`: one unrecognised entry in a state file
+**Seen as.** A persisted-kit reader whose loop body was
+`kit_declared "$entry" && printf ...`: one unrecognised entry in a state file
 killed the whole installer with no output, and only when that entry happened to
 be last, so the failure was order-sensitive. Separately, a plugin validation loop
 written `plugin validate "$dir" && echo 'manifest valid'`, where an invalid
@@ -220,7 +220,7 @@ over a second scan.
 **Mechanism.** Two branches are each correct and each reviewed clean, and the
 merge has no textual conflict, so nothing asks whether their combination holds.
 One branch adds a relative import from one skill into another; the other splits
-the shipped plugin mirrors by install group, so those two skills stop travelling
+the shipped plugin mirrors by install kit, so those two skills stop travelling
 together. The import now points outside the artifact that carries it, and the
 plugin dies at module load. Neither parent contained the defect; the merge is
 where it first exists, and a merge is the one change nobody reviews as a change.
@@ -238,7 +238,7 @@ Two amplifiers let it reach users, both confirmed here:
 **Caught by.** `preflight`'s cross-skill import check refuses the ingredient: a
 relative import in `skills/<name>/` that resolves outside its own skill is
 flagged when it is written, long before any merge, because the skill is the unit
-that ships and grouping may put two of them in different plugins. That is static
+that ships and kit membership may put two of them in different plugins. That is static
 and cheap; it cannot see the emergent half. For that, execute the artifact —
 dynamically import every shipped mirror script — and treat a merged head as a
 change in its own right: re-derive its checks rather than trusting the runs from

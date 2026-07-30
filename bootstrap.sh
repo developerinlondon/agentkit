@@ -2,8 +2,8 @@
 set -euo pipefail
 
 # One-line installer: curl -fsSL …/bootstrap.sh | bash [-s -- --with product]
-# Piped stdin is not a tty, so the optional-group question never fires here —
-# pass --with <group> explicitly.
+# Piped stdin is not a tty, so the optional-kit question never fires here —
+# pass --with <kit> explicitly.
 # Installs the newest release tag. AGENTKIT_REF takes a tag or a branch instead;
 # AGENTKIT_REF=main is the bleeding edge.
 main() {

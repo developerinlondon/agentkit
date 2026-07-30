@@ -22,8 +22,8 @@ const codexFunctions = installSource.slice(
 );
 // A global install intentionally installs and builds dependency-bearing skills.
 const globalInstallTimeoutMs = 60_000;
-// The review gate is an explicit opt-in group: nothing installs it implicitly.
-const WITH_REVIEW = ['--with', 'strict-review'];
+// The review gate is an explicit opt-in kit: nothing installs it implicitly.
+const WITH_REVIEW = ['--with', 'adversarial-review'];
 
 function runGlobalInstall(
   home: string,
@@ -75,16 +75,16 @@ describe('Claude Code and Codex hook wiring', () => {
         const got = settings.hooks[event];
         expect(got, `${event} missing from installed settings`).toBeDefined();
         expect(got).toHaveLength(want.length);
-        want.forEach((group: any, i: number) => {
-          expect(got[i].matcher).toEqual(group.matcher);
-          expect(commandNames(got[i].hooks)).toEqual(commandNames(group.hooks));
+        want.forEach((kit: any, i: number) => {
+          expect(got[i].matcher).toEqual(kit.matcher);
+          expect(commandNames(got[i].hooks)).toEqual(commandNames(kit.hooks));
         });
       }
 
       // Every command must point at the installed hooks dir, never the token.
-      for (const groups of Object.values<any>(settings.hooks)) {
-        for (const group of groups) {
-          for (const entry of group.hooks) {
+      for (const kits of Object.values<any>(settings.hooks)) {
+        for (const kit of kits) {
+          for (const entry of kit.hooks) {
             expect(entry.command).not.toContain('$HOME');
             expect(entry.command).toStartWith(join(claudeDir, 'hooks'));
           }
@@ -98,12 +98,12 @@ describe('Claude Code and Codex hook wiring', () => {
       const codexDir = join(home, '.codex');
       const codexHooks = JSON.parse(readFileSync(join(codexDir, 'hooks.json'), 'utf-8'));
       expect(codexHooks.hooks.PreToolUse).toHaveLength(2);
-      for (const group of codexHooks.hooks.PreToolUse) {
-        expect(group.hooks).toHaveLength(1);
-        expect(group.hooks[0].command).toContain(
+      for (const kit of codexHooks.hooks.PreToolUse) {
+        expect(kit.hooks).toHaveLength(1);
+        expect(kit.hooks[0].command).toContain(
           `'${realpathSync(join(codexDir, 'hooks'))}'/review-police.sh`,
         );
-        expect(group.hooks[0].command).not.toContain('__AGENTKIT_CODEX_HOOKS_ROOT__');
+        expect(kit.hooks[0].command).not.toContain('__AGENTKIT_CODEX_HOOKS_ROOT__');
       }
       for (const path of [
         join(codexDir, 'hooks', 'fail-closed-hook.sh'),
@@ -130,10 +130,10 @@ describe('Claude Code and Codex hook wiring', () => {
       const settings = installedSettings(claudeDir);
 
       // The canonical file carries the whole wiring; a default install ships it
-      // minus the review gate, so the Bash group loses one entry and the
-      // merge-shaped matcher group goes with it.
+      // minus the review gate, so the Bash kit loses one entry and the
+      // merge-shaped matcher kit goes with it.
       expect(canonical.hooks.PreToolUse).toHaveLength(2);
-      expect(settings.hooks.PreToolUse.map((group: any) => group.matcher)).toEqual(['Bash']);
+      expect(settings.hooks.PreToolUse.map((kit: any) => kit.matcher)).toEqual(['Bash']);
       expect(commandNames(settings.hooks.PreToolUse[0].hooks)).toEqual(
         commandNames(canonical.hooks.PreToolUse[0].hooks).filter(
           (name) => name !== 'review-police.sh',
@@ -142,9 +142,9 @@ describe('Claude Code and Codex hook wiring', () => {
       expect(commandNames(settings.hooks.PostToolUse[0].hooks)).toEqual(
         commandNames(canonical.hooks.PostToolUse[0].hooks),
       );
-      for (const groups of Object.values<any>(settings.hooks)) {
-        for (const group of groups) {
-          for (const entry of group.hooks) {
+      for (const kits of Object.values<any>(settings.hooks)) {
+        for (const kit of kits) {
+          for (const entry of kit.hooks) {
             expect(entry.command).not.toContain('review-police.sh');
             expect(entry.command).not.toContain('fail-closed-hook.sh');
           }
@@ -221,8 +221,8 @@ describe('Claude Code and Codex hook wiring', () => {
       const codexHooks = JSON.parse(readFileSync(join(codexDir, 'hooks.json'), 'utf-8'));
       expect(codexHooks.description).toBe('keep me');
       expect(codexHooks.hooks.Stop[0].hooks[0].command).toBe('/tmp/unrelated-hook');
-      const preToolCommands = codexHooks.hooks.PreToolUse.flatMap((group: any) =>
-        group.hooks.map((entry: any) => entry.command),
+      const preToolCommands = codexHooks.hooks.PreToolUse.flatMap((kit: any) =>
+        kit.hooks.map((entry: any) => entry.command),
       );
       expect(preToolCommands).toContain('/tmp/unrelated-policy');
       expect(preToolCommands).toContain('/old/review-police.sh');

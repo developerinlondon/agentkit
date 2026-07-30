@@ -45,7 +45,7 @@ const CRITICAL_INPUTS = [
   'plugins-cc/agentkit-product/skills/product-review/**/*',
   'plugins-cc/agentkit/.claude-plugin/plugin.json',
   'plugins-cc/agentkit/hooks/**/*',
-  'plugins-cc/agentkit-strict-review/**/*',
+  'plugins-cc/agentkit-adversarial-review/**/*',
   'plugins-cc/agentkit/skills/autonomous-workflow/**/*',
   'plugins-cc/agentkit/skills/product-review/**/*',
   'plugins-cc/agentkit/skills/test-driven-development/**/*',

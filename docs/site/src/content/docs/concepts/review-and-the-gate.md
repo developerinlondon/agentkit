@@ -8,20 +8,19 @@ sidebar:
 Two different things share the word "review", and confusing them is the most common way to
 mis-describe this kit.
 
-|             | Advisory review                                        | The merge gate                             |
-| ----------- | ------------------------------------------------------ | ------------------------------------------ |
-| Ships as    | `review-discipline.md`, in the `advisory-review` group | `strict-review` skill group                |
-| Installed   | only on `--with advisory-review`                       | only on `--with strict-review`             |
-| Enforcement | none — advisory                                        | `review-police` refuses the merge command  |
-| Requires    | a reviewer that did not author the change              | a validated record bound to the exact head |
+|             | Advisory review                                      | The merge gate                             |
+| ----------- | ---------------------------------------------------- | ------------------------------------------ |
+| Ships as    | `review-discipline.md`, in the `advisory-review` kit | `adversarial-review` skill kit             |
+| Installed   | only on `--with advisory-review`                     | only on `--with adversarial-review`        |
+| Enforcement | none — advisory                                      | `review-police` refuses the merge command  |
+| Requires    | a reviewer that did not author the change            | a validated record bound to the exact head |
 
-These are the kit's two review modes, and they are independent: enable either, both, or neither.
+These are AgentKit's two review modes, and they are independent: enable either, both, or neither.
 Neither is installed by default.
 
 :::caution[Neither review mode is on by default]
-Both groups are marked `explicit` in the manifest. Neither is in `--all`, neither is ever offered by
-the interactive picker, and only a literal `--with advisory-review` / `--with strict-review` (or the
-`--with review` alias for the latter) installs one. When a run does not select one, the installer
+Both kits are marked `explicit` in the manifest. Neither is in `--all`, neither is ever offered by
+the interactive picker, and only a literal `--with advisory-review` / `--with adversarial-review` installs one. When a run does not select one, the installer
 **removes** what it previously installed for it — for the gate that is its hooks, its tools, its
 skill, its instruction file, and its entries in `settings.json` and Codex's `hooks.json`; for the
 advisory mode, its instruction file and every prompt block spliced from it.
@@ -29,7 +28,7 @@ advisory mode, its instruction file and every prompt block spliced from it.
 With neither selected, nothing asks for a review and nothing blocks a merge. That is the intended
 default for a harness whose own instructions already mandate a reviewer pass — carrying the rule
 twice costs prompt weight on every session and buys nothing.
-[Skill groups](/docs/getting-started/skill-groups/) covers selecting them.
+[Skill kits](/docs/getting-started/skill-kits/) covers selecting them.
 :::
 
 ## The discipline
@@ -52,7 +51,7 @@ Trivial changes are exempt: typos, labels, comment wording, config value tweaks.
 
 ## The gate
 
-With `strict-review` installed, a merge is refused unless a review record exists that is bound to
+With `adversarial-review` installed, a merge is refused unless a review record exists that is bound to
 the **exact source head the forge is about to merge**.
 
 ```mermaid

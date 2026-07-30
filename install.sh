@@ -14,31 +14,30 @@ supported AI coding tools: OpenCode, Claude Code, Codex CLI, and Grok CLI.
 
 Options:
   --global             Install globally (all tools, all projects)
-  --with <group>       Also install an opt-in skill group (repeatable). Groups
-                       are declared in skills/GROUPS; every unlisted skill is
-                       in the always-installed `core` group.
+  --with <kit>         Also install an opt-in skill kit (repeatable). Kits
+                       are declared in skills/KITS; every unlisted skill is
+                       in the always-installed `core` kit.
                          --with product          product-intelligence, product-review
                          --with advisory-review  asks for a reviewer pass
-                         --with strict-review    adversarial-review + merge gate
-                       (`--with review` remains an alias for strict-review.)
+                         --with adversarial-review    adversarial-review + merge gate
                        The two review modes are independent: enable either,
                        both, or neither.
-                       A global install run on a terminal with no group flags
+                       A global install run on a terminal with no kit flags
                        and nothing remembered yet asks about each optional
-                       group instead; every other run is unattended.
-                       Groups marked `explicit` in skills/GROUPS
-                       (advisory-review, strict-review) are never offered by
+                       kit instead; every other run is unattended.
+                       Kits marked `explicit` in skills/KITS
+                       (advisory-review, adversarial-review) are never offered by
                        that prompt and are excluded from --all: only a literal
                        --with installs them, and when one is not selected the
                        installer REMOVES its previously installed hooks, tools,
                        skills, and prompt wiring.
-  --no-prompt          Never ask about optional groups, even on a terminal.
+  --no-prompt          Never ask about optional kits, even on a terminal.
                        AGENTKIT_SKIP_PROMPT=1 and a non-empty CI do the same.
-  --without <group>    Drop a group from the selection and from the remembered
+  --without <kit>      Drop a kit from the selection and from the remembered
                        set (repeatable). Skills already installed are left in
                        place; `core` cannot be dropped.
-  --all                Install every declared skill group. A global install
-                       remembers the chosen groups in ~/.agentkit/groups, so a
+  --all                Install every declared skill kit. A global install
+                       remembers the chosen kits in ~/.agentkit/kits, so a
                        later bare `install.sh --global` upgrades the same set
                        without re-passing flags.
   --claude-plugin      Global only: install Claude Code bits as the agentkit
@@ -89,9 +88,9 @@ AGENTKIT_HOME="${AGENTKIT_HOME:-$HOME/.agentkit}"
 
 CLAUDE_PLUGIN=false
 SESSION_SCOPE=true
-EXTRA_GROUPS=""
-DROP_GROUPS=""
-ALL_GROUPS=false
+EXTRA_KITS=""
+DROP_KITS=""
+ALL_KITS=false
 PROMPT=true
 # Environment that makes a run unattended whatever is attached to it. Declared
 # as one list because it is also what a test asserting the prompt fires has to
@@ -109,22 +108,22 @@ while [[ $# -gt 0 ]]; do
 	--with)
 		shift
 		if [[ $# -eq 0 ]]; then
-			echo "ERROR: --with requires a group name (e.g. --with product)." >&2
+			echo "ERROR: --with requires a kit name (e.g. --with product)." >&2
 			exit 1
 		fi
-		EXTRA_GROUPS="${EXTRA_GROUPS:+$EXTRA_GROUPS }$1"
+		EXTRA_KITS="${EXTRA_KITS:+$EXTRA_KITS }$1"
 		;;
-	--with=*) EXTRA_GROUPS="${EXTRA_GROUPS:+$EXTRA_GROUPS }${1#--with=}" ;;
+	--with=*) EXTRA_KITS="${EXTRA_KITS:+$EXTRA_KITS }${1#--with=}" ;;
 	--without)
 		shift
 		if [[ $# -eq 0 ]]; then
-			echo "ERROR: --without requires a group name (e.g. --without product)." >&2
+			echo "ERROR: --without requires a kit name (e.g. --without product)." >&2
 			exit 1
 		fi
-		DROP_GROUPS="${DROP_GROUPS:+$DROP_GROUPS }$1"
+		DROP_KITS="${DROP_KITS:+$DROP_KITS }$1"
 		;;
-	--without=*) DROP_GROUPS="${DROP_GROUPS:+$DROP_GROUPS }${1#--without=}" ;;
-	--all) ALL_GROUPS=true ;;
+	--without=*) DROP_KITS="${DROP_KITS:+$DROP_KITS }${1#--without=}" ;;
+	--all) ALL_KITS=true ;;
 	# Without this, a typo'd flag is captured as the target directory and the
 	# install silently does something other than what was asked for.
 	-*)
@@ -141,98 +140,85 @@ if [[ "$CLAUDE_PLUGIN" == true && "$GLOBAL" != true ]]; then
 	exit 1
 fi
 
-# ─── Shared: Skill Groups ────────────────────────────────────────────────────
+# ─── Shared: Skill Kits ────────────────────────────────────────────────────
 
-# shellcheck source=lib/skill-groups.sh
-source "$REPO_DIR/lib/skill-groups.sh"
-validate_skill_groups || exit 1
+# shellcheck source=lib/skill-kits.sh
+source "$REPO_DIR/lib/skill-kits.sh"
+validate_skill_kits || exit 1
 
-# The group shipped as `review` before it was renamed `strict-review`. Both ways
-# a name reaches the selection — a flag now, a selection persisted by an older
-# install — normalize the old spelling so neither becomes an unknown group.
-# Kept above `group_selected` deliberately: tests lift the block between that
-# function and the validation loop below, and this needs the parsed flags.
-GROUP_RENAMED_FROM=review
-GROUP_RENAMED_TO=strict-review
-
-normalize_group_list() {
-	local group out=""
-	for group in $1; do
-		if [[ "$group" == "$GROUP_RENAMED_FROM" ]]; then group="$GROUP_RENAMED_TO"; fi
-		out="${out:+$out }$group"
-	done
-	printf '%s' "$out"
-}
-
-# Said once for the whole command line: two flags naming it are still one rename.
-case " $EXTRA_GROUPS $DROP_GROUPS " in
-*" $GROUP_RENAMED_FROM "*)
-	echo "[groups] '$GROUP_RENAMED_FROM' is now '$GROUP_RENAMED_TO' — accepted as an alias" >&2
-	EXTRA_GROUPS="$(normalize_group_list "$EXTRA_GROUPS")"
-	DROP_GROUPS="$(normalize_group_list "$DROP_GROUPS")"
-	;;
-esac
-
-group_selected() {
-	case " $SELECTED_GROUPS " in
+kit_selected() {
+	case " $SELECTED_KITS " in
 	*" $1 "*) return 0 ;;
 	esac
 	return 1
 }
 
-for requested_group in $EXTRA_GROUPS $DROP_GROUPS; do
-	if ! group_declared "$requested_group"; then
-		echo "ERROR: unknown skill group '$requested_group'." >&2
-		echo "       Declared groups: $(declared_groups | tr '\n' ' ')" >&2
+for requested_kit in $EXTRA_KITS $DROP_KITS; do
+	if ! kit_declared "$requested_kit"; then
+		echo "ERROR: unknown skill kit '$requested_kit'." >&2
+		echo "       Declared kits: $(declared_kits | tr '\n' ' ')" >&2
 		exit 1
 	fi
 done
 
-for requested_group in $DROP_GROUPS; do
-	if [[ "$requested_group" == core ]]; then
-		echo "ERROR: the core group cannot be deselected." >&2
+for requested_kit in $DROP_KITS; do
+	if [[ "$requested_kit" == core ]]; then
+		echo "ERROR: the core kit cannot be deselected." >&2
 		exit 2
 	fi
 done
 
 # Selection persists in the shared root so a later bare `install.sh --global`
-# upgrades the same set of groups without re-passing flags.
-GROUPS_STATE_FILE="$AGENTKIT_HOME/groups"
+# upgrades the same set of kits without re-passing flags.
+KITS_STATE_FILE="$AGENTKIT_HOME/kits"
 
-read_persisted_groups() {
-	[[ "$GLOBAL" == true && -f "$GROUPS_STATE_FILE" ]] || return 0
+# Kits were called groups until 0.5.2 (the retired kit names themselves live in
+# lib/skill-kits.sh). Installs exist on several machines, so the installer retires
+# what it wrote itself instead of leaving files to hand-delete. Nothing is
+# translated: a kit recorded under an old name is re-selected, not inherited.
+RETIRED_KITS_STATE_FILE="$AGENTKIT_HOME/groups"
+
+remove_retired_kit_state() {
+	[[ "$GLOBAL" == true && -f "$RETIRED_KITS_STATE_FILE" ]] || return 0
+	rm -f "$RETIRED_KITS_STATE_FILE"
+	echo "[kits] Removed retired $RETIRED_KITS_STATE_FILE — the selection lives in $KITS_STATE_FILE now." >&2
+	echo "[kits] Kits chosen under the old name are not carried over; re-add with --with <kit>." >&2
+}
+
+remove_retired_kit_state
+
+read_persisted_kits() {
+	[[ "$GLOBAL" == true && -f "$KITS_STATE_FILE" ]] || return 0
 	local entry
 	while read -r entry _; do
 		case "$entry" in '' | '#'*) continue ;; esac
-		# Silent here, unlike the flag path: the operator did not type this name.
-		if [[ "$entry" == "$GROUP_RENAMED_FROM" ]]; then entry="$GROUP_RENAMED_TO"; fi
 		# A stale entry must not resurrect a selection, and must not decide the
 		# loop's exit status: as the tail, a bare `cond && action` returning 1
 		# kills the whole install under set -e with nothing printed.
-		if group_declared "$entry"; then
+		if kit_declared "$entry"; then
 			printf '%s\n' "$entry"
 		else
-			echo "[groups] Ignoring unknown group in $GROUPS_STATE_FILE: $entry" >&2
+			echo "[kits] Ignoring unknown kit in $KITS_STATE_FILE: $entry" >&2
 		fi
-	done <"$GROUPS_STATE_FILE"
+	done <"$KITS_STATE_FILE"
 	return 0
 }
 
-write_persisted_groups() {
+write_persisted_kits() {
 	[[ "$GLOBAL" == true ]] || return 0
-	local group
-	mkdir -p "$(dirname "$GROUPS_STATE_FILE")"
+	local kit
+	mkdir -p "$(dirname "$KITS_STATE_FILE")"
 	{
-		echo "# Skill groups chosen at install time; a bare install.sh --global keeps them."
-		echo "# Delete a line to stop installing that group (installed skills are left alone)."
-		for group in $SELECTED_GROUPS; do
-			[[ "$group" == core ]] || echo "$group"
+		echo "# Skill kits chosen at install time; a bare install.sh --global keeps them."
+		echo "# Delete a line to stop installing that kit (installed skills are left alone)."
+		for kit in $SELECTED_KITS; do
+			[[ "$kit" == core ]] || echo "$kit"
 		done
-	} >"$GROUPS_STATE_FILE"
+	} >"$KITS_STATE_FILE"
 }
 
-group_dropped() {
-	case " $DROP_GROUPS " in
+kit_dropped() {
+	case " $DROP_KITS " in
 	*" $1 "*) return 0 ;;
 	esac
 	return 1
@@ -250,7 +236,7 @@ prompt_suppressed_by_env() {
 
 # An unanswered question does not degrade to a decline, it stops the install
 # until something kills it, so every condition here fails towards silence.
-should_prompt_for_groups() {
+should_prompt_for_kits() {
 	# Only a global install has anywhere to record an answer, and a question
 	# whose answer cannot be kept is a nag repeated at every project.
 	[[ "$GLOBAL" == true ]] || return 1
@@ -263,11 +249,11 @@ should_prompt_for_groups() {
 		return 1
 	fi
 	[[ "$PROMPT" == true ]] || return 1
-	[[ "$ALL_GROUPS" == false ]] || return 1
-	[[ -z "$EXTRA_GROUPS" && -z "$DROP_GROUPS" ]] || return 1
+	[[ "$ALL_KITS" == false ]] || return 1
+	[[ -z "$EXTRA_KITS" && -z "$DROP_KITS" ]] || return 1
 	# Where the file exists the question was already put, and an empty one is
 	# the recorded answer "core only" rather than an absent answer.
-	[[ ! -f "$GROUPS_STATE_FILE" ]] || return 1
+	[[ ! -f "$KITS_STATE_FILE" ]] || return 1
 	return 0
 }
 
@@ -283,28 +269,28 @@ open_prompt_channel() {
 	return 1
 }
 
-prompt_for_groups() {
-	local group description reply header=false
+prompt_for_kits() {
+	local kit description reply header=false
 	# Nowhere to hold the conversation. Asking anyway would put the question
 	# somewhere nobody is reading and then wait forever for the answer, so this
 	# declines like every other unattended shape and says so once, out loud.
 	if ! open_prompt_channel; then
-		echo "[groups] No controlling terminal — installing core only." >&2
-		echo "[groups] Use --with <group> to add an optional group." >&2
+		echo "[kits] No controlling terminal — installing core only." >&2
+		echo "[kits] Use --with <kit> to add an optional kit." >&2
 		return 0
 	fi
-	for group in $(declared_groups); do
-		if [[ "$group" == core ]]; then continue; fi
-		# Explicit groups are consent-gated: a y at a prompt is too easy to give
+	for kit in $(declared_kits); do
+		if [[ "$kit" == core ]]; then continue; fi
+		# Explicit kits are consent-gated: a y at a prompt is too easy to give
 		# without reading what it wires in. Only a literal --with installs them.
-		if group_explicit "$group"; then continue; fi
+		if kit_explicit "$kit"; then continue; fi
 		if [[ "$header" == false ]]; then
-			echo "[groups] Optional skill groups — core installs either way." >&3
+			echo "[kits] Optional skill kits — core installs either way." >&3
 			header=true
 		fi
-		description="$(group_description "$group")"
-		echo "[groups]   $group: $description" >&3
-		printf '[groups]   Install %s? [y/N] ' "$group" >&3
+		description="$(kit_description "$kit")"
+		echo "[kits]   $kit: $description" >&3
+		printf '[kits]   Install %s? [y/N] ' "$kit" >&3
 		# A closed terminal answers nothing; taking the default beats looping on
 		# an empty read or aborting an install that is otherwise fine.
 		if ! read -r reply <&4; then
@@ -312,7 +298,7 @@ prompt_for_groups() {
 			echo "" >&3
 		fi
 		case "$reply" in
-		[yY] | [yY][eE][sS]) EXTRA_GROUPS="${EXTRA_GROUPS:+$EXTRA_GROUPS }$group" ;;
+		[yY] | [yY][eE][sS]) EXTRA_KITS="${EXTRA_KITS:+$EXTRA_KITS }$kit" ;;
 		esac
 	done
 	if [[ "$header" == true ]]; then echo "" >&3; fi
@@ -320,34 +306,34 @@ prompt_for_groups() {
 	return 0
 }
 
-select_groups() {
-	local candidates group
-	if [[ "$ALL_GROUPS" == true ]]; then
-		# --all never covers explicit groups; those still arrive only via a
+select_kits() {
+	local candidates kit
+	if [[ "$ALL_KITS" == true ]]; then
+		# --all never covers explicit kits; those still arrive only via a
 		# literal --with (or a selection previously persisted from one).
 		candidates=""
-		for group in $(declared_groups); do
-			if group_explicit "$group"; then continue; fi
-			candidates="${candidates:+$candidates }$group"
+		for kit in $(declared_kits); do
+			if kit_explicit "$kit"; then continue; fi
+			candidates="${candidates:+$candidates }$kit"
 		done
-		candidates="$candidates $EXTRA_GROUPS $(read_persisted_groups)"
+		candidates="$candidates $EXTRA_KITS $(read_persisted_kits)"
 	else
-		candidates="core $EXTRA_GROUPS $(read_persisted_groups)"
+		candidates="core $EXTRA_KITS $(read_persisted_kits)"
 	fi
 
-	SELECTED_GROUPS="core"
-	for group in $candidates; do
-		if group_dropped "$group"; then continue; fi
-		group_selected "$group" || SELECTED_GROUPS="$SELECTED_GROUPS $group"
+	SELECTED_KITS="core"
+	for kit in $candidates; do
+		if kit_dropped "$kit"; then continue; fi
+		kit_selected "$kit" || SELECTED_KITS="$SELECTED_KITS $kit"
 	done
 	return 0
 }
 
-if should_prompt_for_groups; then
-	prompt_for_groups
+if should_prompt_for_kits; then
+	prompt_for_kits
 fi
 
-select_groups
+select_kits
 
 # shellcheck source=lib/install-platform.sh
 source "$REPO_DIR/lib/install-platform.sh"
@@ -431,30 +417,30 @@ install_skills() {
 	fi
 
 	for skill_dir in "$REPO_DIR"/skills/*/; do
-		local skill_name group
+		local skill_name kit
 		skill_name="$(basename "$skill_dir")"
 		local target="$dest/$skill_name"
-		group="$(skill_group "$skill_name")"
+		kit="$(skill_kit "$skill_name")"
 
-		# An unselected group that is already installed is still refreshed:
+		# An unselected kit that is already installed is still refreshed:
 		# dropping it on upgrade would silently take a skill away from someone
 		# who is using it, and leaving it unupdated rots it instead. Explicit
-		# groups invert that: they are consent-gated, and presence without a
+		# kits invert that: they are consent-gated, and presence without a
 		# recorded selection is not consent — remove them.
-		if ! group_selected "$group"; then
-			if group_explicit "$group"; then
+		if ! kit_selected "$kit"; then
+			if kit_explicit "$kit"; then
 				if [[ -e "$target" ]]; then
-					echo "[skills] Removing (explicit group '$group' not selected): $skill_name"
+					echo "[skills] Removing (explicit kit '$kit' not selected): $skill_name"
 					rm -rf "$target"
 				else
-					echo "[skills] Skipping (explicit group '$group' — add --with $group): $skill_name"
+					echo "[skills] Skipping (explicit kit '$kit' — add --with $kit): $skill_name"
 				fi
 				continue
 			fi
 			if [[ -e "$target" ]]; then
-				echo "[skills] Keeping installed (group '$group' not selected): $skill_name"
+				echo "[skills] Keeping installed (kit '$kit' not selected): $skill_name"
 			else
-				echo "[skills] Skipping (group '$group' — add --with $group): $skill_name"
+				echo "[skills] Skipping (kit '$kit' — add --with $kit): $skill_name"
 				continue
 			fi
 		fi
@@ -764,9 +750,9 @@ install_grok_prompt() {
 	link_path "$prompt_file" "$rules_dir/$name"
 }
 
-instruction_group() {
+instruction_kit() {
 	case "$(basename "$1")" in
-	evidence-gated-review.md) printf 'strict-review' ;;
+	evidence-gated-review.md) printf 'adversarial-review' ;;
 	# Instructions are concatenated into every prompt, so a core one costs context
 	# on every session whether or not the work needs a review pass.
 	review-discipline.md) printf 'advisory-review' ;;
@@ -834,7 +820,7 @@ remove_agent_prompt_file() {
 	rm -f "$HOME/.grok/rules/$name" "$HOME/.agents/instructions/$name"
 	if [[ -e "$canon_file" ]]; then
 		rm -f "$canon_file"
-		echo "[prompt] Removed (group not selected): $canon_file"
+		echo "[prompt] Removed (kit not selected): $canon_file"
 	fi
 }
 
@@ -846,7 +832,7 @@ install_global_agent_prompt() {
 	local found=false
 	for source_file in "$REPO_DIR"/instructions/*.md; do
 		[[ -f "$source_file" ]] || continue
-		if ! group_selected "$(instruction_group "$source_file")"; then
+		if ! kit_selected "$(instruction_kit "$source_file")"; then
 			remove_agent_prompt_file "$instructions_dir" "$(basename "$source_file")"
 			continue
 		fi
@@ -948,10 +934,10 @@ install_claude_hooks() {
 		# DENY every Bash call — the settings merge below strips entries in the
 		# same run. Without jq that merge cannot run, so the scripts must stay
 		# until it can: they live and die together.
-		if review_hook "$name" && ! group_selected strict-review; then
+		if review_hook "$name" && ! kit_selected adversarial-review; then
 			if command -v jq &>/dev/null; then
 				if [[ -e "$install_dir/$name" || -L "$install_dir/$name" ]]; then
-					echo "[claude] Removing hook (strict-review group not selected): $name"
+					echo "[claude] Removing hook (adversarial-review kit not selected): $name"
 					rm -f "$install_dir/$name"
 				fi
 				if [[ "$hooks_dir" != "$install_dir" && (-e "$hooks_dir/$name" || -L "$hooks_dir/$name") ]]; then
@@ -1038,7 +1024,7 @@ merge_claude_settings() {
 	# entries here both withholds them on fresh installs and strips previously
 	# merged ones on upgrade — the settings side of removing the scripts above.
 	local review_selected=true
-	group_selected strict-review || review_selected=false
+	kit_selected adversarial-review || review_selected=false
 
 	local hooks_json
 	hooks_json=$(jq --arg dir "$hooks_dir" --argjson review "$review_selected" '
@@ -1209,7 +1195,7 @@ remove_codex_review_hooks() {
 	fi
 
 	if [[ "$removed" == true ]]; then
-		echo "[codex] Removed review gate hooks (strict-review group not selected)."
+		echo "[codex] Removed review gate hooks (adversarial-review kit not selected)."
 	fi
 }
 
@@ -1344,22 +1330,22 @@ install_codex_skills() {
 	mkdir -p "$prompts_dir"
 
 	for skill_dir in "$REPO_DIR"/skills/*/; do
-		local name target group
+		local name target kit
 		name="$(basename "$skill_dir")"
 		[[ -f "$skill_dir/SKILL.md" ]] || continue
 		target="$prompts_dir/$name.md"
-		group="$(skill_group "$name")"
+		kit="$(skill_kit "$name")"
 
-		if ! group_selected "$group"; then
-			if group_explicit "$group"; then
+		if ! kit_selected "$kit"; then
+			if kit_explicit "$kit"; then
 				if [[ -f "$target" ]]; then
-					echo "[codex] Removing prompt (explicit group '$group' not selected): $name.md"
+					echo "[codex] Removing prompt (explicit kit '$kit' not selected): $name.md"
 					rm -f "$target"
 				fi
 				continue
 			fi
 			if [[ ! -f "$target" ]]; then
-				echo "[codex] Skipping prompt (group '$group' — add --with $group): $name.md"
+				echo "[codex] Skipping prompt (kit '$kit' — add --with $kit): $name.md"
 				continue
 			fi
 		fi
@@ -1384,13 +1370,13 @@ plugin_is_installed() {
 		jq -e --arg id "$1" '.[] | select(.id == $id and .scope == "user")' >/dev/null
 }
 
-# An unselected group whose plugin is already installed is still updated — the
+# An unselected kit whose plugin is already installed is still updated — the
 # plugin-mode counterpart of keeping an already-installed skill.
 claude_plugin_targets() {
-	local installed="$1" group id
-	for group in $(declared_groups); do
-		id="$(group_plugin_id "$group")@agentkit"
-		if group_selected "$group" || plugin_is_installed "$id" "$installed"; then
+	local installed="$1" kit id
+	for kit in $(declared_kits); do
+		id="$(kit_plugin_id "$kit")@agentkit"
+		if kit_selected "$kit" || plugin_is_installed "$id" "$installed"; then
 			printf '%s\n' "$id"
 		fi
 	done
@@ -1411,6 +1397,22 @@ ensure_claude_plugin() {
 			return 1
 		fi
 	fi
+}
+
+# The plugin id is the one artifact named after the kit, so a rename leaves a
+# stale plugin installed under the old id — the only surface where that happens:
+# Codex, OpenCode and Grok key everything off instruction and hook filenames.
+remove_retired_claude_plugins() {
+	local installed="$1" name id
+	for name in $RETIRED_KIT_NAMES; do
+		# A name that came back as a real kit is not retired, whatever this list says.
+		kit_declared "$name" && continue
+		id="$(kit_plugin_id "$name")@agentkit"
+		if plugin_is_installed "$id" "$installed"; then
+			echo "[claude] Uninstalling retired plugin: $id"
+			claude plugin uninstall "$id" || echo "[claude] WARNING: failed to uninstall $id." >&2
+		fi
+	done
 }
 
 install_claude_plugin() {
@@ -1441,6 +1443,8 @@ install_claude_plugin() {
 		echo "[claude] ERROR: claude plugin list returned malformed JSON." >&2
 		return 1
 	fi
+
+	remove_retired_claude_plugins "$installed_plugins"
 
 	local targets plugin_id
 	targets="$(claude_plugin_targets "$installed_plugins")"
@@ -1509,8 +1513,8 @@ if [[ "$GLOBAL" == true ]]; then
 	# ── Config ──
 	echo "--- Config ---"
 	install_config
-	write_persisted_groups
-	echo "[groups] Selected: $SELECTED_GROUPS ($GROUPS_STATE_FILE)"
+	write_persisted_kits
+	echo "[kits] Selected: $SELECTED_KITS ($KITS_STATE_FILE)"
 	echo ""
 
 	# ── Shared content root (single copy) ──
@@ -1546,8 +1550,8 @@ if [[ "$GLOBAL" == true ]]; then
 	# it may be the user's own fork, so removal only gets a loud warning.
 	for skill_dir in "$REPO_DIR"/skills/*/; do
 		skill_name="$(basename "$skill_dir")"
-		skill_group_name="$(skill_group "$skill_name")"
-		if group_explicit "$skill_group_name" && ! group_selected "$skill_group_name"; then
+		skill_kit_name="$(skill_kit "$skill_name")"
+		if kit_explicit "$skill_kit_name" && ! kit_selected "$skill_kit_name"; then
 			for client_skills in "$HOME/.agents/skills" "$HOME/.claude/skills" "$HOME/.grok/skills"; do
 				if [[ -e "$client_skills/$skill_name" && ! -L "$client_skills/$skill_name" ]]; then
 					echo "[skills] WARNING: leaving $client_skills/$skill_name in place (not installed by this installer); remove it manually if unwanted." >&2
@@ -1578,7 +1582,7 @@ if [[ "$GLOBAL" == true ]]; then
 	CLAUDE_SETTINGS="$HOME/.claude/settings.json"
 	if [[ "$CLAUDE_PLUGIN" == true ]]; then
 		install_claude_plugin
-		CLAUDE_MODE="plugin (one per selected group: $SELECTED_GROUPS)"
+		CLAUDE_MODE="plugin (one per selected kit: $SELECTED_KITS)"
 		echo ""
 	else
 		CLAUDE_MODE="manual (hooks via $CLAUDE_HOOKS → $HOOKS_CANON, settings $CLAUDE_SETTINGS)"
@@ -1611,7 +1615,7 @@ if [[ "$GLOBAL" == true ]]; then
 	CODEX_RULES="$CODEX_ROOT/rules"
 	CODEX_PROMPTS="$CODEX_ROOT/prompts"
 	echo "--- Codex CLI (review gate hook) ---"
-	if group_selected strict-review; then
+	if kit_selected adversarial-review; then
 		install_codex_review_hooks "$CODEX_ROOT"
 	else
 		remove_codex_review_hooks "$CODEX_ROOT"
@@ -1628,7 +1632,7 @@ if [[ "$GLOBAL" == true ]]; then
 	echo "Done. Installed globally for all tools:"
 	echo ""
 	echo "  Shared root:     $AGENTKIT_HOME/{skills,rules,instructions,hooks,tools}"
-	echo "  Skill groups:    $SELECTED_GROUPS"
+	echo "  Skill kits:    $SELECTED_KITS"
 	echo "  Config:          ${XDG_CONFIG_HOME:-$HOME/.config}/agentkit/config.yaml"
 	echo "  Prompts:         $INSTRUCTIONS_CANON/*.md"
 	echo "  Skills links:    ~/.agents/skills, ~/.claude/skills, ~/.grok/skills"
@@ -1687,7 +1691,7 @@ else
 	CODEX_ROOT="$TARGET_DIR/.codex"
 	CODEX_RULES="$CODEX_ROOT/rules"
 	echo "--- Codex CLI (review gate hook) ---"
-	if group_selected strict-review; then
+	if kit_selected adversarial-review; then
 		install_codex_review_hooks "$CODEX_ROOT"
 	else
 		remove_codex_review_hooks "$CODEX_ROOT"
@@ -1701,7 +1705,7 @@ else
 	echo "Done. Installed into $TARGET_DIR for all tools:"
 	echo ""
 	echo "  Skills:      $SKILLS_DEST/ (OpenCode), $CLAUDE_SKILLS/ (Claude Code)"
-	echo "  Skill groups: $SELECTED_GROUPS"
+	echo "  Skill kits: $SELECTED_KITS"
 	echo "  Rules:       $RULES_DEST/"
 	echo "  OpenCode:    $OPENCODE_PLUGINS/"
 	echo "  Claude Code: $CLAUDE_HOOKS/ (hooks in $CLAUDE_SETTINGS)"

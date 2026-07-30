@@ -78,7 +78,7 @@ Refusal, mapping, override. All three, every time.
 
 Anything with teeth is opt-in and remembered.
 
-The `strict-review` group installs only on a literal `--with strict-review` — the interactive
+The `adversarial-review` kit installs only on a literal `--with adversarial-review` — the interactive
 picker never offers it and `--all` excludes it. Deselecting it removes its artifacts. Overrides are
 explicit environment variables an operator sets on **one command**, never config you set and
 forget.

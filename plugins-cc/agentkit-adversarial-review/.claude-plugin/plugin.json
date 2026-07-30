@@ -1,8 +1,8 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-plugin.json",
-  "name": "agentkit-strict-review",
+  "name": "agentkit-adversarial-review",
   "version": "0.3.1",
-  "description": "Strict review: adversarial lane + evidence records + hard merge gate (explicit opt-in)",
+  "description": "Adversarial review: independent refutation lane + evidence records + hard merge gate (explicit opt-in)",
   "author": {
     "name": "developerinlondon",
     "url": "https://github.com/developerinlondon"

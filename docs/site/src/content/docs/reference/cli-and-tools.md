@@ -6,20 +6,20 @@ sidebar:
 ---
 
 Five executables ship in `tools/`. Two of them are Linux-only and the installer omits them
-elsewhere; two of them only arrive with the explicit `strict-review` group.
+elsewhere; two of them only arrive with the explicit `adversarial-review` kit.
 
-| Tool                 | Platform   | Ships with             |
-| -------------------- | ---------- | ---------------------- |
-| `bounded-run`        | Linux only | every install          |
-| `agent-session`      | Linux only | every install          |
-| `fix-ascii-boxes.py` | portable   | every install          |
-| `review-gate`        | portable   | `--with strict-review` |
-| `review-profile`     | portable   | `--with strict-review` |
+| Tool                 | Platform   | Ships with                  |
+| -------------------- | ---------- | --------------------------- |
+| `bounded-run`        | Linux only | every install               |
+| `agent-session`      | Linux only | every install               |
+| `fix-ascii-boxes.py` | portable   | every install               |
+| `review-gate`        | portable   | `--with adversarial-review` |
+| `review-profile`     | portable   | `--with adversarial-review` |
 
 Platform support is metadata, not installer knowledge: `bounded-run` and `agent-session` carry an
 `# agentkit:platforms linux` directive in their first 15 lines, and `install_tools` skips — or
 **removes** — any tool whose directive excludes the detected platform. Same mechanism removes
-`review-gate` and `review-profile` when `strict-review` is not selected.
+`review-gate` and `review-profile` when `adversarial-review` is not selected.
 
 Global installs put executables in `~/.local/bin/` and mirror them under `~/.agentkit/tools/`.
 Project installs expose them at `<project>/.claude/tools/`. `agentkit-run` remains as a symlink to
@@ -27,7 +27,7 @@ Project installs expose them at `<project>/.claude/tools/`. `agentkit-run` remai
 
 The Claude plugins carry their own copies, from an explicit allowlist in
 `scripts/sync-cc-plugin.sh`: the core `agentkit` plugin gets `bounded-run` only, and
-`review-gate`/`review-profile` go to `agentkit-strict-review` instead. `resource-police` accepts
+`review-gate`/`review-profile` go to `agentkit-adversarial-review` instead. `resource-police` accepts
 `$CLAUDE_PLUGIN_ROOT/tools/bounded-run` as a trusted runner and names that path when it denies an
 unbounded command — the runner is trusted by installed path, never by filename.
 
@@ -155,7 +155,7 @@ It is the one tool here without one. Its first argument is taken as the command 
 
 ## `review-gate`
 
-Ships only with `--with strict-review`. Validates a strict review record against a trusted policy.
+Ships only with `--with adversarial-review`. Validates a strict review record against a trusted policy.
 
 ```
 review-gate --record FILE --policy FILE --changed-paths FILE
@@ -198,7 +198,7 @@ any referenced evidence. Forge protections own those.
 
 ## `review-profile`
 
-Ships only with `--with strict-review`. Resolves how much review effort one task gets, and emits
+Ships only with `--with adversarial-review`. Resolves how much review effort one task gets, and emits
 JSON. It decides nothing about merges.
 
 ```
@@ -309,13 +309,13 @@ whitespace-stripped, so `a, b` behaves like `a,b`.
 
 ### Installer and bootstrap
 
-| Variable               | Default                                                                                        | Read by        |
-| ---------------------- | ---------------------------------------------------------------------------------------------- | -------------- |
-| `AGENTKIT_HOME`        | `~/.agentkit`                                                                                  | `install.sh`   |
-| `AGENTKIT_SKIP_PROMPT` | unset — any **non-empty** value suppresses the group question (a non-empty `CI` does the same) | `install.sh`   |
-| `AGENTKIT_SRC`         | `~/.agentkit-src`                                                                              | `bootstrap.sh` |
-| `AGENTKIT_REPO_URL`    | `https://github.com/developerinlondon/agentkit.git`                                            | `bootstrap.sh` |
-| `AGENTKIT_REF`         | unset — the newest `vX.Y.Z` tag. Takes a tag or a branch; `main` is the unreleased edge        | `bootstrap.sh` |
+| Variable               | Default                                                                                      | Read by        |
+| ---------------------- | -------------------------------------------------------------------------------------------- | -------------- |
+| `AGENTKIT_HOME`        | `~/.agentkit`                                                                                | `install.sh`   |
+| `AGENTKIT_SKIP_PROMPT` | unset — any **non-empty** value suppresses the kit question (a non-empty `CI` does the same) | `install.sh`   |
+| `AGENTKIT_SRC`         | `~/.agentkit-src`                                                                            | `bootstrap.sh` |
+| `AGENTKIT_REPO_URL`    | `https://github.com/developerinlondon/agentkit.git`                                          | `bootstrap.sh` |
+| `AGENTKIT_REF`         | unset — the newest `vX.Y.Z` tag. Takes a tag or a branch; `main` is the unreleased edge      | `bootstrap.sh` |
 
 ### Skill-specific
 

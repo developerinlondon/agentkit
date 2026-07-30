@@ -30,8 +30,8 @@ flowchart TD
 
 The `PreToolUse` chain on `Bash` runs in a fixed order, each with its own timeout: `git-police`,
 `kubectl-police`, `pkg-police`, `pages-police`, `resource-police` (10s each), `mr-police` (15s).
-With the `strict-review` group selected, `review-police` is appended at 60s and a second
-registration catches non-`Bash` merge tools by name. Without that group, the installer strips both
+With the `adversarial-review` kit selected, `review-police` is appended at 60s and a second
+registration catches non-`Bash` merge tools by name. Without that kit, the installer strips both
 registrations out of `settings.json` on the way in — so the default chain is six hooks, not seven.
 
 `Edit` and `Write` are followed by three quality hooks: `format-police`, `coding-police`,

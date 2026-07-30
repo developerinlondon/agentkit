@@ -43,8 +43,8 @@ AGENTKIT_REF=v0.4.3 curl -fsSL …/bootstrap.sh | bash   # pin an older release
 
 An origin with no `vX.Y.Z` tag stops the install rather than quietly falling back to `main`.
 
-Piped stdin is not a terminal, so the optional-group question never fires on this path — it
-installs `core` only unless you pass `--with <group>`.
+Piped stdin is not a terminal, so the optional-kit question never fires on this path — it
+installs `core` only unless you pass `--with <kit>`.
 
 If `~/.agentkit-src` already exists with local changes, bootstrap refuses rather than resetting
 over them. When it is clean, a re-run moves it to the newly resolved ref.
@@ -69,12 +69,12 @@ hook twice.
 ```sh
 claude plugin marketplace add developerinlondon/agentkit
 claude plugin install agentkit                 # hooks, core skills, tools, MCP
-claude plugin install agentkit-product         # the opt-in product group
-claude plugin install agentkit-strict-review   # the explicit strict-review group
+claude plugin install agentkit-product         # the opt-in product kit
+claude plugin install agentkit-adversarial-review   # the explicit adversarial-review kit
 ```
 
 The marketplace also carries `assay` and `infra-tools`, which are separate MCP toolchains rather
-than skill groups.
+than skill kits.
 
 `marketplace add` clones over SSH (`git@github.com:developerinlondon/agentkit.git`), so it needs
 working GitHub SSH access — not just network. Bare plugin names resolve across your added
@@ -112,10 +112,10 @@ installed. An agent asked to run it afterwards will be refused.
 | --------------------- | -------------------------------------------------------------------------------------------------------------------------- |
 | `--global`            | Install for every tool and project on this machine. Without it, the installer runs in project mode.                          |
 | `<target-dir>`        | A bare argument is the project directory for project mode. Defaults to the current directory.                                |
-| `--with <group>`      | Add an optional skill group. Repeatable. The `--with=<group>` form also works.                                               |
-| `--without <group>`   | Drop a group from the selection and from the remembered set. Repeatable. `core` cannot be dropped.                           |
-| `--all`               | Select every declared group *except* those marked explicit in the manifest.                                                  |
-| `--no-prompt`         | Never run the group wizard, even on a terminal.                                                                             |
+| `--with <kit>`      | Add an optional skill kit. Repeatable. The `--with=<kit>` form also works.                                               |
+| `--without <kit>`   | Drop a kit from the selection and from the remembered set. Repeatable. `core` cannot be dropped.                           |
+| `--all`               | Select every declared kit *except* those marked explicit in the manifest.                                                  |
+| `--no-prompt`         | Never run the kit wizard, even on a terminal.                                                                             |
 | `--claude-plugin`     | Global only. Wire Claude Code through the plugin marketplace instead of copying hooks and merging `settings.json`.            |
 | `--no-session-scope`  | Global only. Skip the per-session systemd shims, the slice unit and the shell profile block.                                  |
 | `-h`, `--help`        | Print usage.                                                                                                               |
@@ -127,7 +127,7 @@ Exit codes matter if you script around it:
 | `--help`                             | `1`  |
 | unknown flag (usage goes to stderr)  | `2`  |
 | `--without core`                     | `2`  |
-| unknown group name                   | `1`  |
+| unknown kit name                   | `1`  |
 | `--with` / `--without` with no value | `1`  |
 | `--claude-plugin` without `--global` | `1`  |
 
@@ -142,8 +142,8 @@ The fastest end-to-end check is the enforcement, not the file listing. The point
 that behaviour changed.
 
 ```sh
-ls ~/.agentkit/skills      # 13 core; 15 with --all; 16 with --all --with strict-review
-cat ~/.agentkit/groups     # the remembered selection
+ls ~/.agentkit/skills      # 13 core; 15 with --all; 16 with --all --with adversarial-review
+cat ~/.agentkit/kits     # the remembered selection
 ls ~/.claude/settings.json # must exist, or no Claude hook is registered
 ```
 
@@ -151,9 +151,9 @@ On Linux a core-only install also puts four executables on `~/.local/bin`: `boun
 `agentkit-run` compat symlink, `agent-session` and `fix-ascii-boxes.py`.
 
 :::note
-`review-profile` and `review-gate` ship only with the `strict-review` group, so they are absent
+`review-profile` and `review-gate` ship only with the `adversarial-review` kit, so they are absent
 from a default install. Do not use them as a smoke test unless you passed
-`--with strict-review`.
+`--with adversarial-review`.
 :::
 
 Then ask an agent in the installed client to run `npm install`. A working install refuses it. On
@@ -168,7 +168,7 @@ refusal is the product.
 
 ## Next
 
-- [Skill groups](/docs/getting-started/skill-groups/) — what is optional, and what the wizard
+- [Skill kits](/docs/getting-started/skill-kits/) — what is optional, and what the wizard
   will and will not ask.
 - [What lands where](/docs/getting-started/what-lands-where/) — per-client destinations, and how
   global differs from project.

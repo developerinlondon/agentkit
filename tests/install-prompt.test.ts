@@ -257,7 +257,7 @@ describe('global prompt installation', () => {
 
 describe('the advisory review instruction is opt-in', () => {
   // It is 25 lines spliced into every prompt on every session, whether or not the
-  // work will merge anything. Being able to run without it is the point: the group
+  // work will merge anything. Being able to run without it is the point: the kit
   // is explicit, so a plain re-install removes it again.
   const promptPath = (home: string) => join(home, '.claude', 'CLAUDE.md');
   const instructionPath = (home: string) =>

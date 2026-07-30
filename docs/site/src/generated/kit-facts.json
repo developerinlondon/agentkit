@@ -106,7 +106,7 @@
         "hook"
       ],
       "claudePlugins": [
-        "agentkit-strict-review"
+        "agentkit-adversarial-review"
       ]
     },
     {
@@ -196,7 +196,12 @@
       "failClosedBudget": 45
     }
   ],
-  "groups": [
+  "kits": [
+    {
+      "id": "adversarial-review",
+      "description": "Adversarial review: independent refutation lane + evidence records + hard merge gate (explicit opt-in)",
+      "explicit": true
+    },
     {
       "id": "advisory-review",
       "description": "Advisory review: one non-authoring reviewer pass per substantive change, as an always-loaded instruction (explicit opt-in)",
@@ -211,107 +216,102 @@
       "id": "product",
       "description": "Product-model skills: evidence-backed briefs and product review",
       "explicit": false
-    },
-    {
-      "id": "strict-review",
-      "description": "Strict review: adversarial lane + evidence records + hard merge gate (explicit opt-in)",
-      "explicit": true
     }
   ],
   "skills": [
     {
       "name": "adversarial-review",
-      "group": "strict-review",
+      "kit": "adversarial-review",
       "explicit": true,
       "description": "Falsify a proposed plan or implementation with independent traces, concrete failing inputs, claims verification, scope re-derivation, and lifecycle analysis. Use for non-trivial code review, plan refutation, security or reliability changes, bug fixes, merge-gate evidence, and any request to adversarially review or prove a change wrong."
     },
     {
       "name": "architect",
-      "group": "core",
+      "kit": "core",
       "explicit": false,
       "description": "Study a system and produce living architecture documentation — explanatory pages with high-quality diagrams. Use AUTOMATICALLY when the user asks to document, explain, map, or review an architecture (\"how does this system work\", \"architecture diagram of this repo\", \"create/refresh the design docs\"), or to keep architecture pages current after changes. Orchestrates the diagram and publish-page skills."
     },
     {
       "name": "autonomous-workflow",
-      "group": "core",
+      "kit": "core",
       "explicit": false,
       "description": "Proposal-first development workflow with commit hygiene and decision authority rules. Enforces: propose before modifying, atomic commits, no force flags, warnings-as-errors. Use for any project where AI agents are primary developers and need guardrails."
     },
     {
       "name": "code-quality",
-      "group": "core",
+      "kit": "core",
       "explicit": false,
       "description": "Code quality standards: warnings-as-errors, no underscore prefixes for unused vars, mandatory test coverage. Apply to any TypeScript, JavaScript, Rust, or Python project. Triggers: code review, linting, writing new functions, refactoring."
     },
     {
       "name": "diagram",
-      "group": "core",
+      "kit": "core",
       "explicit": false,
       "description": "Craft high-quality hand-drawn-style diagrams (Excalidraw JSON rendered to self-contained SVG). Use AUTOMATICALLY when the user asks to visualize, draw, diagram, or sketch anything — system architectures, workflows, protocols, timelines, comparisons, mental models — or when a task needs a visual that outclasses mermaid/box kits. Renders headlessly at generation time; output embeds anywhere HTML or markdown does."
     },
     {
       "name": "documentation",
-      "group": "core",
+      "kit": "core",
       "explicit": false,
       "description": "Documentation standards: surface-aware diagrams (Mermaid where markdown renders, ASCII for terminals and diffs), structured plan format, compact tables for comparisons. Use when writing docs, plans, READMEs, or architecture documents in any project."
     },
     {
       "name": "github-issue-lifecycle",
-      "group": "core",
+      "kit": "core",
       "explicit": false,
       "description": "Issue-first workflow and lifecycle hygiene for GitHub: every piece of work runs against an issue, Projects v2 status stays current on every touch, PRs reference issues without triggering auto-close, and issues close with a verification note. GitHub counterpart of gitlab-issue-lifecycle. Triggers: starting tracked work, updating issue/project status, closing issues, referencing issues from PRs."
     },
     {
       "name": "gitlab-issue-lifecycle",
-      "group": "core",
+      "kit": "core",
       "explicit": false,
       "description": "Issue-first workflow and lifecycle hygiene for GitLab: every piece of work runs against an issue, work-item statuses stay current on every touch, MRs reference issues without auto-closing, and issues close with a verification note. Complements issue-raiser (which covers researching and writing a new issue). Triggers: starting tracked work, updating issue status, linking issues to epics, closing issues, referencing issues from MRs."
     },
     {
       "name": "gitops-master",
-      "group": "core",
+      "kit": "core",
       "explicit": false,
       "description": "GitOps operations master for ArgoCD + Kargo. Diagnose stuck stages, verify deployments, manage promotions, configure verification and retry. Triggers: 'stage stuck', 'sync failed', 'promote', 'verify stage', 'kargo', 'argocd', 'gitops', 'pipeline', 'freight'"
     },
     {
       "name": "issue-raiser",
-      "group": "core",
+      "kit": "core",
       "explicit": false,
       "description": "Raises well-structured GitLab issues with root cause analysis, proposed solutions, and correct assignees based on git history. Adapts to any GitLab instance and project conventions automatically. Triggers: raising issues, reporting bugs, creating tickets, filing defects, feature requests, refactoring proposals."
     },
     {
       "name": "product-intelligence",
-      "group": "product",
+      "kit": "product",
       "explicit": false,
       "description": "Build an evidence-backed product brief from a website, a repository, or supplied documents. Every material claim lands in an auditable evidence ledger with a verbatim quote; contradictions are recorded, never smoothed over. Use when asked to research, profile, or write a brief about a product — including this one. Refuses to pad thin evidence into a confident story."
     },
     {
       "name": "product-review",
-      "group": "product",
+      "kit": "product",
       "explicit": false,
       "description": "Review a product the way a user meets it — build it, run it, use it — instead of reading a diff. Consumes .agentkit/product.yaml; refuses and asks when it is missing rather than guessing. Use alongside diff review, never instead of it."
     },
     {
       "name": "project-planning",
-      "group": "core",
+      "kit": "core",
       "explicit": false,
       "description": "Structured project planning: break down a new project idea into plan files covering architecture, file structure, and implementation roadmap. Triggers: 'new project', 'plan a feature', 'break down', 'architecture', 'roadmap', 'design a system'."
     },
     {
       "name": "publish-page",
-      "group": "core",
+      "kit": "core",
       "explicit": false,
       "description": "Publish content as a live web page with a stable URL (AgentKit Pages, self-hosted artifacts). Use AUTOMATICALLY whenever the user asks to publish/share/host a page, make an artifact/report/dashboard/slide deck/design doc viewable in a browser, or when rich formatted output would clearly beat chat text. Also triggers on \"make a page\", \"put this on a page\", \"publish this\", \"as a deck/slides\", \"share a link\". Renders markdown or HTML through themes and returns the live URL."
     },
     {
       "name": "resource-safe-execution",
-      "group": "core",
+      "kit": "core",
       "explicit": false,
       "description": "Apply Linux-only deterministic systemd cgroup limits with bounded-run to resource-intensive developer commands. Use for dependency installation or upgrades, compilers, typechecks, builds, test suites, linters, Playwright or browser work, code generation, Cargo, Go, and pytest, especially on shared or production-adjacent Linux hosts where an unbounded process could disrupt Kubernetes, ingress, tunnels, or other services."
     },
     {
       "name": "test-driven-development",
-      "group": "core",
+      "kit": "core",
       "explicit": false,
       "description": "Enforces strict Test-Driven Development (TDD) workflow: RED-GREEN-REFACTOR cycle. Tests MUST be written BEFORE implementation. Every change starts with a failing test. Applies to any language (Rust, TypeScript, Python, Go, etc.). Triggers: writing new features, fixing bugs, adding endpoints, refactoring, any code change."
     }

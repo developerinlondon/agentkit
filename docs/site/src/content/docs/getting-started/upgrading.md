@@ -6,18 +6,18 @@ sidebar:
 ---
 
 Re-running the installer _is_ the upgrade. There is no version file, no install manifest and no
-timestamp. The state it leaves behind is the remembered group selection, your seeded config file,
+timestamp. The state it leaves behind is the remembered kit selection, your seeded config file,
 and the marker blocks it writes into files you also own.
 
 ## What a second run does
 
-| Class                                     | On re-run                                |
-| ----------------------------------------- | ---------------------------------------- |
-| skills, rules, tools, hooks, plugins      | overwritten unconditionally              |
-| shell profile, client configs             | marker-guarded, never duplicated         |
-| `~/.config/agentkit/config.yaml`          | preserved — seeded once, then left alone |
-| artifacts unsupported on this platform    | actively removed                         |
-| artifacts of an unselected explicit group | actively removed                         |
+| Class                                   | On re-run                                |
+| --------------------------------------- | ---------------------------------------- |
+| skills, rules, tools, hooks, plugins    | overwritten unconditionally              |
+| shell profile, client configs           | marker-guarded, never duplicated         |
+| `~/.config/agentkit/config.yaml`        | preserved — seeded once, then left alone |
+| artifacts unsupported on this platform  | actively removed                         |
+| artifacts of an unselected explicit kit | actively removed                         |
 
 :::caution[Local edits inside an installed skill are destroyed on upgrade]
 An existing skill directory is removed and re-copied. Edit the clone, not the install.
@@ -25,10 +25,10 @@ An existing skill directory is removed and re-copied. Edit the clone, not the in
 
 Two more details:
 
-- **Deselecting an ordinary group never deletes anything.** An already-installed skill from an
-  unselected group is still refreshed, and the installer says so. Deselection changes what is
+- **Deselecting an ordinary kit never deletes anything.** An already-installed skill from an
+  unselected kit is still refreshed, and the installer says so. Deselection changes what is
   chosen, never what is on disk, so an upgrade never removes a skill you are using.
-- **An unselected explicit group is the exception.** `advisory-review` and `strict-review` are
+- **An unselected explicit kit is the exception.** `advisory-review` and `adversarial-review` are
   consent-gated: when one is not selected, its hooks, tools, skills and prompt wiring are removed.
   Presence without recorded selection is not consent. In particular, upgrading from a version where
   `review-discipline.md` was core removes that instruction on the next plain install — pass

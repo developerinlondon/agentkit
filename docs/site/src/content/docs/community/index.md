@@ -28,7 +28,7 @@ maintainer cannot reconstruct:
 - Platform. `bounded-run` and `agent-session` are Linux-only and are omitted elsewhere, so several
   behaviours differ by design rather than by fault.
 - How it was installed: `install.sh --global`, a project install, `--claude-plugin`, and which
-  `--with` groups.
+  `--with` kits.
 
 ## Licence
 
@@ -74,9 +74,9 @@ A skill is a directory, not a registration. From `README.md`:
 
 Then two things that are easy to miss:
 
-- **Group membership.** A skill with no record in `skills/GROUPS` belongs to `core` and therefore
-  installs for everyone. If it should be opt-in, add a membership line naming a declared group. A
-  membership line whose group is never declared, or a skill named in two groups, aborts the
+- **Kit membership.** A skill with no record in `skills/KITS` belongs to `core` and therefore
+  installs for everyone. If it should be opt-in, add a membership line naming a declared kit. A
+  membership line whose kit is never declared, or a skill named in two kits, aborts the
   installer before it writes anything.
 - **The plugin mirror.** `skills/` and `plugins-cc/agentkit/skills/` must stay byte-identical.
   Regenerate with `scripts/sync-cc-plugin.sh` and commit the result; never edit the mirror by hand.

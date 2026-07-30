@@ -41,14 +41,14 @@ function createFixture(): Fixture {
 
   copyFileSync(installScript, join(repo, 'install.sh'));
   chmodSync(join(repo, 'install.sh'), 0o755);
-  for (const lib of ['install-platform.sh', 'skill-groups.sh']) {
+  for (const lib of ['install-platform.sh', 'skill-kits.sh']) {
     writeFixtureFile(join(repo, 'lib', lib), readFileSync(join(repoRoot, 'lib', lib), 'utf-8'));
   }
   writeFixtureFile(join(repo, 'config.example.yaml'), '{}\n');
   writeFixtureFile(join(repo, 'skills', 'sample', 'SKILL.md'), '# Sample\n');
   writeFixtureFile(
-    join(repo, 'skills', 'GROUPS'),
-    'group core Sample core group\ngroup strict-review Sample review group\nexplicit strict-review\n',
+    join(repo, 'skills', 'KITS'),
+    'kit core Sample core kit\nkit adversarial-review Sample review kit\nexplicit adversarial-review\n',
   );
   writeFixtureFile(join(repo, 'rules', 'sample.md'), '# Sample\n');
   mkdirSync(join(repo, 'instructions'), { recursive: true });
@@ -99,7 +99,7 @@ function runInstall(
         ...(disableSessionScope ? ['--no-session-scope'] : []),
       ]
     : [join(fixture.repo, 'install.sh'), fixture.target];
-  if (withReview) args.push('--with', 'strict-review');
+  if (withReview) args.push('--with', 'adversarial-review');
   return spawnSync('bash', args, {
     cwd: fixture.repo,
     env: {

@@ -7,7 +7,7 @@
         "id": "agent-enforcement",
         "tier": "critical",
         "path_regexes": [
-          "^(hooks/.*|policies/.*|tools/review-(gate|profile)|install\\.sh|lib/install-platform\\.sh|scripts/(product-command|sync-cc-plugin\\.sh)|plugins/.*\\.ts|plugins-cc/agentkit/(\\.claude-plugin/plugin\\.json|hooks/.*)|plugins-cc/agentkit-strict-review/.*|\\.agentkit/(config\\.yaml|product\\.yaml|review-policy\\.json)|\\.claude-plugin/marketplace\\.json|config\\.example\\.yaml)$"
+          "^(hooks/.*|policies/.*|tools/review-(gate|profile)|install\\.sh|lib/install-platform\\.sh|scripts/(product-command|sync-cc-plugin\\.sh)|plugins/.*\\.ts|plugins-cc/agentkit/(\\.claude-plugin/plugin\\.json|hooks/.*)|plugins-cc/agentkit-adversarial-review/.*|\\.agentkit/(config\\.yaml|product\\.yaml|review-policy\\.json)|\\.claude-plugin/marketplace\\.json|config\\.example\\.yaml)$"
         ]
       },
       {
@@ -27,7 +27,7 @@
           "^instructions/(coding-discipline|evidence-gated-review)\\.md$",
           "^docs/review-process\\.md$",
           "^tests/(agentkit-plugin|codex-review-hooks|hook-supervisor|install-claude-plugin|install-tools|review-gate|review-profile|review-police|review-disciplines)\\.test\\.ts$",
-          "^plugins-cc/agentkit-strict-review/skills/adversarial-review/.*$"
+          "^plugins-cc/agentkit-adversarial-review/skills/adversarial-review/.*$"
         ]
       }
     ]

@@ -36,9 +36,9 @@
       "version": "0.3.1"
     },
     {
-      "name": "agentkit-strict-review",
-      "source": "./plugins-cc/agentkit-strict-review",
-      "description": "Strict review: adversarial lane + evidence records + hard merge gate (explicit opt-in)",
+      "name": "agentkit-adversarial-review",
+      "source": "./plugins-cc/agentkit-adversarial-review",
+      "description": "Adversarial review: independent refutation lane + evidence records + hard merge gate (explicit opt-in)",
       "version": "0.3.1"
     }
   ]

@@ -6,7 +6,7 @@
 export interface VersionedFacts {
 	units: unknown[];
 	wiring: unknown[];
-	groups: unknown[];
+	kits: unknown[];
 	skills: unknown[];
 	tools: unknown[];
 }
