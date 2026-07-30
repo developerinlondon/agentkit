@@ -294,6 +294,33 @@ jobs:
           printf '%s' "$AGENTKIT_SITE_TOKEN" > "$RUNNER_TEMP/site-token"
           AGENTKIT_SITE_TOKEN_FILE="$RUNNER_TEMP/site-token" bash ./pages/site/deploy.sh
 
+  release:
+    name: Publish the GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    # The release is the last act of a tag push: it must name a candidate that is
+    # tested AND live, so it waits for every publish job rather than racing them.
+    needs:
+      - full
+      - worker-publish
+      - docs-publish
+      - site-publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Create the release with generated notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          if gh release view "$TAG" -R "$REPO" >/dev/null 2>&1; then
+            echo "release: $TAG already exists — leaving it untouched"
+            exit 0
+          fi
+          gh release create "$TAG" -R "$REPO" --title "$TAG" --generate-notes --verify-tag
+
   ci-gate:
     name: CI gate
     if: always()
@@ -302,6 +329,7 @@ jobs:
       - docs
       - docs-publish
       - full
+      - release
       - site-publish
       - worker-publish
     runs-on: ubuntu-24.04
@@ -314,6 +342,7 @@ jobs:
           DOCS_PUBLISH_RESULT: ${{ needs.docs-publish.result }}
           WORKER_PUBLISH_RESULT: ${{ needs.worker-publish.result }}
           SITE_PUBLISH_RESULT: ${{ needs.site-publish.result }}
+          RELEASE_RESULT: ${{ needs.release.result }}
           EVENT_NAME: ${{ github.event_name }}
           GIT_REF: ${{ github.ref }}
           PUBLISH_INPUT: ${{ inputs.publish }}
@@ -339,6 +368,20 @@ jobs:
             echo "Publish ran without a release tag or an explicit request: worker=$WORKER_PUBLISH_RESULT docs=$DOCS_PUBLISH_RESULT site=$SITE_PUBLISH_RESULT"
             exit 1
           fi
+          case "$GIT_REF" in
+          refs/tags/v*)
+            if [ "$RELEASE_RESULT" != 'success' ]; then
+              echo "Release result: $RELEASE_RESULT"
+              exit 1
+            fi
+            ;;
+          *)
+            if [ "$RELEASE_RESULT" != 'skipped' ]; then
+              echo "Release ran without a release tag: $RELEASE_RESULT"
+              exit 1
+            fi
+            ;;
+          esac
           if [ "$EVENT_NAME" = 'pull_request' ]; then
             if [ "$AFFECTED_RESULT" != 'success' ] || [ "$FULL_RESULT" != 'skipped' ]; then
               echo "PR results: affected=$AFFECTED_RESULT full=$FULL_RESULT"
