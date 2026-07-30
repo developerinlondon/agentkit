@@ -43,6 +43,23 @@ assigned_groups() {
 	awk '$1 != "group" && $1 != "explicit" && $1 !~ /^#/ && NF >= 2 { print $2 }' "$SKILL_GROUPS_FILE" | sort -u
 }
 
+# A group may gate instructions alone. Skills are the whole payload of a
+# generated group plugin, so one with none would publish an empty plugin.
+# Answered from the tree, not the membership records, so a record naming a
+# skill that does not exist cannot claim a payload.
+group_has_skills() {
+	local skills_dir skill
+	[[ "$1" == core ]] && return 0
+	skills_dir="$(dirname "$SKILL_GROUPS_FILE")"
+	for skill in "$skills_dir"/*/; do
+		[[ -d "$skill" ]] || continue
+		if [[ "$(skill_group "$(basename "$skill")")" == "$1" ]]; then
+			return 0
+		fi
+	done
+	return 1
+}
+
 # One plugin per group, named from the manifest: core ships as `agentkit`, every
 # other group as `agentkit-<group>`.
 group_plugin_id() {

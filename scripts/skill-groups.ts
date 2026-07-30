@@ -62,6 +62,15 @@ export function pluginIdFor(group: string): string {
   return group === DEFAULT_GROUP ? 'agentkit' : `agentkit-${group}`;
 }
 
+// Mirrors group_has_skills in lib/skill-groups.sh.
+export function groupHasSkills(
+  manifest: SkillGroupManifest,
+  repoRoot: string,
+  group: string,
+): boolean {
+  return group === DEFAULT_GROUP || skillsInGroup(manifest, repoRoot, group).length > 0;
+}
+
 export function skillsInGroup(
   manifest: SkillGroupManifest,
   repoRoot: string,
