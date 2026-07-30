@@ -128,6 +128,7 @@ describe('the session-start update notice', () => {
   // machine pays a fresh network attempt forever.
   test('a failed check writes a negative cache that later runs honour', () => {
     const h = home('v0.1.0');
+    const remote = remoteWithTags(['v9.9.9']);
     try {
       const first = runNotice(h, '/nonexistent/remote');
       expect(first.status).toBe(0);
@@ -135,11 +136,14 @@ describe('the session-start update notice', () => {
       const cache = readFileSync(join(h, '.agentkit', '.update-check'), 'utf-8');
       expect(cache.trim()).toMatch(/^\d+ -$/);
 
-      const second = runNotice(h, '/nonexistent/remote');
+      // Against a WORKING remote holding an update: only the honoured negative
+      // cache can explain silence here.
+      const second = runNotice(h, remote);
       expect(second.status).toBe(0);
       expect(second.stdout).toBe('');
     } finally {
       rmSync(h, { force: true, recursive: true });
+      rmSync(remote, { force: true, recursive: true });
     }
   });
 

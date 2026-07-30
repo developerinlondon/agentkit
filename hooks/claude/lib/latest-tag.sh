@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Newest vX.Y.Z tag on a remote, numerically: sort -V is GNU-only and a lexical
 # sort ranks v0.4.9 above v0.4.10. bootstrap.sh carries its own copy because it
 # runs as a curl-piped single file with nothing to source — keep them in step.

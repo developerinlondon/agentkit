@@ -12,6 +12,7 @@ FAILURE_TTL=3600
 
 lib="$(cd "$(dirname "$0")" 2>/dev/null && pwd)/lib/latest-tag.sh"
 [ -r "$lib" ] || exit 0
+# shellcheck source=lib/latest-tag.sh
 . "$lib"
 
 [ -r "$STAMP" ] || exit 0
