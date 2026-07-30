@@ -198,6 +198,11 @@
   ],
   "groups": [
     {
+      "id": "advisory-review",
+      "description": "Advisory review: one non-authoring reviewer pass per substantive change, as an always-loaded instruction (explicit opt-in)",
+      "explicit": true
+    },
+    {
       "id": "core",
       "description": "Enforcement, planning, and workflow skills for everyday use",
       "explicit": false

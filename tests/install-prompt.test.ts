@@ -22,8 +22,8 @@ function countOccurrences(text: string, needle: string): number {
   return text.split(needle).length - 1;
 }
 
-function runGlobalInstall(home: string) {
-  return spawnSync('bash', [installScript, '--global', '--no-session-scope'], {
+function runGlobalInstall(home: string, extraArgs: string[] = []) {
+  return spawnSync('bash', [installScript, '--global', '--no-session-scope', ...extraArgs], {
     cwd: repoRoot,
     env: {
       ...process.env,
@@ -103,15 +103,10 @@ describe('global prompt installation', () => {
       expect(existsSync(codingDiscipline)).toBe(true);
       expect(existsSync(collaborationVisibility)).toBe(true);
       expect(existsSync(resourceSafety)).toBe(true);
-      expect(existsSync(reviewDiscipline)).toBe(true);
-      const grokReviewDiscipline = join(home, '.grok', 'rules', 'review-discipline.md');
-      expect(lstatSync(grokReviewDiscipline).isSymbolicLink()).toBe(true);
-      expect(readFileSync(reviewDiscipline, 'utf-8')).toContain(
-        'agentkit:review-discipline:start',
-      );
-      expect(readFileSync(reviewDiscipline, 'utf-8')).toContain(
-        'did not author',
-      );
+      // Opt-in since it is prompt weight on every session, not just on the
+      // sessions that merge something.
+      expect(existsSync(reviewDiscipline)).toBe(false);
+      expect(existsSync(join(home, '.grok', 'rules', 'review-discipline.md'))).toBe(false);
       const agentsAntiGlaze = join(home, '.agents', 'instructions', 'anti-glaze.md');
       expect(lstatSync(agentsAntiGlaze).isSymbolicLink()).toBe(true);
       expect(readlinkSync(agentsAntiGlaze)).toBe(antiGlaze);
@@ -166,7 +161,7 @@ describe('global prompt installation', () => {
       );
       expect(claudeInstructions).toContain('Keep this line.');
       expect(
-        countOccurrences(claudeInstructions, 'agentkit:review-discipline:start'),
+        countOccurrences(claudeInstructions, 'agentkit:coding-discipline:start'),
       ).toBe(1);
       expect(claudeInstructions).toContain(
         'Anti-Glaze Global Agent Instructions',
@@ -256,6 +251,79 @@ describe('global prompt installation', () => {
       );
     } finally {
       rmSync(home, { force: true, recursive: true });
+    }
+  }, globalInstallTimeoutMs);
+});
+
+describe('the advisory review instruction is opt-in', () => {
+  // It is 25 lines spliced into every prompt on every session, whether or not the
+  // work will merge anything. Being able to run without it is the point: the group
+  // is explicit, so a plain re-install removes it again.
+  const promptPath = (home: string) => join(home, '.claude', 'CLAUDE.md');
+  const instructionPath = (home: string) =>
+    join(home, '.agentkit', 'instructions', 'review-discipline.md');
+
+  test('--with advisory-review installs it and splices it into the prompt', () => {
+    const home = mkdtempSync(join(tmpdir(), 'agentkit-review-flag-'));
+
+    try {
+      const result = runGlobalInstall(home, ['--with', 'advisory-review']);
+      expect(result.status, result.stderr).toBe(0);
+      expect(existsSync(instructionPath(home))).toBe(true);
+      expect(readFileSync(promptPath(home), 'utf-8')).toContain(
+        'agentkit:review-discipline:start',
+      );
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  }, globalInstallTimeoutMs);
+
+  test('a default install leaves it out of the prompt entirely', () => {
+    const home = mkdtempSync(join(tmpdir(), 'agentkit-review-flag-'));
+
+    try {
+      const result = runGlobalInstall(home);
+      expect(result.status, result.stderr).toBe(0);
+      expect(existsSync(instructionPath(home))).toBe(false);
+      expect(readFileSync(promptPath(home), 'utf-8')).not.toContain(
+        'agentkit:review-discipline:start',
+      );
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  }, globalInstallTimeoutMs);
+
+  // Presence without a recorded selection is not consent, so deselecting has to
+  // take the instruction back out of the prompt rather than leave it behind.
+  test('re-installing without it removes the instruction and the prompt block', () => {
+    const home = mkdtempSync(join(tmpdir(), 'agentkit-review-flag-'));
+
+    try {
+      expect(runGlobalInstall(home, ['--with', 'advisory-review']).status).toBe(0);
+      expect(existsSync(instructionPath(home))).toBe(true);
+
+      const second = runGlobalInstall(home, ['--without', 'advisory-review']);
+      expect(second.status, second.stderr).toBe(0);
+      expect(existsSync(instructionPath(home))).toBe(false);
+      expect(readFileSync(promptPath(home), 'utf-8')).not.toContain(
+        'agentkit:review-discipline:start',
+      );
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  }, globalInstallTimeoutMs);
+
+  test('the other core instructions are unaffected', () => {
+    const home = mkdtempSync(join(tmpdir(), 'agentkit-review-flag-'));
+
+    try {
+      expect(runGlobalInstall(home).status).toBe(0);
+      const prompt = readFileSync(promptPath(home), 'utf-8');
+      for (const name of ['anti-glaze', 'coding-discipline', 'collaboration-visibility']) {
+        expect(prompt).toContain(`agentkit:${name}:start`);
+      }
+    } finally {
+      rmSync(home, { recursive: true, force: true });
     }
   }, globalInstallTimeoutMs);
 });

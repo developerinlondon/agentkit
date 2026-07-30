@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { dirname, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import { groupOf, parseSkillGroups, readSkillGroups } from '../../scripts/skill-groups';
+import { groupHasSkills, groupOf, parseSkillGroups, readSkillGroups } from '../../scripts/skill-groups';
 
 const repoRoot = dirname(dirname(import.meta.dir));
 const fixtures = join(repoRoot, 'tests', 'fixtures');
@@ -91,5 +91,28 @@ describe('manifest readers agree', () => {
     const validated = bashReader(join(repoRoot, 'skills', 'GROUPS'), 'validate_skill_groups');
     expect(validated.status, validated.stderr).toBe(0);
     expect(readSkillGroups(repoRoot).groups.length).toBeGreaterThan(1);
+  });
+
+  // A "no" from either reader is acted on destructively (generation skipped,
+  // plugin trees pruned), so both must agree — and both must refuse to call a
+  // tree with no skill directories at all "empty".
+  test('bash and TypeScript agree on which groups have skills', () => {
+    const tree = join(fixtures, 'skill-tree');
+    const manifest = readSkillGroups(tree);
+    for (const [group, expected] of [['core', true], ['g1', true], ['g2', false]] as const) {
+      expect(groupHasSkills(manifest, tree, group), `ts: ${group}`).toBe(expected);
+      const shell = bashReader(join(tree, 'skills', 'GROUPS'), `group_has_skills "${group}"`);
+      expect(shell.status === 0, `bash: ${group}`).toBe(expected);
+    }
+  });
+
+  test('a manifest with no skills tree beside it cannot claim every group is empty', () => {
+    const empty = join(fixtures, 'skill-tree-empty');
+    const manifest = readSkillGroups(empty);
+    for (const group of ['g1', 'g2']) {
+      expect(groupHasSkills(manifest, empty, group), `ts: ${group}`).toBe(true);
+      const shell = bashReader(join(empty, 'skills', 'GROUPS'), `group_has_skills "${group}"`);
+      expect(shell.status, `bash: ${group}`).toBe(0);
+    }
   });
 });

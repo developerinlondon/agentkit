@@ -2,7 +2,12 @@ import { describe, expect, test } from 'bun:test';
 import type { PluginInput } from '@opencode-ai/plugin';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { basename, join } from 'node:path';
-import { pluginIdFor, readSkillGroups, skillsInGroup } from '../scripts/skill-groups';
+import {
+  groupHasSkills,
+  pluginIdFor,
+  readSkillGroups,
+  skillsInGroup,
+} from '../scripts/skill-groups';
 
 // Recursive: some skills carry a references/ subdirectory, and a nested file
 // that drifts is exactly as misleading as a top-level one. node_modules is
@@ -307,11 +312,11 @@ describe('agentkit plugin skills', () => {
     }
   });
 
-  test('gives every declared group its own plugin, generated from the manifest', () => {
+  test('gives every skill-bearing group its own plugin, generated from the manifest', () => {
     const manifest = readSkillGroups(repoRoot);
     expect(manifest.groups.map((group) => group.id)).toContain('core');
 
-    for (const group of manifest.groups) {
+    for (const group of manifest.groups.filter((g) => groupHasSkills(manifest, repoRoot, g.id))) {
       const dir = join(repoRoot, 'plugins-cc', pluginIdFor(group.id));
       const plugin = JSON.parse(readFileSync(join(dir, '.claude-plugin', 'plugin.json'), 'utf-8'));
       expect(plugin.name, `${group.id} plugin name`).toBe(pluginIdFor(group.id));
@@ -330,7 +335,7 @@ describe('agentkit plugin skills', () => {
   test('a carried dependency is an unlisted, byte-identical leaf', () => {
     const manifest = readSkillGroups(repoRoot);
     let carried = 0;
-    for (const group of manifest.groups) {
+    for (const group of manifest.groups.filter((g) => groupHasSkills(manifest, repoRoot, g.id))) {
       const skillsDir = join(repoRoot, 'plugins-cc', pluginIdFor(group.id), 'skills');
       const declared = new Set(skillsInGroup(manifest, repoRoot, group.id));
       for (const name of readdirSync(skillsDir).filter((n) => !declared.has(n))) {
@@ -359,6 +364,17 @@ describe('agentkit plugin skills', () => {
     for (const group of manifest.groups) {
       const id = pluginIdFor(group.id);
       const entry = byName.get(id);
+      if (!groupHasSkills(manifest, repoRoot, group.id)) {
+        // Skills are the whole payload of a generated group plugin. A group that
+        // gates an instruction alone has none, and an entry for it would offer a
+        // plugin that installs nothing.
+        expect(entry, `${id} publishes an empty plugin`).toBeUndefined();
+        expect(
+          existsSync(join(repoRoot, 'plugins-cc', id)),
+          `${id} has a plugin tree with no skills to carry`,
+        ).toBe(false);
+        continue;
+      }
       expect(entry, `${id} is published in the marketplace`).toBeDefined();
       expect(entry.source).toBe(`./plugins-cc/${id}`);
     }
@@ -413,8 +429,9 @@ describe('marketplace lists the agentkit plugin', () => {
     const names = marketplace.plugins.map((p: { name: string }) => p.name);
     // Recommended one-shot first, then the à-la-carte plugins, then the
     // manifest-generated group plugins appended by sync-cc-plugin.sh.
-    const generated = readSkillGroups(repoRoot).groups
-      .filter((group) => group.id !== 'core')
+    const manifest = readSkillGroups(repoRoot);
+    const generated = manifest.groups
+      .filter((group) => group.id !== 'core' && groupHasSkills(manifest, repoRoot, group.id))
       .map((group) => pluginIdFor(group.id));
     expect(names).toEqual(['agentkit', 'assay', 'infra-tools', ...generated]);
 

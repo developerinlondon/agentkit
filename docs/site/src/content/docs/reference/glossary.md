@@ -64,8 +64,8 @@ every harness.
 
 An install partition declared in `skills/GROUPS`, a plain-text manifest read by the installer, the
 Claude plugin generator and the tests alike. A skill with no membership record belongs to `core`,
-which always installs, and a skill may name only one group. Three groups are declared today: `core`,
-`product`, `strict-review`.
+which always installs, and a skill may name only one group. The declared groups are listed in
+[Skill groups](/docs/getting-started/skill-groups/), generated from the manifest.
 
 ## Explicit group
 

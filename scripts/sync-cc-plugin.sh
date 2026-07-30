@@ -53,7 +53,18 @@ plugin_dir_for() {
 	printf '%s/plugins-cc/%s' "$REPO_DIR" "$(group_plugin_id "$1")"
 }
 
+# A group plugin's payload is its skills OR hand-wired hooks/tools (the
+# strict-review gate ships both). No payload: no manifest, no marketplace
+# entry, and the prune arm may take the tree.
+group_plugin_has_payload() {
+	group_has_skills "$1" && return 0
+	local dir
+	dir="$(plugin_dir_for "$1")"
+	[[ -d "$dir/hooks" || -d "$dir/tools" ]]
+}
+
 for group in $(declared_groups); do
+	group_has_skills "$group" || continue
 	mkdir -p "$(plugin_dir_for "$group")/skills"
 done
 
@@ -101,6 +112,7 @@ carry_leaf publish-page/slides.ts product-intelligence
 # manifest because it also wires hooks, tools, and MCP servers.
 for group in $(declared_groups); do
 	[[ "$group" == core ]] && continue
+	group_plugin_has_payload "$group" || continue
 	plugin_id="$(group_plugin_id "$group")"
 	group_dir="$(plugin_dir_for "$group")"
 	mkdir -p "$group_dir/.claude-plugin"
@@ -115,11 +127,12 @@ for group in $(declared_groups); do
 	echo "[sync] generated $plugin_id plugin manifest"
 done
 
-# Drop plugin trees for groups the manifest no longer declares.
+# Drop plugin trees for groups the manifest no longer declares, and for a group
+# whose payload left — it would otherwise keep serving skills from a stale copy.
 for stale in "$REPO_DIR"/plugins-cc/agentkit-*/; do
 	[[ -d "$stale" ]] || continue
 	stale_id="$(basename "$stale")"
-	if ! group_declared "${stale_id#agentkit-}"; then
+	if ! group_declared "${stale_id#agentkit-}" || ! group_plugin_has_payload "${stale_id#agentkit-}"; then
 		echo "[sync] removing dropped group plugin: $stale_id"
 		rm -rf "$stale"
 	fi
@@ -130,6 +143,7 @@ done
 marketplace_entries="$(
 	for group in $(declared_groups); do
 		[[ "$group" == core ]] && continue
+		group_plugin_has_payload "$group" || continue
 		plugin_id="$(group_plugin_id "$group")"
 		jq -n --arg name "$plugin_id" \
 			--arg source "./plugins-cc/$plugin_id" \
@@ -163,6 +177,7 @@ echo "[sync] portable hook tools -> core (bounded-run) + review plugin (gate, pr
 # Fail loudly if the result is an invalid plugin (best-effort: needs claude CLI).
 if command -v claude &>/dev/null; then
 	for group in $(declared_groups); do
+		group_plugin_has_payload "$group" || continue
 		if ! claude plugin validate "$(plugin_dir_for "$group")"; then
 			echo "[sync] ERROR: $(group_plugin_id "$group") is not a valid plugin." >&2
 			exit 1

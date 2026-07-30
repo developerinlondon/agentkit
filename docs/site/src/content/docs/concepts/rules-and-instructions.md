@@ -46,18 +46,19 @@ OpenCode's config, a concatenation into Codex's `developer_instructions`, and `~
 for Grok's always-on load. The Codex step declines to touch a `developer_instructions` key it did
 not write, warning instead of overwriting.
 
-| Instruction                   | Group           |
-| ----------------------------- | --------------- |
-| `anti-glaze.md`               | `core`          |
-| `coding-discipline.md`        | `core`          |
-| `collaboration-visibility.md` | `core`          |
-| `resource-safety.md`          | `core`          |
-| `review-discipline.md`        | `core`          |
-| `evidence-gated-review.md`    | `strict-review` |
+| Instruction                   | Group             |
+| ----------------------------- | ----------------- |
+| `anti-glaze.md`               | `core`            |
+| `coding-discipline.md`        | `core`            |
+| `collaboration-visibility.md` | `core`            |
+| `resource-safety.md`          | `core`            |
+| `review-discipline.md`        | `advisory-review` |
+| `evidence-gated-review.md`    | `strict-review`   |
 
-Five install always. `evidence-gated-review.md` is gated on the `strict-review` group and is removed
-when that group is not selected — the marker block is stripped out of `CLAUDE.md`, the OpenCode
-config entry is filtered out, and the file itself is deleted.
+Four install always. The other two ride explicit groups — `review-discipline.md` on
+`advisory-review`, `evidence-gated-review.md` on `strict-review` — and are removed when their group
+is not selected: the marker block is stripped out of `CLAUDE.md`, the OpenCode config entry is
+filtered out, and the file itself is deleted.
 
 The Claude blocks are delimited by `<!-- agentkit:<name>:start -->` / `:end` comments, which is what
 makes removal surgical rather than a best-effort text match. Legacy blocks appended without markers

@@ -130,5 +130,5 @@ pass. What the gate buys is that a _stale_ review is mechanically impossible to 
 forge-side required approvals actually prevent a merge.
 :::
 
-The doctrine behind all of this, including the always-installed advisory lane that needs no group:
+The doctrine behind all of this, including the opt-in advisory lane (`--with advisory-review`):
 [Review and the gate](/docs/concepts/review-and-the-gate/).
