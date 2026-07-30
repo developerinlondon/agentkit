@@ -105,7 +105,12 @@ async function devtoolsEndpoint(profile: string): Promise<string> {
       const [port] = readFileSync(portFile, 'utf-8').split('\n');
       if (/^\d+$/.test(port)) {
         try {
-          const targets = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json() as any[];
+          // The loop deadline only checks between iterations; an accepted-but-
+          // silent socket would otherwise pin a single fetch past all of it.
+          const reply = await fetch(`http://127.0.0.1:${port}/json/list`, {
+            signal: AbortSignal.timeout(1_000),
+          });
+          const targets = await reply.json() as any[];
           const page = targets.find((t) => t.type === 'page');
           if (page?.webSocketDebuggerUrl) return page.webSocketDebuggerUrl;
           lastFailure = `no page target on port ${port} yet`;
@@ -115,6 +120,8 @@ async function devtoolsEndpoint(profile: string): Promise<string> {
       } else {
         lastFailure = `port file present but holds ${JSON.stringify(port)}`;
       }
+    } else if (lastFailure !== 'port file never appeared') {
+      lastFailure = 'port file vanished after appearing — the browser exited';
     }
     await Bun.sleep(50);
   }
