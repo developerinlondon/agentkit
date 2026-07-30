@@ -160,6 +160,21 @@ curl -fsSL https://raw.githubusercontent.com/developerinlondon/agentkit/main/boo
 # with options:  … | bash -s -- --with product
 ```
 
+**It installs the newest release tag, not `main`.** The bootstrap script itself is
+read from `main` — it is one file and a truncated download is a syntax error
+rather than a partial install — but the kit it installs is the latest `vX.Y.Z`.
+It prints which release it resolved.
+
+`AGENTKIT_REF` overrides that:
+
+```bash
+AGENTKIT_REF=main    …   # bleeding edge, unreleased
+AGENTKIT_REF=v0.4.3  …   # pin an older release
+```
+
+An origin with no release tag stops the install rather than quietly falling back
+to `main`.
+
 Piped stdin is not a terminal, so the optional-group question is skipped —
 the curl path installs core only unless you pass `--with <group>`.
 

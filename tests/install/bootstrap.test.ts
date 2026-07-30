@@ -42,6 +42,15 @@ function sharedOrigin(): string {
   git(["init", "-q", "-b", "main", dir]);
   git(["-C", dir, "add", "-A"]);
   git(["-C", dir, "commit", "-q", "--no-verify", "-m", "synthetic origin"]);
+  // v0.4.9 then v0.4.10 then an untagged main commit. The two tags exist in that
+  // order specifically because a lexical sort ranks v0.4.9 above v0.4.10, so the
+  // default-resolution test fails if the ordering is not numeric.
+  for (const ref of ["v0.4.9", "v0.4.10", "main"]) {
+    writeFileSync(join(dir, "REF_MARKER"), `${ref}\n`);
+    git(["-C", dir, "add", "REF_MARKER"]);
+    git(["-C", dir, "commit", "-q", "--no-verify", "-m", `at ${ref}`]);
+    if (ref !== "main") git(["-C", dir, "tag", "-a", ref, "-m", ref]);
+  }
   originDir = dir;
   return dir;
 }
@@ -64,6 +73,10 @@ function runBootstrap(home: string, extraEnv: Record<string, string> = {}, extra
     encoding: "utf-8",
     timeout: timeoutMs,
   });
+}
+
+function installedRef(home: string): string {
+  return readFileSync(join(home, ".agentkit-src", "REF_MARKER"), "utf-8").trim();
 }
 
 describe("curl-pipe bootstrap", () => {
@@ -102,23 +115,111 @@ describe("curl-pipe bootstrap", () => {
     }
   }, timeoutMs);
 
-  test("re-run pulls new upstream commits into the source dir", () => {
+  // The old contract was "a re-run picks up new upstream commits". Under tagged
+  // installs that is exactly what must NOT happen: an unreleased commit on main
+  // reaching users by default is the thing tagging exists to prevent.
+  test("a new commit on main does not reach a default install, but a new tag does", () => {
     const home = mkdtempSync(join(tmpdir(), "agentkit-bootstrap-"));
 
     try {
       const origin = join(home, "origin");
-      git(["clone", "-q", "--no-local", sharedOrigin(), origin]);
+      git(["clone", "-q", "--no-local", "--mirror", sharedOrigin(), origin]);
 
       const first = runBootstrap(home, { AGENTKIT_REPO_URL: `file://${origin}` });
       expect(first.status, first.stderr + "\n" + first.stdout).toBe(0);
+      expect(installedRef(home)).toBe("v0.4.10");
 
-      writeFileSync(join(origin, "UPSTREAM_MARKER"), "new\n");
-      git(["-C", origin, "add", "UPSTREAM_MARKER"]);
-      git(["-C", origin, "commit", "-q", "--no-verify", "-m", "upstream marker"]);
+      const work = join(home, "work");
+      git(["clone", "-q", "--no-local", origin, work]);
+      writeFileSync(join(work, "UNRELEASED"), "not for users\n");
+      git(["-C", work, "add", "UNRELEASED"]);
+      git(["-C", work, "commit", "-q", "--no-verify", "-m", "unreleased"]);
+      git(["-C", work, "push", "-q", "origin", "main"]);
 
       const second = runBootstrap(home, { AGENTKIT_REPO_URL: `file://${origin}` });
       expect(second.status, second.stderr + "\n" + second.stdout).toBe(0);
-      expect(existsSync(join(home, ".agentkit-src", "UPSTREAM_MARKER"))).toBe(true);
+      expect(existsSync(join(home, ".agentkit-src", "UNRELEASED"))).toBe(false);
+      expect(installedRef(home)).toBe("v0.4.10");
+
+      git(["-C", work, "tag", "-a", "v0.4.11", "-m", "v0.4.11"]);
+      git(["-C", work, "push", "-q", "origin", "v0.4.11"]);
+
+      const third = runBootstrap(home, { AGENTKIT_REPO_URL: `file://${origin}` });
+      expect(third.status, third.stderr + "\n" + third.stdout).toBe(0);
+      expect(existsSync(join(home, ".agentkit-src", "UNRELEASED"))).toBe(true);
+      expect(third.stdout).toContain("v0.4.11");
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  }, timeoutMs);
+
+  test("the newest tag is chosen numerically, so v0.4.10 beats v0.4.9", () => {
+    const home = mkdtempSync(join(tmpdir(), "agentkit-bootstrap-"));
+
+    try {
+      const result = runBootstrap(home);
+      expect(result.status, result.stderr + "\n" + result.stdout).toBe(0);
+      expect(result.stdout).toContain("Latest release: v0.4.10");
+      expect(installedRef(home)).toBe("v0.4.10");
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  }, timeoutMs);
+
+  test("AGENTKIT_REF=main installs the bleeding edge", () => {
+    const home = mkdtempSync(join(tmpdir(), "agentkit-bootstrap-"));
+
+    try {
+      const result = runBootstrap(home, { AGENTKIT_REF: "main" });
+      expect(result.status, result.stderr + "\n" + result.stdout).toBe(0);
+      expect(installedRef(home)).toBe("main");
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  }, timeoutMs);
+
+  test("AGENTKIT_REF pins an older release", () => {
+    const home = mkdtempSync(join(tmpdir(), "agentkit-bootstrap-"));
+
+    try {
+      const result = runBootstrap(home, { AGENTKIT_REF: "v0.4.9" });
+      expect(result.status, result.stderr + "\n" + result.stdout).toBe(0);
+      expect(installedRef(home)).toBe("v0.4.9");
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  }, timeoutMs);
+
+  test("an existing clone is moved to the newly resolved ref", () => {
+    const home = mkdtempSync(join(tmpdir(), "agentkit-bootstrap-"));
+
+    try {
+      expect(runBootstrap(home, { AGENTKIT_REF: "v0.4.9" }).status).toBe(0);
+      expect(installedRef(home)).toBe("v0.4.9");
+
+      const second = runBootstrap(home);
+      expect(second.status, second.stderr + "\n" + second.stdout).toBe(0);
+      expect(second.stdout).toContain("Updating");
+      expect(installedRef(home)).toBe("v0.4.10");
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  }, timeoutMs);
+
+  // Falling back to the default branch here would make "installs are tagged"
+  // quietly untrue, so the absence of a tag has to stop the install.
+  test("an origin with no release tag fails loudly instead of installing main", () => {
+    const home = mkdtempSync(join(tmpdir(), "agentkit-bootstrap-"));
+
+    try {
+      const origin = join(home, "untagged");
+      git(["clone", "-q", "--no-local", "--mirror", sharedOrigin(), origin]);
+      for (const tag of ["v0.4.9", "v0.4.10"]) git(["-C", origin, "tag", "-d", tag]);
+
+      const result = runBootstrap(home, { AGENTKIT_REPO_URL: `file://${origin}` });
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain("no v<major>.<minor>.<patch> tag");
+      expect(existsSync(join(home, ".agentkit-src"))).toBe(false);
     } finally {
       rmSync(home, { recursive: true, force: true });
     }
