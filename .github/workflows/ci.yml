@@ -281,10 +281,17 @@ jobs:
     steps:
       - name: Check out the commit
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          # The dispatch path publishes from a branch, where the version can
+          # only come from git describe.
+          fetch-tags: true
 
       - name: Build and publish the marketing site
         env:
           AGENTKIT_SITE_TOKEN: ${{ secrets.AGENTKIT_SITE_TOKEN }}
+          # The checkout has no tags, so the build cannot ask git; the ref name
+          # is the tag on the only path that publishes from one.
+          AGENTKIT_SITE_VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
         run: |
           if [ -z "$AGENTKIT_SITE_TOKEN" ]; then
             echo 'site: AGENTKIT_SITE_TOKEN is not configured' >&2
