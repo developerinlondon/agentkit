@@ -26,11 +26,28 @@ curl -fsSL https://raw.githubusercontent.com/developerinlondon/agentkit/main/boo
 # with options:  … | bash -s -- --with product
 ```
 
+**This installs the newest release tag, not `main`.** The bootstrap script itself is read from
+`main` — it is a single file, so a truncated download is a syntax error rather than a partial
+install — but the kit it installs is the latest `vX.Y.Z`. It prints which release it resolved:
+
+```
+[bootstrap] Latest release: v0.4.5
+```
+
+`AGENTKIT_REF` overrides that:
+
+```sh
+AGENTKIT_REF=main   curl -fsSL …/bootstrap.sh | bash   # unreleased, bleeding edge
+AGENTKIT_REF=v0.4.3 curl -fsSL …/bootstrap.sh | bash   # pin an older release
+```
+
+An origin with no `vX.Y.Z` tag stops the install rather than quietly falling back to `main`.
+
 Piped stdin is not a terminal, so the optional-group question never fires on this path — it
 installs `core` only unless you pass `--with <group>`.
 
 If `~/.agentkit-src` already exists with local changes, bootstrap refuses rather than resetting
-over them.
+over them. When it is clean, a re-run moves it to the newly resolved ref.
 
   </TabItem>
   <TabItem label="Clone first">
