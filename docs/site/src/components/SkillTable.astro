@@ -1,0 +1,67 @@
+---
+import current from "../generated/kit-facts.json";
+import { factsFor, frozenByVersion } from "../lib/version-facts";
+
+const frozen = frozenByVersion(
+	import.meta.glob("../generated/frozen-facts/*.json", { eager: true }),
+);
+const { facts } = factsFor(Astro.url.pathname, current, frozen);
+
+interface Props {
+	group?: string;
+}
+
+const { group } = Astro.props;
+const skills = group ? facts.skills.filter((skill) => skill.group === group) : facts.skills;
+---
+
+<div class="ak-table">
+	<table>
+		<thead>
+			<tr>
+				<th>Skill</th>
+				{!group && <th>Group</th>}
+				<th>What it does</th>
+			</tr>
+		</thead>
+		<tbody>
+			{
+				skills.map((skill) => (
+					<tr>
+						<td>
+							<code>{skill.name}</code>
+						</td>
+						{
+							!group && (
+								<td>
+									<code>{skill.group}</code>
+									{skill.explicit && <span class="ak-optin">opt-in</span>}
+								</td>
+							)
+						}
+						<td>{skill.description}</td>
+					</tr>
+				))
+			}
+		</tbody>
+	</table>
+</div>
+
+<style>
+	.ak-table {
+		overflow-x: auto;
+	}
+	td code {
+		white-space: nowrap;
+	}
+	.ak-optin {
+		display: inline-block;
+		margin-inline-start: 0.4em;
+		padding: 0 0.35em;
+		border: 1px solid var(--caution);
+		color: var(--caution);
+		font-size: 0.68rem;
+		text-transform: uppercase;
+		letter-spacing: 0.06em;
+	}
+</style>

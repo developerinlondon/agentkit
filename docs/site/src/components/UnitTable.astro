@@ -1,0 +1,54 @@
+---
+import current from "../generated/kit-facts.json";
+import { factsFor, frozenByVersion } from "../lib/version-facts";
+
+const frozen = frozenByVersion(
+	import.meta.glob("../generated/frozen-facts/*.json", { eager: true }),
+);
+const { facts } = factsFor(Astro.url.pathname, current, frozen);
+
+const YES = "yes";
+const NO = "—";
+---
+
+<div class="ak-table">
+	<table>
+		<thead>
+			<tr>
+				<th>Unit</th>
+				<th>Claude hook</th>
+				<th>OpenCode plugin</th>
+				<th>Codex policy</th>
+				<th>Packaged in</th>
+			</tr>
+		</thead>
+		<tbody>
+			{
+				facts.units.map((unit) => (
+					<tr>
+						<td>
+							<code>{unit.name}-police</code>
+						</td>
+						<td>{unit.mechanisms.includes("hook") ? YES : NO}</td>
+						<td>{unit.mechanisms.includes("plugin") ? YES : NO}</td>
+						<td>{unit.mechanisms.includes("codexPolicy") ? YES : NO}</td>
+						<td>
+							{unit.claudePlugins.length === 0
+								? NO
+								: unit.claudePlugins.map((plugin) => <code>{plugin}</code>)}
+						</td>
+					</tr>
+				))
+			}
+		</tbody>
+	</table>
+</div>
+
+<style>
+	.ak-table {
+		overflow-x: auto;
+	}
+	td code {
+		white-space: nowrap;
+	}
+</style>

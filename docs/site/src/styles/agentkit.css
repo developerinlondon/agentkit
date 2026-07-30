@@ -1,0 +1,190 @@
+/* Ports the agentkit.sbs terminal design system onto Starlight's own custom
+   properties. Token names and values mirror agentkit-sbs/src/theme.css so the
+   marketing site and the docs cannot drift apart visually.
+
+   Starlight ships its rules inside @layer starlight.*; this file is unlayered,
+   so every rule here outranks its layered equivalent whatever the specificity.
+   Starlight is dark by default and pins light with :root[data-theme='light'],
+   which is the same attribute the marketing site's toggle writes. */
+
+:root {
+	--ground: #08090a;
+	--panel: #131418;
+	--sunk: #050607;
+	--ink: #e8e8e6;
+	--ink-dim: #c6c8c4;
+	--muted: #8f939c;
+	--rule: #272a31;
+	--rule-lo: #1b1d22;
+	--grid-dot: #17181d;
+	--caution: #f5a742;
+	--signal: #79a8e7;
+	--deny: #e57368;
+	--ok: #7dc98f;
+	--fill: #f5a742;
+	--fill-ink: #211303;
+}
+
+:root[data-theme="light"] {
+	--ground: #f6f5f1;
+	--panel: #ffffff;
+	--sunk: #edece7;
+	--ink: #1a1c20;
+	--ink-dim: #34373d;
+	--muted: #62666e;
+	--rule: #d5d2c9;
+	--rule-lo: #e3e1da;
+	--grid-dot: #e0ddd4;
+	--caution: #8a5a06;
+	--signal: #2f5fa3;
+	--deny: #b23f31;
+	--ok: #2e7d43;
+	--fill: #dd9a2a;
+	--fill-ink: #241505;
+}
+
+:root {
+	--ak-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+		"Liberation Mono", monospace;
+
+	--sl-font: var(--ak-mono);
+	--sl-font-mono: var(--ak-mono);
+	--sl-content-width: 50rem;
+	--sl-line-height: 1.7;
+	--sl-text-code: 0.875rem;
+
+	--sl-color-white: var(--ink);
+	--sl-color-black: var(--ground);
+	--sl-color-text: var(--ink-dim);
+	--sl-color-text-accent: var(--caution);
+	--sl-color-text-invert: var(--fill-ink);
+
+	--sl-color-accent-low: var(--rule-lo);
+	--sl-color-accent: var(--caution);
+	--sl-color-accent-high: var(--fill);
+	--sl-color-bg-accent: var(--fill);
+
+	--sl-color-bg: var(--ground);
+	--sl-color-bg-nav: var(--panel);
+	--sl-color-bg-sidebar: transparent;
+	--sl-color-bg-inline-code: var(--sunk);
+	--sl-color-inline-code-text: var(--ink);
+
+	--sl-color-hairline: var(--rule);
+	--sl-color-hairline-light: var(--rule);
+	--sl-color-hairline-shade: var(--rule-lo);
+
+	--sl-color-gray-1: var(--ink);
+	--sl-color-gray-2: var(--ink-dim);
+	--sl-color-gray-3: var(--muted);
+	--sl-color-gray-4: var(--muted);
+	--sl-color-gray-5: var(--rule);
+	--sl-color-gray-6: var(--panel);
+	--sl-color-gray-7: var(--sunk);
+
+	--sl-color-red: var(--deny);
+	--sl-color-orange: var(--caution);
+	--sl-color-green: var(--ok);
+	--sl-color-blue: var(--signal);
+	--sl-color-purple: var(--signal);
+}
+
+/* The kit refuses; the design shouldn't soften that with rounded corners. */
+*,
+*::before,
+*::after {
+	border-radius: 0;
+}
+
+body {
+	background-color: var(--ground);
+	background-image: radial-gradient(var(--grid-dot) 1px, transparent 0);
+	background-size: 20px 20px;
+	font-size: 15px;
+	-webkit-font-smoothing: antialiased;
+}
+
+/* The header floats over a scrolling dot grid, so it needs its own ground
+   rather than the translucent default. */
+.header {
+	background: var(--panel);
+	border-bottom: 1px solid var(--rule);
+}
+
+.sidebar-pane {
+	background: transparent;
+	border-inline-end: 1px solid var(--rule);
+}
+
+.site-title {
+	font-weight: 600;
+	letter-spacing: -0.01em;
+}
+
+/* Uppercase micro-labels are the site's section marker. */
+.sidebar-content summary,
+.sidebar-content > ul > li > details > summary .group-label span,
+.sidebar-content > ul > li > span.large {
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+	font-size: 0.72rem;
+	color: var(--muted);
+}
+
+.sidebar-content a {
+	border-inline-start: 1px solid var(--rule-lo);
+}
+
+.sidebar-content a[aria-current="page"] {
+	background: var(--sunk);
+	color: var(--ink);
+	border-inline-start: 1px solid var(--fill);
+	font-weight: 600;
+}
+
+h1,
+h2,
+h3,
+h4 {
+	letter-spacing: -0.015em;
+}
+
+.content-panel + .content-panel {
+	border-top: 1px solid var(--rule);
+}
+
+a:not(.site-title):not([class]) {
+	text-decoration-thickness: 1px;
+	text-underline-offset: 0.2em;
+}
+
+blockquote {
+	border-inline-start: 2px solid var(--fill);
+}
+
+table {
+	font-size: 0.875rem;
+}
+
+th {
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+	font-size: 0.72rem;
+	color: var(--muted);
+	font-weight: 600;
+}
+
+td,
+th {
+	border: 1px solid var(--rule-lo);
+}
+
+.expressive-code .frame {
+	border: 1px solid var(--rule);
+}
+
+kbd {
+	background: var(--sunk);
+	border: 1px solid var(--rule);
+	font-family: var(--ak-mono);
+}
