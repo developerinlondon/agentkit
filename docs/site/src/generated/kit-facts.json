@@ -213,6 +213,11 @@
       "explicit": false
     },
     {
+      "id": "memory",
+      "description": "Persistent brain vault with a learning loop: reflect, meditate, ruminate",
+      "explicit": false
+    },
+    {
       "id": "product",
       "description": "Product-model skills: evidence-backed briefs and product review",
       "explicit": false
@@ -280,6 +285,12 @@
       "description": "Raises well-structured GitLab issues with root cause analysis, proposed solutions, and correct assignees based on git history. Adapts to any GitLab instance and project conventions automatically. Triggers: raising issues, reporting bugs, creating tickets, filing defects, feature requests, refactoring proposals."
     },
     {
+      "name": "meditate",
+      "kit": "memory",
+      "explicit": false,
+      "description": "Audit and evolve the project's brain vault — prune stale or low-value notes, surface unstated principles hiding across entries, and cross-check skills against the vault for missed structural enforcement. Run periodically, after the vault has accumulated content. Triggers: \"meditate\", \"audit the brain\"."
+    },
+    {
       "name": "product-intelligence",
       "kit": "product",
       "explicit": false,
@@ -304,10 +315,22 @@
       "description": "Publish content as a live web page with a stable URL (AgentKit Pages, self-hosted artifacts). Use AUTOMATICALLY whenever the user asks to publish/share/host a page, make an artifact/report/dashboard/slide deck/design doc viewable in a browser, or when rich formatted output would clearly beat chat text. Also triggers on \"make a page\", \"put this on a page\", \"publish this\", \"as a deck/slides\", \"share a link\". Renders markdown or HTML through themes and returns the live URL."
     },
     {
+      "name": "reflect",
+      "kit": "memory",
+      "explicit": false,
+      "description": "Persist learnings from the current session into the project's brain vault — after mistakes, corrections, or notable codebase discoveries, or when wrapping up. Structural enforcement beats notes: route recurring lessons into hooks, lint rules, or skill edits instead. Triggers: \"reflect\", \"remember this\"."
+    },
+    {
       "name": "resource-safe-execution",
       "kit": "core",
       "explicit": false,
       "description": "Apply Linux-only deterministic systemd cgroup limits with bounded-run to resource-intensive developer commands. Use for dependency installation or upgrades, compilers, typechecks, builds, test suites, linters, Playwright or browser work, code generation, Cargo, Go, and pytest, especially on shared or production-adjacent Linux hosts where an unbounded process could disrupt Kubernetes, ingress, tunnels, or other services."
+    },
+    {
+      "name": "ruminate",
+      "kit": "memory",
+      "explicit": false,
+      "description": "Mine past Claude Code conversations for corrections, preferences, and knowledge that never reached the brain vault. Complements reflect (current session) and meditate (vault audit). Good for bootstrapping a vault from existing history. Triggers: \"ruminate\", \"mine my history\"."
     },
     {
       "name": "test-driven-development",

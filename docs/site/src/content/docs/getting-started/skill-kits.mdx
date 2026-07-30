@@ -15,7 +15,9 @@ The kits declared today, read out of the manifest at build time:
 
 <KitTable />
 
-`core` always installs and cannot be deselected. `product` is `product-intelligence` and
+`core` always installs and cannot be deselected. `memory` is the brain-vault learning loop —
+`reflect`, `meditate` and `ruminate`, plus two hooks that inject the vault index at session start
+and keep it rebuilt after writes. `product` is `product-intelligence` and
 `product-review`. The `adversarial-review` kit is named after its centrepiece skill of the same
 name, and adds the merge gate's hooks, tools and the `evidence-gated-review` instruction file. `advisory-review` carries no skill at all — it gates
 one instruction file, `review-discipline.md`, which asks for a non-authoring reviewer pass before a
@@ -27,12 +29,28 @@ both, or neither. `advisory-review` asks; `adversarial-review` refuses.
 
 ```sh
 ./agentkit/install.sh --global                        # core only, or last time's answer
+./agentkit/install.sh --global --with memory          # core + the memory kit
 ./agentkit/install.sh --global --with product         # core + the product kit
 ./agentkit/install.sh --global --all                  # every non-explicit kit
 ./agentkit/install.sh --global --with adversarial-review     # the only way to get the gate
 ./agentkit/install.sh --global --with advisory-review   # the advisory reviewer-pass instruction
 ./agentkit/install.sh --global --with advisory-review --with adversarial-review   # both review modes
 ```
+
+## One URL per kit
+
+Every non-explicit opt-in kit also has a direct install shim under `kits/<id>` — one copy-paste
+line that runs the normal bootstrap with that kit preselected, so a kit's README can advertise
+itself without explaining the installer:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/developerinlondon/agentkit/main/kits/memory | bash
+curl -fsSL https://raw.githubusercontent.com/developerinlondon/agentkit/main/kits/product | bash
+```
+
+The shims go through `bootstrap.sh` and `install.sh` unchanged, so the recorded kit selection and
+consent semantics are identical to typing `--with <id>` yourself. Explicit kits deliberately have
+no shim — their consent story is a literal, typed `--with`.
 
 ## Explicit kits are consent-gated
 

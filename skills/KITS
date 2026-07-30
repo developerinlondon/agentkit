@@ -15,6 +15,7 @@
 # Adding a kit is a `kit` line plus its membership lines — nothing else.
 
 kit core Enforcement, planning, and workflow skills for everyday use
+kit memory Persistent brain vault with a learning loop: reflect, meditate, ruminate
 kit product Product-model skills: evidence-backed briefs and product review
 kit adversarial-review Adversarial review: independent refutation lane + evidence records + hard merge gate (explicit opt-in)
 kit advisory-review Advisory review: one non-authoring reviewer pass per substantive change, as an always-loaded instruction (explicit opt-in)
@@ -24,3 +25,6 @@ explicit advisory-review
 product-intelligence product
 product-review product
 adversarial-review adversarial-review
+reflect memory
+meditate memory
+ruminate memory

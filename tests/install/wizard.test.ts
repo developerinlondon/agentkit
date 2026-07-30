@@ -12,10 +12,16 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { readSkillKits } from '../../scripts/skill-kits';
 
 const repoRoot = dirname(dirname(import.meta.dir));
 const installScript = join(repoRoot, 'install.sh');
 const globalInstallTimeoutMs = 60_000;
+// One answer per prompt the wizard will actually ask, straight from the
+// manifest: under the `script` driver the keystrokes arrive once on stdin, so
+// a fixed count would silently default every kit added after it to No.
+const promptedKitCount = readSkillKits(repoRoot).kits
+  .filter((kit) => kit.id !== 'core' && !kit.explicit).length;
 // The one string a scripted run must never contain. Every non-TTY assertion
 // greps the whole transcript for it, so it has to be the literal the installer
 // prints rather than a paraphrase of it.
@@ -306,7 +312,7 @@ describe('installer skill-kit wizard', () => {
     const home = mkdtempSync(join(tmpdir(), 'agentkit-wizard-'));
 
     try {
-      const first = installOnTty(home, 'y\n');
+      const first = installOnTty(home, 'y\n'.repeat(promptedKitCount));
       expect(first.status, first.stderr).toBe(0);
 
       // The description comes from the manifest, so a kit added there shows up
@@ -316,19 +322,33 @@ describe('installer skill-kit wizard', () => {
         '[kits]   product: Product-model skills: evidence-backed briefs and product review',
       );
       expect(first.stdout).toContain('[kits]   Install product? [y/N]');
-      expect(first.stdout).toContain('Skill kits:    core product');
+      expect(first.stdout).toContain(
+        '[kits]   memory: Persistent brain vault with a learning loop: reflect, meditate, ruminate',
+      );
+      expect(first.stdout).toContain('[kits]   Install memory? [y/N]');
+      expect(first.stdout).toContain('Skill kits:    core memory product');
 
-      for (const name of ['product-intelligence', 'product-review']) {
+      for (
+        const name of [
+          'product-intelligence',
+          'product-review',
+          'reflect',
+          'meditate',
+          'ruminate',
+        ]
+      ) {
         expect(existsSync(join(canonSkill(home, name), 'SKILL.md')), `${name} installed`).toBe(true);
       }
-      expect(readFileSync(join(home, '.agentkit', 'kits'), 'utf-8')).toContain('product');
+      const persisted = readFileSync(join(home, '.agentkit', 'kits'), 'utf-8');
+      expect(persisted).toContain('product');
+      expect(persisted).toContain('memory');
 
       // The answer was persisted, so the upgrade must run straight through — the
       // whole point of asking once rather than every time.
       const upgrade = installOnTty(home, '');
       expect(upgrade.status, upgrade.stderr).toBe(0);
       expect(upgrade.stdout).not.toContain(promptMarker);
-      expect(upgrade.stdout).toContain('Skill kits:    core product');
+      expect(upgrade.stdout).toContain('Skill kits:    core memory product');
     } finally {
       rmSync(home, { force: true, recursive: true });
     }
@@ -380,7 +400,7 @@ describe('installer skill-kit wizard', () => {
     try {
       // A bare newline is the answer someone gives by reflex; it must cost them
       // nothing relative to the install they would have got before the prompt.
-      const answered = installOnTty(declined, '\n');
+      const answered = installOnTty(declined, '\n'.repeat(promptedKitCount));
       expect(answered.status, answered.stderr).toBe(0);
       expect(answered.stdout).toContain(promptMarker);
 

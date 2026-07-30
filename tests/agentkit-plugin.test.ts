@@ -34,6 +34,7 @@ const filesUnder = (dir: string, prefix = ''): string[] =>
 const repoRoot = join(import.meta.dir, '..');
 const pluginDir = join(repoRoot, 'plugins-cc', 'agentkit');
 const reviewPluginDir = join(repoRoot, 'plugins-cc', 'agentkit-adversarial-review');
+const memoryPluginDir = join(repoRoot, 'plugins-cc', 'agentkit-memory');
 const openCodePluginDir = join(repoRoot, 'plugins');
 
 type PluginServer = (input: PluginInput) => Promise<unknown>;
@@ -104,6 +105,7 @@ const POST_TOOL_USE_HOOKS = ['format-police.sh', 'coding-police.sh', 'comment-po
 const ALL_POLICE_HOOKS = [...PRE_TOOL_USE_HOOKS, ...POST_TOOL_USE_HOOKS];
 // The merge gate is consent-gated: it ships in agentkit-adversarial-review, never in core.
 const REVIEW_HOOKS = ['fail-closed-hook.sh', 'review-police.sh'];
+const MEMORY_HOOKS = ['brain-index.sh', 'brain-inject.sh'];
 
 function readJson(...parts: string[]): any {
   return JSON.parse(readFileSync(join(pluginDir, ...parts), 'utf-8'));
@@ -113,14 +115,24 @@ function readReviewJson(...parts: string[]): any {
   return JSON.parse(readFileSync(join(reviewPluginDir, ...parts), 'utf-8'));
 }
 
-function wiringFor(settings: any, plugin: 'core' | 'adversarial-review'): any {
+function readMemoryJson(...parts: string[]): any {
+  return JSON.parse(readFileSync(join(memoryPluginDir, ...parts), 'utf-8'));
+}
+
+function owningPlugin(command: string): 'core' | 'adversarial-review' | 'memory' {
+  if (command.includes('review-police.sh')) return 'adversarial-review';
+  if (MEMORY_HOOKS.some((script) => command.includes(script))) return 'memory';
+  return 'core';
+}
+
+function wiringFor(settings: any, plugin: 'core' | 'adversarial-review' | 'memory'): any {
   const hooks: Record<string, unknown[]> = {};
   for (const [event, kits] of Object.entries<any[]>(settings.hooks)) {
     const kept = kits
       .map((kit) => ({
         ...kit,
-        hooks: kit.hooks.filter((entry: { command: string }) =>
-          entry.command.includes('review-police.sh') === (plugin === 'adversarial-review')
+        hooks: kit.hooks.filter(
+          (entry: { command: string }) => owningPlugin(entry.command) === plugin,
         ),
       }))
       .filter((kit) => kit.hooks.length > 0);
@@ -176,10 +188,11 @@ describe('agentkit plugin hooks', () => {
     const source = readFileSync(join(repoRoot, 'hooks', 'claude', 'settings.json'), 'utf-8');
     const expected = JSON.parse(source.replaceAll('$HOME/.claude', '${CLAUDE_PLUGIN_ROOT}'));
 
-    // settings.json stays the whole wiring; the two plugins split it, and every
+    // settings.json stays the whole wiring; the plugins split it, and every
     // entry has to land in exactly one of them.
     expect(readJson('hooks', 'hooks.json')).toEqual(wiringFor(expected, 'core'));
     expect(readReviewJson('hooks', 'hooks.json')).toEqual(wiringFor(expected, 'adversarial-review'));
+    expect(readMemoryJson('hooks', 'hooks.json')).toEqual(wiringFor(expected, 'memory'));
   });
 
   test('every referenced police script exists and is executable', () => {
@@ -213,12 +226,15 @@ describe('agentkit plugin hooks', () => {
   test('keeps every source hook byte-identical in the plugin mirror', () => {
     const sourceHooks = join(repoRoot, 'hooks', 'claude');
     const sourceScripts = readdirSync(sourceHooks).filter((name) => name.endsWith('.sh')).sort();
-    const coreScripts = sourceScripts.filter((name) => !REVIEW_HOOKS.includes(name));
+    const coreScripts = sourceScripts.filter(
+      (name) => !REVIEW_HOOKS.includes(name) && !MEMORY_HOOKS.includes(name),
+    );
     expect(coreScripts).not.toEqual(sourceScripts);
 
     for (const [dir, scripts] of [
       [pluginDir, coreScripts],
       [reviewPluginDir, [...REVIEW_HOOKS].sort()],
+      [memoryPluginDir, [...MEMORY_HOOKS].sort()],
     ] as [string, string[]][]) {
       const pluginScripts = readdirSync(join(dir, 'hooks'))
         .filter((name) => name.endsWith('.sh'))

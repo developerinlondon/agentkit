@@ -5,6 +5,10 @@ top and ships with the next tag.
 
 ## [Unreleased]
 
+- feat(memory): opt-in **memory** kit — a per-project `brain/` vault the agent
+  reads at session start, with `reflect`/`meditate`/`ruminate` skills that
+  route recurring lessons into hooks and rules before notes, two vault-plumbing
+  hooks, and one-line per-kit install shims under `kits/<id>` (#227)
 - fix(site): the advertised version derives from the release tag at build time;
   the committed copy that went five releases stale is gone (#220)
 - feat(install): `~/.agentkit/version` stamp, and a session-start notice when a

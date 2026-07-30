@@ -21,30 +21,41 @@ fi
 # Hooks: copy scripts only — hooks.json (the plugin's wiring) is plugin-owned.
 # The review gate scripts ship in the adversarial-review kit's plugin, not core.
 REVIEW_PLUGIN_DIR="$REPO_DIR/plugins-cc/$(kit_plugin_id adversarial-review)"
+MEMORY_PLUGIN_DIR="$REPO_DIR/plugins-cc/$(kit_plugin_id memory)"
 review_hook_script() {
 	case "$(basename "$1")" in
 	review-police.sh | fail-closed-hook.sh) return 0 ;;
 	esac
 	return 1
 }
-mkdir -p "$REVIEW_PLUGIN_DIR/hooks" "$REVIEW_PLUGIN_DIR/tools"
+memory_hook_script() {
+	case "$(basename "$1")" in
+	brain-inject.sh | brain-index.sh) return 0 ;;
+	esac
+	return 1
+}
+mkdir -p "$REVIEW_PLUGIN_DIR/hooks" "$REVIEW_PLUGIN_DIR/tools" "$MEMORY_PLUGIN_DIR/hooks"
 for hook in "$REPO_DIR"/hooks/claude/*.sh; do
 	if review_hook_script "$hook"; then
 		cp "$hook" "$REVIEW_PLUGIN_DIR/hooks/$(basename "$hook")"
+		rm -f "$PLUGIN_DIR/hooks/$(basename "$hook")"
+	elif memory_hook_script "$hook"; then
+		cp "$hook" "$MEMORY_PLUGIN_DIR/hooks/$(basename "$hook")"
 		rm -f "$PLUGIN_DIR/hooks/$(basename "$hook")"
 	else
 		cp "$hook" "$PLUGIN_DIR/hooks/$(basename "$hook")"
 	fi
 done
-echo "[sync] hooks/claude/*.sh -> plugins-cc/{agentkit,agentkit-adversarial-review}/hooks/"
+echo "[sync] hooks/claude/*.sh -> plugins-cc/{agentkit,agentkit-adversarial-review,agentkit-memory}/hooks/"
 
 # Shared helpers (dual Claude/Grok payload parsing). Must live next to the
 # scripts so `source "$(dirname …)/lib/hook-input.sh"` resolves.
 if [[ -d "$REPO_DIR/hooks/claude/lib" ]]; then
-	mkdir -p "$PLUGIN_DIR/hooks/lib" "$REVIEW_PLUGIN_DIR/hooks/lib"
+	mkdir -p "$PLUGIN_DIR/hooks/lib" "$REVIEW_PLUGIN_DIR/hooks/lib" "$MEMORY_PLUGIN_DIR/hooks/lib"
 	cp -a "$REPO_DIR"/hooks/claude/lib/. "$PLUGIN_DIR/hooks/lib/"
 	cp -a "$REPO_DIR"/hooks/claude/lib/. "$REVIEW_PLUGIN_DIR/hooks/lib/"
-	echo "[sync] hooks/claude/lib -> core + review plugin hooks/lib/"
+	cp -a "$REPO_DIR"/hooks/claude/lib/. "$MEMORY_PLUGIN_DIR/hooks/lib/"
+	echo "[sync] hooks/claude/lib -> core + review + memory plugin hooks/lib/"
 fi
 
 # Skills: one plugin per declared kit, membership straight from the manifest.

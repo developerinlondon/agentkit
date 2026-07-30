@@ -30,6 +30,12 @@
       "version": "0.1.0"
     },
     {
+      "name": "agentkit-memory",
+      "source": "./plugins-cc/agentkit-memory",
+      "description": "Persistent brain vault with a learning loop: reflect, meditate, ruminate",
+      "version": "0.3.1"
+    },
+    {
       "name": "agentkit-product",
       "source": "./plugins-cc/agentkit-product",
       "description": "Product-model skills: evidence-backed briefs and product review",
