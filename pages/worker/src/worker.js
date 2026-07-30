@@ -214,6 +214,29 @@ async function handleAssetWrite(request, env, path) {
   return Response.json({ ok: true, path, url: `https://agentkit.sbs/${path}` });
 }
 
+// The deploy can only prune what it can enumerate. Scoped to the docs subtree and
+// SITE_TOKEN, same as the write path: a caller that cannot write cannot list.
+async function handleAssetList(request, env, rawPrefix) {
+  if (!env.SITE_TOKEN || bearerToken(request) !== env.SITE_TOKEN) {
+    return new Response("unauthorized\n", { status: 401 });
+  }
+  const bare = rawPrefix.replace(/\/+$/, "");
+  if (!isDocsPath(bare) || !ASSET_RE.test(bare)) {
+    return new Response("invalid prefix\n", { status: 400 });
+  }
+  // Restored explicitly: the router strips the trailing slash, and a prefix of
+  // `docs` would also match a sibling keyspace such as `docsy/`.
+  const prefix = `${bare}/`;
+  const keys = [];
+  let cursor;
+  do {
+    const page = await env.PAGES.list({ prefix: `${SITE_PREFIX}${prefix}`, cursor });
+    for (const object of page.objects) keys.push(object.key.slice(SITE_PREFIX.length));
+    cursor = page.truncated ? page.cursor : undefined;
+  } while (cursor);
+  return Response.json({ ok: true, prefix, keys: keys.sort() });
+}
+
 async function handleAssetDelete(request, env, path) {
   if (!env.SITE_TOKEN || bearerToken(request) !== env.SITE_TOKEN) {
     return new Response("unauthorized\n", { status: 401 });
@@ -240,6 +263,9 @@ export default {
     const host = url.hostname;
     const path = url.pathname.replace(/\/+$/, "").replace(/^\/+/, "");
 
+    if (request.method === "GET" && path.startsWith("api/site-list/")) {
+      return handleAssetList(request, env, path.slice("api/site-list/".length));
+    }
     if (request.method === "PUT" && path.startsWith("api/site/")) {
       return handleAssetWrite(request, env, path.slice("api/site/".length));
     }
