@@ -1,6 +1,11 @@
 # pkg-police.rules — Codex CLI exec policy
 # Blocks: npm, npx, yarn, pnpm commands — enforces bun as package manager
 # Equivalent to: plugins/pkg-police.ts (OpenCode), hooks/claude/pkg-police.sh (Claude Code)
+#
+# Codex exec policies are static and cannot read the agentkit config or look at
+# a lockfile, so this file enforces bun unconditionally. The configurable
+# manager (auto-detection, an explicit manager, off) lives in the OpenCode
+# plugin and the Claude Code hook only.
 
 # ── PACKAGE MANAGER ENFORCEMENT ─────────────────────────────────────────────
 # All JavaScript/TypeScript package management must use bun.

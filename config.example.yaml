@@ -67,10 +67,17 @@ coding-police:
   #     - migrations/
 
 pkg-police:
-  # Set to false to disable bun enforcement (allows npm/npx/yarn/pnpm).
-  enabled: true
-  # Example:
-  #   enabled: false
+  # Which JavaScript/TypeScript package manager to enforce.
+  #   auto  — infer it from the repository's lockfile (the default). bun.lock
+  #           or bun.lockb → bun, package-lock.json → npm, pnpm-lock.yaml →
+  #           pnpm, yarn.lock → yarn. No lockfile, or several that disagree,
+  #           means there is no basis to judge and nothing is blocked.
+  #   bun | npm | pnpm | yarn — enforce that one whatever the lockfile says.
+  #   off   — disable the unit entirely.
+  # Commands belonging to any other manager are blocked, with the equivalent
+  # command in the enforced one. AGENTKIT_ALLOW_PKG=1 overrides a single
+  # command regardless of this setting.
+  manager: auto
 
 version-police:
   # Set to false to disable stale-major dependency-pin blocking.
