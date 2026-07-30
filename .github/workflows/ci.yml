@@ -141,7 +141,10 @@ jobs:
     needs: pick-runners
     if: github.event_name != 'pull_request'
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    # Generous on purpose: the slowest pool machine with cold caches once blew
+    # a 30-minute ceiling on a tag push, and a timed-out full suite cancels the
+    # whole release. A slow release beats a dead one.
+    timeout-minutes: 50
     strategy:
       fail-fast: false
       matrix:
