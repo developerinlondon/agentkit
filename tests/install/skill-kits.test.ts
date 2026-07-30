@@ -239,6 +239,24 @@ describe('skill kit selection', () => {
     }
   }, globalInstallTimeoutMs);
 
+  // The kits file is the one the header tells users to keep editing, so its
+  // reader needs the same unterminated-last-line guard as the carry-over.
+  test('a kits file without a trailing newline still selects its last kit', () => {
+    const home = mkdtempSync(join(tmpdir(), 'agentkit-kits-'));
+
+    try {
+      mkdirSync(join(home, '.agentkit'), { recursive: true });
+      writeFileSync(join(home, '.agentkit', 'kits'), 'adversarial-review');
+
+      const upgrade = install(home);
+      expect(upgrade.status, upgrade.stderr).toBe(0);
+      expect(upgrade.stdout).toContain('Skill kits:    core adversarial-review');
+      expect(existsSync(join(home, '.agentkit', 'tools', 'review-gate'))).toBe(true);
+    } finally {
+      rmSync(home, { force: true, recursive: true });
+    }
+  }, globalInstallTimeoutMs * 2);
+
   test('a later bare install keeps the kits chosen once', () => {
     const home = mkdtempSync(join(tmpdir(), 'agentkit-kits-'));
 
