@@ -1,8 +1,19 @@
+import { execFileSync } from "node:child_process";
 import starlight from "@astrojs/starlight";
 import { defineConfig } from "astro/config";
+import { currentVersionLabel } from "./src/lib/release";
 import mermaid from "astro-mermaid";
 import starlightVersions from "starlight-versions";
 import starlightLinksValidator from "starlight-links-validator";
+
+const versionLabel = currentVersionLabel({
+	env: process.env.AGENTKIT_DOCS_VERSION,
+	describe: () =>
+		execFileSync("git", ["describe", "--tags", "--abbrev=0"], {
+			encoding: "utf8",
+			stdio: ["ignore", "pipe", "ignore"],
+		}),
+});
 
 export default defineConfig({
 	site: "https://agentkit.sbs",
@@ -22,7 +33,10 @@ export default defineConfig({
 			plugins: [
 				// Starlight does not check internal links itself, so before this a
 				// renamed page left dangling links that shipped silently.
-				starlightVersions({ versions: [{ slug: "0.4", label: "v0.4" }] }),
+				starlightVersions({
+					current: { label: versionLabel },
+					versions: [{ slug: "0.4", label: "v0.4" }],
+				}),
 				starlightLinksValidator({ errorOnRelativeLinks: false }),
 			],
 			sidebar: [
