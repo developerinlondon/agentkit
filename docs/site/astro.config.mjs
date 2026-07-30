@@ -1,6 +1,7 @@
 import starlight from "@astrojs/starlight";
 import { defineConfig } from "astro/config";
 import mermaid from "astro-mermaid";
+import starlightVersions from "starlight-versions";
 import starlightLinksValidator from "starlight-links-validator";
 
 // The hand-built pages these replaced are already indexed and linked. Each keeps
@@ -42,6 +43,7 @@ export default defineConfig({
 			plugins: [
 				// Starlight does not check internal links itself, so before this a
 				// renamed page left dangling links that shipped silently.
+				starlightVersions({ versions: [{ slug: "0.4", label: "v0.4" }] }),
 				starlightLinksValidator({ errorOnRelativeLinks: false }),
 			],
 			sidebar: [

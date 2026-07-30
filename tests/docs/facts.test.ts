@@ -435,3 +435,31 @@ describe('generated data reaches a page only through a component', () => {
     expect(offenders).toEqual([]);
   });
 });
+
+describe('the content tree holds only content', () => {
+  // The version archiver walks this directory and parses every file it finds as
+  // MDX — it does not consult git. A stray non-markdown file therefore aborts
+  // version creation with an error that names no file, and a gitignored one is
+  // invisible to `git status` while doing it. That cost hours: OMC had written
+  // its session state to `src/content/docs/.omc/state/*.jsonl` because an agent
+  // ran with that directory as its cwd.
+  test('no file under src/content/docs is anything but markdown', () => {
+    const root = join(import.meta.dir, '..', '..', 'docs', 'site', 'src', 'content', 'docs');
+    const strays: string[] = [];
+
+    const walk = (dir: string): void => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const path = join(dir, entry.name);
+        if (entry.isDirectory()) {
+          walk(path);
+          continue;
+        }
+        if (!/\.mdx?$/.test(entry.name)) strays.push(relative(root, path));
+      }
+    };
+
+    walk(root);
+
+    expect(strays).toEqual([]);
+  });
+});
