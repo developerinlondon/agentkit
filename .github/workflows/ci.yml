@@ -89,6 +89,11 @@ jobs:
 
       - name: Install pinned Moon and Bun toolchains
         uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
+        env:
+          # proto resolves tool versions against the GitHub API; the self-hosted
+          # Mac shares a datacenter IP whose anonymous quota two runs can drain,
+          # and an empty version list fails the install with "0.0.0".
+          GITHUB_TOKEN: ${{ github.token }}
         with:
           auto-install: true
 
@@ -147,6 +152,11 @@ jobs:
 
       - name: Install pinned Moon and Bun toolchains
         uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
+        env:
+          # proto resolves tool versions against the GitHub API; the self-hosted
+          # Mac shares a datacenter IP whose anonymous quota two runs can drain,
+          # and an empty version list fails the install with "0.0.0".
+          GITHUB_TOKEN: ${{ github.token }}
         with:
           auto-install: true
 
