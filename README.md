@@ -90,6 +90,8 @@ and OpenCode `resource-police` remain the recursive command-analysis paths.
 | **coding-discipline.md**        | 11-rule behavioral contract for code work (think first, simplicity, surgical changes, fail loud, …) |
 | **collaboration-visibility.md** | Progress updates, checkpoint summaries, and compact ASCII diagrams for multi-step work              |
 | **resource-safety.md**          | Mandatory bounded execution and live-connectivity preservation rules                                |
+| **review-discipline.md**        | Advisory review lane: one non-authoring reviewer pass for substantive changes, merge on approval    |
+| **evidence-gated-review.md**    | Evidence records + merge-gate doctrine (ships only with the explicit `review` group)                |
 
 ### Claude Code plugins (marketplace)
 
@@ -130,7 +132,7 @@ claude plugin install agentkit-review
 
 **Not in the plugin: the always-on rules and instructions.** Claude Code plugins cannot inject
 always-on global context, so the glob-loaded `rules/` and the `instructions/*.md` global prompts
-(anti-glaze, coding-discipline, collaboration-visibility, resource-safety) are **out of scope for the plugin** and
+(anti-glaze, coding-discipline, collaboration-visibility, resource-safety, review-discipline) are **out of scope for the plugin** and
 are still wired into `~/.claude/CLAUDE.md`, Codex, and OpenCode by `install.sh`. Their
 **enforcement**, however, _is_ bundled: the police hooks (`git-police`, `mr-police`,
 `format-police`, `coding-police`, `kubectl-police`, `pkg-police`, `resource-police`) run as
