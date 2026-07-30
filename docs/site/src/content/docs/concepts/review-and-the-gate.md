@@ -8,12 +8,12 @@ sidebar:
 Two different things share the word "review", and confusing them is the most common way to
 mis-describe this kit.
 
-|             | Review discipline                          | The merge gate                             |
-| ----------- | ------------------------------------------ | ------------------------------------------ |
-| Ships as    | `review-discipline.md`, a core instruction | `strict-review` skill group                |
-| Installed   | always                                     | only on `--with strict-review`             |
-| Enforcement | none — advisory                            | `review-police` refuses the merge command  |
-| Requires    | a reviewer that did not author the change  | a validated record bound to the exact head |
+|             | Review discipline                                              | The merge gate                             |
+| ----------- | -------------------------------------------------------------- | ------------------------------------------ |
+| Ships as    | `review-discipline.md`, the `review-discipline` group (opt-in) | `strict-review` skill group                |
+| Installed   | always                                                         | only on `--with strict-review`             |
+| Enforcement | none — advisory                                                | `review-police` refuses the merge command  |
+| Requires    | a reviewer that did not author the change                      | a validated record bound to the exact head |
 
 :::caution[Review is not on by default]
 The gate is the `strict-review` group, marked `explicit` in the manifest. It is not in `--all`, it is

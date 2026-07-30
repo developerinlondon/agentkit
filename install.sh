@@ -764,6 +764,9 @@ install_grok_prompt() {
 instruction_group() {
 	case "$(basename "$1")" in
 	evidence-gated-review.md) printf 'strict-review' ;;
+	# Instructions are concatenated into every prompt, so a core one costs context
+	# on every session whether or not the work needs a review pass.
+	review-discipline.md) printf 'review-discipline' ;;
 	*) printf 'core' ;;
 	esac
 }
