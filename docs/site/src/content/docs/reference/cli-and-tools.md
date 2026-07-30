@@ -315,6 +315,7 @@ whitespace-stripped, so `a, b` behaves like `a,b`.
 | `AGENTKIT_SKIP_PROMPT` | unset — any **non-empty** value suppresses the group question (a non-empty `CI` does the same) | `install.sh`   |
 | `AGENTKIT_SRC`         | `~/.agentkit-src`                                                                              | `bootstrap.sh` |
 | `AGENTKIT_REPO_URL`    | `https://github.com/developerinlondon/agentkit.git`                                            | `bootstrap.sh` |
+| `AGENTKIT_REF`         | unset — the newest `vX.Y.Z` tag. Takes a tag or a branch; `main` is the unreleased edge        | `bootstrap.sh` |
 
 ### Skill-specific
 
