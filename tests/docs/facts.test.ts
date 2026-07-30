@@ -52,7 +52,7 @@ describe('the docs tables are derived from the tree', () => {
     write('hooks/claude/beta-police.sh', '#!/usr/bin/env bash\n');
     write('plugins/gamma-police.ts', 'export {};\n');
     write('hooks/claude/not-a-unit.sh', '#!/usr/bin/env bash\n');
-    write('skills/GROUPS', 'group core Everyday\n');
+    write('skills/KITS', 'kit core Everyday\n');
     mkdirSync(join(root, 'skills'), { recursive: true });
 
     const facts = collectFacts(root);
@@ -71,20 +71,20 @@ describe('the docs tables are derived from the tree', () => {
   // Packaging a hook is not a fourth mechanism: the plugin copy is generated
   // from hooks/claude. A page that counted it as one would overstate coverage.
   test('a plugin copy is packaging, not an extra mechanism', () => {
-    write('skills/GROUPS', 'group core Everyday\n');
+    write('skills/KITS', 'kit core Everyday\n');
     write('hooks/claude/solo-police.sh', '#!/usr/bin/env bash\n');
     write('plugins-cc/agentkit/hooks/solo-police.sh', '#!/usr/bin/env bash\n');
-    write('plugins-cc/agentkit-strict-review/hooks/solo-police.sh', '#!/usr/bin/env bash\n');
+    write('plugins-cc/agentkit-adversarial-review/hooks/solo-police.sh', '#!/usr/bin/env bash\n');
     mkdirSync(join(root, 'skills'), { recursive: true });
 
     const unit = collectFacts(root).units[0];
 
     expect(unit?.mechanisms).toEqual(['hook']);
-    expect(unit?.claudePlugins).toEqual(['agentkit', 'agentkit-strict-review']);
+    expect(unit?.claudePlugins).toEqual(['agentkit', 'agentkit-adversarial-review']);
   });
 
   test('a unit that exists only as a packaged hook is still reported', () => {
-    write('skills/GROUPS', 'group core Everyday\n');
+    write('skills/KITS', 'kit core Everyday\n');
     write('plugins-cc/agentkit/hooks/orphan-police.sh', '#!/usr/bin/env bash\n');
     mkdirSync(join(root, 'skills'), { recursive: true });
 
@@ -121,13 +121,13 @@ describe('the packaged hooks match their source', () => {
   });
 });
 
-describe('the skill and group tables come from skills/GROUPS', () => {
-  test('an explicit group marks every skill inside it, so no page can imply it is a default', () => {
+describe('the skill and kit tables come from skills/KITS', () => {
+  test('an explicit kit marks every skill inside it, so no page can imply it is a default', () => {
     write(
-      'skills/GROUPS',
+      'skills/KITS',
       [
-        'group core Everyday skills',
-        'group locked Consent-gated lane',
+        'kit core Everyday skills',
+        'kit locked Consent-gated lane',
         'explicit locked',
         '',
         'guarded locked',
@@ -138,37 +138,37 @@ describe('the skill and group tables come from skills/GROUPS', () => {
 
     const facts = collectFacts(root);
 
-    expect(facts.groups).toEqual([
+    expect(facts.kits).toEqual([
       { id: 'core', description: 'Everyday skills', explicit: false },
       { id: 'locked', description: 'Consent-gated lane', explicit: true },
     ]);
     expect(facts.skills).toEqual([
       {
         name: 'guarded',
-        group: 'locked',
+        kit: 'locked',
         explicit: true,
         description: 'Only with an explicit opt-in.',
       },
       {
         name: 'ordinary',
-        group: 'core',
+        kit: 'core',
         explicit: false,
         description: 'Always installed.',
       },
     ]);
   });
 
-  test('a skill with no group record belongs to core', () => {
-    write('skills/GROUPS', 'group core Everyday skills\n');
-    skill('unassigned', 'No group line anywhere.');
+  test('a skill with no kit record belongs to core', () => {
+    write('skills/KITS', 'kit core Everyday skills\n');
+    skill('unassigned', 'No kit line anywhere.');
 
-    expect(collectFacts(root).skills[0]?.group).toBe('core');
+    expect(collectFacts(root).skills[0]?.kit).toBe('core');
   });
 
-  test('a comment line never becomes a group', () => {
-    write('skills/GROUPS', '# group ghost Should not exist\ngroup core Everyday skills\n');
+  test('a comment line never becomes a kit', () => {
+    write('skills/KITS', '# kit ghost Should not exist\nkit core Everyday skills\n');
 
-    expect(collectFacts(root).groups.map((group) => group.id)).toEqual(['core']);
+    expect(collectFacts(root).kits.map((kit) => kit.id)).toEqual(['core']);
   });
 
   // Pins the contract rather than the current guard: today the tokenizer keeps
@@ -177,20 +177,20 @@ describe('the skill and group tables come from skills/GROUPS', () => {
   // the prose that documents the format, and this is what would catch it.
   test('a commented-out membership never assigns a skill', () => {
     write(
-      'skills/GROUPS',
+      'skills/KITS',
       [
-        '# <skill> <group> puts a skill in a declared group',
+        '# <skill> <kit> puts a skill in a declared kit',
         '# guarded locked',
-        'group core Everyday skills',
-        'group locked Consent-gated lane',
+        'kit core Everyday skills',
+        'kit locked Consent-gated lane',
         'explicit locked',
       ].join('\n'),
     );
-    skill('guarded', 'Should not be in the locked group.');
+    skill('guarded', 'Should not be in the locked kit.');
 
     const guarded = collectFacts(root).skills.find((entry) => entry.name === 'guarded');
 
-    expect(guarded?.group).toBe('core');
+    expect(guarded?.kit).toBe('core');
     expect(guarded?.explicit).toBe(false);
   });
 
@@ -198,14 +198,14 @@ describe('the skill and group tables come from skills/GROUPS', () => {
   // to stop the build instead: a blank cell reads as "no description", not as
   // "the generator could not find one".
   test('a skill without a description is a loud failure', () => {
-    write('skills/GROUPS', 'group core Everyday skills\n');
+    write('skills/KITS', 'kit core Everyday skills\n');
     write('skills/broken/SKILL.md', '---\nname: broken\n---\n');
 
     expect(() => collectFacts(root)).toThrow('no description');
   });
 
   test('a skill without frontmatter is a loud failure', () => {
-    write('skills/GROUPS', 'group core Everyday skills\n');
+    write('skills/KITS', 'kit core Everyday skills\n');
     write('skills/broken/SKILL.md', '# broken\n');
 
     expect(() => collectFacts(root)).toThrow('no frontmatter');
@@ -299,7 +299,7 @@ describe('the wiring table comes from the harness settings', () => {
 
 describe('the README skills table comes from the tree', () => {
   test('a block-scalar description folds to its prose, not the indicator', () => {
-    write('skills/GROUPS', 'group core Everyday skills\n');
+    write('skills/KITS', 'kit core Everyday skills\n');
     write(
       'skills/folded/SKILL.md',
       '---\nname: folded\ndescription: >-\n  First half of the\n  folded prose.\n---\n',
@@ -321,7 +321,7 @@ describe('the README skills table comes from the tree', () => {
   });
 
   test('a README without the marker pair fails loudly instead of silently skipping', () => {
-    write('skills/GROUPS', 'group core Everyday skills\n');
+    write('skills/KITS', 'kit core Everyday skills\n');
     skill('ordinary', 'Always installed.');
 
     expect(() => spliceReadme('# no markers here\n', collectFacts(root)))
@@ -377,9 +377,9 @@ describe('content stays parseable by the version archiver', () => {
 
 describe('a frozen version renders its own tables', () => {
   test('a versioned path resolves to its frozen snapshot', () => {
-    const current = { units: ['now'], wiring: [], groups: [], skills: [], tools: [] };
+    const current = { units: ['now'], wiring: [], kits: [], skills: [], tools: [] };
     const frozen = {
-      '0.4': { units: ['then'], wiring: [], groups: [], skills: [], tools: [] },
+      '0.4': { units: ['then'], wiring: [], kits: [], skills: [], tools: [] },
     };
 
     const resolved = factsFor('/docs/0.4/reference/hooks/', current, frozen);
@@ -390,9 +390,9 @@ describe('a frozen version renders its own tables', () => {
   });
 
   test('the unversioned root resolves to the current tree', () => {
-    const current = { units: ['now'], wiring: [], groups: [], skills: [], tools: [] };
+    const current = { units: ['now'], wiring: [], kits: [], skills: [], tools: [] };
     const frozen = {
-      '0.4': { units: ['then'], wiring: [], groups: [], skills: [], tools: [] },
+      '0.4': { units: ['then'], wiring: [], kits: [], skills: [], tools: [] },
     };
 
     const resolved = factsFor('/docs/reference/hooks/', current, frozen);
@@ -406,7 +406,7 @@ describe('a frozen version renders its own tables', () => {
   // read as "this release had no units", which is a stronger and falser claim
   // than "these are the current ones".
   test('a declared version with no snapshot falls back and says so', () => {
-    const current = { units: ['now'], wiring: [], groups: [], skills: [], tools: [] };
+    const current = { units: ['now'], wiring: [], kits: [], skills: [], tools: [] };
 
     const resolved = factsFor('/docs/9.9/reference/hooks/', current, {});
 
@@ -429,8 +429,8 @@ describe('a frozen version renders its own tables', () => {
 
   test('a glob of snapshot modules is keyed by version', () => {
     const modules = {
-      '../generated/frozen-facts/0.4.json': { default: { units: ['a'], wiring: [], groups: [], skills: [], tools: [] } },
-      '../generated/frozen-facts/0.5.json': { default: { units: ['b'], wiring: [], groups: [], skills: [], tools: [] } },
+      '../generated/frozen-facts/0.4.json': { default: { units: ['a'], wiring: [], kits: [], skills: [], tools: [] } },
+      '../generated/frozen-facts/0.5.json': { default: { units: ['b'], wiring: [], kits: [], skills: [], tools: [] } },
     };
 
     expect(Object.keys(frozenByVersion(modules)).sort()).toEqual(['0.4', '0.5']);

@@ -5,16 +5,16 @@ sidebar:
   order: 3
 ---
 
-With the `strict-review` group installed, a merge only passes when a review record exists that is
+With the `adversarial-review` kit installed, a merge only passes when a review record exists that is
 bound to the exact source head the forge is about to merge.
 
 ```sh
-./agentkit/install.sh --global --with strict-review
+./agentkit/install.sh --global --with adversarial-review
 ```
 
 :::caution
-This is the one group `--all` does not give you and the interactive picker never offers. Without a
-literal `--with strict-review`, `review-police`, `review-gate` and `review-profile` are not
+This is the one kit `--all` does not give you and the interactive picker never offers. Without a
+literal `--with adversarial-review`, `review-police`, `review-gate` and `review-profile` are not
 installed — and if a previous run installed them, this run removes them.
 :::
 

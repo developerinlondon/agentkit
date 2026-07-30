@@ -9,18 +9,18 @@ REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PLUGIN_DIR="$REPO_DIR/plugins-cc/agentkit"
 MARKETPLACE="$REPO_DIR/.claude-plugin/marketplace.json"
 
-# shellcheck source=../lib/skill-groups.sh
-source "$REPO_DIR/lib/skill-groups.sh"
-validate_skill_groups || exit 1
+# shellcheck source=../lib/skill-kits.sh
+source "$REPO_DIR/lib/skill-kits.sh"
+validate_skill_kits || exit 1
 
 if ! command -v jq >/dev/null 2>&1; then
-	echo "[sync] ERROR: jq is required to generate per-group plugin manifests." >&2
+	echo "[sync] ERROR: jq is required to generate per-kit plugin manifests." >&2
 	exit 1
 fi
 
 # Hooks: copy scripts only — hooks.json (the plugin's wiring) is plugin-owned.
-# The review gate scripts ship in the strict-review group's plugin, not core.
-REVIEW_PLUGIN_DIR="$REPO_DIR/plugins-cc/$(group_plugin_id strict-review)"
+# The review gate scripts ship in the adversarial-review kit's plugin, not core.
+REVIEW_PLUGIN_DIR="$REPO_DIR/plugins-cc/$(kit_plugin_id adversarial-review)"
 review_hook_script() {
 	case "$(basename "$1")" in
 	review-police.sh | fail-closed-hook.sh) return 0 ;;
@@ -36,7 +36,7 @@ for hook in "$REPO_DIR"/hooks/claude/*.sh; do
 		cp "$hook" "$PLUGIN_DIR/hooks/$(basename "$hook")"
 	fi
 done
-echo "[sync] hooks/claude/*.sh -> plugins-cc/{agentkit,agentkit-strict-review}/hooks/"
+echo "[sync] hooks/claude/*.sh -> plugins-cc/{agentkit,agentkit-adversarial-review}/hooks/"
 
 # Shared helpers (dual Claude/Grok payload parsing). Must live next to the
 # scripts so `source "$(dirname …)/lib/hook-input.sh"` resolves.
@@ -47,34 +47,34 @@ if [[ -d "$REPO_DIR/hooks/claude/lib" ]]; then
 	echo "[sync] hooks/claude/lib -> core + review plugin hooks/lib/"
 fi
 
-# Skills: one plugin per declared group, membership straight from the manifest.
-# A skill that changed group must leave its old plugin, or it ships twice.
+# Skills: one plugin per declared kit, membership straight from the manifest.
+# A skill that changed kit must leave its old plugin, or it ships twice.
 plugin_dir_for() {
-	printf '%s/plugins-cc/%s' "$REPO_DIR" "$(group_plugin_id "$1")"
+	printf '%s/plugins-cc/%s' "$REPO_DIR" "$(kit_plugin_id "$1")"
 }
 
-# A group plugin's payload is its skills OR hand-wired hooks/tools (the
-# strict-review gate ships both). No payload: no manifest, no marketplace
+# A kit plugin's payload is its skills OR hand-wired hooks/tools (the
+# adversarial-review gate ships both). No payload: no manifest, no marketplace
 # entry, and the prune arm may take the tree.
-group_plugin_has_payload() {
-	group_has_skills "$1" && return 0
+kit_plugin_has_payload() {
+	kit_has_skills "$1" && return 0
 	local dir
 	dir="$(plugin_dir_for "$1")"
 	[[ -d "$dir/hooks" || -d "$dir/tools" ]]
 }
 
-for group in $(declared_groups); do
-	group_has_skills "$group" || continue
-	mkdir -p "$(plugin_dir_for "$group")/skills"
+for kit in $(declared_kits); do
+	kit_has_skills "$kit" || continue
+	mkdir -p "$(plugin_dir_for "$kit")/skills"
 done
 
-for group in $(declared_groups); do
-	group_dir="$(plugin_dir_for "$group")"
-	for plugin_skill in "$group_dir"/skills/*/; do
+for kit in $(declared_kits); do
+	kit_dir="$(plugin_dir_for "$kit")"
+	for plugin_skill in "$kit_dir"/skills/*/; do
 		[[ -d "$plugin_skill" ]] || continue
 		name="$(basename "$plugin_skill")"
-		if [[ ! -d "$REPO_DIR/skills/$name" ]] || [[ "$(skill_group "$name")" != "$group" ]]; then
-			echo "[sync] removing from $(group_plugin_id "$group"): $name"
+		if [[ ! -d "$REPO_DIR/skills/$name" ]] || [[ "$(skill_kit "$name")" != "$kit" ]]; then
+			echo "[sync] removing from $(kit_plugin_id "$kit"): $name"
 			rm -rf "$plugin_skill"
 		fi
 	done
@@ -82,72 +82,72 @@ done
 
 for skill in "$REPO_DIR"/skills/*/; do
 	name="$(basename "$skill")"
-	group_dir="$(plugin_dir_for "$(skill_group "$name")")"
-	rm -rf "$group_dir/skills/$name"
-	cp -r "$skill" "$group_dir/skills/$name"
+	kit_dir="$(plugin_dir_for "$(skill_kit "$name")")"
+	rm -rf "$kit_dir/skills/$name"
+	cp -r "$skill" "$kit_dir/skills/$name"
 done
-echo "[sync] skills/* -> plugins-cc/<plugin>/skills/ (by group)"
+echo "[sync] skills/* -> plugins-cc/<plugin>/skills/ (by kit)"
 
-# A skill may import a dependency-free module from a skill in another group.
-# Groups install as separate plugins, so that module has to ride along or the
+# A skill may import a dependency-free module from a skill in another kit.
+# Kits install as separate plugins, so that module has to ride along or the
 # relative import escapes the plugin boundary and the shipped script cannot
 # load at all. Runs after the copy above, whose prune drops it first, so a
 # repeat sync lands on the same tree.
 carry_leaf() {
-	local leaf="$1" consumer="$2" owner_group consumer_group dest
-	owner_group="$(skill_group "${leaf%%/*}")"
-	consumer_group="$(skill_group "$consumer")"
-	if [[ "$owner_group" == "$consumer_group" ]]; then
+	local leaf="$1" consumer="$2" owner_kit consumer_kit dest
+	owner_kit="$(skill_kit "${leaf%%/*}")"
+	consumer_kit="$(skill_kit "$consumer")"
+	if [[ "$owner_kit" == "$consumer_kit" ]]; then
 		return 0
 	fi
-	dest="$(plugin_dir_for "$consumer_group")/skills/$leaf"
+	dest="$(plugin_dir_for "$consumer_kit")/skills/$leaf"
 	mkdir -p "$(dirname "$dest")"
 	cp "$REPO_DIR/skills/$leaf" "$dest"
-	echo "[sync] carried skills/$leaf -> $(group_plugin_id "$consumer_group")"
+	echo "[sync] carried skills/$leaf -> $(kit_plugin_id "$consumer_kit")"
 }
 
 carry_leaf publish-page/slides.ts product-intelligence
 
-# Group plugins other than core carry skills only; core keeps its hand-written
+# Kit plugins other than core carry skills only; core keeps its hand-written
 # manifest because it also wires hooks, tools, and MCP servers.
-for group in $(declared_groups); do
-	[[ "$group" == core ]] && continue
-	group_plugin_has_payload "$group" || continue
-	plugin_id="$(group_plugin_id "$group")"
-	group_dir="$(plugin_dir_for "$group")"
-	mkdir -p "$group_dir/.claude-plugin"
-	jq --arg name "$plugin_id" --arg description "$(group_description "$group")" '{
+for kit in $(declared_kits); do
+	[[ "$kit" == core ]] && continue
+	kit_plugin_has_payload "$kit" || continue
+	plugin_id="$(kit_plugin_id "$kit")"
+	kit_dir="$(plugin_dir_for "$kit")"
+	mkdir -p "$kit_dir/.claude-plugin"
+	jq --arg name "$plugin_id" --arg description "$(kit_description "$kit")" '{
 		"$schema": .["$schema"],
 		name: $name,
 		version: .version,
 		description: $description,
 		author: .author,
 		skills: "./skills/"
-	}' "$PLUGIN_DIR/.claude-plugin/plugin.json" >"$group_dir/.claude-plugin/plugin.json"
+	}' "$PLUGIN_DIR/.claude-plugin/plugin.json" >"$kit_dir/.claude-plugin/plugin.json"
 	echo "[sync] generated $plugin_id plugin manifest"
 done
 
-# Drop plugin trees for groups the manifest no longer declares, and for a group
+# Drop plugin trees for kits the manifest no longer declares, and for a kit
 # whose payload left — it would otherwise keep serving skills from a stale copy.
 for stale in "$REPO_DIR"/plugins-cc/agentkit-*/; do
 	[[ -d "$stale" ]] || continue
 	stale_id="$(basename "$stale")"
-	if ! group_declared "${stale_id#agentkit-}" || ! group_plugin_has_payload "${stale_id#agentkit-}"; then
-		echo "[sync] removing dropped group plugin: $stale_id"
+	if ! kit_declared "${stale_id#agentkit-}" || ! kit_plugin_has_payload "${stale_id#agentkit-}"; then
+		echo "[sync] removing dropped kit plugin: $stale_id"
 		rm -rf "$stale"
 	fi
 done
 
-# Marketplace: generated group entries are owned by this script; the core
+# Marketplace: generated kit entries are owned by this script; the core
 # agentkit entry and third-party sources (assay, infra-tools) are not touched.
 marketplace_entries="$(
-	for group in $(declared_groups); do
-		[[ "$group" == core ]] && continue
-		group_plugin_has_payload "$group" || continue
-		plugin_id="$(group_plugin_id "$group")"
+	for kit in $(declared_kits); do
+		[[ "$kit" == core ]] && continue
+		kit_plugin_has_payload "$kit" || continue
+		plugin_id="$(kit_plugin_id "$kit")"
 		jq -n --arg name "$plugin_id" \
 			--arg source "./plugins-cc/$plugin_id" \
-			--arg description "$(group_description "$group")" \
+			--arg description "$(kit_description "$kit")" \
 			--arg version "$(jq -r .version "$PLUGIN_DIR/.claude-plugin/plugin.json")" \
 			'{name: $name, source: $source, description: $description, version: $version}'
 	done | jq -s '.'
@@ -158,7 +158,7 @@ jq --argjson generated "$marketplace_entries" '
 	)
 ' "$MARKETPLACE" >"$MARKETPLACE.tmp"
 mv "$MARKETPLACE.tmp" "$MARKETPLACE"
-echo "[sync] group plugins -> .claude-plugin/marketplace.json"
+echo "[sync] kit plugins -> .claude-plugin/marketplace.json"
 
 # Portable tools used by bundled hooks. Keep this allowlist explicit: other
 # top-level tools are not necessarily plugin-facing commands.
@@ -176,13 +176,13 @@ echo "[sync] portable hook tools -> core (bounded-run) + review plugin (gate, pr
 
 # Fail loudly if the result is an invalid plugin (best-effort: needs claude CLI).
 if command -v claude &>/dev/null; then
-	for group in $(declared_groups); do
-		group_plugin_has_payload "$group" || continue
-		if ! claude plugin validate "$(plugin_dir_for "$group")"; then
-			echo "[sync] ERROR: $(group_plugin_id "$group") is not a valid plugin." >&2
+	for kit in $(declared_kits); do
+		kit_plugin_has_payload "$kit" || continue
+		if ! claude plugin validate "$(plugin_dir_for "$kit")"; then
+			echo "[sync] ERROR: $(kit_plugin_id "$kit") is not a valid plugin." >&2
 			exit 1
 		fi
-		echo "[sync] $(group_plugin_id "$group") manifest valid"
+		echo "[sync] $(kit_plugin_id "$kit") manifest valid"
 	done
 fi
 

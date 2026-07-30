@@ -146,7 +146,7 @@ describe('conditional-and status leaks', () => {
   test('a && inside a single-quoted program is data, not shell syntax', () => {
     const clean = statusCheck(
       'f() {',
-      "\tawk '$1 == \"group\" && NF >= 2 { print $2 }' \"$FILE\"",
+      "\tawk '$1 == \"kit\" && NF >= 2 { print $2 }' \"$FILE\"",
       '}',
       'f',
     );
@@ -253,19 +253,19 @@ describe('conditional-and status leaks', () => {
   });
 });
 
-// A repo shaped like agentkit's: the real group readers, one core skill and one
-// skill in a second group, which ships as its own plugin.
-function groupedRepo(): void {
-  cpSync(join(REPO, 'lib', 'skill-groups.sh'), write('lib/skill-groups.sh', ''));
+// A repo shaped like agentkit's: the real kit readers, one core skill and one
+// skill in a second kit, which ships as its own plugin.
+function kitMemberRepo(): void {
+  cpSync(join(REPO, 'lib', 'skill-kits.sh'), write('lib/skill-kits.sh', ''));
   write(
-    'skills/GROUPS',
-    ['group core Core skills', 'group product Product skills', '', 'beta product', ''].join('\n'),
+    'skills/KITS',
+    ['kit core Core skills', 'kit product Product skills', '', 'beta product', ''].join('\n'),
   );
 }
 
 describe('plugin mirror parity', () => {
   test('a core skill mirrors into the core plugin', () => {
-    groupedRepo();
+    kitMemberRepo();
     write('skills/alpha/SKILL.md', '# alpha\n');
     write('plugins-cc/agentkit/skills/alpha/SKILL.md', '# alpha\n');
 
@@ -275,8 +275,8 @@ describe('plugin mirror parity', () => {
     expect(result.status).toBe(0);
   });
 
-  test('a grouped skill mirrors into its own group plugin, not the core one', () => {
-    groupedRepo();
+  test('a kit-member skill mirrors into its own kit plugin, not the core one', () => {
+    kitMemberRepo();
     write('skills/beta/SKILL.md', '# beta\n');
     write('plugins-cc/agentkit-product/skills/beta/SKILL.md', '# beta\n');
     // Present in the core plugin too, so passing cannot come from looking there.
@@ -288,8 +288,8 @@ describe('plugin mirror parity', () => {
     expect(result.status).toBe(0);
   });
 
-  test('a grouped skill missing from its group plugin fails, naming that plugin', () => {
-    groupedRepo();
+  test('a kit-member skill missing from its kit plugin fails, naming that plugin', () => {
+    kitMemberRepo();
     write('skills/beta/SKILL.md', '# beta\n');
 
     const result = preflight(['skills/beta/SKILL.md']);
@@ -298,8 +298,8 @@ describe('plugin mirror parity', () => {
     expect(result.status).toBe(1);
   });
 
-  test('drift between a grouped skill and its group mirror fails', () => {
-    groupedRepo();
+  test('drift between a kit-member skill and its kit mirror fails', () => {
+    kitMemberRepo();
     write('skills/beta/SKILL.md', '# beta\n');
     write('plugins-cc/agentkit-product/skills/beta/SKILL.md', '# beta drifted\n');
 
@@ -310,8 +310,8 @@ describe('plugin mirror parity', () => {
     expect(result.status).toBe(1);
   });
 
-  test('a plugin that is not a declared group maps to no source skill', () => {
-    groupedRepo();
+  test('a plugin that is not a declared kit maps to no source skill', () => {
+    kitMemberRepo();
     write('plugins-cc/infra-tools/skills/infra-tools/SKILL.md', '# standalone\n');
 
     const result = preflight(['plugins-cc/infra-tools/skills/infra-tools/SKILL.md']);
@@ -321,26 +321,26 @@ describe('plugin mirror parity', () => {
   });
 
   test('a manifest that exists but does not validate is blamed, not the mirror', () => {
-    cpSync(join(REPO, 'lib', 'skill-groups.sh'), write('lib/skill-groups.sh', ''));
-    write('skills/GROUPS', 'group core Core skills\n\nbeta undeclared-group\n');
+    cpSync(join(REPO, 'lib', 'skill-kits.sh'), write('lib/skill-kits.sh', ''));
+    write('skills/KITS', 'kit core Core skills\n\nbeta undeclared-kit\n');
     write('skills/beta/SKILL.md', '# beta\n');
     write('plugins-cc/agentkit/skills/beta/SKILL.md', '# beta\n');
 
     const result = preflight(['skills/beta/SKILL.md']);
 
-    expect(result.stdout).toContain('skills/GROUPS does not validate');
-    expect(result.stdout).toContain('undeclared-group');
+    expect(result.stdout).toContain('skills/KITS does not validate');
+    expect(result.stdout).toContain('undeclared-kit');
     expect(result.stdout).not.toContain('mirror missing');
     expect(result.status).toBe(1);
   });
 
-  test('an unresolvable group manifest fails rather than assuming the core plugin', () => {
+  test('an unresolvable kit manifest fails rather than assuming the core plugin', () => {
     write('skills/beta/SKILL.md', '# beta\n');
     write('plugins-cc/agentkit/skills/beta/SKILL.md', '# beta\n');
 
     const result = preflight(['skills/beta/SKILL.md']);
 
-    expect(result.stdout).toContain('cannot resolve skill groups');
+    expect(result.stdout).toContain('cannot resolve skill kits');
     expect(result.status).toBe(1);
   });
 });
@@ -349,7 +349,7 @@ describe('cross-skill imports', () => {
   // beta (product plugin) importing from alpha (core): legitimate exactly when
   // the sync has carried alpha's module into beta's plugin.
   function crossImport(options: { carried: boolean }): ReturnType<typeof spawnSync> {
-    groupedRepo();
+    kitMemberRepo();
     const body = "import { render } from '../../alpha/slides.ts';\nexport const x = render;\n";
     write('skills/alpha/slides.ts', 'export const render = 1;\n');
     write('skills/beta/scripts/r.ts', body);
@@ -380,7 +380,7 @@ describe('cross-skill imports', () => {
   });
 
   test('an import inside the same skill passes', () => {
-    groupedRepo();
+    kitMemberRepo();
     const body = "import { render } from './slides.ts';\nexport const x = render;\n";
     write('skills/beta/slides.ts', 'export const render = 1;\n');
     write('skills/beta/r.ts', body);
@@ -400,7 +400,7 @@ describe('cross-skill imports', () => {
         "const x = require('../../alpha/gone.ts');",
       ]
     ) {
-      groupedRepo();
+      kitMemberRepo();
       write('skills/beta/scripts/a.ts', `${line}\n`);
       write('plugins-cc/agentkit-product/skills/beta/scripts/a.ts', `${line}\n`);
       const result = preflight(['skills/beta/scripts/a.ts']);
@@ -416,7 +416,7 @@ describe('cross-skill imports', () => {
         "export type { X } from '../../alpha/gone.ts';",
       ]
     ) {
-      groupedRepo();
+      kitMemberRepo();
       write('skills/beta/scripts/a.ts', `${line}\n`);
       write('plugins-cc/agentkit-product/skills/beta/scripts/a.ts', `${line}\n`);
       const result = preflight(['skills/beta/scripts/a.ts']);
@@ -426,7 +426,7 @@ describe('cross-skill imports', () => {
   });
 
   test('a guarded dynamic import is not the fatal class a static one is', () => {
-    groupedRepo();
+    kitMemberRepo();
     const body = "async function load() {\n  return await import('../../alpha/optional.ts');\n}\n"
       + 'export default load;\n';
     write('skills/alpha/optional.ts', 'export const y = 1;\n');

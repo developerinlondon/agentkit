@@ -74,17 +74,17 @@ separately. The installer never creates it, and `bounded-run` fails closed witho
 Passing a directory instead of `--global` writes into that project. The two modes are not the
 same install with a different prefix.
 
-|                                 | Global                                                                           | Project                                                                                   |
-| ------------------------------- | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| Skills                          | one copy in canon, linked out                                                    | two real copies, one per client dir                                                       |
-| Rules                           | canon plus links to three clients                                                | the OpenCode rules directory only                                                         |
-| Instructions and global prompts | installed and wired into all four clients                                        | **not installed at all**                                                                  |
-| Codex                           | exec policies, markdown rules, skill prompts, review hooks, `config.toml` wiring | exec policies in `.codex/rules/`; review hooks and `hooks.json` only with `strict-review` |
-| Tools                           | `~/.local/bin`, canon, and Claude links                                          | the project's Claude tools directory                                                      |
-| Group memory                    | `~/.agentkit/groups`                                                             | never written                                                                             |
-| Wizard                          | possible                                                                         | never                                                                                     |
-| Session shims and slice         | yes, on Linux                                                                    | never                                                                                     |
-| `--claude-plugin`               | allowed                                                                          | rejected, exit 1                                                                          |
+|                                 | Global                                                                           | Project                                                                                        |
+| ------------------------------- | -------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| Skills                          | one copy in canon, linked out                                                    | two real copies, one per client dir                                                            |
+| Rules                           | canon plus links to three clients                                                | the OpenCode rules directory only                                                              |
+| Instructions and global prompts | installed and wired into all four clients                                        | **not installed at all**                                                                       |
+| Codex                           | exec policies, markdown rules, skill prompts, review hooks, `config.toml` wiring | exec policies in `.codex/rules/`; review hooks and `hooks.json` only with `adversarial-review` |
+| Tools                           | `~/.local/bin`, canon, and Claude links                                          | the project's Claude tools directory                                                           |
+| Kit memory                      | `~/.agentkit/kits`                                                               | never written                                                                                  |
+| Wizard                          | possible                                                                         | never                                                                                          |
+| Session shims and slice         | yes, on Linux                                                                    | never                                                                                          |
+| `--claude-plugin`               | allowed                                                                          | rejected, exit 1                                                                               |
 
 Project mode pins one repository to the kit's behaviour without touching the machine. Global mode
 is the normal one.

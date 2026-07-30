@@ -14,12 +14,12 @@ they claim to cover and confirm they fail — an assertion that cannot fail is n
 
 Findings come back ranked by severity, each with a concrete failure scenario, and the author fixes
 them rather than arguing them down. After fixes, ask the same reviewer for a delta re-review; full
-re-reviews are for new scope, not fixups. Merge on approval. Absent the `strict-review` group, the pass
+re-reviews are for new scope, not fixups. Merge on approval. Absent the `adversarial-review` kit, the pass
 is advisory — no mechanism blocks the merge — so the cost is one review per substantive change,
 and nothing forces a re-review for every fixup commit.
 
 Trivial changes — typos, labels, comment wording, config value tweaks — are exempt. Repos where a
-bad merge is expensive escalate by opting into the `strict-review` group (`--with strict-review`), which layers
+bad merge is expensive escalate by opting into the `adversarial-review` kit (`--with adversarial-review`), which layers
 evidence records and a hard merge gate on top of this discipline.
 
 <!-- agentkit:review-discipline:end -->

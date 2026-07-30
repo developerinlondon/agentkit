@@ -196,7 +196,7 @@
       "failClosedBudget": 45
     }
   ],
-  "groups": [
+  "kits": [
     {
       "id": "core",
       "description": "Enforcement, planning, and workflow skills for everyday use",
@@ -216,97 +216,97 @@
   "skills": [
     {
       "name": "adversarial-review",
-      "group": "strict-review",
+      "kit": "strict-review",
       "explicit": true,
       "description": ">-"
     },
     {
       "name": "architect",
-      "group": "core",
+      "kit": "core",
       "explicit": false,
       "description": "Study a system and produce living architecture documentation — explanatory pages with high-quality diagrams. Use AUTOMATICALLY when the user asks to document, explain, map, or review an architecture (\"how does this system work\", \"architecture diagram of this repo\", \"create/refresh the design docs\"), or to keep architecture pages current after changes. Orchestrates the diagram and publish-page skills."
     },
     {
       "name": "autonomous-workflow",
-      "group": "core",
+      "kit": "core",
       "explicit": false,
       "description": ">-"
     },
     {
       "name": "code-quality",
-      "group": "core",
+      "kit": "core",
       "explicit": false,
       "description": ">-"
     },
     {
       "name": "diagram",
-      "group": "core",
+      "kit": "core",
       "explicit": false,
       "description": "Craft high-quality hand-drawn-style diagrams (Excalidraw JSON rendered to self-contained SVG). Use AUTOMATICALLY when the user asks to visualize, draw, diagram, or sketch anything — system architectures, workflows, protocols, timelines, comparisons, mental models — or when a task needs a visual that outclasses mermaid/box kits. Renders headlessly at generation time; output embeds anywhere HTML or markdown does."
     },
     {
       "name": "documentation",
-      "group": "core",
+      "kit": "core",
       "explicit": false,
       "description": ">-"
     },
     {
       "name": "github-issue-lifecycle",
-      "group": "core",
+      "kit": "core",
       "explicit": false,
       "description": ">-"
     },
     {
       "name": "gitlab-issue-lifecycle",
-      "group": "core",
+      "kit": "core",
       "explicit": false,
       "description": ">-"
     },
     {
       "name": "gitops-master",
-      "group": "core",
+      "kit": "core",
       "explicit": false,
       "description": ">-"
     },
     {
       "name": "issue-raiser",
-      "group": "core",
+      "kit": "core",
       "explicit": false,
       "description": ">-"
     },
     {
       "name": "product-intelligence",
-      "group": "product",
+      "kit": "product",
       "explicit": false,
       "description": ">-"
     },
     {
       "name": "product-review",
-      "group": "product",
+      "kit": "product",
       "explicit": false,
       "description": ">-"
     },
     {
       "name": "project-planning",
-      "group": "core",
+      "kit": "core",
       "explicit": false,
       "description": ">-"
     },
     {
       "name": "publish-page",
-      "group": "core",
+      "kit": "core",
       "explicit": false,
       "description": "Publish content as a live web page with a stable URL (AgentKit Pages, self-hosted artifacts). Use AUTOMATICALLY whenever the user asks to publish/share/host a page, make an artifact/report/dashboard/slide deck/design doc viewable in a browser, or when rich formatted output would clearly beat chat text. Also triggers on \"make a page\", \"put this on a page\", \"publish this\", \"as a deck/slides\", \"share a link\". Renders markdown or HTML through themes and returns the live URL."
     },
     {
       "name": "resource-safe-execution",
-      "group": "core",
+      "kit": "core",
       "explicit": false,
       "description": ">-"
     },
     {
       "name": "test-driven-development",
-      "group": "core",
+      "kit": "core",
       "explicit": false,
       "description": ">-"
     }

@@ -14,7 +14,7 @@ import { spawnSync } from 'node:child_process';
 
 const repoRoot = dirname(import.meta.dir);
 const installSource = readFileSync(join(repoRoot, 'install.sh'), 'utf-8');
-// Plugin ids come from the group manifest, so the helpers that resolve them
+// Plugin ids come from the kit manifest, so the helpers that resolve them
 // belong to the unit under test.
 const functionStart = installSource.indexOf('plugin_is_installed() {');
 const functionEnd = installSource.indexOf('\n# ─── User Config', functionStart);
@@ -31,7 +31,7 @@ function runPluginInstall(
   operationExit = 0,
   postInstallState = '[{"id":"agentkit@agentkit","scope":"user","enabled":true}]',
   marketplaceUpdateExit = 0,
-  selectedGroups = 'core',
+  selectedKits = 'core',
   initialState?: string,
 ) {
   const home = mkdtempSync(join(tmpdir(), 'agentkit-plugin-install-'));
@@ -75,7 +75,7 @@ fi
     'bash',
     [
       '-c',
-      `set -euo pipefail\nREPO_DIR="$1"\nsource "$1/lib/skill-groups.sh"\nSELECTED_GROUPS="${selectedGroups}"\ngroup_selected() { case " $SELECTED_GROUPS " in *" $1 "*) return 0 ;; esac; return 1; }\n${installFunction}\nif install_claude_plugin; then exit 0; else exit $?; fi`,
+      `set -euo pipefail\nREPO_DIR="$1"\nsource "$1/lib/skill-kits.sh"\nSELECTED_KITS="${selectedKits}"\nkit_selected() { case " $SELECTED_KITS " in *" $1 "*) return 0 ;; esac; return 1; }\n${installFunction}\nif install_claude_plugin; then exit 0; else exit $?; fi`,
       'bash',
       repoRoot,
     ],
@@ -99,19 +99,19 @@ fi
   return { calls: readFileSync(log, 'utf-8').trim().split('\n'), result };
 }
 
-const groupPluginState = (ids: string[]) =>
+const kitPluginState = (ids: string[]) =>
   JSON.stringify(ids.map((id) => ({ id, scope: 'user', enabled: true })));
 
-function runGroupPluginInstall(selectedGroups: string, productAlreadyInstalled = false) {
+function runKitPluginInstall(selectedKits: string, productAlreadyInstalled = false) {
   const ids = ['agentkit@agentkit', 'agentkit-product@agentkit'];
   return runPluginInstall(
     false,
     false,
     0,
-    groupPluginState(ids),
+    kitPluginState(ids),
     0,
-    selectedGroups,
-    productAlreadyInstalled ? groupPluginState(['agentkit-product@agentkit']) : undefined,
+    selectedKits,
+    productAlreadyInstalled ? kitPluginState(['agentkit-product@agentkit']) : undefined,
   );
 }
 
@@ -198,20 +198,59 @@ describe('Claude plugin install lifecycle', () => {
     expect(result.stdout).not.toContain('Plugin ready');
   });
 
-  test('installs one plugin per selected group', () => {
-    const { calls, result } = runGroupPluginInstall('core product');
+  test('installs one plugin per selected kit', () => {
+    const { calls, result } = runKitPluginInstall('core product');
     expect(result.status, result.stderr).toBe(0);
     expect(calls).toContain('plugin install agentkit@agentkit');
     expect(calls).toContain('plugin install agentkit-product@agentkit');
   });
 
-  test('updates an installed group plugin the current flags did not select', () => {
-    const { calls, result } = runGroupPluginInstall('core', true);
+  test('updates an installed kit plugin the current flags did not select', () => {
+    const { calls, result } = runKitPluginInstall('core', true);
     expect(result.status, result.stderr).toBe(0);
     // Same promise as a retained skill: an upgrade must not abandon what the
     // user already has installed.
     expect(calls).toContain('plugin update agentkit-product@agentkit');
     expect(calls).not.toContain('plugin install agentkit-product@agentkit');
+  });
+
+  // The plugin id is the one artifact named after a kit, so renaming a kit strands
+  // a plugin under the old id. Uninstalling is destructive, so the blast radius is
+  // asserted too: only retired agentkit ids, nothing else installed.
+  test('uninstalls a plugin left under a retired kit id, and touches nothing else', () => {
+    const { calls, result } = runPluginInstall(
+      false,
+      false,
+      0,
+      kitPluginState(['agentkit@agentkit']),
+      0,
+      'core',
+      kitPluginState([
+        'agentkit-strict-review@agentkit',
+        'oh-my-claudecode@omc',
+        'superpowers@claude-plugins-official',
+      ]),
+    );
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(calls).toContain('plugin uninstall agentkit-strict-review@agentkit');
+    expect(calls.filter((call) => call.startsWith('plugin uninstall'))).toEqual([
+      'plugin uninstall agentkit-strict-review@agentkit',
+    ]);
+  });
+
+  // A kit with no skills publishes no plugin, so asking to install one aborts
+  // the whole run. The guard lives in claude_plugin_targets; this pins it.
+  test('a selected kit with no skills requests no plugin', () => {
+    const { calls, result } = runKitPluginInstall('core advisory-review');
+    expect(result.status, result.stderr).toBe(0);
+    expect(calls.join('\n')).not.toContain('agentkit-advisory-review@agentkit');
+  });
+
+  test('a retired id that is not installed is not uninstalled', () => {
+    const { calls, result } = runKitPluginInstall('core');
+    expect(result.status, result.stderr).toBe(0);
+    expect(calls.some((call) => call.startsWith('plugin uninstall'))).toBe(false);
   });
 
   test('explicit plugin mode propagates lifecycle failure without installing manual hooks', () => {

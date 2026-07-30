@@ -99,7 +99,7 @@ function tclQuote(value: string): string {
 }
 
 // Answer only after the prompt has actually been printed — the whole point of
-// the driver. exp_continue loops so each declared group gets its own answer,
+// the driver. exp_continue loops so each declared kit gets its own answer,
 // and a run that never prompts falls straight through to eof.
 function expectProgram(command: string, keystrokes: string, timeoutSeconds: number): string {
   const lines = [
@@ -204,7 +204,7 @@ function canonSkill(home: string, name: string) {
 // Compared by relative path and entry kind, since symlink targets embed the
 // temporary home. Bun hoists or nests the same transitive dependency
 // differently between two installs of one manifest and caches it under .bun;
-// group selection decides neither, so the interior it arranges is dropped. The
+// kit selection decides neither, so the interior it arranges is dropped. The
 // node_modules entry itself stays, so a skill that never got its dependencies
 // installed still breaks parity.
 function listTree(root: string, prefix = ''): string[] {
@@ -244,7 +244,7 @@ function reapAbandonedHomes() {
   }
 }
 
-describe('installer skill-group wizard', () => {
+describe('installer skill-kit wizard', () => {
   beforeAll(reapAbandonedHomes);
 
   test('the pty driver runs on this machine, whichever tools are installed', () => {
@@ -301,7 +301,7 @@ describe('installer skill-group wizard', () => {
     );
   });
 
-  test('a bare install on a terminal offers each optional group and remembers the answer', () => {
+  test('a bare install on a terminal offers each optional kit and remembers the answer', () => {
     if (noPtyDriver()) return;
     const home = mkdtempSync(join(tmpdir(), 'agentkit-wizard-'));
 
@@ -309,26 +309,26 @@ describe('installer skill-group wizard', () => {
       const first = installOnTty(home, 'y\n');
       expect(first.status, first.stderr).toBe(0);
 
-      // The description comes from the manifest, so a group added there shows up
+      // The description comes from the manifest, so a kit added there shows up
       // in the prompt without anyone editing the installer.
-      expect(first.stdout).toContain('[groups] Optional skill groups');
+      expect(first.stdout).toContain('[kits] Optional skill kits');
       expect(first.stdout).toContain(
-        '[groups]   product: Product-model skills: evidence-backed briefs and product review',
+        '[kits]   product: Product-model skills: evidence-backed briefs and product review',
       );
-      expect(first.stdout).toContain('[groups]   Install product? [y/N]');
-      expect(first.stdout).toContain('Skill groups:    core product');
+      expect(first.stdout).toContain('[kits]   Install product? [y/N]');
+      expect(first.stdout).toContain('Skill kits:    core product');
 
       for (const name of ['product-intelligence', 'product-review']) {
         expect(existsSync(join(canonSkill(home, name), 'SKILL.md')), `${name} installed`).toBe(true);
       }
-      expect(readFileSync(join(home, '.agentkit', 'groups'), 'utf-8')).toContain('product');
+      expect(readFileSync(join(home, '.agentkit', 'kits'), 'utf-8')).toContain('product');
 
       // The answer was persisted, so the upgrade must run straight through — the
       // whole point of asking once rather than every time.
       const upgrade = installOnTty(home, '');
       expect(upgrade.status, upgrade.stderr).toBe(0);
       expect(upgrade.stdout).not.toContain(promptMarker);
-      expect(upgrade.stdout).toContain('Skill groups:    core product');
+      expect(upgrade.stdout).toContain('Skill kits:    core product');
     } finally {
       rmSync(home, { force: true, recursive: true });
     }
@@ -345,9 +345,9 @@ describe('installer skill-group wizard', () => {
       // surely as one written to stdout.
       expect(result.stdout).not.toContain(promptMarker);
       expect(result.stderr).not.toContain(promptMarker);
-      expect(result.stdout).not.toContain('Optional skill groups');
-      expect(result.stderr).not.toContain('Optional skill groups');
-      expect(result.stdout).toContain('Skill groups:    core');
+      expect(result.stdout).not.toContain('Optional skill kits');
+      expect(result.stderr).not.toContain('Optional skill kits');
+      expect(result.stdout).toContain('Skill kits:    core');
       expect(existsSync(canonSkill(home, 'product-review'))).toBe(false);
     } finally {
       rmSync(home, { force: true, recursive: true });
@@ -359,7 +359,7 @@ describe('installer skill-group wizard', () => {
     // A flag is an answer already given; asking again would make a scripted
     // terminal run — the shape a Makefile or a setup script takes — hang. Each
     // flag gets an untouched home so it is the flag being proven, not the
-    // groups file a previous run in this loop would have left behind.
+    // kits file a previous run in this loop would have left behind.
     for (const args of [['--with', 'product'], ['--all'], ['--without', 'product']]) {
       const home = mkdtempSync(join(tmpdir(), 'agentkit-wizard-'));
       try {
@@ -372,7 +372,7 @@ describe('installer skill-group wizard', () => {
     }
   }, globalInstallTimeoutMs);
 
-  test('declining every group installs exactly what a bare piped install installs', () => {
+  test('declining every kit installs exactly what a bare piped install installs', () => {
     if (noPtyDriver()) return;
     const declined = mkdtempSync(join(tmpdir(), 'agentkit-wizard-declined-'));
     const piped = mkdtempSync(join(tmpdir(), 'agentkit-wizard-piped-'));
@@ -388,8 +388,8 @@ describe('installer skill-group wizard', () => {
       expect(reference.status, reference.stderr).toBe(0);
 
       expect(listTree(declined)).toEqual(listTree(piped));
-      expect(readFileSync(join(declined, '.agentkit', 'groups'), 'utf-8')).toBe(
-        readFileSync(join(piped, '.agentkit', 'groups'), 'utf-8'),
+      expect(readFileSync(join(declined, '.agentkit', 'kits'), 'utf-8')).toBe(
+        readFileSync(join(piped, '.agentkit', 'kits'), 'utf-8'),
       );
       // Sameness of the tree is not sameness of what it points at: a link that
       // resolved differently would install different skills under equal names.
@@ -421,7 +421,7 @@ describe('installer skill-group wizard', () => {
       expect(result.signal, 'CI install blocked on an unanswered question').toBe(null);
       expect(result.status, result.stderr).toBe(0);
       expect(result.stdout).not.toContain(promptMarker);
-      expect(result.stdout).toContain('Skill groups:    core');
+      expect(result.stdout).toContain('Skill kits:    core');
     } finally {
       rmSync(home, { force: true, recursive: true });
     }
@@ -450,7 +450,7 @@ describe('installer skill-group wizard', () => {
       expect(captured).not.toContain(promptMarker);
       // Reaching the summary is what separates "declined and carried on" from
       // "asked, and the transcript simply had not got there yet".
-      expect(captured).toContain('Skill groups:    core');
+      expect(captured).toContain('Skill kits:    core');
     } finally {
       rmSync(home, { force: true, recursive: true });
     }
@@ -477,9 +477,9 @@ describe('installer skill-group wizard', () => {
       expect(result.stdout).not.toContain(promptMarker);
       // Silent would be wrong too: skipping the question is a decision the
       // operator has to be able to see, and to reverse with a flag.
-      expect(result.stdout).toContain('[groups] No controlling terminal');
-      expect(result.stdout).toContain('--with <group>');
-      expect(result.stdout).toContain('Skill groups:    core');
+      expect(result.stdout).toContain('[kits] No controlling terminal');
+      expect(result.stdout).toContain('--with <kit>');
+      expect(result.stdout).toContain('Skill kits:    core');
       expect(existsSync(canonSkill(home, 'product-review'))).toBe(false);
     } finally {
       rmSync(home, { force: true, recursive: true });
@@ -504,7 +504,7 @@ describe('installer skill-group wizard', () => {
         expect(result.signal, `${optOut.label} blocked`).toBe(null);
         expect(result.status, `${optOut.label}: ${result.stderr}`).toBe(0);
         expect(result.stdout, `${optOut.label} must not prompt`).not.toContain(promptMarker);
-        expect(result.stdout).toContain('Skill groups:    core');
+        expect(result.stdout).toContain('Skill kits:    core');
       } finally {
         rmSync(home, { force: true, recursive: true });
       }
@@ -527,7 +527,7 @@ describe('installer skill-group wizard', () => {
       expect(result.signal, 'the project install blocked on a question').toBe(null);
       expect(result.status, result.stderr).toBe(0);
       expect(result.stdout).not.toContain(promptMarker);
-      expect(existsSync(join(home, '.agentkit', 'groups'))).toBe(false);
+      expect(existsSync(join(home, '.agentkit', 'kits'))).toBe(false);
     } finally {
       rmSync(home, { force: true, recursive: true });
       rmSync(project, { force: true, recursive: true });
@@ -540,9 +540,9 @@ describe('installer skill-group wizard', () => {
 
     try {
       expect(installOnTty(home, '\n').status).toBe(0);
-      // Declining writes a groups file with no groups in it. Read as "nothing
+      // Declining writes a kits file with no kits in it. Read as "nothing
       // remembered" rather than "core only", that file would re-ask forever.
-      expect(readFileSync(join(home, '.agentkit', 'groups'), 'utf-8')).not.toContain('product');
+      expect(readFileSync(join(home, '.agentkit', 'kits'), 'utf-8')).not.toContain('product');
 
       const upgrade = installOnTty(home, '');
       expect(upgrade.status, upgrade.stderr).toBe(0);

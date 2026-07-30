@@ -52,16 +52,16 @@ install_tools() {
 		[[ -f "$tool_file" ]] || continue
 		local name
 		name="$(basename "$tool_file")"
-		# Callers without group selection (tests sourcing this lib directly)
+		# Callers without kit selection (tests sourcing this lib directly)
 		# get the default: review excluded.
 		case "$name" in
 		review-gate | review-profile)
-			if ! declare -F group_selected >/dev/null || ! group_selected strict-review; then
+			if ! declare -F kit_selected >/dev/null || ! kit_selected adversarial-review; then
 				if [[ -e "$tools_dir/$name" || -L "$tools_dir/$name" ]]; then
 					rm -f "$tools_dir/$name"
-					echo "[tools] Removing (strict-review group not selected): $name"
+					echo "[tools] Removing (adversarial-review kit not selected): $name"
 				else
-					echo "[tools] Skipping (strict-review group — add --with strict-review): $name"
+					echo "[tools] Skipping (adversarial-review kit — add --with adversarial-review): $name"
 				fi
 				continue
 			fi
@@ -105,7 +105,7 @@ reconcile_tool_links() {
 		if artifact_supports_platform "$tool_file" "$PLATFORM"; then
 			case "$name" in
 			review-gate | review-profile)
-				if declare -F group_selected >/dev/null && group_selected strict-review; then
+				if declare -F kit_selected >/dev/null && kit_selected adversarial-review; then
 					continue
 				fi
 				;;

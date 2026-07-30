@@ -10,7 +10,7 @@ BASE="origin/main"
 PATHS_FROM=""
 SLICE=""
 FAILED=0
-GROUPS_FAULT=""
+KITS_FAULT=""
 
 # shellcheck source=lib/test-verdict.sh
 source "$SCRIPT_DIR/lib/test-verdict.sh"
@@ -147,63 +147,63 @@ check_shellcheck() {
 	return 0
 }
 
-# Install groups ship as separate plugins, so a skill's mirror lives under its
-# own group's plugin. The manifest readers are shared with the installer and the
+# Install kits ship as separate plugins, so a skill's mirror lives under its
+# own kit's plugin. The manifest readers are shared with the installer and the
 # sync script; a second parser here could disagree with what actually ships.
 plugin_for_skill() {
 	local skill="$1"
 	(
-		SKILL_GROUPS_FILE="$REPO/skills/GROUPS"
-		# shellcheck source=../lib/skill-groups.sh
-		source "$REPO/lib/skill-groups.sh"
-		group_plugin_id "$(skill_group "$skill")"
+		SKILL_KITS_FILE="$REPO/skills/KITS"
+		# shellcheck source=../lib/skill-kits.sh
+		source "$REPO/lib/skill-kits.sh"
+		kit_plugin_id "$(skill_kit "$skill")"
 	)
 }
 
 # Present is not the same as parseable: a manifest that exists but is malformed
 # would otherwise fall through to core and surface as a mirror failure, blaming
 # the wrong file. The manifest's own validator decides.
-groups_readable() {
-	if [[ ! -f "$REPO/lib/skill-groups.sh" || ! -f "$REPO/skills/GROUPS" ]]; then
-		GROUPS_FAULT="missing lib/skill-groups.sh or skills/GROUPS"
+kits_readable() {
+	if [[ ! -f "$REPO/lib/skill-kits.sh" || ! -f "$REPO/skills/KITS" ]]; then
+		KITS_FAULT="missing lib/skill-kits.sh or skills/KITS"
 		return 1
 	fi
 	local complaint
 	if complaint="$(
-		SKILL_GROUPS_FILE="$REPO/skills/GROUPS"
-		# shellcheck source=../lib/skill-groups.sh
-		source "$REPO/lib/skill-groups.sh"
-		validate_skill_groups 2>&1 >/dev/null
+		SKILL_KITS_FILE="$REPO/skills/KITS"
+		# shellcheck source=../lib/skill-kits.sh
+		source "$REPO/lib/skill-kits.sh"
+		validate_skill_kits 2>&1 >/dev/null
 	)"; then
 		return 0
 	fi
-	GROUPS_FAULT="skills/GROUPS does not validate: ${complaint:-unknown fault}"
+	KITS_FAULT="skills/KITS does not validate: ${complaint:-unknown fault}"
 	return 1
 }
 
-# plugins-cc also holds plugins that are not group mirrors of skills/ at all, so
-# only a declared group's plugin maps back to a source skill.
-is_group_plugin() {
+# plugins-cc also holds plugins that are not kit mirrors of skills/ at all, so
+# only a declared kit's plugin maps back to a source skill.
+is_kit_plugin() {
 	local plugin="$1" declared
 	for declared in $(
-		SKILL_GROUPS_FILE="$REPO/skills/GROUPS"
-		# shellcheck source=../lib/skill-groups.sh
-		source "$REPO/lib/skill-groups.sh"
-		declared_groups
+		SKILL_KITS_FILE="$REPO/skills/KITS"
+		# shellcheck source=../lib/skill-kits.sh
+		source "$REPO/lib/skill-kits.sh"
+		declared_kits
 	); do
-		if [[ "$plugin" == "$(plugin_for_group "$declared")" ]]; then
+		if [[ "$plugin" == "$(plugin_for_kit "$declared")" ]]; then
 			return 0
 		fi
 	done
 	return 1
 }
 
-plugin_for_group() {
+plugin_for_kit() {
 	(
-		SKILL_GROUPS_FILE="$REPO/skills/GROUPS"
-		# shellcheck source=../lib/skill-groups.sh
-		source "$REPO/lib/skill-groups.sh"
-		group_plugin_id "$1"
+		SKILL_KITS_FILE="$REPO/skills/KITS"
+		# shellcheck source=../lib/skill-kits.sh
+		source "$REPO/lib/skill-kits.sh"
+		kit_plugin_id "$1"
 	)
 }
 
@@ -218,7 +218,7 @@ mirror_of() {
 	plugins-cc/*/skills/*/*)
 		plugin="${path#plugins-cc/}"
 		plugin="${plugin%%/*}"
-		if is_group_plugin "$plugin"; then
+		if is_kit_plugin "$plugin"; then
 			printf 'skills/%s' "${path#plugins-cc/*/skills/}"
 		fi
 		;;
@@ -228,11 +228,11 @@ mirror_of() {
 
 check_mirror() {
 	local path mirror checked=0 status=0
-	if ! groups_readable; then
+	if ! kits_readable; then
 		for path in "$@"; do
 			case "$path" in
 			skills/*/* | plugins-cc/*/skills/*/*)
-				bad "cannot resolve skill groups ($GROUPS_FAULT) — mirror parity unchecked"
+				bad "cannot resolve skill kits ($KITS_FAULT) — mirror parity unchecked"
 				return 0
 				;;
 			esac
@@ -409,7 +409,7 @@ normalise_path() {
 	return 0
 }
 
-# A skill is the unit that ships, and install groups put skills in different
+# A skill is the unit that ships, and install kits put skills in different
 # plugins. An import reaching out of its own skill survives every same-repo check
 # and dangles only in the artifact a user installs — byte parity copies it
 # faithfully, because parity is sameness, not loadability. The shipped tree is

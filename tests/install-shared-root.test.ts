@@ -21,9 +21,9 @@ const installSource = readFileSync(installScript, "utf-8");
 const installSkillsStart = installSource.indexOf("install_skills() {");
 const installSkillsEnd = installSource.indexOf("\ninstall_rules() {", installSkillsStart);
 const installSkillsFunction = installSource.slice(installSkillsStart, installSkillsEnd);
-const groupHelpersStart = installSource.indexOf("group_selected() {");
-const groupHelpersEnd = installSource.indexOf("\nfor requested_group in", groupHelpersStart);
-const groupHelpers = installSource.slice(groupHelpersStart, groupHelpersEnd);
+const kitHelpersStart = installSource.indexOf("kit_selected() {");
+const kitHelpersEnd = installSource.indexOf("\nfor requested_kit in", kitHelpersStart);
+const kitHelpers = installSource.slice(kitHelpersStart, kitHelpersEnd);
 // A global install intentionally installs and builds dependency-bearing skills.
 const globalInstallTimeoutMs = 60_000;
 
@@ -191,7 +191,7 @@ describe("shared ~/.agentkit root + client symlinks", () => {
       '{"scripts":{"build":"bun build"}}\n',
     );
     writeFileSync(join(fixtureRepo, "skills", "sample", "SKILL.md"), "# Sample\n");
-    writeFileSync(join(fixtureRepo, "skills", "GROUPS"), "group core Sample core group\n");
+    writeFileSync(join(fixtureRepo, "skills", "KITS"), "kit core Sample core kit\n");
 
     const realBun = join(bin, "bun-real");
     writeExecutable(
@@ -222,9 +222,9 @@ exit 80
           "-c",
           `set -euo pipefail
 REPO_DIR="$1"
-source "${join(repoRoot, "lib", "skill-groups.sh")}"
-SELECTED_GROUPS=core
-${groupHelpers}
+source "${join(repoRoot, "lib", "skill-kits.sh")}"
+SELECTED_KITS=core
+${kitHelpers}
 ${installSkillsFunction}
 install_skills "$2"`,
           "bash",

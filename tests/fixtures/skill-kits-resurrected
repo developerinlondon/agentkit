@@ -1,0 +1,4 @@
+# A manifest that takes a retired name back as a live kit. Nothing in the tree
+# needs to belong to it: what is under test is the name, not its payload.
+kit core Enforcement, planning, and workflow skills for everyday use
+kit strict-review A live kit that reuses a name the installer treats as retired

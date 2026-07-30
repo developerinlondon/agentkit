@@ -46,17 +46,17 @@ OpenCode's config, a concatenation into Codex's `developer_instructions`, and `~
 for Grok's always-on load. The Codex step declines to touch a `developer_instructions` key it did
 not write, warning instead of overwriting.
 
-| Instruction                   | Group             |
-| ----------------------------- | ----------------- |
-| `anti-glaze.md`               | `core`            |
-| `coding-discipline.md`        | `core`            |
-| `collaboration-visibility.md` | `core`            |
-| `resource-safety.md`          | `core`            |
-| `review-discipline.md`        | `advisory-review` |
-| `evidence-gated-review.md`    | `strict-review`   |
+| Instruction                   | Kit                  |
+| ----------------------------- | -------------------- |
+| `anti-glaze.md`               | `core`               |
+| `coding-discipline.md`        | `core`               |
+| `collaboration-visibility.md` | `core`               |
+| `resource-safety.md`          | `core`               |
+| `review-discipline.md`        | `advisory-review`    |
+| `evidence-gated-review.md`    | `adversarial-review` |
 
-Four install always. The other two ride explicit groups — `review-discipline.md` on
-`advisory-review`, `evidence-gated-review.md` on `strict-review` — and are removed when their group
+Four install always. The other two ride explicit kits — `review-discipline.md` on
+`advisory-review`, `evidence-gated-review.md` on `adversarial-review` — and are removed when their kit
 is not selected: the marker block is stripped out of `CLAUDE.md`, the OpenCode config entry is
 filtered out, and the file itself is deleted.
 

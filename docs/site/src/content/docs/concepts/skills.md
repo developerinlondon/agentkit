@@ -1,6 +1,6 @@
 ---
 title: Skills
-description: What a skill is, how install groups gate them, and why a skill can never do a hook's job.
+description: What a skill is, how install kits gate them, and why a skill can never do a hook's job.
 sidebar:
   order: 3
 ---
@@ -33,33 +33,32 @@ Where the two overlap they are wired to agree. `resource-safe-execution` explain
 `bounded-run` profile fits a workload; `resource-police` refuses the unbounded form. Neither is
 sufficient alone — the skill has no teeth, the hook has no idea which profile you wanted.
 
-## Install groups
+## Install kits
 
-Group membership is declared in one manifest, `skills/GROUPS`, read by a shared library so the
-installer and the plugin generator can never disagree. [Skill groups](/docs/getting-started/skill-groups/)
+Kit membership is declared in one manifest, `skills/KITS`, read by a shared library so the
+installer and the plugin generator can never disagree. [Skill kits](/docs/getting-started/skill-kits/)
 covers selecting them at install time. A skill with no record belongs to `core`, and
-a skill may name only one group.
+a skill may name only one kit.
 
-| Group           | Skills                                   | Installs                                  |
-| --------------- | ---------------------------------------- | ----------------------------------------- |
-| `core`          | 13                                       | always                                    |
-| `product`       | `product-intelligence`, `product-review` | `--with product`, the picker, or `--all`  |
-| `strict-review` | `adversarial-review`                     | **only** a literal `--with strict-review` |
+| Kit                  | Skills                                   | Installs                                       |
+| -------------------- | ---------------------------------------- | ---------------------------------------------- |
+| `core`               | 13                                       | always                                         |
+| `product`            | `product-intelligence`, `product-review` | `--with product`, the picker, or `--all`       |
+| `adversarial-review` | `adversarial-review`                     | **only** a literal `--with adversarial-review` |
 
-:::caution[`strict-review` is explicit opt-in, and deselection removes it]
-`strict-review` is marked `explicit` in the manifest. It is never offered by the interactive picker
-and is **excluded from `--all`**. Only a literal `--with strict-review` selects it — `--with review`
-survives as an alias.
+:::caution[`adversarial-review` is explicit opt-in, and deselection removes it]
+`adversarial-review` is marked `explicit` in the manifest. It is never offered by the interactive picker
+and is **excluded from `--all`**. Only a literal `--with adversarial-review` selects it.
 
 When it is not selected, the installer does not merely skip it: it **removes** the previously
 installed hooks, tools, skills, and prompt wiring. Presence without recorded selection is not
-consent for a consent-gated group.
+consent for a consent-gated kit.
 :::
 
-The manifest validator catches the typos nothing else can: a membership line that lost its group
+The manifest validator catches the typos nothing else can: a membership line that lost its kit
 name (which would fall through to `core` and ship that skill to everyone), two memberships for one
 skill (the bash and TypeScript readers resolve first-match and last-match respectively, so the two
-would ship different sets), and an `explicit` marker or membership naming an undeclared group.
+would ship different sets), and an `explicit` marker or membership naming an undeclared kit.
 
 ## Skills that ship code
 

@@ -42,8 +42,8 @@ Exceptions: bug fixes in already-approved work, read-only research, formatting.
 ## Review Gates The Merge
 
 This section and the review-effort resolver below apply when the explicit
-`strict-review` skill group is installed (`install.sh --with strict-review` or
-the `agentkit-strict-review` plugin). Without it there is no merge gate and no
+`adversarial-review` skill kit is installed (`install.sh --with adversarial-review` or
+the `agentkit-adversarial-review` plugin). Without it there is no merge gate and no
 `review-profile`/`adversarial-review` lane — the core `review-discipline`
 instruction already covers that case: one advisory reviewer pass from a
 non-authoring context, then merge on approval.

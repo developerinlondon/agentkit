@@ -25,12 +25,12 @@ export interface PoliceUnit {
 
 export interface SkillFact {
   name: string;
-  group: string;
+  kit: string;
   explicit: boolean;
   description: string;
 }
 
-export interface GroupFact {
+export interface KitFact {
   id: string;
   description: string;
   explicit: boolean;
@@ -50,7 +50,7 @@ export interface HookWiring {
 export interface KitFacts {
   units: PoliceUnit[];
   wiring: HookWiring[];
-  groups: GroupFact[];
+  kits: KitFact[];
   skills: SkillFact[];
   tools: string[];
 }
@@ -116,11 +116,11 @@ function collectUnits(root: string): PoliceUnit[] {
     .sort((left, right) => left.name.localeCompare(right.name));
 }
 
-// The reader mirrors lib/ and the TypeScript installer: `group` declares,
+// The reader mirrors lib/ and the TypeScript installer: `kit` declares,
 // `explicit` marks consent-gated, a bare pair assigns, and anything unassigned
 // belongs to `core`. A second reader that disagreed would be a silent lie.
-function readGroups(root: string): { groups: GroupFact[]; membership: Map<string, string> } {
-  const source = readFileSync(join(root, 'skills', 'GROUPS'), 'utf-8');
+function readKits(root: string): { kits: KitFact[]; membership: Map<string, string> } {
+  const source = readFileSync(join(root, 'skills', 'KITS'), 'utf-8');
   const declared = new Map<string, string>();
   const explicit = new Set<string>();
   const membership = new Map<string, string>();
@@ -129,16 +129,16 @@ function readGroups(root: string): { groups: GroupFact[]; membership: Map<string
     const line = raw.trim();
     if (line === '' || line.startsWith('#')) continue;
     const [first, second, ...rest] = line.split(/\s+/);
-    if (first === 'group' && second) declared.set(second, rest.join(' '));
+    if (first === 'kit' && second) declared.set(second, rest.join(' '));
     else if (first === 'explicit' && second) explicit.add(second);
     else if (first && second) membership.set(first, second);
   }
 
-  const groups = [...declared.entries()]
+  const kits = [...declared.entries()]
     .map(([id, description]) => ({ id, description, explicit: explicit.has(id) }))
     .sort((left, right) => left.id.localeCompare(right.id));
 
-  return { groups, membership };
+  return { kits, membership };
 }
 
 function frontmatterDescription(skill: string, root: string): string {
@@ -165,17 +165,17 @@ function frontmatterDescription(skill: string, root: string): string {
   return lines.join(' ');
 }
 
-function collectSkills(groups: GroupFact[], membership: Map<string, string>, root: string): SkillFact[] {
-  const explicitGroups = new Set(groups.filter((group) => group.explicit).map((g) => g.id));
+function collectSkills(kits: KitFact[], membership: Map<string, string>, root: string): SkillFact[] {
+  const explicitKits = new Set(kits.filter((kit) => kit.explicit).map((g) => g.id));
 
   return readdirSync(join(root, 'skills'), { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
     .map((entry) => {
-      const group = membership.get(entry.name) ?? 'core';
+      const kit = membership.get(entry.name) ?? 'core';
       return {
         name: entry.name,
-        group,
-        explicit: explicitGroups.has(group),
+        kit,
+        explicit: explicitKits.has(kit),
         description: frontmatterDescription(entry.name, root),
       };
     })
@@ -222,11 +222,12 @@ export function collectWiring(root: string = repoRoot): HookWiring[] {
   const hooks = (parsed as { hooks?: Record<string, unknown> }).hooks ?? {};
   const wiring: HookWiring[] = [];
 
-  for (const [event, groups] of Object.entries(hooks)) {
-    if (!Array.isArray(groups)) continue;
-    for (const group of groups) {
-      const matcher = typeof group?.matcher === 'string' ? group.matcher : '';
-      const entries = Array.isArray(group?.hooks) ? group.hooks : [];
+  // Claude's own settings vocabulary: a matcher group is not a skill kit.
+  for (const [event, matcherGroups] of Object.entries(hooks)) {
+    if (!Array.isArray(matcherGroups)) continue;
+    for (const matcherGroup of matcherGroups) {
+      const matcher = typeof matcherGroup?.matcher === 'string' ? matcherGroup.matcher : '';
+      const entries = Array.isArray(matcherGroup?.hooks) ? matcherGroup.hooks : [];
       for (const entry of entries) {
         if (typeof entry?.command !== 'string') continue;
         const tokens = entry.command.split(/\s+/);
@@ -253,13 +254,13 @@ export function collectWiring(root: string = repoRoot): HookWiring[] {
 }
 
 export function collectFacts(root: string = repoRoot): KitFacts {
-  const { groups, membership } = readGroups(root);
+  const { kits, membership } = readKits(root);
 
   return {
     units: collectUnits(root),
     wiring: collectWiring(root),
-    groups,
-    skills: collectSkills(groups, membership, root),
+    kits,
+    skills: collectSkills(kits, membership, root),
     tools: listDirectory('tools', root).sort(),
   };
 }
@@ -279,8 +280,8 @@ function firstSentence(text: string): string {
 }
 
 function installCell(skill: SkillFact): string {
-  if (skill.group === 'core') return 'always';
-  return skill.explicit ? `\`--with ${skill.group}\` only` : `\`--with ${skill.group}\``;
+  if (skill.kit === 'core') return 'always';
+  return skill.explicit ? `\`--with ${skill.kit}\` only` : `\`--with ${skill.kit}\``;
 }
 
 function markdownTable(header: string[], rows: string[][]): string {
@@ -374,7 +375,7 @@ if (import.meta.main) {
     }
     console.log(
       `docs facts: ${facts.units.length} units, ${facts.skills.length} skills, ` +
-        `${facts.groups.length} groups, ${facts.tools.length} tools`,
+        `${facts.kits.length} kits, ${facts.tools.length} tools`,
     );
   } else {
     writeFileSync(factsPath, fresh);

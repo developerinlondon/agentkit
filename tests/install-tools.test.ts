@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process';
 
 const repoRoot = dirname(import.meta.dir);
 const installScript = join(repoRoot, 'install.sh');
-const reviewPluginDir = join(repoRoot, 'plugins-cc', 'agentkit-strict-review');
+const reviewPluginDir = join(repoRoot, 'plugins-cc', 'agentkit-adversarial-review');
 // A global install intentionally installs and builds dependency-bearing skills.
 const globalInstallTimeoutMs = 60_000;
 
@@ -20,7 +20,7 @@ describe('standalone tool installation', () => {
         '--global',
         '--no-session-scope',
         '--with',
-        'strict-review',
+        'adversarial-review',
       ], {
         cwd: repoRoot,
         env: {

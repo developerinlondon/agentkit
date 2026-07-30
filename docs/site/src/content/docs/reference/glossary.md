@@ -60,19 +60,19 @@ A `SKILL.md` the agent loads on demand, plus whatever `references/` and `scripts
 are pure playbooks; others ship working code and the playbook says when to run it. One format serves
 every harness.
 
-## Group
+## Kit
 
-An install partition declared in `skills/GROUPS`, a plain-text manifest read by the installer, the
+An install partition declared in `skills/KITS`, a plain-text manifest read by the installer, the
 Claude plugin generator and the tests alike. A skill with no membership record belongs to `core`,
-which always installs, and a skill may name only one group. The declared groups are listed in
-[Skill groups](/docs/getting-started/skill-groups/), generated from the manifest.
+which always installs, and a skill may name only one kit. The declared kits are listed in
+[Skill kits](/docs/getting-started/skill-kits/), generated from the manifest.
 
-## Explicit group
+## Explicit kit
 
-A group carrying an `explicit <id>` record in `skills/GROUPS`. It is never offered by the
+A kit carrying an `explicit <id>` record in `skills/KITS`. It is never offered by the
 interactive picker, is excluded from `--all`, and installs only via a literal `--with <id>`. When it
 is not selected, the installer **removes** its previously installed hooks, tools, skills and prompt
-wiring — presence without a recorded selection is not consent. `strict-review` is the only one.
+wiring — presence without a recorded selection is not consent. `adversarial-review` is the only one.
 
 ## Rule
 
@@ -128,7 +128,7 @@ machine-local — the durable artifact is the redacted evidence packet on the PR
 `review-police`, a `PreToolUse` hook that allows exactly one standalone `gh pr merge` /
 `glab mr merge` and only when `review-gate` validates a review record against policy read from the
 exact protected target commit. Direct REST, GraphQL and MCP merges, and compound or wrapped merge
-commands, are refused rather than analysed. It ships only with `--with strict-review`.
+commands, are refused rather than analysed. It ships only with `--with adversarial-review`.
 
 It is a local interception gate, not an authentication boundary: the agent can write the local JSON,
 so the gate cannot prove reviewer identity, independence, command execution, redaction, or the truth
