@@ -10,13 +10,24 @@ AGENTKIT_CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/agentkit/config.yaml"
 CONFIG_MANAGER=""
 CONFIG_ENABLED=""
 
+# Quoting a scalar is legal YAML, so `manager: "bun"` must read as bun rather
+# than as an unrecognised value that silently disables the unit.
+unquote() {
+  local value="$1"
+  value="${value%\"}"
+  value="${value#\"}"
+  value="${value%\'}"
+  value="${value#\'}"
+  printf '%s' "$value"
+}
+
 load_config() {
   [[ -f "$AGENTKIT_CONFIG" ]] || return 0
   local key value
   while IFS='=' read -r key value; do
     case "$key" in
-      manager) CONFIG_MANAGER="$value" ;;
-      enabled) CONFIG_ENABLED="$value" ;;
+      manager) CONFIG_MANAGER=$(unquote "$value") ;;
+      enabled) CONFIG_ENABLED=$(unquote "$value") ;;
     esac
   done < <(awk '
     /^[^[:space:]#]/ {
@@ -26,7 +37,7 @@ load_config() {
     in_section {
       line = $0
       sub(/^[[:space:]]+/, "", line)
-      if (line !~ /^(manager|enabled):[[:space:]]*[^[:space:]#]+([[:space:]]*#.*)?$/) next
+      if (line !~ /^(manager|enabled):[[:space:]]*[^[:space:]#]/) next
       key = line
       sub(/:.*/, "", key)
       sub(/^[^:]*:[[:space:]]*/, "", line)
@@ -89,11 +100,25 @@ resolve_manager() {
 
 # ── Command classification ──────────────────────────────────────────────────
 BOUND='[^[:alnum:]_-]'
-ARG='([[:space:]]+([^-[:space:]][^[:space:]]*))?'
+# What may follow the command: an operator, a quote, or nothing — but never a
+# character that continues a filename. `cat yarn.lock` names a lockfile and
+# `npm installer` is not npm install, while `npm install; x` and
+# `sh -c "npm ci"` really do invoke the manager.
+TAIL='($|[^[:alnum:]_./-])'
+# A package argument, never a shell operator: `npm install && npm ls` installs
+# the manifest, so its remediation is `install`, not `add &&`.
+ARG='([[:space:]]+([^-;&|<>()[:space:]][^;&|<>()[:space:]]*))?'
+# Every subcommand that rewrites package.json, node_modules or the lockfile,
+# with its aliases. Longest alternative first: JS alternation is ordered, so `i`
+# before `install` would match the prefix and then fail the trailing boundary.
+NPM_SUBS='install-ci-test|install-test|install|uninstall|init|it|i|cit|ci|add|run|remove|rm|r|update|upgrade|up|link|ln|unlink|un|test|publish|prune|dedupe|ddp|exec|create'
+BUN_SUBS='install|init|i|add|run|remove|rm|update|link|unlink|test|publish|create|x'
 
 DETECTED_LABEL=""
 DETECTED_ACTION=""
 
+# The remediation is a command the user should type, so it is always the
+# canonical lowercase form even when the blocked command was not.
 action_for() {
   local sub="$1" arg="$2"
   case "$sub" in
@@ -101,39 +126,48 @@ action_for() {
       [[ -n "$arg" ]] && printf 'add' || printf 'install'
       ;;
     add) printf 'add' ;;
+    uninstall | un | unlink | remove | rm | r) printf 'remove' ;;
+    update | up | upgrade) printf 'update' ;;
+    link | ln) printf 'link' ;;
+    # Reconciling node_modules with the manifest is what a plain install does.
+    prune | dedupe | ddp) printf 'install' ;;
+    install-test | install-ci-test | it | cit) printf 'install' ;;
     exec | dlx | x) printf 'exec' ;;
-    run | test | init | publish | create) printf '%s' "$sub" ;;
+    run) printf 'run' ;;
+    test) printf 'test' ;;
+    init) printf 'init' ;;
+    publish) printf 'publish' ;;
+    create) printf 'create' ;;
     *) printf 'run' ;;
   esac
 }
 
 # npm and bun are runtimes too, so only their package-management subcommands
-# count; pnpm and yarn are package managers whatever the subcommand.
-subcommand_is_managed() {
-  case "$1:$2" in
-    npm:install | npm:i | npm:ci | npm:add | npm:run | npm:test | npm:init | npm:publish | npm:exec | npm:create) return 0 ;;
-    bun:install | bun:i | bun:add | bun:run | bun:test | bun:init | bun:publish | bun:create | bun:x) return 0 ;;
-    *) return 1 ;;
-  esac
-}
-
-detect_invocation() {
-  local cmd="$1" skip="$2" mgr sub arg exe re
+# count; pnpm and yarn are package managers whatever the subcommand. The
+# subcommands live in the pattern rather than in a test after the match, so a
+# managed invocation is found anywhere in the command instead of only at the
+# leftmost `npm <word>` — `npm ls && npm install` must still be caught.
+detect_invocation_inner() {
+  local cmd="$1" skip="$2" mgr sub arg exe re subs
   for mgr in npm bun; do
     [[ "$mgr" == "$skip" ]] && continue
-    exe="npx"
-    [[ "$mgr" == bun ]] && exe="bunx"
+    if [[ "$mgr" == bun ]]; then
+      exe="bunx"
+      subs="$BUN_SUBS"
+    else
+      exe="npx"
+      subs="$NPM_SUBS"
+    fi
     re="(^|$BOUND)${exe}[[:space:]]"
     if [[ "$cmd" =~ $re ]]; then
       DETECTED_LABEL="$exe"
       DETECTED_ACTION="exec"
       return 0
     fi
-    re="(^|$BOUND)${mgr}[[:space:]]+([[:alnum:]:@._-]+)$ARG"
+    re="(^|$BOUND)${mgr}[[:space:]]+($subs)$ARG$TAIL"
     if [[ "$cmd" =~ $re ]]; then
       sub="${BASH_REMATCH[2]}"
       arg="${BASH_REMATCH[4]}"
-      subcommand_is_managed "$mgr" "$sub" || continue
       DETECTED_LABEL="$mgr $sub"
       DETECTED_ACTION=$(action_for "$sub" "$arg")
       return 0
@@ -141,7 +175,7 @@ detect_invocation() {
   done
   for mgr in pnpm yarn; do
     [[ "$mgr" == "$skip" ]] && continue
-    re="(^|$BOUND)${mgr}([[:space:]]+([[:alnum:]:@._-]+))?$ARG($|$BOUND)"
+    re="(^|$BOUND)${mgr}([[:space:]]+([[:alnum:]:@._-]+))?$ARG$TAIL"
     if [[ "$cmd" =~ $re ]]; then
       sub="${BASH_REMATCH[3]}"
       arg="${BASH_REMATCH[5]}"
@@ -151,6 +185,20 @@ detect_invocation() {
     fi
   done
   return 1
+}
+
+# macOS filesystems are case-insensitive, so `NPM install` really does run npm.
+# nocasematch is global state: set it around the matching only, and restore
+# whatever the caller had on every exit path.
+detect_invocation() {
+  local restore status=0
+  # `shopt -p` exits 1 when the option is unset, and a bare non-zero exit from
+  # this hook fails open.
+  restore=$(shopt -p nocasematch) || true
+  shopt -s nocasematch
+  detect_invocation_inner "$1" "$2" || status=$?
+  eval "$restore"
+  return "$status"
 }
 
 equivalent() {

@@ -15,13 +15,21 @@ const LOCKFILES: Array<[Manager, string]> = [
   ['yarn', 'yarn.lock'],
 ];
 
-const MANAGED_SUBCOMMANDS: Record<'npm' | 'bun', string[]> = {
-  npm: ['install', 'i', 'ci', 'add', 'run', 'test', 'init', 'publish', 'exec', 'create'],
-  bun: ['install', 'i', 'add', 'run', 'test', 'init', 'publish', 'create', 'x'],
+// Every subcommand that rewrites package.json, node_modules or the lockfile,
+// with its aliases. Longest alternative first — `i` before `install` matches
+// the prefix and then fails the trailing boundary.
+const MANAGED_SUBCOMMANDS: Record<'npm' | 'bun', string> = {
+  npm:
+    'install-ci-test|install-test|install|uninstall|init|it|i|cit|ci|add|run|remove|rm|r|update|upgrade|up|link|ln|unlink|un|test|publish|prune|dedupe|ddp|exec|create',
+  bun: 'install|init|i|add|run|remove|rm|update|link|unlink|test|publish|create|x',
 };
 
 const BOUND = '[^A-Za-z0-9_-]';
-const ARG = '(?:\\s+([^-\\s]\\S*))?';
+// What may follow the command: an operator, a quote, or nothing — but never a
+// character that continues a filename (`cat yarn.lock`, `npm installer`).
+const TAIL = '($|[^A-Za-z0-9_./-])';
+// A package argument, never a shell operator.
+const ARG = '(?:\\s+([^-;&|<>()\\s][^;&|<>()\\s]*))?';
 
 interface Enforcement {
   manager: Manager;
@@ -36,6 +44,12 @@ interface Invocation {
 function configPath(): string {
   const xdg = process.env.XDG_CONFIG_HOME || join(homedir(), '.config');
   return join(xdg, 'agentkit', 'config.yaml');
+}
+
+// Quoting a scalar is legal YAML, so `manager: "bun"` must read as bun rather
+// than as an unrecognised value that silently disables the unit.
+function unquote(value: string): string {
+  return value.replace(/^["']/, '').replace(/["']$/, '');
 }
 
 function readConfigSection(): { manager?: string; enabled?: string } {
@@ -54,7 +68,7 @@ function readConfigSection(): { manager?: string; enabled?: string } {
     }
     if (!inSection) continue;
     const match = /^\s+(manager|enabled):\s*([^\s#]+)/.exec(line);
-    if (match) values[match[1]!] = match[2]!.toLowerCase();
+    if (match) values[match[1]!] = unquote(match[2]!.toLowerCase());
   }
   return values;
 }
@@ -107,23 +121,53 @@ function actionFor(subcommand: string, arg: string | undefined): string {
       return arg ? 'add' : 'install';
     case 'add':
       return 'add';
+    case 'uninstall':
+    case 'un':
+    case 'unlink':
+    case 'remove':
+    case 'rm':
+    case 'r':
+      return 'remove';
+    case 'update':
+    case 'up':
+    case 'upgrade':
+      return 'update';
+    case 'link':
+    case 'ln':
+      return 'link';
+    // Reconciling node_modules with the manifest is what a plain install does.
+    case 'prune':
+    case 'dedupe':
+    case 'ddp':
+    case 'install-test':
+    case 'install-ci-test':
+    case 'it':
+    case 'cit':
+      return 'install';
     case 'exec':
     case 'dlx':
     case 'x':
       return 'exec';
     case 'run':
+      return 'run';
     case 'test':
+      return 'test';
     case 'init':
+      return 'init';
     case 'publish':
+      return 'publish';
     case 'create':
-      return subcommand;
+      return 'create';
     default:
       return 'run';
   }
 }
 
 // npm and bun are runtimes too, so only their package-management subcommands
-// count; pnpm and yarn are package managers whatever the subcommand.
+// count; pnpm and yarn are package managers whatever the subcommand. The
+// subcommands live in the pattern rather than in a test after the match, so a
+// managed invocation is found anywhere in the command instead of only at the
+// leftmost `npm <word>` — `npm ls && npm install` must still be caught.
 function detectInvocation(command: string, skip: Manager): Invocation | null {
   for (const manager of ['npm', 'bun'] as const) {
     if (manager === skip) continue;
@@ -131,19 +175,20 @@ function detectInvocation(command: string, skip: Manager): Invocation | null {
     if (new RegExp(`(^|${BOUND})${exe}\\s`, 'i').test(command)) {
       return { label: exe, action: 'exec' };
     }
-    const match = new RegExp(`(^|${BOUND})${manager}\\s+([\\w:@.-]+)${ARG}`, 'i').exec(command);
+    const subs = MANAGED_SUBCOMMANDS[manager];
+    const pattern = `(^|${BOUND})${manager}\\s+(${subs})${ARG}${TAIL}`;
+    const match = new RegExp(pattern, 'i').exec(command);
     if (!match) continue;
-    const sub = match[2]!.toLowerCase();
-    if (!MANAGED_SUBCOMMANDS[manager].includes(sub)) continue;
-    return { label: `${manager} ${sub}`, action: actionFor(sub, match[3]) };
+    const sub = match[2]!;
+    return { label: `${manager} ${sub}`, action: actionFor(sub.toLowerCase(), match[3]) };
   }
   for (const manager of ['pnpm', 'yarn'] as const) {
     if (manager === skip) continue;
-    const pattern = `(^|${BOUND})${manager}(?:\\s+([\\w:@.-]+))?${ARG}($|${BOUND})`;
+    const pattern = `(^|${BOUND})${manager}(?:\\s+([\\w:@.-]+))?${ARG}${TAIL}`;
     const match = new RegExp(pattern, 'i').exec(command);
     if (!match) continue;
-    const sub = (match[2] ?? '').toLowerCase();
-    return { label: sub ? `${manager} ${sub}` : manager, action: actionFor(sub, match[3]) };
+    const sub = match[2] ?? '';
+    return { label: sub ? `${manager} ${sub}` : manager, action: actionFor(sub.toLowerCase(), match[3]) };
   }
   return null;
 }
