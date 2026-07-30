@@ -9,6 +9,8 @@ const fixtures = join(repoRoot, 'tests', 'fixtures');
 const hostile = join(fixtures, 'skill-kits-hostile');
 const orphan = join(fixtures, 'skill-kits-orphan');
 const duplicate = join(fixtures, 'skill-kits-duplicate');
+const resurrected = join(fixtures, 'skill-kits-resurrected');
+const shipped = join(repoRoot, 'skills', 'KITS');
 
 // The installer and the plugin generator read the manifest in bash; the tests
 // and any future picker read it in TypeScript. A disagreement means one of them
@@ -28,6 +30,23 @@ const probedSkills = [
   'code-quality',
   'kit',
 ];
+
+// Retirement drives destructive work — deleting state, uninstalling plugins — so
+// what counts as retired has to be pinned in both directions, not just the one
+// the shipped manifest happens to exercise.
+describe('a retired kit name yields to the manifest', () => {
+  for (const name of ['review', 'strict-review']) {
+    test(`\`${name}\` is retired when the manifest does not declare it`, () => {
+      const probe = bashReader(shipped, `kit_name_retired "${name}"`);
+      expect(probe.status, probe.stderr).toBe(0);
+    });
+  }
+
+  test('a manifest that declares the name takes it back', () => {
+    const probe = bashReader(resurrected, 'kit_name_retired "strict-review"');
+    expect(probe.status).toBe(1);
+  });
+});
 
 describe('manifest readers agree', () => {
   test('bash and TypeScript resolve the same kits on a hostile manifest', () => {

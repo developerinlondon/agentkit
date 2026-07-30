@@ -7,7 +7,7 @@
         "id": "agent-enforcement",
         "tier": "critical",
         "path_regexes": [
-          "^(hooks/.*|policies/.*|tools/review-(gate|profile)|install\\.sh|lib/install-platform\\.sh|scripts/(product-command|sync-cc-plugin\\.sh)|plugins/.*\\.ts|plugins-cc/agentkit/(\\.claude-plugin/plugin\\.json|hooks/.*)|plugins-cc/agentkit-adversarial-review/.*|\\.agentkit/(config\\.yaml|product\\.yaml|review-policy\\.json)|\\.claude-plugin/marketplace\\.json|config\\.example\\.yaml)$"
+          "^(hooks/.*|policies/.*|tools/review-(gate|profile)|install\\.sh|lib/(install-platform|skill-kits)\\.sh|skills/KITS|scripts/(product-command|sync-cc-plugin\\.sh|skill-kits\\.ts)|plugins/.*\\.ts|plugins-cc/agentkit/(\\.claude-plugin/plugin\\.json|hooks/.*)|plugins-cc/agentkit-adversarial-review/.*|\\.agentkit/(config\\.yaml|product\\.yaml|review-policy\\.json)|\\.claude-plugin/marketplace\\.json|config\\.example\\.yaml)$"
         ]
       },
       {

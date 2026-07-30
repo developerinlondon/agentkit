@@ -67,6 +67,16 @@ kit_has_skills() {
 # so the vocabulary has one home rather than one per caller.
 RETIRED_KIT_NAMES="review strict-review"
 
+# A retired name that comes back as a declared kit is not retired, whatever the
+# list says — the manifest is the authority, and callers act on this destructively.
+kit_name_retired() {
+	kit_declared "$1" && return 1
+	case " $RETIRED_KIT_NAMES " in
+	*" $1 "*) return 0 ;;
+	esac
+	return 1
+}
+
 # One plugin per kit, named from the manifest: core ships as `agentkit`, every
 # other kit as `agentkit-<kit>`.
 kit_plugin_id() {

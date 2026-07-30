@@ -172,20 +172,40 @@ done
 # upgrades the same set of kits without re-passing flags.
 KITS_STATE_FILE="$AGENTKIT_HOME/kits"
 
-# Kits were called groups until 0.5.2 (the retired kit names themselves live in
-# lib/skill-kits.sh). Installs exist on several machines, so the installer retires
-# what it wrote itself instead of leaving files to hand-delete. Nothing is
-# translated: a kit recorded under an old name is re-selected, not inherited.
+# Kits were called groups until 0.5.2, and the gate kit `review` then
+# `strict-review` before `adversarial-review` (the retired names live in
+# lib/skill-kits.sh). Deleting that file unread would count every kit recorded in
+# it as unselected — and an unselected explicit kit is REMOVED — so an upgrade
+# would silently uninstall a merge gate somebody opted into. Carry the selection
+# over, then retire the file; installs on other machines need no hand-editing.
 RETIRED_KITS_STATE_FILE="$AGENTKIT_HOME/groups"
+RETIRED_KIT_REPLACEMENT=adversarial-review
 
-remove_retired_kit_state() {
+inherit_retired_kit_state() {
 	[[ "$GLOBAL" == true && -f "$RETIRED_KITS_STATE_FILE" ]] || return 0
+	local entry inherited=""
+	# Written before the old file is removed, so an abort in between cannot land
+	# between the two and lose the selection entirely.
+	if [[ ! -f "$KITS_STATE_FILE" ]]; then
+		mkdir -p "$(dirname "$KITS_STATE_FILE")"
+		{
+			echo "# Skill kits chosen at install time; a bare install.sh --global keeps them."
+			echo "# Delete a line to stop installing that kit (installed skills are left alone)."
+			while read -r entry _; do
+				case "$entry" in '' | '#'*) continue ;; esac
+				if kit_name_retired "$entry"; then entry="$RETIRED_KIT_REPLACEMENT"; fi
+				kit_declared "$entry" || continue
+				echo "$entry"
+				inherited="${inherited:+$inherited }$entry"
+			done <"$RETIRED_KITS_STATE_FILE"
+		} >"$KITS_STATE_FILE"
+		echo "[kits] Carried over from $RETIRED_KITS_STATE_FILE: ${inherited:-nothing selected}" >&2
+	fi
 	rm -f "$RETIRED_KITS_STATE_FILE"
-	echo "[kits] Removed retired $RETIRED_KITS_STATE_FILE — the selection lives in $KITS_STATE_FILE now." >&2
-	echo "[kits] Kits chosen under the old name are not carried over; re-add with --with <kit>." >&2
+	echo "[kits] Retired $RETIRED_KITS_STATE_FILE; kits are recorded in $KITS_STATE_FILE." >&2
 }
 
-remove_retired_kit_state
+inherit_retired_kit_state
 
 read_persisted_kits() {
 	[[ "$GLOBAL" == true && -f "$KITS_STATE_FILE" ]] || return 0
@@ -1375,6 +1395,9 @@ plugin_is_installed() {
 claude_plugin_targets() {
 	local installed="$1" kit id
 	for kit in $(declared_kits); do
+		# Skills are the whole payload of a kit plugin, so a kit with none
+		# publishes none — asking to install it fails the whole run.
+		kit_has_skills "$kit" || continue
 		id="$(kit_plugin_id "$kit")@agentkit"
 		if kit_selected "$kit" || plugin_is_installed "$id" "$installed"; then
 			printf '%s\n' "$id"
@@ -1405,8 +1428,7 @@ ensure_claude_plugin() {
 remove_retired_claude_plugins() {
 	local installed="$1" name id
 	for name in $RETIRED_KIT_NAMES; do
-		# A name that came back as a real kit is not retired, whatever this list says.
-		kit_declared "$name" && continue
+		kit_name_retired "$name" || continue
 		id="$(kit_plugin_id "$name")@agentkit"
 		if plugin_is_installed "$id" "$installed"; then
 			echo "[claude] Uninstalling retired plugin: $id"

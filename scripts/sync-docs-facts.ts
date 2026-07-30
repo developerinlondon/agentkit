@@ -222,11 +222,12 @@ export function collectWiring(root: string = repoRoot): HookWiring[] {
   const hooks = (parsed as { hooks?: Record<string, unknown> }).hooks ?? {};
   const wiring: HookWiring[] = [];
 
-  for (const [event, kits] of Object.entries(hooks)) {
-    if (!Array.isArray(kits)) continue;
-    for (const kit of kits) {
-      const matcher = typeof kit?.matcher === 'string' ? kit.matcher : '';
-      const entries = Array.isArray(kit?.hooks) ? kit.hooks : [];
+  // Claude's own settings vocabulary: a matcher group is not a skill kit.
+  for (const [event, matcherGroups] of Object.entries(hooks)) {
+    if (!Array.isArray(matcherGroups)) continue;
+    for (const matcherGroup of matcherGroups) {
+      const matcher = typeof matcherGroup?.matcher === 'string' ? matcherGroup.matcher : '';
+      const entries = Array.isArray(matcherGroup?.hooks) ? matcherGroup.hooks : [];
       for (const entry of entries) {
         if (typeof entry?.command !== 'string') continue;
         const tokens = entry.command.split(/\s+/);

@@ -149,23 +149,49 @@ describe('skill kit selection', () => {
   }, globalInstallTimeoutMs * 2);
 
   // Installs exist on several machines, so the run that renames the state file
-  // has to clear the old one itself — a leftover `groups` file is a file nobody
-  // reads, sitting next to the one that decides what is installed.
-  test('a retired groups state file is removed, and says the selection is not inherited', () => {
+  // carries the selection over and then clears the old file. Deleting it unread
+  // would read as "nothing selected", and an unselected explicit kit is REMOVED —
+  // an upgrade would silently uninstall a merge gate somebody opted into.
+  test('a retired groups file carries its selection over, under the current kit name', () => {
     const home = mkdtempSync(join(tmpdir(), 'agentkit-kits-'));
 
     try {
       mkdirSync(join(home, '.agentkit'), { recursive: true });
-      writeFileSync(join(home, '.agentkit', 'groups'), '# chosen once\nproduct\n');
+      // As a v0.5.1 install recorded it: the gate under its old name, beside a
+      // kit whose name never changed.
+      writeFileSync(join(home, '.agentkit', 'groups'), '# chosen once\nstrict-review\nproduct\n');
 
       const upgrade = install(home);
       expect(upgrade.status, upgrade.stderr).toBe(0);
       expect(existsSync(join(home, '.agentkit', 'groups'))).toBe(false);
-      expect(upgrade.stderr).toContain('Removed retired');
-      expect(upgrade.stderr).toContain('re-add with --with');
-      // Not inherited: the old file's `product` does not select anything.
+
+      const kits = readFileSync(join(home, '.agentkit', 'kits'), 'utf-8');
+      expect(kits).toContain('adversarial-review');
+      expect(kits).toContain('product');
+      expect(kits).not.toContain('strict-review');
+
+      // The gate survives the upgrade, artifacts and all.
+      expect(existsSync(join(canonSkill(home, 'adversarial-review'), 'SKILL.md'))).toBe(true);
+      expect(existsSync(join(home, '.agentkit', 'tools', 'review-gate'))).toBe(true);
+      expect(existsSync(canonSkill(home, 'product-intelligence'))).toBe(true);
+    } finally {
+      rmSync(home, { force: true, recursive: true });
+    }
+  }, globalInstallTimeoutMs * 2);
+
+  // An entry that is neither a current kit nor a retired name must not survive
+  // the carry-over as a selection.
+  test('an unknown name in the retired file is dropped, not carried over', () => {
+    const home = mkdtempSync(join(tmpdir(), 'agentkit-kits-'));
+
+    try {
+      mkdirSync(join(home, '.agentkit'), { recursive: true });
+      writeFileSync(join(home, '.agentkit', 'groups'), 'no-such-kit\n');
+
+      const upgrade = install(home);
+      expect(upgrade.status, upgrade.stderr).toBe(0);
+      expect(readFileSync(join(home, '.agentkit', 'kits'), 'utf-8')).not.toContain('no-such-kit');
       expect(upgrade.stdout).toContain('Skill kits:    core');
-      expect(existsSync(canonSkill(home, 'product-intelligence'))).toBe(false);
     } finally {
       rmSync(home, { force: true, recursive: true });
     }
