@@ -2,6 +2,9 @@ name: Cross-platform CI
 
 on:
   pull_request:
+  # The merge queue validates the projected merge result; the full suite runs
+  # there (the event is not a pull_request), which is what a queue is for.
+  merge_group:
   push:
     branches:
       - main
@@ -138,7 +141,10 @@ jobs:
     needs: pick-runners
     if: github.event_name != 'pull_request'
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    # Generous on purpose: the slowest pool machine with cold caches once blew
+    # a 30-minute ceiling on a tag push, and a timed-out full suite cancels the
+    # whole release. A slow release beats a dead one.
+    timeout-minutes: 50
     strategy:
       fail-fast: false
       matrix:
@@ -395,7 +401,9 @@ jobs:
 
   ci-gate:
     name: CI gate
-    if: always()
+    # Not on cancellation: a superseded run's test jobs die cancelled, and a
+    # gate that still runs then reports a failure for work nobody needs.
+    if: always() && !cancelled()
     needs:
       - affected
       - docs
