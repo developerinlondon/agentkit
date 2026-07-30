@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Direct installer for the product kit: core install with this kit preselected.
+set -euo pipefail
+exec bash -c "$(curl -fsSL https://raw.githubusercontent.com/developerinlondon/agentkit/main/bootstrap.sh)" bootstrap --with product "$@"

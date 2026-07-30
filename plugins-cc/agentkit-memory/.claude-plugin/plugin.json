@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin.json",
+  "name": "agentkit-memory",
+  "version": "0.3.1",
+  "description": "Persistent brain vault with a learning loop: reflect, meditate, ruminate",
+  "author": {
+    "name": "developerinlondon",
+    "url": "https://github.com/developerinlondon"
+  },
+  "skills": "./skills/"
+}

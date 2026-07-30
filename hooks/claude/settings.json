@@ -80,6 +80,24 @@
             "command": "$HOME/.claude/hooks/comment-police.sh",
             "timeout": 15,
             "statusMessage": "comment-police: checking comment discipline..."
+          },
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/brain-index.sh",
+            "timeout": 10,
+            "statusMessage": "brain-index: syncing the vault index..."
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "startup|resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/brain-inject.sh",
+            "timeout": 10
           }
         ]
       }

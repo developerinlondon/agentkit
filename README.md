@@ -22,11 +22,14 @@ Reusable AI agent skills, rules, plugins, hooks, and tools for OpenCode, Claude 
 | **gitlab-issue-lifecycle**  | always                           | Issue-first workflow and lifecycle hygiene for GitLab: every piece of work runs against an issue, work-item statuses stay current on every touch, MRs reference issues without auto-closing, and issues close with a verification note.           |
 | **gitops-master**           | always                           | GitOps operations master for ArgoCD + Kargo.                                                                                                                                                                                                      |
 | **issue-raiser**            | always                           | Raises well-structured GitLab issues with root cause analysis, proposed solutions, and correct assignees based on git history.                                                                                                                    |
+| **meditate**                | `--with memory`                  | Audit and evolve the project's brain vault — prune stale or low-value notes, surface unstated principles hiding across entries, and cross-check skills against the vault for missed structural enforcement.                                       |
 | **product-intelligence**    | `--with product`                 | Build an evidence-backed product brief from a website, a repository, or supplied documents.                                                                                                                                                       |
 | **product-review**          | `--with product`                 | Review a product the way a user meets it — build it, run it, use it — instead of reading a diff.                                                                                                                                                  |
 | **project-planning**        | always                           | Structured project planning: break down a new project idea into plan files covering architecture, file structure, and implementation roadmap.                                                                                                     |
 | **publish-page**            | always                           | Publish content as a live web page with a stable URL (AgentKit Pages, self-hosted artifacts).                                                                                                                                                     |
+| **reflect**                 | `--with memory`                  | Persist learnings from the current session into the project's brain vault — after mistakes, corrections, or notable codebase discoveries, or when wrapping up.                                                                                    |
 | **resource-safe-execution** | always                           | Apply Linux-only deterministic systemd cgroup limits with bounded-run to resource-intensive developer commands.                                                                                                                                   |
+| **ruminate**                | `--with memory`                  | Mine past Claude Code conversations for corrections, preferences, and knowledge that never reached the brain vault.                                                                                                                               |
 | **test-driven-development** | always                           | Enforces strict Test-Driven Development (TDD) workflow: RED-GREEN-REFACTOR cycle.                                                                                                                                                                 |
 
 <!-- generated:skills:end -->
@@ -168,6 +171,7 @@ global install; re-running updates in place:
 ```bash
 curl -fsSL https://raw.githubusercontent.com/developerinlondon/agentkit/main/bootstrap.sh | bash
 # with options:  … | bash -s -- --with product
+# one URL per kit: …/main/kits/memory | bash   (bootstrap with that kit preselected)
 ```
 
 **It installs the newest release tag, not `main`.** The bootstrap script itself is
@@ -221,6 +225,7 @@ the plugin generator, and the tests all read it rather than hard-coding names.
 
 ```bash
 ./agentkit/install.sh --global                  # core only (or whatever you chose last time)
+./agentkit/install.sh --global --with memory    # + brain vault: reflect, meditate, ruminate
 ./agentkit/install.sh --global --with product   # + product-intelligence, product-review
 ./agentkit/install.sh --global --all            # every declared kit
 ```

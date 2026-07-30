@@ -120,6 +120,7 @@ fileGroups:
     - "bootstrap.sh"
     - "hooks/**/*"
     - "install.sh"
+    - "kits/**/*"
     - "instructions/**/*"
     - "lib/**/*"
     - "plugins-cc/**/*"
@@ -141,6 +142,16 @@ fileGroups:
     - "plugins-cc/infra-tools/**/*"
     - "tests/infra-tools-mcp.test.ts"
     - "tests/test-slices.test.ts"
+
+  memoryInputs:
+    - "hooks/claude/brain-index.sh"
+    - "hooks/claude/brain-inject.sh"
+    - "hooks/claude/lib/**/*"
+    - "plugins-cc/agentkit-memory/**/*"
+    - "skills/meditate/**/*"
+    - "skills/reflect/**/*"
+    - "skills/ruminate/**/*"
+    - "tests/memory/**/*"
 
   productInputs:
     - "hooks/claude/pages-police.sh"
@@ -257,6 +268,12 @@ tasks:
     inputs:
       - "group://ciConfig"
       - "group://integrationInputs"
+
+  test-memory:
+    command: "bun run scripts/check-test-slices.ts memory"
+    inputs:
+      - "group://ciConfig"
+      - "group://memoryInputs"
 
   test-product:
     command: "bun run scripts/check-test-slices.ts product"

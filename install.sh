@@ -17,6 +17,7 @@ Options:
   --with <kit>         Also install an opt-in skill kit (repeatable). Kits
                        are declared in skills/KITS; every unlisted skill is
                        in the always-installed `core` kit.
+                         --with memory           brain vault + reflect, meditate, ruminate
                          --with product          product-intelligence, product-review
                          --with advisory-review  asks for a reviewer pass
                          --with adversarial-review    adversarial-review + merge gate
@@ -933,11 +934,13 @@ install_opencode_plugins() {
 # ─── Claude Code: Bash Hook Scripts ──────────────────────────────────────────
 
 # fail-closed-hook counts as review: its only wiring is as review-police's supervisor.
-review_hook() {
+# Hooks owned by an opt-in kit rather than core; everything else answers core.
+hook_kit() {
 	case "$1" in
-	review-police.sh | fail-closed-hook.sh) return 0 ;;
+	review-police.sh | fail-closed-hook.sh) printf 'adversarial-review' ;;
+	brain-inject.sh | brain-index.sh) printf 'memory' ;;
+	*) printf 'core' ;;
 	esac
-	return 1
 }
 
 # Install hook scripts into the shared root (canon), then optionally symlink
@@ -965,10 +968,12 @@ install_claude_hooks() {
 		# DENY every Bash call — the settings merge below strips entries in the
 		# same run. Without jq that merge cannot run, so the scripts must stay
 		# until it can: they live and die together.
-		if review_hook "$name" && ! kit_selected adversarial-review; then
+		local owning_kit
+		owning_kit="$(hook_kit "$name")"
+		if [[ "$owning_kit" != core ]] && ! kit_selected "$owning_kit"; then
 			if command -v jq &>/dev/null; then
 				if [[ -e "$install_dir/$name" || -L "$install_dir/$name" ]]; then
-					echo "[claude] Removing hook (adversarial-review kit not selected): $name"
+					echo "[claude] Removing hook ($owning_kit kit not selected): $name"
 					rm -f "$install_dir/$name"
 				fi
 				if [[ "$hooks_dir" != "$install_dir" && (-e "$hooks_dir/$name" || -L "$hooks_dir/$name") ]]; then
@@ -1054,17 +1059,20 @@ merge_claude_settings() {
 	# The merge below replaces the whole hooks section, so filtering review
 	# entries here both withholds them on fresh installs and strips previously
 	# merged ones on upgrade — the settings side of removing the scripts above.
-	local review_selected=true
+	local review_selected=true memory_selected=true
 	kit_selected adversarial-review || review_selected=false
+	kit_selected memory || memory_selected=false
 
 	local hooks_json
-	hooks_json=$(jq --arg dir "$hooks_dir" --argjson review "$review_selected" '
+	hooks_json=$(jq --arg dir "$hooks_dir" \
+		--argjson review "$review_selected" --argjson memory "$memory_selected" '
     {hooks: (.hooks | with_entries(
       .value |= (map(.hooks |= map(
         select($review or ((.command // "") | contains("review-police") | not))
+        | select($memory or ((.command // "") | contains("/brain-") | not))
         | .command |= gsub("\\$HOME/\\.claude/hooks"; $dir)
       )) | map(select((.hooks | length) > 0)))
-    ))}
+    ) | with_entries(select((.value | length) > 0)))}
   ' "$canonical")
 
 	if [[ -f "$settings_file" ]]; then
