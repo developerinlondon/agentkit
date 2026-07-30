@@ -181,6 +181,22 @@ KITS_STATE_FILE="$AGENTKIT_HOME/kits"
 RETIRED_KITS_STATE_FILE="$AGENTKIT_HOME/groups"
 RETIRED_KIT_REPLACEMENT=adversarial-review
 
+# Answers "what is this machine running?" in one cat, and feeds the
+# session-start update notice. Best effort: no git metadata, no stamp — and the
+# notice stays silent rather than comparing against a guess.
+write_version_stamp() {
+	local version
+	version=$(git -C "$REPO_DIR" describe --tags --exact-match HEAD 2>/dev/null) \
+		|| version=$(git -C "$REPO_DIR" describe --tags 2>/dev/null) \
+		|| version=$(git -C "$REPO_DIR" rev-parse --short HEAD 2>/dev/null) \
+		|| { echo "[version] No git metadata in $REPO_DIR — not stamping." >&2; return 0; }
+	{
+		printf '%s\n' "$version"
+		printf 'installed_at=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+	} >"$AGENTKIT_HOME/version"
+	echo "[version] Stamped: $version ($AGENTKIT_HOME/version)"
+}
+
 kits_state_header() {
 	echo "# Skill kits chosen at install time; a bare install.sh --global keeps them."
 	echo "# Delete a line to stop installing that kit (installed skills are left alone)."
@@ -1079,8 +1095,25 @@ merge_claude_settings() {
 			echo "[claude] Adding hooks to existing: $settings_file"
 		fi
 
-		# Deep merge: keep existing keys, overlay our hooks
-		echo "$existing" | jq --argjson new_hooks "$hooks_json" '. * $new_hooks' >"${settings_file}.tmp"
+		# Deep merge, except SessionStart: `*` replaces arrays wholesale, and
+		# other tooling legitimately wires its own SessionStart entries — those
+		# must survive, so agentkit's entry appends after its old copy is
+		# stripped. The police events stay replace-semantics on purpose: there
+		# agentkit's wiring is the single source of truth.
+		echo "$existing" | jq --argjson new_hooks "$hooks_json" '
+      ($new_hooks.hooks.SessionStart // []) as $ours
+      | ((.hooks // {}).SessionStart // []) as $theirs
+      | . * ($new_hooks | del(.hooks.SessionStart))
+      | .hooks.SessionStart = (
+          ($theirs
+            | map(.hooks = ((.hooks // []) | map(select(
+                ((.command // "") | contains("update-notice.sh")) | not
+              ))))
+            | map(select((.hooks | length) > 0))
+          ) + $ours
+        )
+      | if (.hooks.SessionStart | length) == 0 then del(.hooks.SessionStart) else . end
+    ' >"${settings_file}.tmp"
 		mv "${settings_file}.tmp" "$settings_file"
 	else
 		# Create new settings file with just hooks
@@ -1548,6 +1581,7 @@ if [[ "$GLOBAL" == true ]]; then
 	install_config
 	write_persisted_kits
 	echo "[kits] Selected: $SELECTED_KITS ($KITS_STATE_FILE)"
+	write_version_stamp
 	echo ""
 
 	# ── Shared content root (single copy) ──

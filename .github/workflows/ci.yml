@@ -218,6 +218,14 @@ jobs:
           AGENTKIT_DOCS_VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
         run: node ./node_modules/astro/bin/astro.mjs build
 
+      # On PRs too, not just at publish: a broken archive script or a tag that
+      # stopped building must fail the PR, never detonate during a release.
+      # Running before the asset check also hands it the archives' files —
+      # a different toolchain version is where an unlisted extension appears.
+      - name: Build the archived versions from their tags
+        working-directory: docs/site
+        run: ./build-archives.sh dist
+
       # Needs the build, so it is a check rather than a test: an extension nobody
       # listed is invisible to a hand-maintained fixture.
       - name: Check every built file is publishable

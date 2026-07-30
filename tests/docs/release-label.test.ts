@@ -10,7 +10,7 @@ import {
 // so a drift-checked value would disagree with the tree at tag time.
 describe('the current version label names the release', () => {
   test('the CI-provided tag wins, needing no git', () => {
-    expect(currentVersionLabel({ env: 'v0.4.5' })).toBe('v0.4.5 (latest)');
+    expect(currentVersionLabel({ env: 'v0.4.5' })).toBe('v0.4.5');
   });
 
   test('surrounding whitespace from a shell is tolerated', () => {
@@ -18,17 +18,23 @@ describe('the current version label names the release', () => {
   });
 
   test('git describe is the local fallback', () => {
-    expect(currentVersionLabel({ describe: () => 'v0.4.4\n' })).toBe('v0.4.4 (latest)');
+    expect(currentVersionLabel({ describe: () => 'v0.4.4\n' })).toBe('v0.4.4');
+  });
+
+  // The label renders inside the sidebar's own parentheses; a suffix like
+  // "(latest)" doubles them on every page, which is how this shipped once.
+  test('the composed sidebar label carries no nested parentheses', () => {
+    const composed = `Introduction (${currentVersionLabel({ env: 'v1.0.0' })})`;
+    expect(composed).toBe('Introduction (v1.0.0)');
   });
 
   test('the env value is preferred over git', () => {
     expect(currentVersionLabel({ env: 'v9.9.9', describe: () => 'v0.0.1' })).toBe(
-      'v9.9.9 (latest)',
+      'v9.9.9',
     );
   });
 
-  // The version leads the label because the select truncates. With no version to
-  // lead with, a bare "Latest" is honest; inventing a number would not be.
+  // With no version to state, a bare "latest" is honest; inventing one is not.
   test.each([
     ['no sources at all', {}],
     ['a describe that throws', { describe: () => { throw new Error('no tags'); } }],
@@ -37,6 +43,6 @@ describe('the current version label names the release', () => {
     ['an abbreviated tag', { env: 'v0.4' }],
     ['empty output', { describe: () => '' }],
   ])('%s yields a bare Latest rather than a guess', (_label, sources) => {
-    expect(currentVersionLabel(sources)).toBe('Latest');
+    expect(currentVersionLabel(sources)).toBe('latest');
   });
 });
