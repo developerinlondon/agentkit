@@ -179,6 +179,48 @@ describe('skill kit selection', () => {
     }
   }, globalInstallTimeoutMs * 2);
 
+  // The state-file header invites hand-editing, and editors drop final newlines.
+  // `read` returns nonzero on an unterminated last line, so without the loop's
+  // `|| [[ -n ]]` tail that line vanishes — and a vanished explicit kit is an
+  // uninstalled merge gate.
+  test('a groups file without a trailing newline still carries its last kit', () => {
+    const home = mkdtempSync(join(tmpdir(), 'agentkit-kits-'));
+
+    try {
+      mkdirSync(join(home, '.agentkit'), { recursive: true });
+      writeFileSync(join(home, '.agentkit', 'groups'), 'strict-review');
+
+      const upgrade = install(home);
+      expect(upgrade.status, upgrade.stderr).toBe(0);
+      expect(readFileSync(join(home, '.agentkit', 'kits'), 'utf-8')).toContain('adversarial-review');
+      expect(existsSync(join(home, '.agentkit', 'tools', 'review-gate'))).toBe(true);
+    } finally {
+      rmSync(home, { force: true, recursive: true });
+    }
+  }, globalInstallTimeoutMs * 2);
+
+  // Both files present means an older installer ran after a newer one. The
+  // newer writer wins, the notice says so, and the retired file goes — but the
+  // kits file it defers to is not touched.
+  test('a groups file beside a kits file is retired without touching the selection', () => {
+    const home = mkdtempSync(join(tmpdir(), 'agentkit-kits-'));
+
+    try {
+      mkdirSync(join(home, '.agentkit'), { recursive: true });
+      writeFileSync(join(home, '.agentkit', 'groups'), 'strict-review\n');
+      writeFileSync(join(home, '.agentkit', 'kits'), 'product\n');
+
+      const upgrade = install(home);
+      expect(upgrade.status, upgrade.stderr).toBe(0);
+      expect(existsSync(join(home, '.agentkit', 'groups'))).toBe(false);
+      expect(upgrade.stderr).toContain('already records the selection');
+      expect(upgrade.stdout).toContain('Skill kits:    core product');
+      expect(existsSync(canonSkill(home, 'adversarial-review'))).toBe(false);
+    } finally {
+      rmSync(home, { force: true, recursive: true });
+    }
+  }, globalInstallTimeoutMs);
+
   // An entry that is neither a current kit nor a retired name must not survive
   // the carry-over as a selection.
   test('an unknown name in the retired file is dropped, not carried over', () => {

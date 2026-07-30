@@ -239,6 +239,14 @@ describe('Claude plugin install lifecycle', () => {
     ]);
   });
 
+  // A kit with no skills publishes no plugin, so asking to install one aborts
+  // the whole run. The guard lives in claude_plugin_targets; this pins it.
+  test('a selected kit with no skills requests no plugin', () => {
+    const { calls, result } = runKitPluginInstall('core advisory-review');
+    expect(result.status, result.stderr).toBe(0);
+    expect(calls.join('\n')).not.toContain('agentkit-advisory-review@agentkit');
+  });
+
   test('a retired id that is not installed is not uninstalled', () => {
     const { calls, result } = runKitPluginInstall('core');
     expect(result.status, result.stderr).toBe(0);

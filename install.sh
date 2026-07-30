@@ -181,6 +181,11 @@ KITS_STATE_FILE="$AGENTKIT_HOME/kits"
 RETIRED_KITS_STATE_FILE="$AGENTKIT_HOME/groups"
 RETIRED_KIT_REPLACEMENT=adversarial-review
 
+kits_state_header() {
+	echo "# Skill kits chosen at install time; a bare install.sh --global keeps them."
+	echo "# Delete a line to stop installing that kit (installed skills are left alone)."
+}
+
 inherit_retired_kit_state() {
 	[[ "$GLOBAL" == true && -f "$RETIRED_KITS_STATE_FILE" ]] || return 0
 	local entry inherited=""
@@ -189,20 +194,26 @@ inherit_retired_kit_state() {
 	if [[ ! -f "$KITS_STATE_FILE" ]]; then
 		mkdir -p "$(dirname "$KITS_STATE_FILE")"
 		{
-			echo "# Skill kits chosen at install time; a bare install.sh --global keeps them."
-			echo "# Delete a line to stop installing that kit (installed skills are left alone)."
-			while read -r entry _; do
-				case "$entry" in '' | '#'*) continue ;; esac
+			kits_state_header
+			# `|| [[ -n ... ]]`: the header invites hand-editing, and an editor
+			# that drops the final newline would otherwise lose the last kit —
+			# for an explicit kit that silently uninstalls a merge gate.
+			while read -r entry _ || [[ -n "$entry" ]]; do
+				entry="${entry%$'\r'}"
+				case "$entry" in '' | '#'* | core) continue ;; esac
 				if kit_name_retired "$entry"; then entry="$RETIRED_KIT_REPLACEMENT"; fi
 				kit_declared "$entry" || continue
+				case " $inherited " in *" $entry "*) continue ;; esac
 				echo "$entry"
 				inherited="${inherited:+$inherited }$entry"
 			done <"$RETIRED_KITS_STATE_FILE"
 		} >"$KITS_STATE_FILE"
 		echo "[kits] Carried over from $RETIRED_KITS_STATE_FILE: ${inherited:-nothing selected}" >&2
+		echo "[kits] Retired $RETIRED_KITS_STATE_FILE; kits are recorded in $KITS_STATE_FILE." >&2
+	else
+		echo "[kits] Retired $RETIRED_KITS_STATE_FILE; $KITS_STATE_FILE already records the selection." >&2
 	fi
 	rm -f "$RETIRED_KITS_STATE_FILE"
-	echo "[kits] Retired $RETIRED_KITS_STATE_FILE; kits are recorded in $KITS_STATE_FILE." >&2
 }
 
 inherit_retired_kit_state
@@ -210,7 +221,8 @@ inherit_retired_kit_state
 read_persisted_kits() {
 	[[ "$GLOBAL" == true && -f "$KITS_STATE_FILE" ]] || return 0
 	local entry
-	while read -r entry _; do
+	while read -r entry _ || [[ -n "$entry" ]]; do
+		entry="${entry%$'\r'}"
 		case "$entry" in '' | '#'*) continue ;; esac
 		# A stale entry must not resurrect a selection, and must not decide the
 		# loop's exit status: as the tail, a bare `cond && action` returning 1
@@ -229,8 +241,7 @@ write_persisted_kits() {
 	local kit
 	mkdir -p "$(dirname "$KITS_STATE_FILE")"
 	{
-		echo "# Skill kits chosen at install time; a bare install.sh --global keeps them."
-		echo "# Delete a line to stop installing that kit (installed skills are left alone)."
+		kits_state_header
 		for kit in $SELECTED_KITS; do
 			[[ "$kit" == core ]] || echo "$kit"
 		done
