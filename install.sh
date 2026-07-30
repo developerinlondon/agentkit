@@ -1105,9 +1105,12 @@ merge_claude_settings() {
       | ((.hooks // {}).SessionStart // []) as $theirs
       | . * ($new_hooks | del(.hooks.SessionStart))
       | .hooks.SessionStart = (
-          ($theirs | map(select(
-            ((.hooks // []) | any(.command // "" | contains("update-notice.sh"))) | not
-          ))) + $ours
+          ($theirs
+            | map(.hooks = ((.hooks // []) | map(select(
+                ((.command // "") | contains("update-notice.sh")) | not
+              ))))
+            | map(select((.hooks | length) > 0))
+          ) + $ours
         )
       | if (.hooks.SessionStart | length) == 0 then del(.hooks.SessionStart) else . end
     ' >"${settings_file}.tmp"

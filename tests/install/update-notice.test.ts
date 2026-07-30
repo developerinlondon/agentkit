@@ -95,6 +95,54 @@ describe('the session-start update notice', () => {
     }
   });
 
+  // timeout(1) is GNU coreutils; stock macOS has neither it nor gtimeout. The
+  // first cut of this hook died silently there — command-not-found inside the
+  // substitution reads as "no update". The bound must be optional.
+  test('a PATH without timeout or gtimeout still notices an update', () => {
+    const h = home('v0.1.0');
+    const remote = remoteWithTags(['v0.2.0']);
+    const bin = mkdtempSync(join(tmpdir(), 'agentkit-thinpath-'));
+    try {
+      for (const tool of ['bash', 'git', 'awk', 'grep', 'sed', 'sort', 'tail', 'head', 'date', 'dirname', 'printf']) {
+        const located = sh(`command -v ${tool}`).stdout.trim();
+        if (located) sh(`ln -s "${located}" "${join(bin, tool)}"`);
+      }
+      const r = spawnSync('bash', [notice], {
+        encoding: 'utf-8',
+        timeout: 30_000,
+        env: {
+          PATH: bin,
+          HOME: h,
+          AGENTKIT_HOME: join(h, '.agentkit'),
+          AGENTKIT_UPDATE_REMOTE: remote,
+        },
+      });
+      expect(r.status, r.stderr).toBe(0);
+      expect(r.stdout).toContain('v0.2.0 is available');
+    } finally {
+      for (const d of [h, remote, bin]) rmSync(d, { force: true, recursive: true });
+    }
+  });
+
+  // A failed check must be remembered, or every session start on an offline
+  // machine pays a fresh network attempt forever.
+  test('a failed check writes a negative cache that later runs honour', () => {
+    const h = home('v0.1.0');
+    try {
+      const first = runNotice(h, '/nonexistent/remote');
+      expect(first.status).toBe(0);
+      expect(first.stdout).toBe('');
+      const cache = readFileSync(join(h, '.agentkit', '.update-check'), 'utf-8');
+      expect(cache.trim()).toMatch(/^\d+ -$/);
+
+      const second = runNotice(h, '/nonexistent/remote');
+      expect(second.status).toBe(0);
+      expect(second.stdout).toBe('');
+    } finally {
+      rmSync(h, { force: true, recursive: true });
+    }
+  });
+
   test('a fresh cache answers without touching the remote', () => {
     const h = home('v0.1.0');
     const now = Math.floor(Date.now() / 1000);

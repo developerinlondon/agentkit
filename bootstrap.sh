@@ -44,6 +44,8 @@ main() {
 }
 
 # Newest v<major>.<minor>.<patch> tag on the remote, read without cloning.
+# hooks/claude/lib/latest-tag.sh is the sourceable twin — this copy exists
+# because a curl-piped single file has nothing to source; keep them in step.
 # Sorted field by field as numbers: `sort -V` is GNU-only and missing on macOS,
 # and a lexical sort ranks v0.4.9 above v0.4.10.
 latest_tag() {
