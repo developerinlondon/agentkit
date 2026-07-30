@@ -10,11 +10,6 @@ import {
   serialise,
   spliceReadme,
 } from '../../scripts/sync-docs-facts.ts';
-import {
-  factsFor,
-  frozenByVersion,
-  versionFromPathname,
-} from '../../docs/site/src/lib/version-facts.ts';
 
 let root: string;
 
@@ -375,73 +370,10 @@ describe('content stays parseable by the version archiver', () => {
   });
 });
 
-describe('a frozen version renders its own tables', () => {
-  test('a versioned path resolves to its frozen snapshot', () => {
-    const current = { units: ['now'], wiring: [], kits: [], skills: [], tools: [] };
-    const frozen = {
-      '0.4': { units: ['then'], wiring: [], kits: [], skills: [], tools: [] },
-    };
-
-    const resolved = factsFor('/docs/0.4/reference/hooks/', current, frozen);
-
-    expect(resolved.version).toBe('0.4');
-    expect(resolved.frozen).toBe(true);
-    expect(resolved.facts.units).toEqual(['then']);
-  });
-
-  test('the unversioned root resolves to the current tree', () => {
-    const current = { units: ['now'], wiring: [], kits: [], skills: [], tools: [] };
-    const frozen = {
-      '0.4': { units: ['then'], wiring: [], kits: [], skills: [], tools: [] },
-    };
-
-    const resolved = factsFor('/docs/reference/hooks/', current, frozen);
-
-    expect(resolved.version).toBeNull();
-    expect(resolved.frozen).toBe(false);
-    expect(resolved.facts.units).toEqual(['now']);
-  });
-
-  // Falling back to the current tree is the lesser wrong: an empty table would
-  // read as "this release had no units", which is a stronger and falser claim
-  // than "these are the current ones".
-  test('a declared version with no snapshot falls back and says so', () => {
-    const current = { units: ['now'], wiring: [], kits: [], skills: [], tools: [] };
-
-    const resolved = factsFor('/docs/9.9/reference/hooks/', current, {});
-
-    expect(resolved.version).toBe('9.9');
-    expect(resolved.frozen).toBe(false);
-    expect(resolved.facts.units).toEqual(['now']);
-  });
-
-  test.each([
-    ['/docs/', null],
-    ['/docs/concepts/pages/', null],
-    ['/docs/0.4/', '0.4'],
-    ['/docs/1/', '1'],
-    ['/docs/10.2.3/', '10.2.3'],
-    ['/docs/0.4rc/', null],
-    ['/docs/v0.4/', null],
-  ])('%s yields version %s', (pathname, expected) => {
-    expect(versionFromPathname(pathname)).toBe(expected);
-  });
-
-  test('a glob of snapshot modules is keyed by version', () => {
-    const modules = {
-      '../generated/frozen-facts/0.4.json': { default: { units: ['a'], wiring: [], kits: [], skills: [], tools: [] } },
-      '../generated/frozen-facts/0.5.json': { default: { units: ['b'], wiring: [], kits: [], skills: [], tools: [] } },
-    };
-
-    expect(Object.keys(frozenByVersion(modules)).sort()).toEqual(['0.4', '0.5']);
-  });
-});
-
 describe('generated data reaches a page only through a component', () => {
-  // Only components call factsFor, so a page importing the generated JSON directly
-  // renders the current tree even when it is an archived version. Fixing the one
-  // page that did this was not enough — the archived copy is the page where it
-  // actually matters, and it was missed. This makes the whole class unrepeatable.
+  // Pages render generated data through components, never by importing the JSON
+  // directly — a direct import bypasses whatever resolution the components do,
+  // and the page that did it was found only after it had shipped wrong.
   test('no content page imports the generated tables directly', () => {
     const root = join(import.meta.dir, '..', '..', 'docs', 'site', 'src', 'content', 'docs');
     const offenders: string[] = [];

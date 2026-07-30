@@ -171,6 +171,10 @@ beforeEach(() => {
   mkdirSync(site, { recursive: true });
   cpSync(DEPLOY, join(site, 'deploy.sh'));
   chmodSync(join(site, 'deploy.sh'), 0o755);
+  // The real script builds archived versions from git tags; these tests cover
+  // the deploy contract around it, so a stub stands in.
+  writeFileSync(join(site, 'build-archives.sh'), '#!/usr/bin/env bash\nexit 0\n');
+  chmodSync(join(site, 'build-archives.sh'), 0o755);
   write('token', 'site-secret');
   write('.gitignore', 'dist/\n.bin/\n.uploads\n.argv\n.live-sha\n.remote-keys\n.deleted\ntoken\n');
   stubCurl();
@@ -213,6 +217,25 @@ describe('the docs deploy refuses before it can mislead', () => {
 
     expect(result.status).toBe(0);
     expect(result.stdout).toContain('-dirty');
+  });
+
+  // A declared archived version that no longer builds must fail the publish
+  // naming it — never quietly drop a version from the live site.
+  test('a failing archive build fails the deploy', () => {
+    writeFileSync(
+      join(site, 'build-archives.sh'),
+      '#!/usr/bin/env bash\necho "build-archives: the v9.9.9 docs no longer build" >&2\nexit 1\n',
+    );
+    chmodSync(join(site, 'build-archives.sh'), 0o755);
+    // Committed, or the dirty-build refusal fires before the archive step.
+    git('add', '-A');
+    git('commit', '-qm', 'failing archives');
+
+    const result = deploy();
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('v9.9.9');
+    expect(uploads()).toEqual([]);
   });
 
   test('an empty build is not reported as a successful deploy', () => {
