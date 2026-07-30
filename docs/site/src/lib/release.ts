@@ -21,10 +21,9 @@ export function currentRelease({ env, describe }: ReleaseSources): string {
 	}
 }
 
-// Version first: the select truncates, and the half a reader sees has to be the
-// part that identifies the release. It also sorts visually with the archived
-// entries, which are labelled `v0.4`.
+// Rendered inside the sidebar's own parentheses, so the label is the bare
+// release; archives carry their own sidebar entries rather than sharing a
+// select that would need disambiguating.
 export function currentVersionLabel(sources: ReleaseSources): string {
-	const release = currentRelease(sources);
-	return release ? `${release} (latest)` : "Latest";
+	return currentRelease(sources) || "latest";
 }

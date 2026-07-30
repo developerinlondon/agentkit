@@ -340,40 +340,10 @@ describe('the prose that enumerates units stays complete', () => {
   });
 });
 
-describe('content stays parseable by the version archiver', () => {
-  // starlight-versions applies remark-mdx to every page regardless of extension,
-  // so a CommonMark autolink — legal markdown, and accepted by the normal build —
-  // reads as a JSX tag and aborts archiving. That failure would otherwise surface
-  // only at the next release, long after the page was written.
-  test('no page uses a CommonMark autolink', () => {
-    const root = join(import.meta.dir, '..', '..', 'docs', 'site', 'src', 'content', 'docs');
-    const offenders: string[] = [];
-
-    const walk = (dir: string): void => {
-      for (const entry of readdirSync(dir, { withFileTypes: true })) {
-        const path = join(dir, entry.name);
-        if (entry.isDirectory()) {
-          walk(path);
-          continue;
-        }
-        if (!/\.mdx?$/.test(entry.name)) continue;
-        const body = readFileSync(path, 'utf-8');
-        for (const match of body.matchAll(/<(https?|mailto):[^>\s]*>/g)) {
-          offenders.push(`${relative(root, path)}: ${match[0]}`);
-        }
-      }
-    };
-
-    walk(root);
-
-    expect(offenders).toEqual([]);
-  });
-});
-
 describe('generated data reaches a page only through a component', () => {
   // Pages render generated data through components, never by importing the JSON
-  // directly — a direct import bypasses whatever resolution the components do,
-  // and the page that did it was found only after it had shipped wrong.
+  // directly — the components are the one place table markup and any future
+  // data resolution live, and a page that bypasses them forks that in silence.
   test('no content page imports the generated tables directly', () => {
     const root = join(import.meta.dir, '..', '..', 'docs', 'site', 'src', 'content', 'docs');
     const offenders: string[] = [];
@@ -402,12 +372,12 @@ describe('generated data reaches a page only through a component', () => {
 });
 
 describe('the content tree holds only content', () => {
-  // The version archiver walks this directory and parses every file it finds as
-  // MDX — it does not consult git. A stray non-markdown file therefore aborts
-  // version creation with an error that names no file, and a gitignored one is
-  // invisible to `git status` while doing it. That cost hours: OMC had written
-  // its session state to `src/content/docs/.omc/state/*.jsonl` because an agent
-  // ran with that directory as its cwd.
+  // Content-collection tooling walks this directory without consulting git, so
+  // a stray non-markdown file breaks builds with errors that name no file — and
+  // a gitignored one is invisible to `git status` while doing it. That cost
+  // hours once: OMC had written its session state to
+  // `src/content/docs/.omc/state/*.jsonl` because an agent ran with that
+  // directory as its cwd.
   test('no file under src/content/docs is anything but markdown', () => {
     const root = join(import.meta.dir, '..', '..', 'docs', 'site', 'src', 'content', 'docs');
     const strays: string[] = [];

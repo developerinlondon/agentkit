@@ -17,15 +17,14 @@ die() {
 
 command -v jq >/dev/null || die "jq is required to read $MANIFEST"
 [[ -f "$MANIFEST" ]] || die "missing $MANIFEST"
+jq -e 'type == "array" and all(.[]; has("slug") and has("tag"))' "$MANIFEST" >/dev/null 2>&1 \
+	|| die "$MANIFEST is not an array of {slug, tag} entries"
 [[ -d "$DIST" ]] || die "no $DIST — build the current docs first"
 DIST_ABS=$(cd "$DIST" && pwd)
 
-count=$(jq 'length' "$MANIFEST")
-for i in $(seq 0 $((count - 1))); do
-	slug=$(jq -r ".[$i].slug" "$MANIFEST")
-	tag=$(jq -r ".[$i].tag" "$MANIFEST")
+while IFS=$'\t' read -r slug tag; do
 	[[ "$slug" =~ ^[0-9][0-9.]*$ && "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] \
-		|| die "manifest entry $i is malformed: slug='$slug' tag='$tag'"
+		|| die "manifest entry is malformed: slug='$slug' tag='$tag'"
 	git -C "$REPO_ROOT" rev-parse -q --verify "refs/tags/$tag" >/dev/null \
 		|| die "tag $tag is not present — fetch tags before building archives"
 
@@ -44,8 +43,8 @@ for i in $(seq 0 $((count - 1))); do
 		perl -pi -e "s{base: \"/docs\",}{base: \"/docs/$slug\",}" astro.config.mjs
 		grep -q "base: \"/docs/$slug\"," astro.config.mjs \
 			|| { echo "build-archives: could not rebase $tag's astro config" >&2; exit 1; }
-		find src/content/docs -name '*.md' -o -name '*.mdx' \
-			| xargs -r perl -pi -e "s{\\]\\(/docs/}{](/docs/$slug/}g"
+		find src/content/docs \( -name '*.md' -o -name '*.mdx' \) \
+			-exec perl -pi -e "s{\\]\\(/docs/}{](/docs/$slug/}g" {} +
 
 		bun install --frozen-lockfile >/dev/null
 		AGENTKIT_DOCS_VERSION="$tag" node ./node_modules/astro/bin/astro.mjs build \
@@ -54,5 +53,13 @@ for i in $(seq 0 $((count - 1))); do
 		rm -rf "${DIST_ABS:?}/$slug"
 		cp -R dist "$DIST_ABS/$slug"
 	) || die "archive $slug ($tag) failed"
+
+	# The link rewrite covers the markdown form; anything that still points at
+	# bare /docs/ escaped the archive and must not publish.
+	# `|| true`: zero escapes is the good case, and grep's no-match status must
+	# not read as a failure under pipefail.
+	escapes=$(grep -rho 'href="/docs/[^"]*"' "$DIST_ABS/$slug" 2>/dev/null \
+		| grep -v "href=\"/docs/$slug" | sort -u | head -3 || true)
+	[[ -z "$escapes" ]] || die "archive $slug links escape its mount: $escapes"
 	echo "[archive] $slug: $(find "$DIST_ABS/$slug" -type f | wc -l | tr -d ' ') files"
-done
+done < <(jq -r '.[] | "\(.slug)\t\(.tag)"' "$MANIFEST")
