@@ -39,6 +39,8 @@ jobs:
     # when present and otherwise probes with the default token; a 403 lands in
     # the same fallback as an offline runner. Forks never see the secret, which
     # composes with the fork guard: fork PRs resolve to hosted twice over.
+    # No checkout happens here, so the job needs nothing from GITHUB_TOKEN.
+    permissions: {}
     outputs:
       matrix: ${{ steps.pick.outputs.matrix }}
     steps:
@@ -46,14 +48,17 @@ jobs:
         id: pick
         env:
           GH_TOKEN: ${{ secrets.RUNNER_LIST_TOKEN || github.token }}
-          IS_FORK: ${{ github.event.pull_request.head.repo.fork || false }}
+          # Identity, not the .fork flag: a null head.repo (deleted fork) must
+          # compare unequal and land on hosted, and non-PR events stay false so
+          # main and tag pushes can still use the Mac.
+          IS_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
         run: |
           mac='["macos-15"]'
           if [ "$IS_FORK" = 'true' ]; then
             echo 'fork pull request: hosted macOS only'
-          elif online=$(gh api "repos/$GITHUB_REPOSITORY/actions/runners" \
+          elif online=$(gh api "repos/$GITHUB_REPOSITORY/actions/runners?per_page=100" \
               --jq '[.runners[] | select(.status=="online" and .busy==false)
-                     | select([.labels[].name] | index("rentamac"))] | length' 2>/dev/null) \
+                     | select((["self-hosted","macOS","ARM64","rentamac"] - [.labels[].name]) | length == 0)] | length') \
             && [ "${online:-0}" -gt 0 ]; then
             mac='["self-hosted","macOS","ARM64","rentamac"]'
             echo "self-hosted macOS available ($online idle)"
