@@ -28,6 +28,10 @@ fi
 
 node ./node_modules/astro/bin/astro.mjs build
 
+# Archived versions build from their own tags into dist/<slug>/ — a declared
+# version that fails to build fails the deploy, naming its tag.
+./build-archives.sh dist
+
 # Checked before the stamp is written: a failed build leaves no dist/ at all, and
 # writing the stamp first turns that into a confusing redirection error instead
 # of a plain report that there is nothing to publish.
