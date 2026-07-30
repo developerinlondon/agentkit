@@ -8,13 +8,15 @@ sidebar:
 Write markdown, publish it through a theme, get a stable URL. Republishing the same `--name`
 updates the same page.
 
-One-time setup per machine, because the skill ships its own dependencies:
+The skill ships a `package.json`, so the installer already ran `bun install` in it — and its build
+script, if it has one. That only happens when a usable `bun` was on `PATH` at install time; if it
+was not, the installer warned and you finish the job by hand:
 
 ```sh
 cd ~/.agentkit/skills/publish-page && bun install
 ```
 
-Then:
+Publish:
 
 ```sh
 bun ~/.agentkit/skills/publish-page/publish.ts \

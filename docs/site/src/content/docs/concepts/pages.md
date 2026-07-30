@@ -34,12 +34,23 @@ store that holds the rendered HTML — plus an optional canonical clone.
 | ------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------- |
 | `PUT`         | `/api/pages/<slug>`        | 401 on a bad bearer · 400 on a bad slug · 413 over 5 MB or on an empty body · else store and return the URL as JSON |
 | `DELETE`      | `/api/pages/<slug>`        | 401 · 400 · 404 when the key is absent · else delete                                                                |
+| `PUT`         | `/api/site/<path>`         | site-token only · the docs-asset keyspace, real filenames and extensions · same 5 MB rule                           |
+| `DELETE`      | `/api/site/<path>`         | site-token only · 400 on a path outside the docs subtree · 404 when absent                                          |
 | `GET`, `HEAD` | apex (and `www`) `/<path>` | the site keyspace; the root is the site index                                                                       |
 | `GET`, `HEAD` | pages host `/<slug>`       | the published-pages keyspace with `noindex, nofollow`; the root is the pages index                                  |
 | anything else | —                          | 405                                                                                                                 |
 
-Reads split on host. Writes split on keyspace. Auth is checked **before** the slug is validated, so
-an unauthenticated caller learns nothing from a 400.
+Reads split on host. Writes split on keyspace. Auth is checked **before** the slug or path is
+validated, so an unauthenticated caller learns nothing from a 400.
+
+:::note[The docs subtree is a deliberate relaxation]
+This documentation is served from the site keyspace under a `docs/` prefix, and that subtree is the
+one place the Worker accepts real filenames with extensions, dotted path segments (a version
+directory like `docs/0.4`), deeper nesting, and a looser CSP that permits `'self'` scripts and
+`wasm-unsafe-eval` — a generated site addresses hashed bundles and its search index needs WebAssembly.
+Every one of those relaxations is confined to that prefix. Outside it the apex still answers only
+`<slug>/index.html` under `default-src 'none'`.
+:::
 
 ## Three secrets, three jobs
 
@@ -81,14 +92,15 @@ bun <skill-dir>/publish.ts --name <name> --delete
 | `--no-git`         | Skip the canonical commit                                                                          |
 | `--allow-bare-svg` | Suppress the bare-diagram refusal — blocked by a hook unless the user approved it                  |
 
-The skill publishes end to end without asking about slug, template or mechanics. The one carve-out is
+The skill publishes end to end without asking about slug, template or mechanics — [publish a page](/docs/cookbook/publish-a-page/) walks one through. The one carve-out is
 content: when it is _proposing_ the page and the material is private, it confirms first. And it does not
 skip verification — load the printed URL in headless Chromium, screenshot both themes, read every
 figure. **Never report the URL of an unviewed page.**
 
 ## Direct writes are blocked on purpose
 
-`pages-police` refuses raw `curl`, `wget`, `httpie` and `xh` writes to the publish API. Publishing
+[`pages-police`](/docs/reference/hooks/) refuses raw `curl`, `wget`, `httpie` and `xh` writes to the
+publish API. Publishing
 through the skill enforces the figure lint, the size cap and the canonical commit; a raw write bypasses
 all three.
 

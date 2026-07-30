@@ -11,15 +11,15 @@ is touched.
 
 ## Dependencies
 
-| Dependency   | Role                                                                                                                                                                                                   |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `jq`         | Required in practice. Several config merges degrade to a warning without it, but the Codex hook stage hard-errors and the run aborts there.                                                            |
-| `bun`        | Optional. Only skills shipping a `package.json` need it — a missing bun prints a warning naming the skill and the install continues.                                                                   |
-| `python3`    | Runtime dependency of the fail-closed hook supervisor and the merge gate, not checked at install time.                                                                                                 |
-| `awk`, `cat` | Required by `install.sh` itself — the group-manifest reader, the Codex prompt writer and the marker rewrite all use them — as well as by the hooks. Neither is probed, so a missing one fails mid-run. |
-| `git`        | Required by `bootstrap.sh`; otherwise a runtime dependency of the hooks and the review gate.                                                                                                           |
-| `claude`     | Only for `--claude-plugin`.                                                                                                                                                                            |
-| `dprint`     | Runtime dependency of `format-police`, which formats files after a write.                                                                                                                              |
+| Dependency   | Role                                                                                                                                                                                                                            |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `jq`         | Required in practice. Config merges degrade to a warning without it. With `--with strict-review` it becomes hard: the Codex review-hook stage returns an error and the run aborts. A core-only install completes with warnings. |
+| `bun`        | Optional. Only skills shipping a `package.json` need it — a missing bun prints a warning naming the skill and the install continues.                                                                                            |
+| `python3`    | Runtime dependency of the fail-closed hook supervisor and the merge gate, not checked at install time.                                                                                                                          |
+| `awk`, `cat` | Required by `install.sh` itself — the group-manifest reader, the Codex prompt writer and the marker rewrite all use them — as well as by the hooks. Neither is probed, so a missing one fails mid-run.                          |
+| `git`        | Required by `bootstrap.sh`; otherwise a runtime dependency of the hooks and the review gate.                                                                                                                                    |
+| `claude`     | Only for `--claude-plugin`.                                                                                                                                                                                                     |
+| `dprint`     | Runtime dependency of `format-police`, which formats files after a write.                                                                                                                                                       |
 
 `resource-police` needs `jq`, `awk` and `cat` to analyse a command. Without one of them it warns
 and **intentionally fails open** — it does not block every heavy command on a broken parser.

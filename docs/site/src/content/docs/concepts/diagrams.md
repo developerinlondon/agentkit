@@ -58,7 +58,7 @@ Four authoring rules shape the output more than any style choice:
   pipeline, mirrored halves, zones, overlap. The pattern table is a floor, not a ceiling.
 - **Section by section.** Never generate the whole file in one pass; a comprehensive scene exceeds a
   single response's output budget and truncates.
-- **Three zoom levels.** An overview strip, labelled zones, then teaching detail. Trace the eye-path
+- **Three zoom levels, for large diagrams.** An overview strip, labelled zones, then teaching detail. Trace the eye-path
   before writing any JSON.
 - **Render, look, fix.** A mandatory visual loop. Stop when it could not be composed better, not when
   nothing is broken.
@@ -93,20 +93,24 @@ download — which does mean the verified path covers two platforms today.
 
 What the wrapper refuses:
 
-| Refusal                                           | Why                                                                      |
-| ------------------------------------------------- | ------------------------------------------------------------------------ |
-| A renderer absent, or at another version          | Renders would not be reproducible                                        |
-| Any remote reference that is not an XML namespace | A published page must make no network request                            |
-| Embedded scripts or foreign objects               | Use a text shape for titles instead                                      |
-| A link left as a filesystem path                  | The SVG would not be self-contained                                      |
-| Fewer embedded icons than the source referenced   | An icon silently failing to inline is a broken figure that still renders |
-| An unknown icon name                              | Fails loudly, with a suggestion when it looks like a misspelling         |
+| Refusal                                                        | Why                                                                         |
+| -------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| A renderer absent, or at another version                       | Renders would not be reproducible                                           |
+| Any `href` not inlined as a `data:` URI — remote or filesystem | A published page must make no network request, and the SVG must stand alone |
+| Embedded `<script>` or `<foreignObject>` elements              | Use a text shape for titles instead                                         |
+| Fewer embedded icons than the source referenced                | An icon silently failing to inline is a broken figure that still renders    |
+| An unknown icon name                                           | Fails loudly, with a suggestion when it looks like a misspelling            |
 
-Post-processing is deterministic: the dark-mode media query is rewritten to switch on the page's theme
-attribute instead, the full-bleed background is removed, and the root is made fluid with an accessible
-role and label. The output carries a class exempting it from the page theme's light-mode inversion — and
-the reason is legal, not visual. The inversion would recolour every embedded vendor logo, which the
-trademark rule forbids.
+Post-processing is deterministic. The dark-mode media query — which the renderer emits as
+`prefers-color-scheme` — is rewritten to key off the page's `data-theme` attribute instead, so a
+figure follows the theme toggle rather than the operating system. The renderer's own full-bleed
+backdrop rect is **removed** rather than overridden, because the figure island supplies the surface.
+Fixed `width` and `height` are stripped for `width="100%"` and `height:auto`, and the root gains
+`role="img"` with an `aria-label`.
+
+The output also carries a `d2` class, which is what the page theme keys its light-mode inversion
+exemption off — and the reason that exemption exists is legal, not visual. Inverting would recolour
+every embedded vendor logo, which the trademark rule forbids.
 
 ## Icon packs, split by what may be redistributed
 

@@ -9,8 +9,9 @@ A skill is a `SKILL.md` the agent loads on demand, plus whatever scripts and ref
 needs to do the job for real. Some are pure playbooks. Others ship working code, and the playbook
 exists to say when to run it and what to refuse.
 
-The kit ships **16 skills**. One format serves every harness: the same `SKILL.md` loads through the
-file installer, the Claude Code plugin, or a plain symlink.
+The kit ships **16 skills**, catalogued one by one in the [skills reference](/docs/reference/skills/).
+One format serves every harness: the same `SKILL.md` loads through the file installer, the Claude Code
+plugin, or a plain symlink.
 
 ## Skills versus hooks
 
@@ -35,7 +36,8 @@ sufficient alone — the skill has no teeth, the hook has no idea which profile 
 ## Install groups
 
 Group membership is declared in one manifest, `skills/GROUPS`, read by a shared library so the
-installer and the plugin generator can never disagree. A skill with no record belongs to `core`, and
+installer and the plugin generator can never disagree. [Skill groups](/docs/getting-started/skill-groups/)
+covers selecting them at install time. A skill with no record belongs to `core`, and
 a skill may name only one group.
 
 | Group           | Skills                                   | Installs                                  |

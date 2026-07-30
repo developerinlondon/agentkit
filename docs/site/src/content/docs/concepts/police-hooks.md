@@ -37,8 +37,8 @@ registrations out of `settings.json` on the way in — so the default chain is s
 `Edit` and `Write` are followed by three quality hooks: `format-police`, `coding-police`,
 `comment-police`.
 
-What each unit checks belongs to the hooks reference. What follows is the mechanism, which is where
-the interesting failures live.
+What each unit checks belongs to the [hooks reference](/docs/reference/hooks/). What follows is the
+mechanism, which is where the interesting failures live.
 
 ## The deny contract, and why it differs by event
 
@@ -109,4 +109,6 @@ shape — a `PreToolUse` hook that exits 0 with no JSON allowed the call, and lo
 that examined it and approved.
 
 Before assuming breakage, check the kill switches. `AGENTKIT_SKIP_HOOKS` takes a comma-separated
-list of unit names, or `all`, and short-circuits the matching hooks at their first line.
+list of unit names, or `all`, and short-circuits the matching hooks at their first line. Every switch
+and config key is in [configuration](/docs/reference/configuration/); to override one guard for one
+command, see [override a guard](/docs/cookbook/override-a-guard/).

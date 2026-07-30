@@ -18,11 +18,26 @@ installed active, and config only moves thresholds, allowlists and review effort
 A global install copies `config.example.yaml` into place if nothing is there, and prints
 `[config] Existing config preserved` otherwise (`install.sh`). A project install never touches it.
 
-:::caution[The repo-level file covers `review:` and nothing else]
+:::caution[Current limitation: the repo-level file covers `review:` and nothing else]
 `tools/review-profile` reads `<repo>/.agentkit/config.yaml` and merges its `review:` section over
 the global one. Every police hook and OpenCode plugin reads the global path only — `coding-police`
-thresholds in a repo's `.agentkit/config.yaml` are silently ignored.
+thresholds in a repo's `.agentkit/config.yaml` are silently ignored. `config.example.yaml` says
+"Repositories may override this section in `.agentkit/config.yaml`" without scoping that to `review`,
+which reads broader than the code is.
 :::
+
+## Known gaps in config coverage
+
+Four places where a documented key does less than it appears to. These are current limitations of the
+implementations, not design intent — a key that only some surfaces honour is a gap, and the tables
+below mark each one.
+
+| Gap                                                                        | Effect                                                |
+| -------------------------------------------------------------------------- | ----------------------------------------------------- |
+| `comment-police.forbidden-patterns` **replaces** the built-in list         | a seeded config silently drops 7 matchers             |
+| `comment-police.max-header-lines` + `forbidden-patterns` are OpenCode-only | no effect under Claude Code or Grok                   |
+| `pkg-police.enabled` is OpenCode-only                                      | cannot disable `pkg-police` under Claude Code or Grok |
+| repo-level `.agentkit/config.yaml` covers `review:` only                   | every other section is ignored there                  |
 
 ## Which implementation reads which section
 
@@ -105,18 +120,27 @@ are overridden per command with `AGENTKIT_ALLOW_STALE_PUSH=1` and
 
 ## `coding-police`
 
-| Key                    | Default | Effect                                                 |
-| ---------------------- | ------- | ------------------------------------------------------ |
-| `max-file-lines`       | `1000`  | lines in one file before it must be split              |
-| `max-function-lines`   | `100`   | lines in one function before it must be decomposed     |
-| `min-duplicate-lines`  | `6`     | identical consecutive lines that count as duplication  |
-| `max-exports-per-file` | `15`    | exports in one file before it is doing too many things |
-| `max-dir-files`        | `15`    | source files in one directory; `0` disables the check  |
-| `exclude-patterns`     | `[]`    | path substrings skipped entirely                       |
+| Key                    | Default | Effect                                                  |
+| ---------------------- | ------- | ------------------------------------------------------- |
+| `max-file-lines`       | `1000`  | lines in one file before it must be split               |
+| `max-function-lines`   | `100`   | lines in one function before it must be decomposed      |
+| `min-duplicate-lines`  | `6`     | identical consecutive lines that count as duplication   |
+| `max-exports-per-file` | `15`    | exports in one file before it is doing too many things  |
+| `max-dir-files`        | `15`    | source files in one directory; `0` disables the check   |
+| `exclude-patterns`     | `[]`    | path substrings that skip the check (two effects below) |
 
-`max-dir-files` fires only when a `Write` creates a **new** source file; editing an existing file in
-a crowded directory never triggers it. `exclude-patterns` exists for legitimately homogeneous
-collections — `routes/`, `migrations/`, `generated/`.
+`max-dir-files` is narrower than the other four. It runs on the `Write` family only — `Edit` cannot
+create a file — and "new" means **git has never tracked the path**, tested with
+`git ls-files --error-unmatch`. It fails open whenever it cannot tell: a tracked file, a directory
+outside a git repository, or a missing `git` all return without a finding. What it counts is the
+_sibling_ source files already in that directory, excluding the file being written, lock and
+generated files (`*.lock`, `*.min.*`, `*.generated.*`, `*.snap`, `*.d.ts`, the three lockfile names),
+and anything matching `exclude-patterns`. It fires when that count reaches the cap.
+
+`exclude-patterns` entries are matched as plain **substrings** of the path, not globs, at two points:
+a written file whose path contains any entry exits the hook entirely, and sibling files matching an
+entry are not counted toward `max-dir-files`. It exists for legitimately homogeneous collections —
+`routes/`, `migrations/`, `generated/`.
 
 The bash hook's parser accepts an integer value only: a non-numeric value is skipped and the
 built-in default stands, with no error.
@@ -129,21 +153,27 @@ built-in default stands, with no error.
 | `max-comment-ratio`  | `0.3`                | read             | read            |
 | `exclude-patterns`   | `[]`                 | read             | read            |
 | `max-header-lines`   | `10`                 | **not read**     | read            |
-| `forbidden-patterns` | 14 built-in patterns | **not read**     | read            |
+| `forbidden-patterns` | 13 built-in patterns | **not read**     | read            |
+
+:::caution[Current limitation: two of these keys are OpenCode-only]
+`max-header-lines` and `forbidden-patterns` have no effect under Claude Code or Grok CLI.
+`config.example.yaml` documents all five keys with no such caveat.
+:::
 
 The two implementations diverge here, and the divergence is asymmetric:
 
 - The hook runs no top-of-file header check at all, so `max-header-lines` has nothing to tune.
 - The hook matches its own fixed list of seven forge-reference patterns (issue and MR numbers,
   forge URLs, commit shas, plan numbers) which cannot be configured.
-- The plugin ships 14 default patterns and **replaces** them wholesale when
+- The plugin ships 13 default patterns and **replaces** them wholesale when
   `forbidden-patterns` is present.
 
-:::caution[The seeded config narrows the OpenCode plugin]
-`config.example.yaml` sets `forbidden-patterns` to six entries. Because a present key replaces the
-default list rather than extending it, a freshly seeded config leaves the OpenCode plugin matching
-six patterns instead of its built-in 14 — dropping the bare `#123`, forge-URL and commit-sha
-matchers. Delete the key to keep the built-in set.
+:::caution[Current limitation: the seeded config narrows the OpenCode plugin]
+`config.example.yaml` sets `forbidden-patterns` to six entries. Because a present key **replaces**
+the default list rather than extending it, a freshly seeded config leaves the OpenCode plugin
+matching six patterns instead of its built-in 13 — dropping seven, including the bare `#123`,
+forge-URL and commit-sha matchers. Delete the key to keep the built-in set. There is no
+extend-rather-than-replace syntax.
 :::
 
 ## `pkg-police`
@@ -154,9 +184,14 @@ pkg-police:
 ```
 
 `false` allows `npm`, `npx`, `yarn` and `pnpm`. Read by the OpenCode plugin only, which matches the
-literal shape `pkg-police:` followed by `enabled: false`. **The Claude/Grok hook does not read
-this key** — under Claude, the only way past `pkg-police` is prefixing the one command with
+literal shape `pkg-police:` followed by `enabled: false` — a regex, so a differently formatted but
+valid YAML `false` will not be seen.
+
+:::caution[Current limitation: `enabled` is OpenCode-only]
+`hooks/claude/pkg-police.sh` reads no config file, so this key cannot disable `pkg-police` under
+Claude Code or Grok CLI. There, the only way past it is prefixing one command with
 `AGENTKIT_ALLOW_PKG=1`.
+:::
 
 ## `version-police`
 
@@ -173,4 +208,4 @@ which has no comments to carry an inline waiver.
 `version-police` exists only as an OpenCode plugin — there is no Claude hook and no Codex policy —
 so this section has no effect on the other three clients. It also honours
 `AGENTKIT_SKIP_HOOKS=version-police`, but not the `all` keyword (see
-[CLI and tools](/reference/cli-and-tools/)).
+[CLI and tools](/docs/reference/cli-and-tools/)).

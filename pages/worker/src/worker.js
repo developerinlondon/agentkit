@@ -37,6 +37,7 @@ const EXT_TYPES = {
   map: "application/json; charset=utf-8",
   mjs: "text/javascript; charset=utf-8",
   pagefind: "application/octet-stream",
+  pf_filter: "application/octet-stream",
   pf_fragment: "application/octet-stream",
   pf_index: "application/octet-stream",
   pf_meta: "application/octet-stream",

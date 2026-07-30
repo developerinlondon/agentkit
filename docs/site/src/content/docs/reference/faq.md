@@ -84,7 +84,7 @@ persists across it:
 - An **explicit** group that is not selected has its previously installed hooks, tools, skills and
   prompt wiring **removed**.
 
-See [Upgrading and removing](/getting-started/upgrading/) for the per-file detail.
+See [Upgrading and removing](/docs/getting-started/upgrading/) for the per-file detail.
 
 ## Why is the review machinery not on by default?
 

@@ -19,7 +19,6 @@ surfaces:
     build: bun install && bun run build
     verify: bun test
     run: bun run start
-    url: http://localhost:3000
     expect: |
       A signup completes and the new user appears in GET /api/users.
       POST /api/items returns 201 and the item reads back.
@@ -54,9 +53,13 @@ monorepo can declare one per package.
 
 ```text
 No .agentkit/product.yaml in this repo, so I cannot product-review it —
-add one (template: product.example.yaml) describing the user-facing
-surfaces, or tell me to skip the product lane.
+I would be guessing at how to build and run it. Add one (template:
+product.example.yaml) describing the user-facing surfaces, or tell me
+the build/run/verify commands and I will review against those.
 ```
+
+It then records the absence as verdict `unable_to_verify`, coverage `none`, and a MEDIUM finding
+reading "no product manifest — product surfaces unverified".
 
 :::note[Refusing is the correct behaviour]
 A review that invents its own idea of the product is worse than none. It does not fall back to

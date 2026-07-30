@@ -22,9 +22,14 @@ Platform support is metadata, not installer knowledge: `bounded-run` and `agent-
 `review-gate` and `review-profile` when `strict-review` is not selected.
 
 Global installs put executables in `~/.local/bin/` and mirror them under `~/.agentkit/tools/`.
-Project installs expose them at `./.claude/tools/`. The Claude plugin carries `bounded-run` at
-`$CLAUDE_PLUGIN_ROOT/tools/bounded-run`. `agentkit-run` remains as a symlink to `bounded-run` from
-the tool's previous name.
+Project installs expose them at `<project>/.claude/tools/`. `agentkit-run` remains as a symlink to
+`bounded-run` from the tool's previous name.
+
+The Claude plugins carry their own copies, from an explicit allowlist in
+`scripts/sync-cc-plugin.sh`: the core `agentkit` plugin gets `bounded-run` only, and
+`review-gate`/`review-profile` go to `agentkit-strict-review` instead. `resource-police` accepts
+`$CLAUDE_PLUGIN_ROOT/tools/bounded-run` as a trusted runner and names that path when it denies an
+unbounded command — the runner is trusted by installed path, never by filename.
 
 ## `bounded-run`
 
@@ -142,6 +147,12 @@ missing, the user bus is unreachable, or a scope already wraps this process
 Exit codes: `64` when invoked as `agent-session` with no command, `69` when the target cannot be
 found on `PATH` outside the shim directory. Otherwise it `exec`s and the runtime owns the status.
 
+:::caution[`agent-session` has no `--help`]
+It is the one tool here without one. Its first argument is taken as the command to run, so
+`agent-session --help` tries to resolve `--help` on `PATH` and exits `69` with
+`cannot find '--help' on PATH outside the shim directory`. Verified by running it.
+:::
+
 ## `review-gate`
 
 Ships only with `--with strict-review`. Validates a strict review record against a trusted policy.
@@ -217,13 +228,22 @@ worktree.
 
 Every run appends one tab-separated line to `${HOME:-/tmp}/.agentkit/review-audit.log`. The append
 is best-effort and never fails the run. Config errors exit `2`; see
-[Configuration](/reference/configuration/) for the keys and precedence.
+[Configuration](/docs/reference/configuration/) for the keys and precedence.
 
 ## `fix-ascii-boxes.py`
 
-Aligns the right-hand `│` of ASCII boxes inside markdown code fences, innermost box first, then
-outward. Only fences whose first non-empty line starts with `┌` at column 0 are processed — indented
-tree diagrams are skipped.
+Aligns the right-hand `│` of ASCII boxes inside markdown code fences. Nested boxes are sorted by
+enclosure depth and the innermost is fixed first, then outward.
+
+Two conditions narrow what it touches, both stricter than they look:
+
+- **Bare fences only.** A line counts as a fence delimiter when it is exactly `` ``` `` after
+  stripping. A language-tagged opener like `` ```text `` is not recognised as a fence at all.
+- **The first non-empty line of the block must both start with `┌` at column 0 and end with `┐`.**
+  Anything else — an indented box, a tree diagram, a box whose top border is not the first line —
+  makes the whole block skipped.
+
+It has no `--help`; `--check` is its only flag.
 
 ```sh
 python3 tools/fix-ascii-boxes.py path/to/file.md   # fix specific files
@@ -289,24 +309,24 @@ whitespace-stripped, so `a, b` behaves like `a,b`.
 
 ### Installer and bootstrap
 
-| Variable               | Default                                                                                 | Read by        |
-| ---------------------- | --------------------------------------------------------------------------------------- | -------------- |
-| `AGENTKIT_HOME`        | `~/.agentkit`                                                                           | `install.sh`   |
-| `AGENTKIT_SKIP_PROMPT` | unset — set to anything to suppress the group question (a non-empty `CI` does the same) | `install.sh`   |
-| `AGENTKIT_SRC`         | `~/.agentkit-src`                                                                       | `bootstrap.sh` |
-| `AGENTKIT_REPO_URL`    | `https://github.com/developerinlondon/agentkit.git`                                     | `bootstrap.sh` |
+| Variable               | Default                                                                                        | Read by        |
+| ---------------------- | ---------------------------------------------------------------------------------------------- | -------------- |
+| `AGENTKIT_HOME`        | `~/.agentkit`                                                                                  | `install.sh`   |
+| `AGENTKIT_SKIP_PROMPT` | unset — any **non-empty** value suppresses the group question (a non-empty `CI` does the same) | `install.sh`   |
+| `AGENTKIT_SRC`         | `~/.agentkit-src`                                                                              | `bootstrap.sh` |
+| `AGENTKIT_REPO_URL`    | `https://github.com/developerinlondon/agentkit.git`                                            | `bootstrap.sh` |
 
 ### Skill-specific
 
-| Variable                             | Default                                     | Read by                                                         |
-| ------------------------------------ | ------------------------------------------- | --------------------------------------------------------------- |
-| `AGENTKIT_PAGES_ENDPOINT`            | `https://pages.agentkit.sbs`                | `skills/publish-page/publish.ts`                                |
-| `AGENTKIT_PAGES_REPO`                | `~/code/agentkit-pages`                     | `skills/publish-page/publish.ts`                                |
-| `AGENTKIT_CHROMIUM`                  | Playwright's resolved Chromium              | `skills/diagram/render.ts`                                      |
-| `AGENTKIT_DIAGRAM_VENDOR_ICONS`      | `~/.agentkit/diagram/vendor-icons`          | `skills/diagram/scripts/vendor-packs.ts`                        |
-| `AGENTKIT_DIAGRAM_VENDOR_PACKS`      | built-in registry                           | `skills/diagram/scripts/vendor-packs.ts`                        |
-| `AGENTKIT_DIAGRAM_ALLOW_LOCAL_PACKS` | unset — `1` permits a local `file:` archive | `skills/diagram/scripts/fetch-icons.ts`                         |
-| `AGENTKIT_REF`, `AGENTKIT_REPO`      | `main`, the GitHub URL                      | the CI templates under `skills/product-intelligence/assets/ci/` |
+| Variable                             | Default                                                                                                                                                                                                                | Read by                                                         |
+| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| `AGENTKIT_PAGES_ENDPOINT`            | `https://pages.agentkit.sbs`                                                                                                                                                                                           | `skills/publish-page/publish.ts`                                |
+| `AGENTKIT_PAGES_REPO`                | first of `~/code/agentkit-pages`, `~/code/agentkit/agentkit-pages` that contains a `.git`                                                                                                                              | `skills/publish-page/publish.ts`                                |
+| `AGENTKIT_CHROMIUM`                  | first existing of `/usr/bin/chromium`, `/usr/bin/chromium-browser`, `/usr/bin/google-chrome`, `/opt/google/chrome/chrome`, `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`; then Playwright's own cache | `skills/diagram/render.ts`                                      |
+| `AGENTKIT_DIAGRAM_VENDOR_ICONS`      | `~/.agentkit/diagram/vendor-icons`                                                                                                                                                                                     | `skills/diagram/scripts/vendor-packs.ts`                        |
+| `AGENTKIT_DIAGRAM_VENDOR_PACKS`      | `skills/diagram/assets/vendor-packs.json`                                                                                                                                                                              | `skills/diagram/scripts/vendor-packs.ts`                        |
+| `AGENTKIT_DIAGRAM_ALLOW_LOCAL_PACKS` | unset — `1` permits a local `file:` archive                                                                                                                                                                            | `skills/diagram/scripts/fetch-icons.ts`                         |
+| `AGENTKIT_REF`, `AGENTKIT_REPO`      | `main`, the GitHub URL                                                                                                                                                                                                 | the CI templates under `skills/product-intelligence/assets/ci/` |
 
 `AGENTKIT_RAW_INPUT` appears in `hooks/claude/lib/hook-input.sh` but is not a knob — it holds the
 slurped hook payload. `AGENTKIT_BASH32`, `AGENTKIT_MUTATE`, `AGENTKIT_RUN_TESTING`,

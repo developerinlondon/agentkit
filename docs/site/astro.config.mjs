@@ -1,6 +1,7 @@
 import starlight from "@astrojs/starlight";
 import { defineConfig } from "astro/config";
-import starlightVersions from "starlight-versions";
+import mermaid from "astro-mermaid";
+import starlightLinksValidator from "starlight-links-validator";
 
 // The hand-built pages these replaced are already indexed and linked. Each keeps
 // resolving to its nearest equivalent rather than 404ing, because a docs URL that
@@ -28,6 +29,7 @@ export default defineConfig({
 	trailingSlash: "always",
 	redirects: MIGRATED,
 	integrations: [
+		mermaid({ theme: "dark", autoTheme: true }),
 		starlight({
 			title: "agentkit",
 			description: "Discipline for coding agents: hooks that refuse, skills that instruct.",
@@ -37,7 +39,11 @@ export default defineConfig({
 			// installer actually gives you. Archived versions are frozen copies cut
 			// at a release, committed to the repository by the plugin on the next
 			// build after a version is declared here.
-			plugins: [starlightVersions({ versions: [{ slug: "0.4", label: "v0.4" }] })],
+			plugins: [
+				// Starlight does not check internal links itself, so before this a
+				// renamed page left dangling links that shipped silently.
+				starlightLinksValidator({ errorOnRelativeLinks: false }),
+			],
 			sidebar: [
 				{ label: "Introduction", link: "/" },
 				{

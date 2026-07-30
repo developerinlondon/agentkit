@@ -14,7 +14,7 @@ Missing packaging. A setup step that only exists in someone's head. None of it a
 ## Declaring what a product is
 
 `.agentkit/product.yaml`, committed at the repository root — because a reviewer reads it in a fresh
-clone, and an untracked manifest is the same as no manifest at all.
+clone, and an untracked manifest is the same as no manifest at all. [Declare your product](/docs/cookbook/declare-your-product/) is the walkthrough.
 
 ```yaml
 summary: >-

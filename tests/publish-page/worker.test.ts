@@ -690,3 +690,24 @@ describe('an html asset path is still a document', () => {
     expect(res.headers.get('referrer-policy')).toBe('no-referrer');
   });
 });
+
+describe('the relaxed docs policy cannot leak onto marketing pages', () => {
+  // The apex serves its home page and its sub-pages from two different branches.
+  // Asserting only the home page left the sub-page branch free to hand out the
+  // docs policy with every test still green.
+  test.each([
+    ['https://agentkit.sbs/', '_site/index.html'],
+    ['https://agentkit.sbs/install', '_site/install/index.html'],
+    ['https://agentkit.sbs/docsomething', '_site/docsomething/index.html'],
+  ])('%s keeps the strict policy', async (url, key) => {
+    const store = bucket({ [key]: '<h1>marketing</h1>' });
+    const res = await worker.fetch(get(url), env(store));
+    const csp = res.headers.get('content-security-policy') ?? '';
+
+    expect(res.status).toBe(200);
+    expect(csp).toContain("default-src 'none'");
+    expect(csp).not.toContain("'self'");
+    expect(csp).not.toContain('wasm-unsafe-eval');
+    expect(res.headers.get('cache-control')).toBeNull();
+  });
+});

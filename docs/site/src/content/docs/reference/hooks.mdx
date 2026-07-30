@@ -54,20 +54,31 @@ the harness giving up.
 
 ## What each unit refuses
 
+This column is hand-written, because the refusal wording lives nowhere machine-readable. It names
+the refusals you are most likely to meet, **not an exhaustive list** — several units refuse more
+than is shown, and the authority is always the implementation. The unit list itself is generated, so
+a unit cannot go missing from this table, but a cell can be incomplete.
+
 | Unit | Refuses |
 | --- | --- |
-| `coding-police` | files over the length cap, functions over the length cap, duplicated blocks, too many exports in one file |
-| `comment-police` | comment-to-code ratio over the limit, forge references in source, narration of what the code plainly does |
-| `format-police` | a write that leaves the file unformatted, by running the repository's formatter over it |
-| `git-police` | force pushes, `--no-verify`, AI-attribution trailers, commits to protected branches, branch creation in a shared clone |
-| `kubectl-police` | `kubectl apply` against Kargo custom resources, where the GitOps controller owns the state |
-| `mr-police` | opening another merge request while one you authored is already open on the repository |
+| `coding-police` | files over the length cap, functions over the length cap, duplicated blocks, too many exports in one file, a directory holding more source files than `max-dir-files`, and a relative path that reaches outside the repository |
+| `comment-police` | a comment block longer than `max-block-lines`, a comment-to-code ratio over the limit, and forge references in source |
+| `format-police` | a file `dprint` cannot parse. Formatted output is rewritten in place rather than refused, and the check skips with a warning when `dprint` or a `dprint.json` is missing |
+| `git-police` | force pushes, `--no-verify`, AI attribution in commits *and* in forge content, commits and pushes touching a protected branch, branch creation in a shared clone, a branch behind the default branch, a branch cut from another feature branch, and stale local branches |
+| `kubectl-police` | `kubectl create` or `kubectl apply` against Kargo custom resources, where the GitOps controller owns the state |
+| `mr-police` | opening another GitLab merge request while one you authored is already open on the repository |
 | `pages-police` | a direct write to the Pages API, which would bypass the publish-time figure lint and the canonical git history, and an unapproved `--allow-bare-svg` |
-| `pkg-police` | `npm`, `npx`, `yarn` and `pnpm` in a repository whose lockfile names a different manager |
-| `resource-police` | a heavy command that does not start with `bounded-run`, so that systemd owns and limits the process tree (Linux only) |
+| `pkg-police` | `npm`, `npx`, `yarn` and `pnpm` package-management subcommands in a repository whose lockfile names a different manager |
+| `resource-police` | a heavy command not run through the **installed** `bounded-run` — trust is by installed path, not by filename, so a copy in the current directory is still refused — plus delegated workloads, which `bounded-run` cannot contain at all, and commands whose shell nesting it cannot parse (Linux only) |
 | `review-police` | a forge merge unless review evidence passed for the forge-selected source head and the current target |
 | `version-police` | a dependency pin that lags the upstream latest by a major version; a pin merely behind within its major warns instead |
-| `delegation-police` | commands that delegate work off the local machine — `ansible`, `doas` and the rest — because the child work escapes local containment |
+| `delegation-police` | commands whose work escapes local containment — off-machine delegation such as `ansible`, and privilege wrappers such as `doas`. Read-only diagnostic forms are explicitly allowed, so `kubectl get` and `docker ps` pass |
+
+:::caution[Two of these fail open by design]
+`format-police` skips silently when `dprint` or a `dprint.json` is absent, so formatting enforcement
+is simply off on a machine without them. Every unit fails open when `jq` is missing. Neither is a
+bug — it is the repository's stated convention — but neither is visible while it is happening.
+:::
 
 :::note[These are guards, not a boundary]
 Every unit above detects a pattern and refuses it. None of them contains a hostile agent: an agent

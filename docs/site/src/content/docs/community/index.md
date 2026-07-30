@@ -47,12 +47,19 @@ request, because it grants more than Apache-2.0 inbound would on its own.
 - You grant the Project Owner a perpetual, worldwide, irrevocable copyright licence to use and
   distribute it **under any licence terms, including proprietary or commercial ones** (§2). In plain
   terms: the project can be relicensed, and your contribution comes with it.
-- You grant a patent licence covering your contribution and its combination with the project (§3).
-- You confirm you have the right to grant this, and that your employer either has no claim or has
-  permitted it (§4).
-- Work that is not your original creation may be submitted if it is identified as such and its
-  licence and restrictions are stated (§5).
-- The Project Owner is under no obligation to use or merge anything (§6).
+- You grant a patent licence covering your contribution alone and in combination with the project.
+  It terminates for any entity that files patent litigation alleging your contribution or the
+  project infringes (§3).
+- You represent that you are legally entitled to grant this; that where an employer has rights, it
+  has given permission, waived them, or signed a separate agreement; that each contribution is your
+  original creation; and that you disclose any third-party licence or restriction you are aware of
+  (§4).
+- Work that is not your original creation is submitted **separately** from a contribution, with its
+  source and restrictions detailed and marked
+  `Submitted on behalf of a third-party: [named here]` (§5).
+- You owe no support, and your contributions are provided AS IS without warranties (§6).
+- You agree to notify the Project Owner if anything later makes these representations inaccurate
+  (§7).
 
 Signing is a bot flow, not paperwork: open a pull request, the CLA Assistant posts a comment, click
 its link and agree with your GitHub account. Once per contributor, not once per PR.
@@ -125,9 +132,12 @@ bun test                          # the full suite
 ```
 
 `preflight` reads the touched set from git — committed, staged, unstaged and untracked — and exits 1
-on any finding. `BUILD-DISCIPLINE.md` catalogues fourteen defect classes — each found by hand in a
-review of this repository more than once — and names which ones `preflight` catches mechanically and
-which remain a reviewer's job. Two will bite a first contribution: a new test file that no slice in
+on any finding. `BUILD-DISCIPLINE.md` catalogues fourteen defect classes, each found by hand in a
+review of this repository more than once, and each carrying a **Caught by** line. Nine name a
+mechanical check — `preflight` itself or a helper it calls (`scripts/bash-status-check`,
+`scripts/lib/test-verdict.sh`, `scripts/check-test-slices.ts`). Four say "Nothing static" outright and
+hand the class to `scripts/mutate` or to a reviewer. One prescribes a practice rather than naming a
+check. Two will bite a first contribution: a new test file that no slice in
 `scripts/check-test-slices.ts`'s `TEST_SLICES` claims, and plugin-mirror drift.
 
 For load-bearing lines, `scripts/mutate` breaks the line on purpose and reports whether the tests

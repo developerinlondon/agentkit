@@ -53,6 +53,9 @@ function stubBuild(files: readonly string[]): void {
   );
 }
 
+// Mirrors the shapes a real Starlight build emits. `pf_filter` is here because
+// Pagefind writes one whenever the index has filters, which Starlight's always
+// does — omitting it from this fixture is what let an unpublishable site pass.
 const BUILT = [
   'index.html',
   'getting-started/install/index.html',
@@ -60,6 +63,12 @@ const BUILT = [
   '_astro/page.LAbJoB63.js',
   'pagefind/pagefind.js',
   'pagefind/index/en_c83d5de.pf_index',
+  'pagefind/filter/en_52192b3.pf_filter',
+  'pagefind/fragment/en_9e45372.pf_fragment',
+  'pagefind/pagefind.en_77851b82ae.pf_meta',
+  'pagefind/wasm.en.pagefind',
+  'favicon.svg',
+  'sitemap-0.xml',
 ];
 
 // Records every argv it is handed and answers the three shapes deploy.sh uses:
@@ -80,6 +89,31 @@ function stubCurl(): void {
       'done',
       'eval "url=\\${$#}"',
       'if [ -n "$is_put" ]; then printf "%s\\n" "${url##*/api/site/docs/}" >> "$LOG"; exit 0; fi',
+      'if [ -n "$is_code" ]; then printf "200"; exit 0; fi',
+      'if [ -f "$LIVE" ]; then cat "$LIVE"; fi',
+      'exit 0',
+    ].join('\n'),
+  );
+}
+
+// Answers 400 for one upload, the way the worker does for a path it rejects.
+function stubCurlRejecting(fragment: string): void {
+  stub(
+    'curl',
+    [
+      '#!/usr/bin/env bash',
+      'set -eu',
+      `LOG=${JSON.stringify(join(root, '.uploads'))}`,
+      `LIVE=${JSON.stringify(join(root, '.live-sha'))}`,
+      'is_put=; is_code=',
+      'for a in "$@"; do',
+      '  case "$a" in PUT) is_put=1 ;; -w) is_code=1 ;; esac',
+      'done',
+      'eval "url=\\${$#}"',
+      'if [ -n "$is_put" ]; then',
+      `  case "$url" in *${fragment}*) printf 'invalid path\\n'; exit 22 ;; esac`,
+      '  printf "%s\\n" "${url##*/api/site/docs/}" >> "$LOG"; exit 0',
+      'fi',
       'if [ -n "$is_code" ]; then printf "200"; exit 0; fi',
       'if [ -f "$LIVE" ]; then cat "$LIVE"; fi',
       'exit 0',
@@ -228,5 +262,28 @@ describe('the docs deploy keeps the token off the command line', () => {
     expect(result.status).toBe(0);
     expect(argv).not.toContain('site-secret');
     expect(argv).toContain('--config');
+  });
+});
+
+describe('a rejected upload stops the deploy', () => {
+  // Without this, one 400 in the middle of the walk left the stamp published over
+  // a site missing an asset, and the read-back still matched — "verified live"
+  // printed over a broken site.
+  test('an asset the endpoint rejects aborts before the stamp is uploaded', () => {
+    stubCurlRejecting('pf_filter');
+    const result = deploy();
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('FAILED');
+    expect(uploads()).not.toContain('build-sha.txt');
+    expect(result.stdout).not.toContain('verified live');
+  });
+
+  test('a rejected document aborts before the stamp is uploaded', () => {
+    stubCurlRejecting('install/index.html');
+    const result = deploy();
+
+    expect(result.status).toBe(1);
+    expect(uploads()).not.toContain('build-sha.txt');
   });
 });

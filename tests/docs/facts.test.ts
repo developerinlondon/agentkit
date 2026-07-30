@@ -403,3 +403,33 @@ describe('a frozen version renders its own tables', () => {
     expect(Object.keys(frozenByVersion(modules)).sort()).toEqual(['0.4', '0.5']);
   });
 });
+
+describe('generated data reaches a page only through a component', () => {
+  // Only components call factsFor, so a page importing the generated JSON directly
+  // renders the current tree even when it is an archived version. Fixing the one
+  // page that did this was not enough — the archived copy is the page where it
+  // actually matters, and it was missed. This makes the whole class unrepeatable.
+  test('no content page imports the generated tables directly', () => {
+    const root = join(import.meta.dir, '..', '..', 'docs', 'site', 'src', 'content', 'docs');
+    const offenders: string[] = [];
+
+    const walk = (dir: string): void => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const path = join(dir, entry.name);
+        if (entry.isDirectory()) {
+          walk(path);
+          continue;
+        }
+        if (!/\.mdx?$/.test(entry.name)) continue;
+        const body = readFileSync(path, 'utf-8');
+        for (const match of body.matchAll(/^import .*from\s+["'][^"']*generated\/[^"']*["']/gm)) {
+          offenders.push(`${relative(root, path)}: ${match[0]}`);
+        }
+      }
+    };
+
+    walk(root);
+
+    expect(offenders).toEqual([]);
+  });
+});

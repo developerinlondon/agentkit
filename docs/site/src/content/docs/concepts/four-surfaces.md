@@ -1,12 +1,20 @@
 ---
 title: Four surfaces
-description: The four places agentkit installs behaviour, and why reach and force are traded against each other.
+description: Four kinds of discipline ordered by force — skill, rule, hook, tool — and why what reaches everywhere can only advise.
 sidebar:
   order: 1
 ---
 
 One idea organises the kit: **each surface trades reach for force**. What arrives everywhere can
 only advise. What cannot be skipped acts at exactly one point — the tool call.
+
+:::note[This is a lens, not an inventory]
+"Four surfaces" is a way of reasoning about **force** — how hard a given kind of discipline can
+push, and how much of your work it reaches. It is not a list of the artifacts the installer places,
+and nothing in `install.sh` enumerates a count of four. For the actual inventory — including the
+per-session resource shims and the systemd slice, which are not any of the four — see
+[what lands where](/docs/getting-started/what-lands-where/).
+:::
 
 ## The four surfaces
 
@@ -93,7 +101,7 @@ absent one, because the refusals that reference it would be pointing at a lie.
 
 ## Why it is shaped this way
 
-- **Enforce, don't ask.** Instructions drift and context truncates; the tool boundary does not.
+- **Enforce, don't ask.** Instructions drift and context truncates; the tool call does not.
   Whatever must hold is a hook, not a paragraph.
 - **One canon, symlink fans.** Updates propagate once. A second copy would be a second drift
   source.

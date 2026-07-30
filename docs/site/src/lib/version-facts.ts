@@ -19,8 +19,9 @@ export function versionFromPathname(pathname: string, base = "/docs"): string | 
 	return segment && VERSION_SEGMENT.test(segment) ? segment : null;
 }
 
-// A declared version with no frozen snapshot falls back to the current tree and
-// says so, rather than rendering an empty table that reads as "no units".
+// A declared version with no frozen snapshot falls back to the current tree. The
+// `frozen` flag records that, so a caller can surface it; nothing renders a notice
+// today, which is why an unfrozen version is a defect rather than a soft state.
 export function factsFor<T extends VersionedFacts>(
 	pathname: string,
 	current: T,

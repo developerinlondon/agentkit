@@ -22,7 +22,7 @@ review` alias) installs it. When it is not selected, the installer **removes** i
 its skill, its instruction file, and its entries in `settings.json` and Codex's `hooks.json`.
 
 Absent that group, one advisory reviewer pass per substantive change is the discipline, and nothing
-mechanically blocks a merge.
+mechanically blocks a merge. [Skill groups](/docs/getting-started/skill-groups/) covers selecting it.
 :::
 
 ## The discipline
@@ -51,13 +51,18 @@ the **exact source head the forge is about to merge**.
 ```mermaid
 flowchart TD
   cmd["agent runs<br/>gh pr merge · glab mr merge"]
+  deny["BLOCKED"]
   cmd --> tok["tokenise the command<br/>expand shell forms"]
-  tok --> head["resolve the head<br/>from the forge, not the record"]
-  head --> pol["read policy from the TARGET commit<br/>never the proposed source"]
+  tok --> shape{"is this shape bindable?"}
+  shape -- "MCP tool · REST/GraphQL · auto-merge<br/>wrapped, chained or globbed" --> deny
+  shape -- "one standalone forge CLI merge" --> head["resolve the head<br/>from the forge, not the record"]
+  head --> pre{"command carries that exact head?"}
+  pre -- "missing or different" --> deny
+  pre -- "matches" --> pol["read policy from the TARGET commit<br/>never the proposed source"]
   pol --> val["validate the record<br/>schema · bindings · tier · lanes"]
   val --> verdict["derive the verdict<br/>gate derives it; a stored verdict that disagrees is a denial"]
   verdict -- "bindings match, no blockers" --> allow["merge proceeds"]
-  verdict -- "anything unresolved or unreadable" --> deny["BLOCKED"]
+  verdict -- "anything unresolved or unreadable" --> deny
 ```
 
 Two properties of that flow are the whole design:
@@ -72,10 +77,10 @@ rejects a stored verdict that contradicts it.
 
 ### What the record has to carry
 
-The record is validated field by field. Its `context` object must equal the values the gate derives
-— exactly, with no missing keys and no extra ones: forge, repository, immutable repository id, change
-id, source and target branches, source and target SHAs, and a digest of the target policy. On top of
-that:
+The record is validated field by field. Nine `context` fields are each required, type-checked, and
+compared against what the gate derives: `forge`, `repository`, `repository_id`, `change_id`,
+`source_branch`, `target_branch`, `source_sha`, `target_sha`, and `policy_digest` — the digest of the
+policy read from the target commit. On top of that:
 
 | Block          | Contents                                                                                                                               |
 | -------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
@@ -106,18 +111,39 @@ its own binding stale.
 ### What the merge command itself must look like
 
 The hook is as strict about the command as about the record, because a command it cannot parse is a
-command it cannot bind. It refuses tool-based merge integrations outright, direct REST and GraphQL
-merges (which cannot be bound to a reviewed repository context), and merge-when-pipeline-succeeds
-push options. What it accepts is narrow: one standalone merge command carrying a head precondition
-that matches the forge-resolved head, with no auto-merge, no shell operators, no globs and no
-substitutions.
+command it cannot bind. Refused outright, before any record is even looked for:
+
+- **A merge through an MCP tool.** There is no shell command to inspect, so every command-shaped
+  check is bypassed.
+- **A direct REST or GraphQL merge.** The endpoint carries its own repository identity, which may
+  differ from the checkout — resolving only its numeric id would let an approved local change
+  authorise a same-numbered change elsewhere.
+- **A merge-on-pipeline push option**, and any `--auto`, `--auto-merge`, or
+  `--merge-when-pipeline-succeeds` flag. A deferred merge lands a head no review has seen.
+- **Anything but one literal, top-level forge invocation.** The accepted shape is exactly
+  `gh pr merge <id>` or `glab mr merge <id>`, flags after the numeric id. Newlines, `$`, backticks,
+  shell operators, globs, a second `merge` token, a repeated `--repo` or head flag, or `--host` all
+  refuse — `PreToolUse` sees the whole call once, so `git push B && glab mr merge 12` could change
+  the head after the check.
+
+Two positive requirements are easy to miss:
+
+- The command must carry the **exact reviewed head** as a precondition — `--match-head-commit` on
+  `gh`, `--sha` on `glab`. Missing counts the same as wrong. This makes the forge itself enforce the
+  reviewed SHA, so the gap between the hook and the merge becomes a refused merge rather than an
+  unreviewed one.
+- On `glab` the command must **explicitly** pass `--auto-merge=false`, because current `glab`
+  otherwise defers the merge while a pipeline runs.
+
+A GitHub target that requires the merge queue is refused as well: the CLI merge is deferred there, so
+protected merge-queue CI is the authoritative gate and a local evidence token cannot authorise it.
 
 It over-blocks on purpose. A compound command that merely mentions a merge is refused — a false
 denial is an inconvenience, and a missed merge is the failure the gate exists to prevent.
 
 ## Profiles decide effort, not authority
 
-`review-profile` resolves how much review a change needs. Three presets: `fast` (primary review for
+[`review-profile`](/docs/reference/cli-and-tools/) resolves how much review a change needs. Three presets: `fast` (primary review for
 non-trivial work), `balanced` (the default — one primary review, with specialist and product lanes
 risk-triggered), and `strict` (all lanes, full local checks, a fresh CI run).
 

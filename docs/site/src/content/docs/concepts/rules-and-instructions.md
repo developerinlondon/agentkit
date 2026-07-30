@@ -8,11 +8,11 @@ sidebar:
 Skills load on demand. Rules and instructions are the layers that are already there — the context an
 agent has before it decides anything.
 
-| Layer        | Loaded when                | Scoped by                   | Lives in        |
-| ------------ | -------------------------- | --------------------------- | --------------- |
-| Rules        | a matching file is in play | a glob in the frontmatter   | `rules/`        |
-| Instructions | every session              | nothing — always on         | `instructions/` |
-| Skills       | the agent invokes one      | its own trigger description | `skills/`       |
+| Layer                            | Loaded when                | Scoped by                   | Lives in        |
+| -------------------------------- | -------------------------- | --------------------------- | --------------- |
+| Rules                            | a matching file is in play | a glob in the frontmatter   | `rules/`        |
+| Instructions                     | every session              | nothing — always on         | `instructions/` |
+| [Skills](/docs/concepts/skills/) | the agent invokes one      | its own trigger description | `skills/`       |
 
 ## Rules: markdown with a glob
 
@@ -73,9 +73,9 @@ hooks and skills and none of this layer.
 
 The three layers are ordered by how much context they cost and how reliably they arrive.
 
-An instruction is always in the window, so it must be short and universally applicable — the whole
-set is a handful of pages. A rule can afford to be long and detailed because it only arrives when a
-matching file is in play. A skill can be very long indeed, because most sessions never load it.
+An instruction is always in the window, so it must be short and universally applicable. A rule can
+afford to be longer and more detailed, because it only arrives when a matching file is in play. A
+skill can be long indeed, because most sessions never load it.
 
 That budget is the whole reason the discipline is not one enormous prompt. And it is why the parts
 that _must_ hold are not in this layer at all: a rule you paid context for is still a rule the agent
