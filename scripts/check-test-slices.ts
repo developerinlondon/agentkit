@@ -13,6 +13,7 @@ export const TEST_SLICES = {
     'tests/diagram/vendor-icons.test.ts',
   ],
   docs: ['tests/docs/asset-types.test.ts', 'tests/docs/deploy.test.ts', 'tests/docs/facts.test.ts'],
+  site: ['tests/site/links.test.ts'],
   hooks: [
     'tests/agentkit-plugin.test.ts',
     'tests/coding-police-hook.test.ts',

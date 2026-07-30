@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{TITLE}}</title>
+<meta name="description" content="{{DESCRIPTION}}">
+<meta name="color-scheme" content="light dark">
+<meta name="build-sha" content="{{BUILD_SHA}}">
+<meta name="build-date" content="{{BUILD_DATE}}">
+<script>
+/* Before the stylesheet, so a stored theme choice never paints as the other
+   theme first. Everything else about the toggle lives in shared.js. */
+(function () {
+  try {
+    var t = localStorage.getItem("agentkit-theme");
+    if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
+  } catch (e) {}
+})();
+</script>
+<style>
+{{THEME}}
+{{PAGE_CSS}}
+</style>
+<noscript><style>.toc { display: none; }</style></noscript>
+</head>
+<body data-page="{{PAGE_ID}}">
+<a class="skip" href="#main">Skip to content</a>
+{{HEADER}}
+{{CONTENT}}
+{{FOOTER}}
+<script>
+{{SHARED_JS}}
+</script>
+</body>
+</html>
