@@ -57,9 +57,11 @@ while IFS=$'\t' read -r slug tag; do
 	# The link rewrite covers the markdown form; anything that still points at
 	# bare /docs/ escaped the archive and must not publish.
 	# `|| true`: zero escapes is the good case, and grep's no-match status must
-	# not read as a failure under pipefail.
-	escapes=$(grep -rho 'href="/docs/[^"]*"' "$DIST_ABS/$slug" 2>/dev/null \
-		| grep -v "href=\"/docs/$slug" | sort -u | head -3 || true)
+	# not read as a failure under pipefail. Slug dots are escaped so `0.4`
+	# cannot accidentally bless an `0X4` path as in-mount.
+	slug_re=${slug//./\\.}
+	escapes=$(grep -rhoE '(href|src)="/docs/[^"]*"' "$DIST_ABS/$slug" 2>/dev/null \
+		| grep -vE "(href|src)=\"/docs/$slug_re/" | sort -u | head -3 || true)
 	[[ -z "$escapes" ]] || die "archive $slug links escape its mount: $escapes"
 	echo "[archive] $slug: $(find "$DIST_ABS/$slug" -type f | wc -l | tr -d ' ') files"
 done < <(jq -r '.[] | "\(.slug)\t\(.tag)"' "$MANIFEST")
