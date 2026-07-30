@@ -70,6 +70,11 @@ function runHook(command: string, opts: RunOpts = {}): string | null {
       ...(opts.env ?? {}),
     },
   });
+  // A non-zero exit that is not 2 is a silently allowed command, so every path
+  // through the hook must exit 0 — including the ones that die under `set -e`.
+  if (result.status !== 0) {
+    throw new Error(`hook exited ${result.status}: ${result.stderr ?? ''}`);
+  }
   const stdout = result.stdout ?? '';
   if (!stdout.includes('"permissionDecision": "deny"')) return null;
   return JSON.parse(stdout).reason as string;
@@ -159,6 +164,24 @@ for (const [name, run] of IMPLS) {
       expect(await run('pnpm', { cwd })).toContain('npm install');
     });
 
+    test('subcommands that rewrite the manifest or lockfile are caught', async () => {
+      const cwd = makeRepo([LOCKFILE.bun]);
+      expect(await run('npm uninstall lodash', { cwd })).toContain('bun remove');
+      expect(await run('npm rm lodash', { cwd })).toContain('bun remove');
+      expect(await run('npm un lodash', { cwd })).toContain('bun remove');
+      expect(await run('npm update', { cwd })).toContain('bun update');
+      expect(await run('npm up', { cwd })).toContain('bun update');
+      expect(await run('npm link ../lib', { cwd })).toContain('bun link');
+      expect(await run('npm dedupe', { cwd })).toContain('bun install');
+      expect(await run('npm prune', { cwd })).toContain('bun install');
+      expect(await run('npm install-test', { cwd })).toContain('bun install');
+      expect(await run('npm it', { cwd })).toContain('bun install');
+
+      const npmRepo = makeRepo([LOCKFILE.npm]);
+      expect(await run('bun remove lodash', { cwd: npmRepo })).toContain('npm remove');
+      expect(await run('bun update', { cwd: npmRepo })).toContain('npm update');
+    });
+
     test('npm shorthands are caught', async () => {
       const cwd = makeRepo([LOCKFILE.bun]);
       expect(await run('npm i lodash', { cwd })).toContain('bun add');
@@ -211,10 +234,104 @@ for (const [name, run] of IMPLS) {
       for (const m of MANAGERS) expect(await run(INSTALL[m], { cwd, xdg })).toBeNull();
     });
 
+    test('a quoted manager value is honored', async () => {
+      const cwd = makeRepo([LOCKFILE.npm]);
+      for (const body of ['pkg-police:\n  manager: "bun"\n', "pkg-police:\n  manager: 'bun'\n"]) {
+        const xdg = makeConfigHome(body);
+        expect(await run('bun install', { cwd, xdg })).toBeNull();
+        const denial = await run('npm install', { cwd, xdg });
+        expect(denial).toContain('bun install');
+        expect(denial).toContain('config');
+      }
+    });
+
+    test('a malformed manager value reads its first token', async () => {
+      const xdg = makeConfigHome('pkg-police:\n  manager: npm oops\n');
+      const cwd = makeRepo([LOCKFILE.bun]);
+      expect(await run('npm install', { cwd, xdg })).toBeNull();
+      expect(await run('bun install', { cwd, xdg })).toContain('npm install');
+    });
+
     test('another section named manager is ignored', async () => {
       const xdg = makeConfigHome('coding-police:\n  manager: npm\n\npkg-police:\n  manager: pnpm\n');
       const cwd = makeRepo([]);
       expect(await run('npm install', { cwd, xdg })).toContain('pnpm install');
+    });
+  });
+
+  describe(`pkg-police compound commands (${name})`, () => {
+    test('a managed invocation later in the command is caught', async () => {
+      const cwd = makeRepo([LOCKFILE.bun]);
+      expect(await run('npm --version && npm install', { cwd })).toContain('bun install');
+      expect(await run('npm ls && npm install', { cwd })).toContain('bun install');
+      expect(await run('echo hello npm world; npm ci', { cwd })).toContain('bun install');
+      expect(await run('true; npm install lodash', { cwd })).toContain('bun add');
+    });
+
+    test('an operator or quote after the command still counts as an invocation', async () => {
+      const cwd = makeRepo([LOCKFILE.bun]);
+      expect(await run('npm install && npm ls', { cwd })).toContain('bun install');
+      expect(await run('npm install; echo done', { cwd })).toContain('bun install');
+      expect(await run('npm install|tee log', { cwd })).toContain('bun install');
+      expect(await run('bash -c "npm ci"', { cwd })).toContain('bun install');
+      expect(await run("sh -c 'npm run build'", { cwd })).toContain('bun run');
+      expect(await run('(npm install)', { cwd })).toContain('bun install');
+    });
+
+    test('a longer word starting with a managed subcommand is not an invocation', async () => {
+      const cwd = makeRepo([LOCKFILE.bun]);
+      expect(await run('npm installer', { cwd })).toBeNull();
+      expect(await run('npm testing', { cwd })).toBeNull();
+    });
+
+    test('npm and bun subcommands outside package management are allowed', async () => {
+      const bunRepo = makeRepo([LOCKFILE.bun]);
+      expect(await run('npm whoami', { cwd: bunRepo })).toBeNull();
+      expect(await run('npm view lodash version', { cwd: bunRepo })).toBeNull();
+      expect(await run('npm ls', { cwd: bunRepo })).toBeNull();
+      expect(await run('echo hello npm world', { cwd: bunRepo })).toBeNull();
+
+      const npmRepo = makeRepo([LOCKFILE.npm]);
+      expect(await run('bun ./script.ts', { cwd: npmRepo })).toBeNull();
+      expect(await run('bun --version', { cwd: npmRepo })).toBeNull();
+    });
+  });
+
+  describe(`pkg-police lockfile names (${name})`, () => {
+    test('naming a lockfile is not an invocation', async () => {
+      const cwd = makeRepo([LOCKFILE.bun]);
+      for (const command of [
+        'rm -f yarn.lock',
+        'git add yarn.lock',
+        'cat yarn.lock',
+        'cat pnpm-lock.yaml',
+        'rm yarn.lock pnpm-lock.yaml',
+        'wc -l ./packages/app/yarn.lock',
+      ]) {
+        expect(await run(command, { cwd })).toBeNull();
+      }
+    });
+  });
+
+  describe(`pkg-police case-insensitivity (${name})`, () => {
+    test('an uppercased manager still counts', async () => {
+      const cwd = makeRepo([LOCKFILE.bun]);
+      expect(await run('NPM install', { cwd })).toContain('bun install');
+      expect(await run('NPX tsc', { cwd })).toContain('bunx');
+      expect(await run('Npm Run build', { cwd })).toContain('bun run');
+      const npmRepo = makeRepo([LOCKFILE.npm]);
+      expect(await run('YARN add react', { cwd: npmRepo })).toContain('npm add');
+    });
+  });
+
+  describe(`pkg-police lockfile walk (${name})`, () => {
+    test('the walk stops at the git root', async () => {
+      const outer = uniq('outer');
+      const inner = join(outer, 'project');
+      mkdirSync(join(inner, '.git'), { recursive: true });
+      writeFileSync(join(outer, LOCKFILE.bun), '');
+      // The bun.lock sits outside the repository, so nothing is enforced.
+      for (const m of MANAGERS) expect(await run(INSTALL[m], { cwd: inner })).toBeNull();
     });
   });
 
