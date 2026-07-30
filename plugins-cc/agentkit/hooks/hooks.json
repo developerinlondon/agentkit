@@ -20,7 +20,7 @@
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/hooks/pkg-police.sh",
             "timeout": 10,
-            "statusMessage": "pkg-police: enforcing bun as package manager..."
+            "statusMessage": "pkg-police: checking the project's package manager..."
           },
           {
             "type": "command",
