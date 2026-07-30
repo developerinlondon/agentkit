@@ -2,8 +2,9 @@
 # PostToolUse Edit|Write (memory kit): keep brain/index.md agreeing with the
 # files on disk. Deterministic — bare wikilinks grouped by top-level directory,
 # no generated prose. Names are never fed to a regex engine, headers avoid
-# bash-4-only expansions, and the index is replaced atomically: this file
-# rewrites user memory, so a mid-run failure must leave the old index intact.
+# bash-4-only expansions, and the index is replaced atomically and only when
+# its content actually changes: this file rewrites user memory, so a mid-run
+# failure must leave the old index intact.
 set -euo pipefail
 
 # shellcheck source=lib/hook-input.sh
@@ -27,10 +28,6 @@ esac
 disk="$(cd "$brain_dir" && find . -name '*.md' ! -name 'index.md' -type f \
 	| sed 's|^\./||; s|\.md$||' \
 	| sort)"
-
-indexed="$(grep -o '\[\[[^]]*\]\]' "$index" | sed 's/^\[\[//; s/\]\]$//' | sort || true)"
-
-[[ "$disk" == "$indexed" ]] && exit 0
 
 dirs="$(awk -F/ 'NF>1{print $1}' <<<"$disk" | sort -u)"
 
@@ -58,5 +55,8 @@ trap 'rm -f "$tmp"' EXIT
 	done <<<"$disk"
 	echo ""
 } >"$tmp"
-mv "$tmp" "$index"
+# Exact no-op on agreement for every possible note name: the index is never
+# parsed, only compared whole.
+cmp -s "$tmp" "$index" || mv "$tmp" "$index"
 trap - EXIT
+rm -f "$tmp"

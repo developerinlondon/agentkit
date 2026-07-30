@@ -34,6 +34,10 @@ Two rules protect the vault's future: no secrets in notes, ever — a vault may 
 synced beyond one machine — and all skill or vault changes land as diffs a human reviews, never as
 silent self-modification.
 
+Like every non-explicit kit, deselecting it later (`--without memory`) stops future installs but
+leaves already-installed skills _and_ hooks in place — the hooks stay silent no-ops wherever no
+vault exists; remove the `brain-*` files from your hooks directory by hand for a full uninstall.
+
 The kit is opt-in:
 
 ```sh

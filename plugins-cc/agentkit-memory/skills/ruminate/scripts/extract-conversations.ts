@@ -98,7 +98,10 @@ function parseArgs(argv: string[]): Options {
         positional.push(arg);
     }
   }
-  if (positional.length !== 2 || !Number.isFinite(opts.batches) || opts.batches < 1) {
+  if (
+    positional.length !== 2 || !Number.isFinite(opts.batches) || opts.batches < 1
+    || !Number.isFinite(opts.minSize)
+  ) {
     console.error(
       'usage: extract-conversations.ts <project-dir> <output-dir> [--batches N] [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--min-size BYTES]',
     );

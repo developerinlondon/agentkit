@@ -5,6 +5,7 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
+  statSync,
   unlinkSync,
   writeFileSync,
 } from 'node:fs';
@@ -83,11 +84,12 @@ describe('brain-index.sh', () => {
       expect(index).toContain('- [[principles/one]]');
       expect(index).toContain('- [[topic]]');
 
-      // A second run over the unchanged tree must be a no-op: the index and
-      // disk now agree, so the early exit is reachable again.
-      const before = readFileSync(join(dir, 'brain', 'index.md'), 'utf8');
+      // A second run over the unchanged tree must not replace the file —
+      // inode stability is the observable, content alone cannot tell a
+      // rebuild from an early exit.
+      const before = statSync(join(dir, 'brain', 'index.md'));
       runHook(indexHook, dir, writePayload(join(dir, 'brain', 'topic.md')));
-      expect(readFileSync(join(dir, 'brain', 'index.md'), 'utf8')).toBe(before);
+      expect(statSync(join(dir, 'brain', 'index.md')).ino).toBe(before.ino);
       expect(readdirSync(join(dir, 'brain')).filter((f) => f.startsWith('.index-rebuild.')))
         .toEqual([]);
     } finally {
