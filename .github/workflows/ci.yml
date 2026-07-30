@@ -75,7 +75,9 @@ jobs:
     needs: pick-runners
     if: github.event_name == 'pull_request'
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    # Critical changes escalate this job to the full suite, which exceeds 30
+    # minutes on the self-hosted Mac — the budget must match that path.
+    timeout-minutes: 50
     env:
       MOON_BASE: ${{ github.event.pull_request.base.sha }}
       MOON_HEAD: ${{ github.event.pull_request.head.sha }}
