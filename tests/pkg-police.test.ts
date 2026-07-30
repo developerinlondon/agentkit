@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import pkgPolice from '../plugins/pkg-police';
@@ -104,6 +104,19 @@ async function runPlugin(command: string, opts: RunOpts = {}): Promise<string | 
     if (previousAllow !== undefined) process.env.AGENTKIT_ALLOW_PKG = previousAllow;
   }
 }
+
+describe('pkg-police surfaces agree on the npm subcommands', () => {
+  test('the Codex static policy lists what the hook matches', () => {
+    const script = readFileSync(hook, 'utf-8');
+    const subs = /^NPM_SUBS='([^']+)'/m.exec(script)?.[1]?.split('|');
+    expect(subs?.length).toBeGreaterThan(10);
+
+    const rules = readFileSync(join(repoRoot, 'policies', 'codex', 'pkg-police.rules'), 'utf-8');
+    const listed = /pattern = \["npm", \[([^\]]+)\]\]/.exec(rules)?.[1];
+    const names = listed?.match(/"([^"]+)"/g)?.map((q) => q.slice(1, -1));
+    expect(new Set(names)).toEqual(new Set(subs));
+  });
+});
 
 const IMPLS: Array<[string, (command: string, opts?: RunOpts) => Promise<string | null> | string | null]> = [
   ['claude hook', runHook],
