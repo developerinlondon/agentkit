@@ -5,10 +5,19 @@ top and ships with the next tag.
 
 ## [Unreleased]
 
+## v0.6.0 — 2026-07-30
+
 - feat(memory): opt-in **memory** kit — a per-project `brain/` vault the agent
   reads at session start, with `reflect`/`meditate`/`ruminate` skills that
   route recurring lessons into hooks and rules before notes, two vault-plumbing
-  hooks, and one-line per-kit install shims under `kits/<id>` (#227)
+  hooks, and one-line per-kit install shims under `kits/<id>` (#234)
+- ci: the affected-tests budget matches its full-suite escalation path, which
+  exceeds 30 minutes on the self-hosted Mac (#234)
+- ci: merge-queue readiness, cancellation-aware gate, de-flaked git fixtures
+  (#229)
+
+## v0.5.3 — 2026-07-30
+
 - fix(site): the advertised version derives from the release tag at build time;
   the committed copy that went five releases stale is gone (#220)
 - feat(install): `~/.agentkit/version` stamp, and a session-start notice when a
@@ -18,7 +27,7 @@ top and ships with the next tag.
 - fix(tests): the mermaid browser harness retries a not-yet-ready devtools
   endpoint instead of dying on Chrome's non-atomic port-file write (#223)
 - docs: archived versions build from their own git tags at publish time instead
-  of living as page copies on `main` that current code could break (#217)
+  of living as page copies on `main` that current code could break (#228)
 
 ## v0.5.2 — 2026-07-30
 
