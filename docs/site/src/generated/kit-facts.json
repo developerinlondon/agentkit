@@ -198,6 +198,11 @@
   ],
   "groups": [
     {
+      "id": "advisory-review",
+      "description": "Advisory review: one non-authoring reviewer pass per substantive change, as an always-loaded instruction (explicit opt-in)",
+      "explicit": true
+    },
+    {
       "id": "core",
       "description": "Enforcement, planning, and workflow skills for everyday use",
       "explicit": false
@@ -206,11 +211,6 @@
       "id": "product",
       "description": "Product-model skills: evidence-backed briefs and product review",
       "explicit": false
-    },
-    {
-      "id": "review-discipline",
-      "description": "The advisory reviewer pass, as an always-loaded instruction (explicit opt-in)",
-      "explicit": true
     },
     {
       "id": "strict-review",

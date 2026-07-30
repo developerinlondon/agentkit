@@ -17,14 +17,18 @@ Options:
   --with <group>       Also install an opt-in skill group (repeatable). Groups
                        are declared in skills/GROUPS; every unlisted skill is
                        in the always-installed `core` group.
-                         --with product        product-intelligence, product-review
-                         --with strict-review  adversarial-review + hard merge gate
+                         --with product          product-intelligence, product-review
+                         --with advisory-review  asks for a reviewer pass
+                         --with strict-review    adversarial-review + merge gate
                        (`--with review` remains an alias for strict-review.)
+                       The two review modes are independent: enable either,
+                       both, or neither.
                        A global install run on a terminal with no group flags
                        and nothing remembered yet asks about each optional
                        group instead; every other run is unattended.
                        Groups marked `explicit` in skills/GROUPS
-                       (strict-review) are never offered by that prompt and are
+                       (advisory-review, strict-review) are never offered by
+                       that prompt and are
                        excluded from --all: only a literal --with installs
                        them, and when one is not selected the installer REMOVES
                        its previously installed hooks, tools, skills, and
@@ -766,7 +770,7 @@ instruction_group() {
 	evidence-gated-review.md) printf 'strict-review' ;;
 	# Instructions are concatenated into every prompt, so a core one costs context
 	# on every session whether or not the work needs a review pass.
-	review-discipline.md) printf 'review-discipline' ;;
+	review-discipline.md) printf 'advisory-review' ;;
 	*) printf 'core' ;;
 	esac
 }

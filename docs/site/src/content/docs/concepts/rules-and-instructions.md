@@ -46,14 +46,14 @@ OpenCode's config, a concatenation into Codex's `developer_instructions`, and `~
 for Grok's always-on load. The Codex step declines to touch a `developer_instructions` key it did
 not write, warning instead of overwriting.
 
-| Instruction                   | Group               |
-| ----------------------------- | ------------------- |
-| `anti-glaze.md`               | `core`              |
-| `coding-discipline.md`        | `core`              |
-| `collaboration-visibility.md` | `core`              |
-| `resource-safety.md`          | `core`              |
-| `review-discipline.md`        | `review-discipline` |
-| `evidence-gated-review.md`    | `strict-review`     |
+| Instruction                   | Group             |
+| ----------------------------- | ----------------- |
+| `anti-glaze.md`               | `core`            |
+| `coding-discipline.md`        | `core`            |
+| `collaboration-visibility.md` | `core`            |
+| `resource-safety.md`          | `core`            |
+| `review-discipline.md`        | `advisory-review` |
+| `evidence-gated-review.md`    | `strict-review`   |
 
 Five install always. `evidence-gated-review.md` is gated on the `strict-review` group and is removed
 when that group is not selected — the marker block is stripped out of `CLAUDE.md`, the OpenCode

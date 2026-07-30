@@ -1,6 +1,6 @@
 ---
 title: Review and the gate
-description: The always-installed review discipline, and the opt-in merge gate that refuses a merge without a review record bound to the exact head.
+description: Two independent opt-in review modes — an advisory reviewer pass, and a merge gate that refuses a merge without a review record bound to the exact head.
 sidebar:
   order: 5
 ---
@@ -8,21 +8,28 @@ sidebar:
 Two different things share the word "review", and confusing them is the most common way to
 mis-describe this kit.
 
-|             | Review discipline                                              | The merge gate                             |
-| ----------- | -------------------------------------------------------------- | ------------------------------------------ |
-| Ships as    | `review-discipline.md`, the `review-discipline` group (opt-in) | `strict-review` skill group                |
-| Installed   | always                                                         | only on `--with strict-review`             |
-| Enforcement | none — advisory                                                | `review-police` refuses the merge command  |
-| Requires    | a reviewer that did not author the change                      | a validated record bound to the exact head |
+|             | Advisory review                                        | The merge gate                             |
+| ----------- | ------------------------------------------------------ | ------------------------------------------ |
+| Ships as    | `review-discipline.md`, in the `advisory-review` group | `strict-review` skill group                |
+| Installed   | only on `--with advisory-review`                       | only on `--with strict-review`             |
+| Enforcement | none — advisory                                        | `review-police` refuses the merge command  |
+| Requires    | a reviewer that did not author the change              | a validated record bound to the exact head |
 
-:::caution[Review is not on by default]
-The gate is the `strict-review` group, marked `explicit` in the manifest. It is not in `--all`, it is
-never offered by the interactive picker, and only a literal `--with strict-review` (or its `--with
-review` alias) installs it. When it is not selected, the installer **removes** its hooks, its tools,
-its skill, its instruction file, and its entries in `settings.json` and Codex's `hooks.json`.
+These are the kit's two review modes, and they are independent: enable either, both, or neither.
+Neither is installed by default.
 
-Absent that group, one advisory reviewer pass per substantive change is the discipline, and nothing
-mechanically blocks a merge. [Skill groups](/docs/getting-started/skill-groups/) covers selecting it.
+:::caution[Neither review mode is on by default]
+Both groups are marked `explicit` in the manifest. Neither is in `--all`, neither is ever offered by
+the interactive picker, and only a literal `--with advisory-review` / `--with strict-review` (or the
+`--with review` alias for the latter) installs one. When a run does not select one, the installer
+**removes** what it previously installed for it — for the gate that is its hooks, its tools, its
+skill, its instruction file, and its entries in `settings.json` and Codex's `hooks.json`; for the
+advisory mode, its instruction file and every prompt block spliced from it.
+
+With neither selected, nothing asks for a review and nothing blocks a merge. That is the intended
+default for a harness whose own instructions already mandate a reviewer pass — carrying the rule
+twice costs prompt weight on every session and buys nothing.
+[Skill groups](/docs/getting-started/skill-groups/) covers selecting them.
 :::
 
 ## The discipline

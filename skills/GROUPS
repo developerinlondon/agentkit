@@ -17,9 +17,9 @@
 group core Enforcement, planning, and workflow skills for everyday use
 group product Product-model skills: evidence-backed briefs and product review
 group strict-review Strict review: adversarial lane + evidence records + hard merge gate (explicit opt-in)
-group review-discipline The advisory reviewer pass, as an always-loaded instruction (explicit opt-in)
+group advisory-review Advisory review: one non-authoring reviewer pass per substantive change, as an always-loaded instruction (explicit opt-in)
 explicit strict-review
-explicit review-discipline
+explicit advisory-review
 
 product-intelligence product
 product-review product

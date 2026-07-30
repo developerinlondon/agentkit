@@ -263,11 +263,11 @@ describe('the advisory review instruction is opt-in', () => {
   const instructionPath = (home: string) =>
     join(home, '.agentkit', 'instructions', 'review-discipline.md');
 
-  test('--with review-discipline installs it and splices it into the prompt', () => {
+  test('--with advisory-review installs it and splices it into the prompt', () => {
     const home = mkdtempSync(join(tmpdir(), 'agentkit-review-flag-'));
 
     try {
-      const result = runGlobalInstall(home, ['--with', 'review-discipline']);
+      const result = runGlobalInstall(home, ['--with', 'advisory-review']);
       expect(result.status, result.stderr).toBe(0);
       expect(existsSync(instructionPath(home))).toBe(true);
       expect(readFileSync(promptPath(home), 'utf-8')).toContain(
@@ -299,10 +299,10 @@ describe('the advisory review instruction is opt-in', () => {
     const home = mkdtempSync(join(tmpdir(), 'agentkit-review-flag-'));
 
     try {
-      expect(runGlobalInstall(home, ['--with', 'review-discipline']).status).toBe(0);
+      expect(runGlobalInstall(home, ['--with', 'advisory-review']).status).toBe(0);
       expect(existsSync(instructionPath(home))).toBe(true);
 
-      const second = runGlobalInstall(home, ['--without', 'review-discipline']);
+      const second = runGlobalInstall(home, ['--without', 'advisory-review']);
       expect(second.status, second.stderr).toBe(0);
       expect(existsSync(instructionPath(home))).toBe(false);
       expect(readFileSync(promptPath(home), 'utf-8')).not.toContain(

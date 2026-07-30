@@ -91,8 +91,8 @@ See [Upgrading and removing](/docs/getting-started/upgrading/) for the per-file 
 Because two different things share the word "review", and only one of them blocks anything.
 
 The advisory discipline — one non-authoring reviewer pass before merging substantive work — installs
-with the `review-discipline` group as `instructions/review-discipline.md`. Nothing enforces it, and
-it is opt-in: an instruction is concatenated into every prompt, so a harness that already mandates a
+with the `advisory-review` group as `instructions/review-discipline.md`. Nothing enforces it, and it
+is opt-in: an instruction is concatenated into every prompt, so a harness that already mandates a
 reviewer pass would be carrying the rule twice.
 
 The merge gate is the `strict-review` group, and it is marked `explicit` in `skills/GROUPS`. That
