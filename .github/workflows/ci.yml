@@ -35,7 +35,7 @@ jobs:
     #
     # `administration` is not a permission workflow YAML can grant GITHUB_TOKEN —
     # naming it fails the whole workflow at parse. Listing runners needs it, so
-    # the pick reads RUNNER_LIST_TOKEN (fine-grained PAT, Administration: read)
+    # the pick reads ADMIN_READ_TOKEN (fine-grained PAT, Administration: read)
     # when present and otherwise probes with the default token; a 403 lands in
     # the same fallback as an offline runner. Forks never see the secret, which
     # composes with the fork guard: fork PRs resolve to hosted twice over.
@@ -47,7 +47,7 @@ jobs:
       - name: Choose the macOS runner
         id: pick
         env:
-          GH_TOKEN: ${{ secrets.RUNNER_LIST_TOKEN || github.token }}
+          GH_TOKEN: ${{ secrets.ADMIN_READ_TOKEN || github.token }}
           # Identity, not the .fork flag: a null head.repo (deleted fork) must
           # compare unequal and land on hosted, and non-PR events stay false so
           # main and tag pushes can still use the Mac.
