@@ -23,7 +23,7 @@ const codexFunctions = installSource.slice(
 // A global install intentionally installs and builds dependency-bearing skills.
 const globalInstallTimeoutMs = 60_000;
 // The review gate is an explicit opt-in group: nothing installs it implicitly.
-const WITH_REVIEW = ['--with', 'review'];
+const WITH_REVIEW = ['--with', 'strict-review'];
 
 function runGlobalInstall(
   home: string,

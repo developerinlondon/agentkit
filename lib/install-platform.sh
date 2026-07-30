@@ -56,17 +56,18 @@ install_tools() {
 		# get the default: review excluded.
 		case "$name" in
 		review-gate | review-profile)
-			if ! declare -F group_selected >/dev/null || ! group_selected review; then
+			if ! declare -F group_selected >/dev/null || ! group_selected strict-review; then
 				if [[ -e "$tools_dir/$name" || -L "$tools_dir/$name" ]]; then
 					rm -f "$tools_dir/$name"
-					echo "[tools] Removing (review group not selected): $name"
+					echo "[tools] Removing (strict-review group not selected): $name"
 				else
-					echo "[tools] Skipping (review group — add --with review): $name"
+					echo "[tools] Skipping (strict-review group — add --with strict-review): $name"
 				fi
 				continue
 			fi
 			;;
 		esac
+		# shellcheck disable=SC2153 # PLATFORM comes from the sourcing installer, not the local `platform`.
 		if ! artifact_supports_platform "$tool_file" "$PLATFORM"; then
 			if [[ -e "$tools_dir/$name" || -L "$tools_dir/$name" ]]; then
 				rm -f "$tools_dir/$name"
@@ -104,7 +105,7 @@ reconcile_tool_links() {
 		if artifact_supports_platform "$tool_file" "$PLATFORM"; then
 			case "$name" in
 			review-gate | review-profile)
-				if declare -F group_selected >/dev/null && group_selected review; then
+				if declare -F group_selected >/dev/null && group_selected strict-review; then
 					continue
 				fi
 				;;

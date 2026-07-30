@@ -19,8 +19,8 @@ if ! command -v jq >/dev/null 2>&1; then
 fi
 
 # Hooks: copy scripts only — hooks.json (the plugin's wiring) is plugin-owned.
-# The review gate scripts ship in the agentkit-review plugin, not core.
-REVIEW_PLUGIN_DIR="$REPO_DIR/plugins-cc/agentkit-review"
+# The review gate scripts ship in the strict-review group's plugin, not core.
+REVIEW_PLUGIN_DIR="$REPO_DIR/plugins-cc/$(group_plugin_id strict-review)"
 review_hook_script() {
 	case "$(basename "$1")" in
 	review-police.sh | fail-closed-hook.sh) return 0 ;;
@@ -36,7 +36,7 @@ for hook in "$REPO_DIR"/hooks/claude/*.sh; do
 		cp "$hook" "$PLUGIN_DIR/hooks/$(basename "$hook")"
 	fi
 done
-echo "[sync] hooks/claude/*.sh -> plugins-cc/{agentkit,agentkit-review}/hooks/"
+echo "[sync] hooks/claude/*.sh -> plugins-cc/{agentkit,agentkit-strict-review}/hooks/"
 
 # Shared helpers (dual Claude/Grok payload parsing). Must live next to the
 # scripts so `source "$(dirname …)/lib/hook-input.sh"` resolves.
@@ -148,6 +148,7 @@ echo "[sync] group plugins -> .claude-plugin/marketplace.json"
 
 # Portable tools used by bundled hooks. Keep this allowlist explicit: other
 # top-level tools are not necessarily plugin-facing commands.
+# shellcheck disable=SC2043 # One entry today; the allowlist is the point, not the loop.
 for tool in bounded-run; do
 	cp "$REPO_DIR/tools/$tool" "$PLUGIN_DIR/tools/$tool"
 	chmod +x "$PLUGIN_DIR/tools/$tool"

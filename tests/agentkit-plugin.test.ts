@@ -28,7 +28,7 @@ const filesUnder = (dir: string, prefix = ''): string[] =>
 
 const repoRoot = join(import.meta.dir, '..');
 const pluginDir = join(repoRoot, 'plugins-cc', 'agentkit');
-const reviewPluginDir = join(repoRoot, 'plugins-cc', 'agentkit-review');
+const reviewPluginDir = join(repoRoot, 'plugins-cc', 'agentkit-strict-review');
 const openCodePluginDir = join(repoRoot, 'plugins');
 
 type PluginServer = (input: PluginInput) => Promise<unknown>;
@@ -97,7 +97,7 @@ const PRE_TOOL_USE_HOOKS = [
 ];
 const POST_TOOL_USE_HOOKS = ['format-police.sh', 'coding-police.sh', 'comment-police.sh'];
 const ALL_POLICE_HOOKS = [...PRE_TOOL_USE_HOOKS, ...POST_TOOL_USE_HOOKS];
-// The merge gate is consent-gated: it ships in agentkit-review, never in core.
+// The merge gate is consent-gated: it ships in agentkit-strict-review, never in core.
 const REVIEW_HOOKS = ['fail-closed-hook.sh', 'review-police.sh'];
 
 function readJson(...parts: string[]): any {
@@ -108,14 +108,14 @@ function readReviewJson(...parts: string[]): any {
   return JSON.parse(readFileSync(join(reviewPluginDir, ...parts), 'utf-8'));
 }
 
-function wiringFor(settings: any, plugin: 'core' | 'review'): any {
+function wiringFor(settings: any, plugin: 'core' | 'strict-review'): any {
   const hooks: Record<string, unknown[]> = {};
   for (const [event, groups] of Object.entries<any[]>(settings.hooks)) {
     const kept = groups
       .map((group) => ({
         ...group,
         hooks: group.hooks.filter((entry: { command: string }) =>
-          entry.command.includes('review-police.sh') === (plugin === 'review')
+          entry.command.includes('review-police.sh') === (plugin === 'strict-review')
         ),
       }))
       .filter((group) => group.hooks.length > 0);
@@ -174,7 +174,7 @@ describe('agentkit plugin hooks', () => {
     // settings.json stays the whole wiring; the two plugins split it, and every
     // entry has to land in exactly one of them.
     expect(readJson('hooks', 'hooks.json')).toEqual(wiringFor(expected, 'core'));
-    expect(readReviewJson('hooks', 'hooks.json')).toEqual(wiringFor(expected, 'review'));
+    expect(readReviewJson('hooks', 'hooks.json')).toEqual(wiringFor(expected, 'strict-review'));
   });
 
   test('every referenced police script exists and is executable', () => {
@@ -230,7 +230,7 @@ describe('agentkit plugin hooks', () => {
   });
 });
 
-describe('agentkit-review plugin', () => {
+describe('agentkit-strict-review plugin', () => {
   test('hooks.json routes Bash and merge-shaped tools through the fail-closed supervisor', () => {
     const hooks = readReviewJson('hooks', 'hooks.json').hooks;
 
@@ -259,7 +259,7 @@ describe('agentkit-review plugin', () => {
   });
 
   test('carries the review skill and tools the core plugin no longer ships', () => {
-    expect(readReviewJson('.claude-plugin', 'plugin.json').name).toBe('agentkit-review');
+    expect(readReviewJson('.claude-plugin', 'plugin.json').name).toBe('agentkit-strict-review');
     expect(statSync(join(reviewPluginDir, 'skills', 'adversarial-review', 'SKILL.md')).isFile())
       .toBe(true);
     expect(existsSync(join(pluginDir, 'skills', 'adversarial-review'))).toBe(false);
