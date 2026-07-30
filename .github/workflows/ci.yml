@@ -24,8 +24,52 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  pick-runners:
+    name: Pick runners
+    runs-on: ubuntu-24.04
+    # The macOS job is the long pole — 7 to 12 minutes hosted. A self-hosted Mac
+    # cuts that, but a self-hosted runner must never execute code from a fork on
+    # a public repository, and GitHub does not fall back when one is offline: a
+    # job targeting an absent label queues instead. So the choice is made here,
+    # before dispatch, and every uncertain answer resolves to the hosted runner.
+    #
+    # `administration` is not a permission workflow YAML can grant GITHUB_TOKEN —
+    # naming it fails the whole workflow at parse. Listing runners needs it, so
+    # the pick reads ADMIN_READ_TOKEN (fine-grained PAT, Administration: read)
+    # when present and otherwise probes with the default token; a 403 lands in
+    # the same fallback as an offline runner. Forks never see the secret, which
+    # composes with the fork guard: fork PRs resolve to hosted twice over.
+    # No checkout happens here, so the job needs nothing from GITHUB_TOKEN.
+    permissions: {}
+    outputs:
+      matrix: ${{ steps.pick.outputs.matrix }}
+    steps:
+      - name: Choose the macOS runner
+        id: pick
+        env:
+          GH_TOKEN: ${{ secrets.ADMIN_READ_TOKEN || github.token }}
+          # Identity, not the .fork flag: a null head.repo (deleted fork) must
+          # compare unequal and land on hosted, and non-PR events stay false so
+          # main and tag pushes can still use the Mac.
+          IS_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+        run: |
+          mac='["macos-15"]'
+          if [ "$IS_FORK" = 'true' ]; then
+            echo 'fork pull request: hosted macOS only'
+          elif online=$(gh api "repos/$GITHUB_REPOSITORY/actions/runners?per_page=100" \
+              --jq '[.runners[] | select(.status=="online" and .busy==false)
+                     | select((["self-hosted","macOS","ARM64","rentamac"] - [.labels[].name]) | length == 0)] | length') \
+            && [ "${online:-0}" -gt 0 ]; then
+            mac='["self-hosted","macOS","ARM64","rentamac"]'
+            echo "self-hosted macOS available ($online idle)"
+          else
+            echo 'no idle self-hosted macOS runner: falling back to hosted'
+          fi
+          printf 'matrix=[["ubuntu-24.04"],%s]\n' "$mac" >> "$GITHUB_OUTPUT"
+
   affected:
-    name: Affected tests (${{ matrix.os }})
+    name: Affected tests (${{ join(matrix.os, ' ') }})
+    needs: pick-runners
     if: github.event_name == 'pull_request'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
@@ -35,9 +79,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os:
-          - ubuntu-24.04
-          - macos-15
+        os: ${{ fromJSON(needs.pick-runners.outputs.matrix) }}
     steps:
       - name: Check out full history
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -47,6 +89,11 @@ jobs:
 
       - name: Install pinned Moon and Bun toolchains
         uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
+        env:
+          # proto resolves tool versions against the GitHub API; the self-hosted
+          # Mac shares a datacenter IP whose anonymous quota two runs can drain,
+          # and an empty version list fails the install with "0.0.0".
+          GITHUB_TOKEN: ${{ github.token }}
         with:
           auto-install: true
 
@@ -87,16 +134,15 @@ jobs:
         run: moon ci
 
   full:
-    name: Full suite (${{ matrix.os }})
+    name: Full suite (${{ join(matrix.os, ' ') }})
+    needs: pick-runners
     if: github.event_name != 'pull_request'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        os:
-          - ubuntu-24.04
-          - macos-15
+        os: ${{ fromJSON(needs.pick-runners.outputs.matrix) }}
     steps:
       - name: Check out full history
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -106,6 +152,11 @@ jobs:
 
       - name: Install pinned Moon and Bun toolchains
         uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
+        env:
+          # proto resolves tool versions against the GitHub API; the self-hosted
+          # Mac shares a datacenter IP whose anonymous quota two runs can drain,
+          # and an empty version list fails the install with "0.0.0".
+          GITHUB_TOKEN: ${{ github.token }}
         with:
           auto-install: true
 
@@ -166,6 +217,14 @@ jobs:
         env:
           AGENTKIT_DOCS_VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
         run: node ./node_modules/astro/bin/astro.mjs build
+
+      # On PRs too, not just at publish: a broken archive script or a tag that
+      # stopped building must fail the PR, never detonate during a release.
+      # Running before the asset check also hands it the archives' files —
+      # a different toolchain version is where an unlisted extension appears.
+      - name: Build the archived versions from their tags
+        working-directory: docs/site
+        run: ./build-archives.sh dist
 
       # Needs the build, so it is a check rather than a test: an extension nobody
       # listed is invisible to a hand-maintained fixture.

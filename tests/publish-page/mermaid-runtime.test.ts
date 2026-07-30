@@ -95,16 +95,37 @@ async function attach(url: string): Promise<Session> {
 async function devtoolsEndpoint(profile: string): Promise<string> {
   const portFile = join(profile, 'DevToolsActivePort');
   const deadline = Date.now() + 20_000;
+  let lastFailure = 'port file never appeared';
   while (Date.now() < deadline) {
+    // Chrome writes the port file non-atomically and opens the socket after —
+    // an empty read or a refused connection is "not yet", never fatal. The
+    // unguarded fetch here once escaped the loop as a ConnectionRefused on
+    // 127.0.0.1:80 (empty port), wasting the whole retry budget on one race.
     if (existsSync(portFile)) {
       const [port] = readFileSync(portFile, 'utf-8').split('\n');
-      const targets = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json() as any[];
-      const page = targets.find((t) => t.type === 'page');
-      if (page?.webSocketDebuggerUrl) return page.webSocketDebuggerUrl;
+      if (/^\d+$/.test(port)) {
+        try {
+          // The loop deadline only checks between iterations; an accepted-but-
+          // silent socket would otherwise pin a single fetch past all of it.
+          const reply = await fetch(`http://127.0.0.1:${port}/json/list`, {
+            signal: AbortSignal.timeout(1_000),
+          });
+          const targets = await reply.json() as any[];
+          const page = targets.find((t) => t.type === 'page');
+          if (page?.webSocketDebuggerUrl) return page.webSocketDebuggerUrl;
+          lastFailure = `no page target on port ${port} yet`;
+        } catch (error) {
+          lastFailure = `port ${port} not answering yet: ${error}`;
+        }
+      } else {
+        lastFailure = `port file present but holds ${JSON.stringify(port)}`;
+      }
+    } else if (lastFailure !== 'port file never appeared') {
+      lastFailure = 'port file vanished after appearing — the browser exited';
     }
     await Bun.sleep(50);
   }
-  throw new Error(`browser never published a devtools port in ${profile}`);
+  throw new Error(`browser never published a usable devtools endpoint in ${profile} (${lastFailure})`);
 }
 
 async function evaluate(session: Session, expression: string): Promise<unknown> {

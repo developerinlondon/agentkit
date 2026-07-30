@@ -14,7 +14,6 @@
     "astro": "7.1.6",
     "astro-mermaid": "2.1.0",
     "mermaid": "11.16.0",
-    "starlight-links-validator": "0.25.2",
-    "starlight-versions": "0.9.1"
+    "starlight-links-validator": "0.25.2"
   }
 }
