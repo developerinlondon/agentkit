@@ -60,6 +60,27 @@ function commitFile(repoDir: string, relPath: string, content: string): void {
   runGit(['commit', '-q', '-m', `add ${relPath}`], repoDir);
 }
 
+// One commit for a whole tree: rapid-fire per-file commits intermittently lose
+// the previous file's blob on slow-fsync CI runners ("invalid object … Error
+// building trees"), and none of these tests needs per-file history.
+function commitTree(repoDir: string, files: Record<string, string>): void {
+  for (const [relPath, content] of Object.entries(files)) {
+    const abs = join(repoDir, relPath);
+    mkdirSync(dirname(abs), { recursive: true });
+    writeFileSync(abs, content);
+  }
+  runGit(['add', '-A'], repoDir);
+  runGit(['commit', '-q', '-m', 'fixture tree'], repoDir);
+}
+
+function handlerTree(count: number): Record<string, string> {
+  const files: Record<string, string> = {};
+  for (let i = 0; i < count; i++) {
+    files[`src/handlers/h${i}.ts`] = `export const h${i} = ${i};\n`;
+  }
+  return files;
+}
+
 function runHookOnFile(configYaml: string, root: string, filePath: string) {
   const configDir = join(root, 'config', 'agentkit');
   mkdirSync(configDir, { recursive: true });
@@ -272,9 +293,7 @@ describe('Claude coding-police monolith directory', () => {
   test('blocks a new source file in a directory already at the cap', () => {
     const root = mkdtempSync(join(tmpdir(), 'agentkit-dircap-'));
     makeGitRepo(root);
-    for (let i = 0; i < 15; i++) {
-      commitFile(root, `src/handlers/h${i}.ts`, `export const h${i} = ${i};\n`);
-    }
+    commitTree(root, handlerTree(15));
     const target = join(root, 'src/handlers/h15.ts');
     writeFileSync(target, 'export const h15 = 15;\n');
 
@@ -290,9 +309,7 @@ describe('Claude coding-police monolith directory', () => {
   test('allows overwriting an already-tracked file in an over-cap directory', () => {
     const root = mkdtempSync(join(tmpdir(), 'agentkit-dircap-'));
     makeGitRepo(root);
-    for (let i = 0; i < 16; i++) {
-      commitFile(root, `src/handlers/h${i}.ts`, `export const h${i} = ${i};\n`);
-    }
+    commitTree(root, handlerTree(16));
     const target = join(root, 'src/handlers/h0.ts');
     writeFileSync(target, 'export const h0 = 100;\n');
 
@@ -306,9 +323,7 @@ describe('Claude coding-police monolith directory', () => {
   test('max-dir-files: 0 disables the check', () => {
     const root = mkdtempSync(join(tmpdir(), 'agentkit-dircap-'));
     makeGitRepo(root);
-    for (let i = 0; i < 20; i++) {
-      commitFile(root, `src/handlers/h${i}.ts`, `export const h${i} = ${i};\n`);
-    }
+    commitTree(root, handlerTree(20));
     const target = join(root, 'src/handlers/h20.ts');
     writeFileSync(target, 'export const h20 = 20;\n');
 
@@ -322,9 +337,7 @@ describe('Claude coding-police monolith directory', () => {
   test('exclude-patterns suppresses the check for homogeneous collections', () => {
     const root = mkdtempSync(join(tmpdir(), 'agentkit-dircap-'));
     makeGitRepo(root);
-    for (let i = 0; i < 15; i++) {
-      commitFile(root, `src/routes/r${i}.ts`, `export const r${i} = ${i};\n`);
-    }
+    commitTree(root, Object.fromEntries(Array.from({ length: 15 }, (_, i) => [`src/routes/r${i}.ts`, `export const r${i} = ${i};\n`])));
     const target = join(root, 'src/routes/r15.ts');
     writeFileSync(target, 'export const r15 = 15;\n');
 
@@ -342,9 +355,7 @@ describe('Claude coding-police monolith directory', () => {
   test('ignores non-code files even in an over-cap directory', () => {
     const root = mkdtempSync(join(tmpdir(), 'agentkit-dircap-'));
     makeGitRepo(root);
-    for (let i = 0; i < 15; i++) {
-      commitFile(root, `src/handlers/h${i}.ts`, `export const h${i} = ${i};\n`);
-    }
+    commitTree(root, handlerTree(15));
     const target = join(root, 'src/handlers/notes.md');
     writeFileSync(target, '# notes\n');
 
