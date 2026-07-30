@@ -1,0 +1,525 @@
+/* agentkit.sbs design system — the single source of tokens and shared
+   components for every page on the site. Page-specific CSS lives beside its
+   page as src/pages/<name>.css. Nothing here may reference an external URL:
+   the serving CSP is default-src 'none' with only inline style/script and
+   data: images, so build.sh inlines this file into every page. */
+
+/* Every token resolves through light-dark(), keyed off color-scheme: the
+   default `light dark` follows the system, and the toggle pins data-theme so
+   a stored choice wins. No JS means no data-theme, which is still correct. */
+:root {
+  color-scheme: light dark;
+  --ground:  light-dark(#f6f5f1, #08090a);
+  --panel:   light-dark(#ffffff, #131418);
+  --sunk:    light-dark(#edece7, #050607);
+  --ink:     light-dark(#1a1c20, #e8e8e6);
+  --ink-dim: light-dark(#34373d, #c6c8c4);
+  --muted:   light-dark(#62666e, #8f939c);
+  --rule:    light-dark(#d5d2c9, #272a31);
+  --rule-lo: light-dark(#e3e1da, #1b1d22);
+  --grid-dot: light-dark(#e0ddd4, #17181d);
+  --caution: light-dark(#8a5a06, #f5a742);
+  --signal:  light-dark(#2f5fa3, #79a8e7);
+  /* The header is translucent, so its worst backdrop is a code panel
+     scrolling under it — these stay darker than --muted in light mode. */
+  --muted-hdr: light-dark(#5b6069, #8f939c);
+  --muted-code: light-dark(#555a64, #868c96);
+  --deny:    light-dark(#b23f31, #e57368);
+  --ok:      light-dark(#2e7d43, #7dc98f);
+  --fill:    light-dark(#dd9a2a, #f5a742);
+  --fill-ink: light-dark(#241505, #211303);
+  --tile-hi:   light-dark(#ffffff, #23262c);
+  --tile-lo:   light-dark(#eceae4, #15171b);
+  --tile-side: light-dark(#d8d5cc, #0b0c0e);
+  --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --gut: 1.35rem;
+}
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
+
+/* A browser without light-dark() parses the custom property fine and then
+   drops every var() consumer at computed-value time — no grounds, no borders,
+   no panels. Those browsers get the dark palette unconditionally, and no
+   toggle, rather than an unstyled page. */
+@supports not (color: light-dark(#000, #fff)) {
+  /* The [data-theme] arm outranks the data-theme color-scheme pins above:
+     with the palette fixed dark, a stored "light" choice must not flip the
+     UA chrome light around a dark page. */
+  :root, :root[data-theme] {
+    color-scheme: dark;
+    --ground:  #08090a;
+    --panel:   #131418;
+    --sunk:    #050607;
+    --ink:     #e8e8e6;
+    --ink-dim: #c6c8c4;
+    --muted:   #8f939c;
+    --rule:    #272a31;
+    --rule-lo: #1b1d22;
+    --grid-dot: #17181d;
+    --caution: #f5a742;
+    --signal:  #79a8e7;
+    --muted-hdr: #8f939c;
+    --muted-code: #868c96;
+    --deny:    #e57368;
+    --ok:      #7dc98f;
+    --fill:    #f5a742;
+    --fill-ink: #211303;
+    --tile-hi:   #23262c;
+    --tile-lo:   #15171b;
+    --tile-side: #0b0c0e;
+  }
+  /* :root outranks the later .theme-btn display rule — @supports itself
+     contributes no specificity. */
+  :root .theme-btn { display: none; }
+}
+
+*, *::before, *::after { box-sizing: border-box; border-radius: 0; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--ground);
+  background-image: radial-gradient(var(--grid-dot) 1px, transparent 0);
+  background-size: 20px 20px;
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 15px;
+  line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+}
+::selection { background: var(--fill); color: var(--fill-ink); }
+a { color: var(--signal); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+a:hover { text-decoration-thickness: 2px; }
+:focus-visible { outline: 2px solid var(--caution); outline-offset: 3px; }
+
+/* ---- type roles ---- */
+.lbl {
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.lbl.raw { text-transform: none; letter-spacing: 0.04em; font-size: 0.7rem; }
+.mono { font-family: var(--mono); }
+.bi { width: 0.95em; height: 0.95em; vertical-align: -0.12em; display: inline-block; flex: none; }
+.brow .bi { width: 0.85rem; height: 0.85rem; }
+.dim { color: var(--muted); }
+
+h1 {
+  font-size: clamp(1.8rem, 3.6vw, 2.5rem);
+  line-height: 1.08; letter-spacing: -0.03em; font-weight: 700;
+  margin: 0 0 0.9rem; max-width: 26ch; text-wrap: balance;
+}
+h2 {
+  font-size: clamp(1.45rem, 3vw, 2.05rem);
+  line-height: 1.12; letter-spacing: -0.025em; font-weight: 700;
+  margin: 0 0 0.75rem; max-width: 24ch; text-wrap: balance;
+}
+h3 { font-size: 0.95rem; font-weight: 700; letter-spacing: 0; margin: 0 0 0.3rem; }
+.lead {
+  color: var(--muted); max-width: 62ch; margin: 0 0 1.7rem;
+  font-size: 0.98rem; line-height: 1.85; overflow-wrap: anywhere; text-wrap: pretty;
+}
+.note { color: var(--muted); font-size: 0.85rem; max-width: 68ch; overflow-wrap: anywhere; }
+
+/* ---- shell ---- */
+.wrap { max-width: 76rem; margin: 0 auto; padding: 0 var(--gut); }
+
+.skip {
+  position: absolute; left: -9999px; top: 0;
+  background: var(--fill); color: var(--fill-ink); padding: 0.6rem 1rem;
+  font-family: var(--mono); font-size: 0.8rem; z-index: 40;
+}
+.skip:focus { left: 0.6rem; top: 0.6rem; }
+
+/* ---- site header: identity row + documentation row ---- */
+.top {
+  border-bottom: 1px solid var(--rule-lo);
+  position: sticky; top: 0; z-index: 20;
+  background: color-mix(in srgb, var(--ground) 93%, transparent);
+  backdrop-filter: blur(8px);
+}
+.top-in { display: flex; align-items: center; gap: 1rem; height: 3.3rem; }
+.mark {
+  font-family: var(--mono); font-weight: 700; font-size: 0.86rem;
+  letter-spacing: 0.22em; text-transform: uppercase;
+  color: var(--ink); text-decoration: none;
+}
+.mark::after { content: "_"; color: var(--caution); }
+.mark:hover { color: var(--caution); }
+.top-nav { margin-left: auto; display: flex; align-items: center; gap: 1.1rem; }
+.top-nav a {
+  font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--muted-hdr); text-decoration: none;
+}
+.top-nav a:hover { color: var(--ink); }
+.top-nav .gh { display: inline-flex; align-items: center; }
+.top-nav .gh svg { width: 1.05rem; height: 1.05rem; }
+
+/* Hidden until shared.js wires it: without JS the choice cannot persist, and
+   a dead control is worse than none — the system preference still applies. */
+.theme-btn {
+  width: 1.9rem; height: 1.9rem; padding: 0; cursor: pointer;
+  background: none; border: 1px solid var(--rule); color: var(--muted-hdr);
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.theme-btn[hidden] { display: none; }
+.theme-btn:hover { color: var(--ink); border-color: var(--muted); }
+.theme-btn svg { width: 0.95rem; height: 0.95rem; }
+.theme-btn .sun { display: none; }
+:root[data-theme="dark"] .theme-btn .sun { display: block; }
+:root[data-theme="dark"] .theme-btn .moon { display: none; }
+
+.nav-docs {
+  font-family: var(--mono); font-size: 0.78rem; color: var(--ink-dim);
+  text-decoration: none; letter-spacing: 0.02em;
+}
+.nav-docs:hover { color: var(--ink); }
+
+/* ---- spine + sections ---- */
+.rail { border-left: 1px solid var(--rule-lo); padding-left: 2.1rem; position: relative; }
+@media (max-width: 46rem) { .rail { padding-left: 1.15rem; } }
+
+.sect { padding: 4.6rem 0 0; position: relative; }
+.sect:last-of-type { padding-bottom: 4.6rem; }
+.tick {
+  position: absolute; left: -2.1rem; top: 4.6rem;
+  transform: translate(-50%, 0.55rem);
+  width: 9px; height: 9px; background: var(--caution);
+}
+@media (max-width: 46rem) { .tick { left: -1.15rem; } }
+.sect > .lbl { display: block; margin-bottom: 0.85rem; }
+
+/* ---- code / terminal ---- */
+.code {
+  background: var(--sunk); border: 1px solid var(--rule);
+  font-family: var(--mono); font-size: 0.775rem; line-height: 1.75;
+  padding: 1rem 1.1rem; overflow-x: auto; margin: 0;
+  color: var(--ink-dim); white-space: pre; tab-size: 2;
+}
+.code .c { color: var(--muted-code); }
+.code .p { color: var(--caution); }
+.code .k { color: var(--signal); }
+.code .s { color: var(--ink); }
+.code .d { color: var(--deny); }
+.code .g { color: var(--ok); }
+.code-hd {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.7rem;
+  background: var(--panel); border: 1px solid var(--rule); border-bottom: 0;
+  padding: 0.42rem 1.1rem;
+}
+.code-hd + .code { border-top: 0; }
+@media (max-width: 46rem) { .code { font-size: 0.71rem; } }
+
+/* ---- panels + grids ---- */
+.grid { display: grid; gap: 1px; background: var(--rule-lo); border: 1px solid var(--rule-lo); }
+.grid > * { min-width: 0; }
+.g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.g4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-width: 54rem) { .g3, .g4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 40rem) { .g2, .g3, .g4 { grid-template-columns: minmax(0, 1fr); } }
+.cell { background: var(--panel); padding: 1.15rem 1.2rem; min-width: 0; position: relative; overflow: hidden; }
+.cell::before {
+  content: ""; position: absolute; inset: 0; opacity: 0; pointer-events: none;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--caution) 7%, transparent) 0%, transparent 60%);
+  transition: opacity 0.3s;
+}
+.cell:hover::before { opacity: 1; }
+.cell p { margin: 0; color: var(--ink-dim); font-size: 0.86rem; overflow-wrap: anywhere; }
+.cell-hd { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.25rem 0.6rem; margin-bottom: 0.45rem; }
+.cell-hd h3 { margin: 0; }
+.count {
+  font-family: var(--mono); font-size: 0.66rem; letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--caution); margin-left: auto;
+}
+.names {
+  margin: 0.8rem 0 0; padding: 0.7rem 0 0; border-top: 1px dashed var(--rule);
+  font-family: var(--mono); font-size: 0.71rem; line-height: 1.9;
+  color: var(--muted); word-spacing: 0.1em;
+}
+/* These lists are read against the counts above them, so a name split at its
+   hyphen reads as two more entries than exist. Chrome takes a hyphen as a
+   break opportunity whatever word-break says, so each name is its own
+   non-wrapping token; real hyphens are kept so the names stay copyable. */
+.cell p.names { overflow-wrap: normal; }
+.names .n { white-space: nowrap; }
+.names b { color: var(--ink); font-weight: 500; }
+
+/* ---- data table ---- */
+.tbl { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+.tbl th, .tbl td { text-align: left; padding: 0.52rem 0.9rem 0.52rem 0; border-bottom: 1px solid var(--rule-lo); vertical-align: top; }
+.tbl th {
+  font-family: var(--mono); font-weight: 500; font-size: 0.64rem;
+  letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted);
+}
+.tbl td.m, .tbl th.m { font-family: var(--mono); font-size: 0.75rem; white-space: nowrap; }
+.tbl td { color: var(--ink-dim); }
+.tbl tr td:first-child { color: var(--ink); }
+.scroll { overflow-x: auto; }
+
+/* shared.js sets data-overflow on scrollers that actually overflow, so the
+   fade never dims content that is already fully visible. */
+[data-overflow="1"] {
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 2.2rem), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 2.2rem), transparent);
+}
+
+/* ---- pull quote ---- */
+.pull {
+  margin: 0; padding: 1.15rem 0 1.15rem 1.2rem;
+  border-left: 3px solid var(--caution);
+  font-size: clamp(1rem, 1.7vw, 1.18rem); line-height: 1.5;
+  letter-spacing: -0.01em; color: var(--ink); max-width: 44ch;
+}
+.pull cite {
+  display: block; margin-top: 0.6rem; font-style: normal;
+  font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--muted);
+}
+
+/* ---- two-up ---- */
+.split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1.6rem; align-items: start; }
+.split > * { min-width: 0; }
+@media (max-width: 54rem) { .split { grid-template-columns: minmax(0, 1fr); } }
+
+
+/* ---- buttons ---- */
+.row { display: flex; flex-wrap: wrap; gap: 0.7rem; margin-top: 1.6rem; }
+.btn {
+  display: inline-block; padding: 0.6rem 1.3rem; font-size: 0.84rem;
+  font-family: var(--mono); letter-spacing: 0.04em; text-decoration: none;
+  border: 1px solid var(--rule); color: var(--ink);
+}
+.btn:hover { border-color: var(--muted); }
+.btn.solid { background: var(--fill); color: var(--fill-ink); border-color: var(--fill); font-weight: 700; }
+.btn.solid:hover { filter: brightness(1.08); }
+
+/* ---- documentation pages ----
+   A doc page is .doc-shell > (.doc-body + .toc). shared.js fills the TOC from
+   the body's h2[id]/h3[id], adds the hover anchors, and marks the current
+   section, so an author writes headings and nothing else. */
+.doc-shell { display: grid; grid-template-columns: minmax(0, 1fr) 13.5rem; gap: 2.8rem; align-items: start; }
+.doc-shell > * { min-width: 0; }
+@media (max-width: 64rem) {
+  /* Not hidden: with the permalinks gone below 46rem too, hiding this left no
+     way to reach or cite a section at all on a phone. Collapsed to a compact
+     block above the prose, it costs one line until it is opened. */
+  .doc-shell { grid-template-columns: minmax(0, 1fr); }
+  .toc {
+    position: static; max-height: none; overflow: visible;
+    border-left: 0; border: 1px solid var(--rule-lo);
+    padding: 0.75rem 0.9rem; margin-bottom: 2rem; background: var(--panel);
+  }
+  .toc[data-collapsed] [data-toc] { display: none; }
+  .toc-lbl { padding-left: 0; margin-bottom: 0; }
+  .toc-toggle {
+    display: block; width: 100%; background: none; border: 0; padding: 0;
+    color: inherit; font: inherit; text-align: left; cursor: pointer;
+  }
+  .toc-toggle::after { content: "  \2212"; font-family: var(--mono); }
+  .toc[data-collapsed] .toc-toggle::after { content: "  +"; }
+  .toc [data-toc] { margin-top: 0.6rem; }
+  .toc a { margin-left: 0; border-left: 0; padding-left: 0; }
+  .toc a.sub { padding-left: 1rem; }
+}
+
+.doc-body > :first-child { margin-top: 0; }
+.doc-body h2, .doc-body h3 { position: relative; scroll-margin-top: 7.5rem; }
+/* Subordinate to the page's h1 title, so the title still reads as the title. */
+.doc-body h2 {
+  font-size: clamp(1.14rem, 1.9vw, 1.36rem); font-weight: 700;
+  letter-spacing: 0.01em; text-transform: uppercase;
+  margin: 3rem 0 0.6rem; max-width: 38ch;
+  border-bottom: 1px solid var(--rule-lo); padding-bottom: 0.55rem;
+}
+.doc-body h3 {
+  font-size: 1.05rem; font-weight: 700; letter-spacing: 0;
+  margin: 2rem 0 0.45rem; max-width: 44ch;
+}
+.doc-body p { color: var(--ink-dim); max-width: 70ch; font-size: 0.92rem; }
+.doc-body ul, .doc-body ol { color: var(--ink-dim); max-width: 68ch; padding-left: 1.15rem; margin: 0.9rem 0; font-size: 0.92rem; }
+.doc-body li { margin: 0.35rem 0; }
+.doc-body li::marker { color: var(--muted); }
+
+.anchor {
+  position: absolute; left: -1.15rem; top: 0;
+  font-family: var(--mono); font-weight: 400; color: var(--caution);
+  text-decoration: none; opacity: 0;
+}
+.doc-body h2:hover > .anchor,
+.doc-body h3:hover > .anchor,
+.anchor:focus-visible { opacity: 1; }
+@media (max-width: 46rem) { .anchor { display: none; } }
+
+/* A reference page can outrun the viewport; without its own scroll the sticky
+   column clips its last entries and they cannot be reached. */
+.toc {
+  position: sticky; top: 7rem; border-left: 1px solid var(--rule-lo);
+  max-height: calc(100vh - 9rem); overflow-y: auto; scrollbar-width: thin;
+}
+.toc-lbl {
+  display: block; padding-left: 1rem; margin-bottom: 0.6rem;
+  font-family: var(--mono); font-size: 0.63rem; letter-spacing: 0.22em;
+  text-transform: uppercase; color: var(--muted);
+}
+.toc a {
+  display: block; padding: 0.24rem 0 0.24rem 1rem;
+  border-left: 2px solid transparent; margin-left: -1px;
+  font-size: 0.78rem; line-height: 1.4; color: var(--muted); text-decoration: none;
+}
+.toc a:hover { color: var(--ink); }
+.toc a[aria-current="true"] { color: var(--ink); border-left-color: var(--caution); }
+.toc a.sub { padding-left: 1.9rem; font-size: 0.74rem; }
+
+.pager {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px;
+  background: var(--rule-lo); border: 1px solid var(--rule-lo); margin-top: 3.6rem;
+}
+.pager > * { min-width: 0; }
+@media (max-width: 40rem) { .pager { grid-template-columns: minmax(0, 1fr); } }
+.pager a { background: var(--panel); padding: 1rem 1.2rem; text-decoration: none; display: block; }
+.pager a:hover { background: var(--sunk); }
+.pager .dir {
+  display: block; margin-bottom: 0.3rem;
+  font-family: var(--mono); font-size: 0.63rem; letter-spacing: 0.18em;
+  text-transform: uppercase; color: var(--muted);
+}
+.pager .ttl { color: var(--ink); font-weight: 600; font-size: 0.9rem; }
+.pager .next { text-align: right; }
+
+/* ---- footer ---- */
+.foot { border-top: 1px solid var(--rule-lo); margin-top: 1rem; }
+.foot-in {
+  display: flex; flex-wrap: wrap; gap: 0.9rem 1.6rem; align-items: center;
+  padding: 1.6rem 0 2.6rem;
+  font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--muted);
+}
+.foot-in a { color: var(--muted); text-decoration: none; }
+.foot-in a:hover { color: var(--ink); }
+/* Provenance: set apart by position, not by being too faint to read. */
+.foot-in .build { margin-left: auto; color: var(--muted); text-transform: none; letter-spacing: 0.06em; }
+@media (max-width: 46rem) { .foot-in .build { margin-left: 0; } }
+
+/* ---- inline code ----
+   Documentation names flags, paths and identifiers mid-sentence; without this
+   they render as ordinary prose and stop being scannable. */
+code {
+  font-family: var(--mono); font-size: 0.87em;
+  background: var(--sunk); border: 1px solid var(--rule-lo);
+  padding: 0.06em 0.34em; color: var(--ink); overflow-wrap: anywhere;
+}
+.tbl code, .toc code, h1 code, h2 code, h3 code, .cell-hd code { background: none; border: 0; padding: 0; }
+
+/* ---- figures: flows drawn in HTML ----
+   The CSP forbids fetching a diagram library or an image, so a figure is boxes
+   and rules that reflow, not a rendered picture that cannot. */
+.fig { margin: 1.6rem 0; }
+.fig > figcaption {
+  margin-top: 0.7rem; padding-top: 0.55rem; border-top: 1px dashed var(--rule);
+  font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.04em; color: var(--muted);
+}
+.fig > figcaption b { color: var(--ink-dim); font-weight: 500; }
+
+.flow { display: flex; align-items: stretch; }
+.step {
+  flex: 1 1 0; min-width: 0; background: var(--panel);
+  border: 1px solid var(--rule-lo); padding: 0.85rem 0.9rem;
+}
+.step b { display: block; margin-bottom: 0.12rem; font-size: 0.83rem; color: var(--ink); letter-spacing: 0; }
+.step span { display: block; margin-top: 0.2rem; font-family: var(--mono); font-size: 0.68rem; color: var(--muted); }
+.step.hot { border-color: color-mix(in srgb, var(--signal) 70%, transparent); }
+.step.gold { border-color: var(--caution); }
+.step.deny { border-color: var(--deny); }
+.arw {
+  flex: none; display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 0.1rem; padding: 0 0.5rem;
+  font-family: var(--mono); font-size: 0.6rem; color: var(--muted);
+  text-align: center; max-width: 8rem;
+}
+.arw::before { content: "\2192"; font-size: 0.95rem; line-height: 1; }
+@media (max-width: 52rem) {
+  .flow { flex-direction: column; }
+  .arw { flex-direction: row; gap: 0.45rem; padding: 0.4rem 0; max-width: none; }
+  .arw::before { content: "\2193"; }
+}
+
+/* ---- isometric tile kit ----
+   3D topology figures in pure CSS: a .iso grid of .iso-node tiles, each an
+   isometric slab with a glyph on top and a mono tag under it. Variants .hot
+   (signal) and .gold (caution) mark emphasized nodes. */
+.iso {
+  display: grid; grid-template-columns: repeat(3, minmax(7.5rem, 1fr));
+  gap: 0.8rem 1.2rem; justify-items: center; padding: 1.8rem 0 0.6rem;
+}
+.iso.cols-4 { grid-template-columns: repeat(4, minmax(6.5rem, 1fr)); }
+@media (max-width: 54rem) { .iso, .iso.cols-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.iso-node { display: flex; flex-direction: column; align-items: center; gap: 1.3rem; }
+.iso-node .tile {
+  width: 6rem; aspect-ratio: 1; position: relative;
+  transform: rotateX(55deg) rotateZ(-45deg); transform-style: preserve-3d;
+  transition: transform 0.2s;
+}
+.iso-node:hover .tile { transform: rotateX(55deg) rotateZ(-45deg) translateZ(10px); }
+.iso-node .top {
+  position: absolute; inset: 0; border-radius: 3px;
+  background: linear-gradient(135deg, var(--tile-hi) 0%, var(--tile-lo) 100%);
+  border: 1px solid var(--rule);
+  box-shadow: inset 0 0 24px color-mix(in srgb, var(--caution) 6%, transparent);
+  transform: translateZ(16px);
+  display: flex; align-items: center; justify-content: center;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.iso-node:hover .top { border-color: var(--caution); box-shadow: inset 0 0 30px color-mix(in srgb, var(--caution) 22%, transparent); }
+.iso-node .side {
+  position: absolute; inset: 0; border-radius: 3px;
+  background: var(--tile-side); box-shadow: 0 0 0 1px var(--rule-lo);
+}
+.iso-node.hot .top { border-color: color-mix(in srgb, var(--signal) 70%, transparent); box-shadow: inset 0 0 26px color-mix(in srgb, var(--signal) 16%, transparent); }
+.iso-node.gold .top { border-color: var(--caution); box-shadow: inset 0 0 26px color-mix(in srgb, var(--caution) 16%, transparent); }
+.iso-node .glyph {
+  width: 46%; height: 46%;
+  transform: rotateZ(45deg) rotateX(-40deg);
+  filter: drop-shadow(0 4px 6px color-mix(in srgb, var(--sunk) 70%, transparent));
+}
+.iso-node .glyph svg { width: 100%; height: 100%; }
+.iso-node .tag {
+  font-family: var(--mono); font-size: 0.7rem;
+  letter-spacing: 0.06em; color: var(--ink); text-align: center;
+  background: var(--panel); border: 1px solid var(--rule-lo);
+  padding: 0.15rem 0.6rem; white-space: nowrap;
+}
+.iso-node .tag small { display: block; color: var(--muted); font-size: 0.62rem; letter-spacing: 0.04em; }
+
+/* ---- arch kit: stacked pipeline with glowing joins ---- */
+.arch { display: flex; flex-direction: column; margin: 1.2rem 0 0.5rem; }
+.arch-row { display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; }
+.arch-node {
+  background: linear-gradient(160deg, var(--tile-hi), var(--tile-lo));
+  border: 1px solid var(--rule);
+  padding: 0.8rem 1.1rem 0.7rem; min-width: 10rem; max-width: 34rem;
+  box-shadow: 0 10px 22px -14px color-mix(in srgb, var(--sunk) 85%, transparent);
+  transition: transform 0.18s, border-color 0.18s;
+}
+.arch-node:hover { transform: translateY(-3px); border-color: var(--caution); }
+.arch-node.hot { border-color: color-mix(in srgb, var(--signal) 65%, transparent); }
+.arch-node.gold { border-color: color-mix(in srgb, var(--caution) 60%, transparent); }
+.arch-node .ic { width: 24px; height: 24px; margin-bottom: 0.35rem; color: var(--caution); }
+.arch-node .nm { font-weight: 700; font-size: 0.88rem; color: var(--ink); }
+.arch-node .ds { color: var(--muted); font-size: 0.74rem; font-family: var(--mono); }
+.arch-join {
+  display: flex; justify-content: center; align-items: center; height: 2.4rem;
+  color: var(--caution); font-family: var(--mono); font-size: 0.7rem;
+  letter-spacing: 0.1em; gap: 0.5rem;
+}
+.arch-join::before, .arch-join::after {
+  content: ""; width: 2px; height: 100%;
+  background: linear-gradient(180deg, transparent, var(--caution), transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+  .iso-node:hover .tile, .arch-node:hover { transform: none; }
+}

@@ -248,6 +248,34 @@ jobs:
           printf '%s' "$AGENTKIT_SITE_TOKEN" > "$HOME/.config/agentkit/site-token"
           ./docs/site/deploy.sh
 
+  site-publish:
+    name: Publish the marketing site
+    if: >-
+      startsWith(github.ref, 'refs/tags/v')
+      || (github.event_name == 'workflow_dispatch' && inputs.publish)
+    # Same ordering as the docs: the worker must be able to serve what is about
+    # to be uploaded before the upload happens.
+    needs:
+      - full
+      - worker-publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out the commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Build and publish the marketing site
+        env:
+          AGENTKIT_SITE_TOKEN: ${{ secrets.AGENTKIT_SITE_TOKEN }}
+        run: |
+          if [ -z "$AGENTKIT_SITE_TOKEN" ]; then
+            echo 'site: AGENTKIT_SITE_TOKEN is not configured' >&2
+            exit 1
+          fi
+          umask 077
+          printf '%s' "$AGENTKIT_SITE_TOKEN" > "$RUNNER_TEMP/site-token"
+          AGENTKIT_SITE_TOKEN_FILE="$RUNNER_TEMP/site-token" bash ./pages/site/deploy.sh
+
   ci-gate:
     name: CI gate
     if: always()
@@ -256,6 +284,7 @@ jobs:
       - docs
       - docs-publish
       - full
+      - site-publish
       - worker-publish
     runs-on: ubuntu-24.04
     permissions: {}
@@ -266,6 +295,7 @@ jobs:
           DOCS_RESULT: ${{ needs.docs.result }}
           DOCS_PUBLISH_RESULT: ${{ needs.docs-publish.result }}
           WORKER_PUBLISH_RESULT: ${{ needs.worker-publish.result }}
+          SITE_PUBLISH_RESULT: ${{ needs.site-publish.result }}
           EVENT_NAME: ${{ github.event_name }}
           GIT_REF: ${{ github.ref }}
           PUBLISH_INPUT: ${{ inputs.publish }}
@@ -281,12 +311,14 @@ jobs:
             PUBLISH_EXPECTED=1
           fi
           if [ "$PUBLISH_EXPECTED" = '1' ]; then
-            if [ "$DOCS_PUBLISH_RESULT" != 'success' ] || [ "$WORKER_PUBLISH_RESULT" != 'success' ]; then
-              echo "Publish results: worker=$WORKER_PUBLISH_RESULT docs=$DOCS_PUBLISH_RESULT"
+            if [ "$DOCS_PUBLISH_RESULT" != 'success' ] || [ "$WORKER_PUBLISH_RESULT" != 'success' ] \
+              || [ "$SITE_PUBLISH_RESULT" != 'success' ]; then
+              echo "Publish results: worker=$WORKER_PUBLISH_RESULT docs=$DOCS_PUBLISH_RESULT site=$SITE_PUBLISH_RESULT"
               exit 1
             fi
-          elif [ "$DOCS_PUBLISH_RESULT" != 'skipped' ] || [ "$WORKER_PUBLISH_RESULT" != 'skipped' ]; then
-            echo "Publish ran without a release tag or an explicit request: worker=$WORKER_PUBLISH_RESULT docs=$DOCS_PUBLISH_RESULT"
+          elif [ "$DOCS_PUBLISH_RESULT" != 'skipped' ] || [ "$WORKER_PUBLISH_RESULT" != 'skipped' ] \
+            || [ "$SITE_PUBLISH_RESULT" != 'skipped' ]; then
+            echo "Publish ran without a release tag or an explicit request: worker=$WORKER_PUBLISH_RESULT docs=$DOCS_PUBLISH_RESULT site=$SITE_PUBLISH_RESULT"
             exit 1
           fi
           if [ "$EVENT_NAME" = 'pull_request' ]; then

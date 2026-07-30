@@ -61,6 +61,11 @@ fileGroups:
   # The generated tables are derived from the enforcement tree, so a change there
   # has to re-run the drift check. Without these the docs slice stayed green while
   # the thing it documents moved underneath it.
+  siteInputs:
+    - "pages/site/**/*"
+    - "docs/site/src/content/docs/**/*"
+    - "tests/site/**/*"
+
   docsInputs:
     - "docs/site/astro.config.mjs"
     - "docs/site/deploy.sh"
@@ -219,6 +224,12 @@ tasks:
     inputs:
       - "group://ciConfig"
       - "group://diagramInputs"
+
+  test-site:
+    command: "bun run scripts/check-test-slices.ts site"
+    inputs:
+      - "group://ciConfig"
+      - "group://siteInputs"
 
   test-docs:
     command: "bun run scripts/check-test-slices.ts docs"

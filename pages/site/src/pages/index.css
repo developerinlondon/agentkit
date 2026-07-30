@@ -1,0 +1,166 @@
+/* Homepage-only styling: the hero, the install tabs, the animated terminal
+   demo, and the draft sections. Shared components come from theme.css. */
+
+.hero { padding: 2.2rem 0 0.4rem; position: relative; }
+.hero > .tick { top: 2.2rem; }
+.hero + .sect { padding-top: 3.4rem; }
+.hero + .sect > .tick { top: 3.4rem; }
+.brow {
+  display: flex; flex-wrap: wrap; gap: 0.4rem 1.1rem; margin-bottom: 1.3rem; align-items: center;
+  font-family: var(--mono); font-size: 0.66rem; letter-spacing: 0.14em;
+  text-transform: uppercase; color: var(--muted);
+}
+.brow span { display: inline-flex; align-items: center; gap: 0.35rem; }
+.badge-lbl { color: var(--faint); letter-spacing: 0.12em; }
+.brow span:first-child {
+  color: var(--caution); border: 1px solid color-mix(in srgb, var(--caution) 35%, transparent);
+  background: color-mix(in srgb, var(--caution) 8%, transparent);
+  padding: 0.05rem 0.5rem;
+}
+
+.hero-title {
+  font-size: clamp(2.2rem, 4.6vw, 3.4rem); line-height: 1.04;
+  letter-spacing: -0.02em; font-weight: 700; margin: 0 0 0.2rem; max-width: none;
+}
+.hero-title .l2 { display: block; color: var(--muted); }
+.cursor::after {
+  content: "_"; color: var(--caution); font-weight: 700;
+  animation: blink 1.2s step-end infinite;
+}
+@keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+
+.hero-sub { color: var(--muted); max-width: 56ch; font-size: 0.95rem; line-height: 1.8; margin: 1rem 0 0; }
+.hero-sub b { color: var(--ink-dim); }
+.hero-cols { display: grid; grid-template-columns: minmax(0, 10fr) minmax(0, 9fr); gap: 2.4rem; align-items: start; margin-top: 0.6rem; }
+/* The install block sits with the CTA row rather than the headline, so the
+   hero's slack falls above it instead of leaving it stranded up top. */
+@media (min-width: 60rem) { .hero-cols > *:last-child { align-self: end; } }
+.hero-cols > * { min-width: 0; }
+@media (max-width: 60rem) { .hero-cols { grid-template-columns: minmax(0, 1fr); } }
+
+/* Install tabs: five methods in one compact block; without JS the panels
+   stack (data-off only applies once the switcher runs). */
+.install-tabs { margin-top: 1.3rem; }
+.tabbar { display: flex; gap: 0.15rem; border: 1px solid var(--rule); border-bottom: 0; background: var(--panel); }
+.tab {
+  padding: 0.5rem 1rem; background: none; border: 0; cursor: pointer;
+  font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--muted);
+  border-bottom: 2px solid transparent;
+}
+.tab:hover { color: var(--ink); }
+.tab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--caution); }
+.tabpanel[data-off] { display: none; }
+.tabpanel .code { border-top: 0; }
+.tab-note { margin-top: 0.55rem; font-size: 0.78rem; }
+.ask { margin-top: 1.3rem; }
+.ask-block { position: relative; background: var(--sunk); border: 1px solid var(--rule); border-top: 0; }
+.ask-pre {
+  margin: 0; padding: 0.95rem 6.2rem 0.95rem 1.1rem;
+  font-family: var(--mono); font-size: 0.8rem; line-height: 1.7;
+  color: var(--ink-dim); overflow-x: auto; white-space: pre;
+}
+.ask-pre a { color: var(--caution); text-decoration: none; }
+.ask-pre a:hover { text-decoration: underline; }
+.ask-copy {
+  position: absolute; top: 0; right: 0; bottom: 0; padding: 0 1.1rem;
+  background: var(--panel); border: 0; border-left: 1px solid var(--rule);
+  color: var(--muted); font-family: var(--mono); font-size: 0.64rem;
+  text-transform: uppercase; letter-spacing: 0.12em; cursor: pointer;
+}
+.ask-copy:hover { color: var(--ink); background: var(--sunk); }
+.ask + .code-hd { margin-top: 1.4rem; }
+
+/* Animated terminal: types the install, then an agent session where police
+   refuse and redirect. All lines exist in the HTML; JS replays them, so
+   no-JS and reduced-motion read the finished transcript. */
+.term { background: var(--sunk); border: 1px solid var(--rule); }
+.term-bar {
+  display: flex; align-items: center; gap: 0.45rem;
+  padding: 0.5rem 0.9rem; border-bottom: 1px solid var(--rule);
+  font-family: var(--mono); font-size: 0.62rem; letter-spacing: 0.14em;
+  text-transform: uppercase; color: var(--muted);
+}
+.term-dot { width: 7px; height: 7px; background: var(--rule); }
+.term-body {
+  padding: 0.95rem 1.05rem 1.05rem; overflow-x: auto;
+  font-family: var(--mono); font-size: 0.76rem; line-height: 1.8;
+  min-height: 23.5rem;
+}
+@media (max-width: 60rem) { .term-body { min-height: 0; } }
+.term-body .ln { display: block; white-space: pre-wrap; overflow-wrap: anywhere; }
+.term-body .p { color: var(--caution); }
+.term-body .cmd { color: var(--ink); }
+.term-body .out { color: var(--muted); }
+.term-body .deny { color: var(--deny); }
+.term-body .ok { color: var(--ok); }
+.term-body .caret {
+  display: inline-block; width: 0.55em; height: 1em; vertical-align: -0.15em;
+  background: var(--caution);
+  animation: blink 1s step-end infinite;
+}
+.term-note { margin-top: 0.8rem; }
+
+/* The label above the grid is the section's visible heading; the h2 exists
+   for the document outline, so it is exposed but not drawn twice. */
+.sr-h2 {
+  position: absolute; width: 1px; height: 1px; margin: -1px;
+  padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+}
+
+/* Core primitives grid */
+.prim .cell-hd { align-items: center; gap: 0.55rem; margin-bottom: 0.6rem; }
+.prim-ic {
+  width: 28px; height: 28px; flex: none; display: inline-flex;
+  align-items: center; justify-content: center;
+  background: var(--sunk); border: 1px solid var(--rule); color: var(--caution);
+}
+.prim-ic svg { width: 14px; height: 14px; }
+.prim .cell p { font-size: 0.84rem; color: var(--muted); }
+.learn {
+  display: inline-block; margin-top: 0.8rem; font-family: var(--mono);
+  font-size: 0.74rem; letter-spacing: 0.05em; text-decoration: none;
+  color: var(--caution);
+}
+.learn:hover { text-decoration: underline; }
+
+/* fade-up entrance, staggered */
+@keyframes fadeUp { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+.fx-1 { animation: fadeUp 0.55s ease both; }
+.fx-2 { animation: fadeUp 0.55s 0.1s ease both; }
+.fx-3 { animation: fadeUp 0.55s 0.22s ease both; }
+.fx-4 { animation: fadeUp 0.55s 0.38s ease both; }
+
+.hero-note { margin-top: 0.8rem; }
+
+@media (prefers-reduced-motion: reduce) {
+  .cursor::after, .term-body .caret { animation: none; }
+}
+
+/* ---- draft homepage sections ---- */
+.rule-line { border: none; border-top: 1px solid var(--rule-lo); margin: 3.6rem 0 0; }
+.sect + .rule-line, .hero + .rule-line { margin-top: 4.2rem; }
+
+.harness-row {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px;
+  background: var(--rule-lo); border: 1px solid var(--rule-lo);
+}
+@media (min-width: 54rem) { .harness-row { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.harness { background: var(--panel); padding: 1.15rem 1.2rem; display: flex; flex-direction: column; gap: 0.3rem; }
+.harness .h-name { color: var(--ink); font-weight: 600; font-size: 0.88rem; display: inline-flex; align-items: center; gap: 0.45rem; }
+.harness .h-name .bi { color: var(--caution); }
+.harness .h-via { color: var(--muted); font-size: 0.74rem; letter-spacing: 0.04em; }
+.harness-note { margin-top: 1.1rem; max-width: 62ch; }
+
+.docs-list { display: grid; grid-template-columns: 1fr; gap: 1px; background: var(--rule-lo); border: 1px solid var(--rule-lo); }
+@media (min-width: 46rem) { .docs-list { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.doc-row {
+  background: var(--panel); padding: 0.85rem 1.1rem; text-decoration: none;
+  display: flex; align-items: baseline; gap: 0.8rem; transition: background 0.15s;
+}
+.doc-row:hover { background: var(--sunk); }
+.doc-row .d-num { color: var(--caution); font-size: 0.7rem; flex: none; }
+.doc-row .d-name { color: var(--ink); font-weight: 600; font-size: 0.85rem; }
+.doc-row .d-desc { color: var(--muted); font-size: 0.74rem; margin-left: auto; text-align: right; }
+@media (max-width: 40rem) { .doc-row .d-desc { display: none; } }
+.btn .bi { width: 0.9em; height: 0.9em; vertical-align: -0.1em; margin-right: 0.35em; }

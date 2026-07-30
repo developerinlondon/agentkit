@@ -1,0 +1,276 @@
+<!--@id: home-->
+<!--@title: agentkit — many agents, one discipline-->
+<!--@description: Skills, rules, police hooks and tools that make several AI coding agents behave like one disciplined team. Installs once into OpenCode, Claude Code, Codex CLI and Grok CLI. Apache-2.0.-->
+
+<main id="main" class="wrap">
+<div class="rail">
+
+  <header class="hero">
+    <span class="tick" aria-hidden="true"></span>
+    <div class="brow fx-1">
+      <span>{{KIT_VERSION}}</span><span class="badge-lbl">— Apache-2.0 · multi-agent toolkit</span>
+    </div>
+    <div class="hero-cols">
+      <div>
+        <h1 class="hero-title fx-2">AGENTKIT<span class="l2">Many agents.</span><span class="l2"><span class="cursor">One discipline</span></span></h1>
+        <p class="hero-sub fx-3">Skills, rules, police hooks and tools that make Claude Code, Codex,
+        OpenCode and Grok behave like <b>one disciplined team</b>. Install once — every agent gets the
+        same standards, enforced at the tool boundary, not suggested in a prompt.</p>
+        <div class="row fx-4">
+          <a class="btn solid" href="/docs/getting-started/install/">Get Started →</a>
+          <a class="btn" href="https://github.com/developerinlondon/agentkit"><svg class="bi" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg> View on GitHub</a>
+        </div>
+      </div>
+      <div class="fx-4">
+        <div class="install-tabs fx-3" id="install-tabs">
+          <div class="tabbar" role="tablist" aria-label="Install methods">
+            <button class="tab" role="tab" id="tab-agents" aria-controls="panel-agents" aria-selected="true">agents</button>
+            <button class="tab" role="tab" id="tab-curl" aria-controls="panel-curl" aria-selected="false">curl</button>
+            <button class="tab" role="tab" id="tab-git" aria-controls="panel-git" aria-selected="false">git</button>
+            <button class="tab" role="tab" id="tab-skills" aria-controls="panel-skills" aria-selected="false">skills</button>
+            <button class="tab" role="tab" id="tab-plugin" aria-controls="panel-plugin" aria-selected="false">plugin</button>
+          </div>
+
+          <div class="tabpanel" role="tabpanel" id="panel-agents" aria-labelledby="tab-agents">
+            <div class="ask-block">
+              <pre class="ask-pre" id="ask-text"><code>Install agentkit and set it up on this machine. Follow
+<a href="https://raw.githubusercontent.com/developerinlondon/agentkit/main/README.md">https://raw.githubusercontent.com/developerinlondon/agentkit/main/README.md</a></code></pre>
+              <button class="ask-copy" type="button" id="ask-copy" hidden>Copy</button>
+            </div>
+            <p class="note tab-note">Paste at any agent — most installs happen this way.</p>
+          </div>
+
+          <div class="tabpanel" role="tabpanel" id="panel-curl" aria-labelledby="tab-curl">
+            <div class="ask-block"><pre class="code"><span class="p">$</span> <span class="s">curl -fsSL https://raw.githubusercontent.com/developerinlondon/agentkit/main/bootstrap.sh | bash</span>
+<span class="c"># with options:  … | bash -s -- --with product</span></pre><button class="ask-copy" type="button" data-copy="curl -fsSL https://raw.githubusercontent.com/developerinlondon/agentkit/main/bootstrap.sh | bash" hidden>Copy</button></div>
+            <p class="note tab-note">Whole kit, every harness; re-run to update.</p>
+          </div>
+
+          <div class="tabpanel" role="tabpanel" id="panel-git" aria-labelledby="tab-git">
+            <div class="ask-block"><pre class="code"><span class="p">$</span> <span class="s">git clone git@github.com:developerinlondon/agentkit.git</span>
+<span class="p">$</span> <span class="s">./agentkit/install.sh --global</span></pre><button class="ask-copy" type="button" data-copy="git clone git@github.com:developerinlondon/agentkit.git&#10;./agentkit/install.sh --global" hidden>Copy</button></div>
+            <p class="note tab-note">Read the installer before running it.</p>
+          </div>
+
+          <div class="tabpanel" role="tabpanel" id="panel-skills" aria-labelledby="tab-skills">
+            <div class="ask-block"><pre class="code"><span class="p">$</span> <span class="s">npx skills add developerinlondon/agentkit</span></pre><button class="ask-copy" type="button" data-copy="npx skills add developerinlondon/agentkit" hidden>Copy</button></div>
+            <p class="note tab-note">SKILL.md files only — no hooks, rules, or tools.</p>
+          </div>
+
+          <div class="tabpanel" role="tabpanel" id="panel-plugin" aria-labelledby="tab-plugin">
+            <div class="ask-block"><pre class="code"><span class="p">$</span> <span class="s">claude plugin marketplace add developerinlondon/agentkit</span>
+<span class="p">$</span> <span class="s">claude plugin install agentkit</span></pre><button class="ask-copy" type="button" data-copy="claude plugin marketplace add developerinlondon/agentkit&#10;claude plugin install agentkit" hidden>Copy</button></div>
+            <p class="note tab-note">Claude Code bundle: hooks, skills, tools, MCPs.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <hr class="rule-line">
+
+  <section class="sect" id="primitives">
+    <span class="tick" aria-hidden="true"></span>
+    <span class="lbl">Core Primitives</span>
+    <h2 class="sr-h2">Four things agentkit installs</h2>
+    <div class="grid g4 prim">
+      <div class="cell">
+        <div class="cell-hd"><span class="prim-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/></svg></span><h3>Police Hooks</h3></div>
+        <p>Deterministic guards on every tool call. Force pushes, oversized files, stale dependency pins,
+        comment slop — blocked before they happen, in every harness.</p>
+        <a class="learn" href="/docs/reference/hooks/">Learn more →</a>
+      </div>
+      <div class="cell">
+        <div class="cell-hd"><span class="prim-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/></svg></span><h3>Skills</h3></div>
+        <p>Portable SKILL.md units — architecture docs, hand-drawn diagrams, product briefs, GitOps ops.
+        Written once, loaded by any agent.</p>
+        <a class="learn" href="/docs/reference/skills/">Learn more →</a>
+      </div>
+      <div class="cell">
+        <div class="cell-hd"><span class="prim-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></span><h3>Pages</h3></div>
+        <p>Agents publish live, themed web pages — design docs, dashboards, slide decks — with stable URLs
+        and hand-drawn diagrams. Self-hosted.</p>
+        <a class="learn" href="/docs/concepts/pages/">Learn more →</a>
+      </div>
+      <div class="cell">
+        <div class="cell-hd"><span class="prim-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18"/><path d="M9 9h6v6H9z"/></svg></span><h3>Bounded-Run</h3></div>
+        <p>Heavy builds and test suites run inside deterministic systemd resource limits — an agent can
+        never take the host down.</p>
+        <a class="learn" href="/docs/reference/configuration/">Learn more →</a>
+      </div>
+    </div>
+  </section>
+
+  <hr class="rule-line">
+
+  <section class="sect" id="enforcement">
+    <span class="tick" aria-hidden="true"></span>
+    <span class="lbl">Enforcement, Not Suggestion</span>
+    <h2 class="sr-h2">How enforcement actually works</h2>
+    <div class="split">
+      <div>
+        <div class="term" id="demo">
+          <div class="term-bar"><span class="term-dot"></span><span class="term-dot"></span><span class="term-dot"></span> install, then watch it hold the line</div>
+          <div class="term-body" id="demo-body">
+<span class="ln"><span class="p">$</span> <span class="cmd">curl -fsSL https://raw.githubusercontent.com/developerinlondon/agentkit/main/bootstrap.sh | bash</span></span>
+<span class="ln out">[bootstrap] Cloning agentkit into ~/.agentkit-src</span>
+<span class="ln out">[claude]   10 police hooks wired · settings.json merged</span>
+<span class="ln out">[opencode] 8 plugins · [codex] 6 exec policies</span>
+<span class="ln out">[shared]   ~/.agentkit → claude · opencode · codex · grok</span>
+<span class="ln out">Done. Four harnesses, one discipline.</span>
+<span class="ln out">&#160;</span>
+<span class="ln out"># later, an agent gets to work…</span>
+<span class="ln"><span class="p">›</span> <span class="cmd">git push --force origin main</span></span>
+<span class="ln deny">✗ git-police: force push is forbidden — prepare the branch and ask the user to run it themselves</span>
+<span class="ln"><span class="p">›</span> <span class="cmd">npm install lodash</span></span>
+<span class="ln deny">✗ pkg-police: npm blocked — this machine uses bun</span>
+<span class="ln"><span class="p">›</span> <span class="cmd">bun add lodash</span></span>
+<span class="ln ok">✓ allowed</span>
+<span class="ln"><span class="p">›</span> <span class="cmd">git commit --no-verify -m wip</span></span>
+<span class="ln deny">✗ git-police: --no-verify skips the checks this repo relies on</span>
+          </div>
+        </div>
+      </div>
+      <div>
+        <h3>Rules that hold even when the prompt doesn't</h3>
+        <p class="note" style="margin-bottom:1.1rem">Instructions drift, context windows truncate, and
+        models forget. Police hooks don't — they sit at the <b>tool boundary</b> and evaluate every command
+        deterministically. Every refusal above is the text a hook actually prints.</p>
+        <p class="note" style="margin-bottom:1.1rem">The same policies compile to each harness's native
+        mechanism: Claude Code hooks, OpenCode plugins, Codex exec policies, Grok rules. One source tree,
+        four enforcement surfaces.</p>
+        <div class="row">
+          <a class="btn solid" href="/docs/reference/hooks/">Hooks reference</a>
+          <a class="btn" href="/docs/reference/configuration/">Configuration</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <hr class="rule-line">
+
+  <section class="sect" id="harnesses">
+    <span class="tick" aria-hidden="true"></span>
+    <span class="lbl">One Install · Four Harnesses</span>
+    <h2 class="sr-h2">Where agentkit installs</h2>
+    <div class="harness-row">
+      <div class="harness"><span class="h-name"><svg class="bi" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="m4.7144 15.9555 4.7174-2.6471.079-.2307-.079-.1275h-.2307l-.7893-.0486-2.6956-.0729-2.3375-.0971-2.2646-.1214-.5707-.1215-.5343-.7042.0546-.3522.4797-.3218.686.0608 1.5179.1032 2.2767.1578 1.6514.0972 2.4468.255h.3886l.0546-.1579-.1336-.0971-.1032-.0972L6.973 9.8356l-2.55-1.6879-1.3356-.9714-.7225-.4918-.3643-.4614-.1578-1.0078.6557-.7225.8803.0607.2246.0607.8925.686 1.9064 1.4754 2.4893 1.8336.3643.3035.1457-.1032.0182-.0728-.164-.2733-1.3539-2.4467-1.445-2.4893-.6435-1.032-.17-.6194c-.0607-.255-.1032-.4674-.1032-.7285L6.287.1335 6.6997 0l.9957.1336.419.3642.6192 1.4147 1.0018 2.2282 1.5543 3.0296.4553.8985.2429.8318.091.255h.1579v-.1457l.1275-1.706.2368-2.0947.2307-2.6957.0789-.7589.3764-.9107.7468-.4918.5828.2793.4797.686-.0668.4433-.2853 1.8517-.5586 2.9021-.3643 1.9429h.2125l.2429-.2429.9835-1.3053 1.6514-2.0643.7286-.8196.85-.9046.5464-.4311h1.0321l.759 1.1293-.34 1.1657-1.0625 1.3478-.8804 1.1414-1.2628 1.7-.7893 1.36.0729.1093.1882-.0183 2.8535-.607 1.5421-.2794 1.8396-.3157.8318.3886.091.3946-.3278.8075-1.967.4857-2.3072.4614-3.4364.8136-.0425.0304.0486.0607 1.5482.1457.6618.0364h1.621l3.0175.2247.7892.522.4736.6376-.079.4857-1.2142.6193-1.6393-.3886-3.825-.9107-1.3113-.3279h-.1822v.1093l1.0929 1.0686 2.0035 1.8092 2.5075 2.3314.1275.5768-.3218.4554-.34-.0486-2.2039-1.6575-.85-.7468-1.9246-1.621h-.1275v.17l.4432.6496 2.3436 3.5214.1214 1.0807-.17.3521-.6071.2125-.6679-.1214-1.3721-1.9246L14.38 17.959l-1.1414-1.9428-.1397.079-.674 7.2552-.3156.3703-.7286.2793-.6071-.4614-.3218-.7468.3218-1.4753.3886-1.9246.3157-1.53.2853-1.9004.17-.6314-.0121-.0425-.1397.0182-1.4328 1.9672-2.1796 2.9446-1.7243 1.8456-.4128.164-.7164-.3704.0667-.6618.4008-.5889 2.386-3.0357 1.4389-1.882.929-1.0868-.0062-.1579h-.0546l-6.3385 4.1164-1.1293.1457-.4857-.4554.0608-.7467.2307-.2429 1.9064-1.3114Z"/></svg> Claude Code</span><span class="h-via">hooks · skills · tools</span></div>
+      <div class="harness"><span class="h-name"><svg class="bi" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M22 24H2V0h20zM17 4.8H7v14.4h10z"/></svg> OpenCode</span><span class="h-via">plugins · skills · rules</span></div>
+      <div class="harness"><span class="h-name"><svg class="bi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M4 17l6-6-6-6"/><path d="M13 19h7"/></svg> Codex CLI</span><span class="h-via">exec policies · prompts</span></div>
+      <div class="harness"><span class="h-name"><svg class="bi" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M14.234 10.162 22.977 0h-2.072l-7.591 8.824L7.251 0H.258l9.168 13.343L.258 24H2.33l8.016-9.318L16.749 24h6.993zm-2.837 3.299-.929-1.329L3.076 1.56h3.182l5.965 8.532.929 1.329 7.754 11.09h-3.182z"/></svg> Grok CLI</span><span class="h-via">rules · skills</span></div>
+    </div>
+    <p class="note harness-note">One shared content tree under <code>~/.agentkit/</code>; each client gets
+    per-name symlinks, never a second copy. Update once, every agent follows.</p>
+  </section>
+
+  <hr class="rule-line">
+
+  <section class="sect" id="docs">
+    <span class="tick" aria-hidden="true"></span>
+    <span class="lbl">Documentation</span>
+    <h2 class="sr-h2">Every page, in reading order</h2>
+    <nav class="docs-list" aria-label="Documentation">
+      <a class="doc-row" href="/docs/getting-started/install/"><span class="d-num">01</span><span class="d-name">Install</span><span class="d-desc">one command, all harnesses</span></a>
+      <a class="doc-row" href="/docs/thinking/"><span class="d-num">02</span><span class="d-name">Thinking</span><span class="d-desc">when to reach for what</span></a>
+      <a class="doc-row" href="/docs/concepts/four-surfaces/"><span class="d-num">03</span><span class="d-name">Architecture</span><span class="d-desc">the whole map, with diagrams</span></a>
+      <a class="doc-row" href="/docs/concepts/four-surfaces/"><span class="d-num">04</span><span class="d-name">Concepts</span><span class="d-desc">skills · rules · hooks · tools</span></a>
+      <a class="doc-row" href="/docs/reference/hooks/"><span class="d-num">05</span><span class="d-name">Hooks</span><span class="d-desc">every police unit in detail</span></a>
+      <a class="doc-row" href="/docs/reference/configuration/"><span class="d-num">06</span><span class="d-name">Configuration</span><span class="d-desc">keys, switches, groups, profiles</span></a>
+      <a class="doc-row" href="/docs/reference/skills/"><span class="d-num">07</span><span class="d-name">Skills</span><span class="d-desc">the portable unit of capability</span></a>
+      <a class="doc-row" href="/docs/concepts/pages/"><span class="d-num">08</span><span class="d-name">Pages</span><span class="d-desc">publish live pages from any agent</span></a>
+      <a class="doc-row" href="/docs/concepts/product/"><span class="d-num">09</span><span class="d-name">Product Model</span><span class="d-desc">declare what your repo ships</span></a>
+      <a class="doc-row" href="/docs/concepts/diagrams/"><span class="d-num">10</span><span class="d-name">Diagrams</span><span class="d-desc">classified, derived figures</span></a>
+      <a class="doc-row" href="/docs/cookbook/"><span class="d-num">11</span><span class="d-name">Examples</span><span class="d-desc">copyable setups</span></a>
+    </nav>
+    <div class="row">
+      <a class="btn solid" href="https://github.com/developerinlondon/agentkit"><svg class="bi" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg> Get agentkit on GitHub</a>
+      <a class="btn" href="/docs/getting-started/install/">Start installing</a>
+    </div>
+  </section>
+
+</div>
+</main>
+
+<script>
+(() => {
+  if (!navigator.clipboard) return;
+  document.querySelectorAll("#install-tabs .ask-copy").forEach((copy) => {
+    copy.hidden = false;
+    copy.addEventListener("click", () => {
+      const text = copy.dataset.copy || copy.closest(".ask-block").querySelector("pre").innerText;
+      navigator.clipboard.writeText(text).then(() => {
+        copy.textContent = "Copied!";
+        setTimeout(() => { copy.textContent = "Copy"; }, 2000);
+      }).catch(() => {
+        copy.textContent = "Select + copy";
+        setTimeout(() => { copy.textContent = "Copy"; }, 2000);
+      });
+    });
+  });
+})();
+
+(() => {
+  const bar = document.querySelector("#install-tabs .tabbar");
+  if (!bar) return;
+  const tabs = [...bar.querySelectorAll(".tab")];
+  const panels = [...document.querySelectorAll("#install-tabs .tabpanel")];
+  // Without JS every panel shows stacked; with it, one at a time.
+  const activate = (tab) => {
+    tabs.forEach((t) => t.setAttribute("aria-selected", String(t === tab)));
+    panels.forEach((p) => p.toggleAttribute("data-off", p.id !== tab.getAttribute("aria-controls")));
+  };
+  tabs.forEach((t) => t.addEventListener("click", () => activate(t)));
+  bar.addEventListener("keydown", (e) => {
+    const i = tabs.indexOf(document.activeElement);
+    if (i < 0 || (e.key !== "ArrowRight" && e.key !== "ArrowLeft")) return;
+    const n = tabs[(i + (e.key === "ArrowRight" ? 1 : tabs.length - 1)) % tabs.length];
+    n.focus(); activate(n);
+  });
+  activate(tabs[0]);
+})();
+
+// Replays the demo transcript: commands type character by character, output
+// lines land whole. The finished transcript is the markup itself, so no-JS
+// and reduced-motion readers get the same content without the theatre.
+(() => {
+  const body = document.getElementById("demo-body");
+  if (!body || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const lines = [...body.querySelectorAll(".ln")];
+  if (!lines.length) return;
+
+  const caret = document.createElement("span");
+  caret.className = "caret";
+  let stop = false;
+
+  async function play() {
+    while (!stop) {
+      for (const ln of lines) ln.style.display = "none";
+      for (const ln of lines) {
+        if (stop) return;
+        ln.style.display = "";
+        const cmd = ln.querySelector(".cmd");
+        if (cmd) {
+          const text = cmd.textContent;
+          cmd.textContent = "";
+          cmd.appendChild(caret);
+          for (const ch of text) {
+            if (stop) { cmd.textContent = text; return; }
+            caret.before(ch);
+            await new Promise((r) => setTimeout(r, 48));
+          }
+          await new Promise((r) => setTimeout(r, 550));
+          caret.remove();
+        } else {
+          await new Promise((r) => setTimeout(r, ln.classList.contains("deny") || ln.classList.contains("ok") ? 1000 : 420));
+        }
+      }
+      await new Promise((r) => setTimeout(r, 9000));
+    }
+  }
+
+  // Replay is decoration; anyone selecting text in the terminal is reading,
+  // so the loop stops rather than yanking the transcript out from under them.
+  body.addEventListener("mousedown", () => { stop = true; lines.forEach((l) => { l.style.display = ""; }); caret.remove(); }, { once: true });
+  play();
+})();
+</script>
