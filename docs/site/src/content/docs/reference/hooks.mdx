@@ -61,7 +61,7 @@ a unit cannot go missing from this table, but a cell can be incomplete.
 
 | Unit | Refuses |
 | --- | --- |
-| `coding-police` | files over the length cap, functions over the length cap, duplicated blocks, too many exports in one file, a directory holding more source files than `max-dir-files`, and a relative path that reaches outside the repository |
+| `coding-police` | files over the length cap, functions over the length cap, duplicated blocks, too many exports in one file, a directory holding more source files than `max-dir-files`, and, in code and config files only, a `../..` path aimed at one of seven known sibling repositories |
 | `comment-police` | a comment block longer than `max-block-lines`, a comment-to-code ratio over the limit, and forge references in source |
 | `format-police` | a file `dprint` cannot parse. Formatted output is rewritten in place rather than refused, and the check skips with a warning when `dprint` or a `dprint.json` is missing |
 | `git-police` | force pushes, `--no-verify`, AI attribution in commits *and* in forge content, commits and pushes touching a protected branch, branch creation in a shared clone, a branch behind the default branch, a branch cut from another feature branch, and stale local branches |
@@ -76,8 +76,15 @@ a unit cannot go missing from this table, but a cell can be incomplete.
 
 :::caution[Two of these fail open by design]
 `format-police` skips silently when `dprint` or a `dprint.json` is absent, so formatting enforcement
-is simply off on a machine without them. Every unit fails open when `jq` is missing. Neither is a
-bug — it is the repository's stated convention — but neither is visible while it is happening.
+is simply off on a machine without them.
+
+Without `jq`, most units fail open — `comment-police` exits 0 deliberately, and the rest have no `jq`
+check at all: reading the payload aborts under `set -euo pipefail`, and a `PreToolUse` hook that emits
+no decision reads as approval. **`review-police` is the exception and fails closed**, refusing the
+merge outright rather than letting it through.
+
+Neither is a bug — it is the repository's stated convention — but neither is visible while it is
+happening.
 :::
 
 :::note[These are guards, not a boundary]

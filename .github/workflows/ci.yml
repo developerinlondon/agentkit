@@ -146,12 +146,14 @@ jobs:
       - name: Check the generated tables against the tree
         run: bun run scripts/sync-docs-facts.ts --check
 
-      - name: Run the docs test slice
-        run: bun test tests/docs/
-
+      # Before the tests: one of them walks the real build output, because a
+      # hand-maintained fixture cannot catch an extension nobody listed.
       - name: Build the docs site
         working-directory: docs/site
         run: node ./node_modules/astro/bin/astro.mjs build
+
+      - name: Run the docs test slice
+        run: bun test tests/docs/
 
   docs-publish:
     name: Publish the docs site

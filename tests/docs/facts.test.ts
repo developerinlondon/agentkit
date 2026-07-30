@@ -422,7 +422,9 @@ describe('generated data reaches a page only through a component', () => {
         }
         if (!/\.mdx?$/.test(entry.name)) continue;
         const body = readFileSync(path, 'utf-8');
-        for (const match of body.matchAll(/^import .*from\s+["'][^"']*generated\/[^"']*["']/gm)) {
+        // No `^` anchor and no line discipline: an indented import, or one split
+        // across lines, bypassed the anchored version and still rendered.
+        for (const match of body.matchAll(/import[\s\S]{0,200}?from\s*["'][^"']*generated\//g)) {
           offenders.push(`${relative(root, path)}: ${match[0]}`);
         }
       }
