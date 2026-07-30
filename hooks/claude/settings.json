@@ -107,6 +107,17 @@
           }
         ]
       }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/update-notice.sh",
+            "timeout": 8
+          }
+        ]
+      }
     ]
   }
 }
