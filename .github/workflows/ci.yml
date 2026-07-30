@@ -146,14 +146,17 @@ jobs:
       - name: Check the generated tables against the tree
         run: bun run scripts/sync-docs-facts.ts --check
 
-      # Before the tests: one of them walks the real build output, because a
-      # hand-maintained fixture cannot catch an extension nobody listed.
+      - name: Run the docs test slice
+        run: bun test tests/docs/
+
       - name: Build the docs site
         working-directory: docs/site
         run: node ./node_modules/astro/bin/astro.mjs build
 
-      - name: Run the docs test slice
-        run: bun test tests/docs/
+      # Needs the build, so it is a check rather than a test: an extension nobody
+      # listed is invisible to a hand-maintained fixture.
+      - name: Check every built file is publishable
+        run: bun run scripts/check-dist-assets.ts
 
   worker-publish:
     name: Publish the Pages worker
