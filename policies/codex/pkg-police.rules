@@ -12,15 +12,18 @@
 # npm, npx, yarn, and pnpm are blocked unless the user explicitly overrides.
 
 prefix_rule(
-    pattern = ["npm", ["install", "i", "ci", "run", "test", "init", "publish", "exec", "create"]],
+    pattern = ["npm", ["install-ci-test", "install-test", "install", "uninstall", "init", "it", "i", "cit", "ci", "add", "run", "remove", "rm", "r", "update", "upgrade", "up", "link", "ln", "unlink", "un", "test", "publish", "prune", "dedupe", "ddp", "exec", "create"]],
     decision = "forbidden",
-    justification = "npm is not allowed. Use bun instead: npm install → bun install, npm run → bun run, npm test → bun test.",
+    justification = "npm is not allowed. Use bun instead: npm install → bun install, npm run → bun run, npm test → bun test, npm uninstall → bun remove.",
     match = [
         "npm install",
         "npm i express",
+        "npm add express",
         "npm run build",
         "npm test",
         "npm ci",
+        "npm uninstall express",
+        "npm update",
     ],
     not_match = [
         "bun install",

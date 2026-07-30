@@ -500,8 +500,19 @@ platforms (OpenCode plugin, Claude Code hook, Codex policy). Checks:
 All thresholds are configurable via `coding-police` in your config. See [Configuration](#configuration).
 
 **pkg-police**: Keeps one JavaScript/TypeScript package manager per project. It intercepts bash
-commands before execution and blocks the managers the project does not use, naming the equivalent
-command in the one it does.
+commands before execution and blocks the other managers, naming the equivalent command in the one
+the project does use. A managed invocation is caught anywhere in the command, so
+`npm ls && npm install` is blocked too.
+
+`pnpm` and `yarn` are package managers whatever the subcommand, so every `pnpm`/`yarn` command is
+blocked. `npm` and `bun` are blocked per subcommand — every one that writes `package.json`,
+`node_modules` or the lockfile (`install`, `ci`, `add`, `remove`/`uninstall`/`rm`, `update`, `link`,
+`prune`, `dedupe`, `run`, `test`, `init`, `publish`, `create`, `exec`/`x`, and their aliases) plus
+`npx`/`bunx`. Read-only queries are deliberately allowed, because they change nothing: `npm ls`,
+`npm view`, `npm outdated`, `npm whoami`, and `bun ./script.ts` (bun is also a runtime). `npm pkg`
+and `npm version` are allowed as well — they edit manifest fields with no cross-manager equivalent
+to suggest. The list is an allow-list of names, not a proof: a subcommand it does not know about
+passes.
 
 By default the enforced manager is inferred from the repository's lockfile, found by walking up
 from the working directory to the git root:
@@ -516,8 +527,9 @@ from the working directory to the git root:
 
 Set `pkg-police.manager` in your agentkit config to `bun`, `npm`, `pnpm`, or `yarn` to enforce one
 everywhere regardless of the lockfile, `auto` for the lockfile default, or `off` to disable the
-unit. An unrecognized value disables it rather than guessing. (The older `enabled: false` still
-reads as `off`; `manager` wins when both are present.)
+unit. Quoting the value is fine (`manager: "bun"`), and a value with trailing junk reads as its
+first word. An unrecognized name disables the unit rather than guessing. (The older `enabled: false`
+still reads as `off`; `manager` wins when both are present.)
 
 Equivalents are mapped across managers, so a blocked `npx tsc` in a pnpm project asks for
 `pnpm dlx tsc`, and a blocked `npm i lodash` in a bun project asks for `bun add`.

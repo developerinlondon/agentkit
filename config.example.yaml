@@ -74,9 +74,12 @@ pkg-police:
   #           means there is no basis to judge and nothing is blocked.
   #   bun | npm | pnpm | yarn — enforce that one whatever the lockfile says.
   #   off   — disable the unit entirely.
-  # Commands belonging to any other manager are blocked, with the equivalent
-  # command in the enforced one. AGENTKIT_ALLOW_PKG=1 overrides a single
-  # command regardless of this setting.
+  # An unrecognised name disables the unit; quoting the value is fine.
+  # Every pnpm/yarn command belonging to another manager is blocked, as is every
+  # npm/bun subcommand that writes package.json, node_modules or the lockfile —
+  # read-only queries such as `npm ls` are left alone. The refusal names the
+  # equivalent command in the enforced manager. AGENTKIT_ALLOW_PKG=1 overrides a
+  # single command regardless of this setting.
   manager: auto
 
 version-police:
