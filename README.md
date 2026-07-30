@@ -8,18 +8,28 @@ Reusable AI agent skills, rules, plugins, hooks, and tools for OpenCode, Claude 
 
 ### Skills (SKILL.md -- works everywhere via skills.sh)
 
-| Skill                       | Description                                                                                                     |
-| --------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| **gitops-master**           | GitOps operations for ArgoCD + Kargo: diagnose, verify, promote, setup                                          |
-| **autonomous-workflow**     | Proposal-first development, commit hygiene, decision authority                                                  |
-| **adversarial-review**      | Trace-first falsification of plans and diffs with replayable evidence (explicit opt-in: `--with strict-review`) |
-| **code-quality**            | Warnings-as-errors, no underscore prefixes, test coverage                                                       |
-| **documentation**           | Surface-aware diagrams (Mermaid / ASCII), structured plan format, formatting rules                              |
-| **issue-raiser**            | GitLab issue creation with root cause analysis and git-history-based assignees                                  |
-| **product-intelligence**    | Evidence-backed product briefs with a claim-by-claim ledger; hardened acquisition (opt-in: `--with product`)    |
-| **project-planning**        | Structured project planning: break down ideas into architecture, file structure, roadmap                        |
-| **product-review**          | Build, run, and use declared product surfaces as a separate review lane (opt-in: `--with product`)              |
-| **resource-safe-execution** | On Linux, runs heavy developer commands inside deterministic systemd resource limits                            |
+<!-- generated:skills:start — edit skills/*/SKILL.md, then run scripts/sync-docs-facts.ts -->
+
+| Skill                       | Install                     | Description                                                                                                                                                                                                                                       |
+| --------------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **adversarial-review**      | `--with strict-review` only | Falsify a proposed plan or implementation with independent traces, concrete failing inputs, claims verification, scope re-derivation, and lifecycle analysis.                                                                                     |
+| **architect**               | always                      | Study a system and produce living architecture documentation — explanatory pages with high-quality diagrams.                                                                                                                                      |
+| **autonomous-workflow**     | always                      | Proposal-first development workflow with commit hygiene and decision authority rules.                                                                                                                                                             |
+| **code-quality**            | always                      | Code quality standards: warnings-as-errors, no underscore prefixes for unused vars, mandatory test coverage.                                                                                                                                      |
+| **diagram**                 | always                      | Craft high-quality hand-drawn-style diagrams (Excalidraw JSON rendered to self-contained SVG).                                                                                                                                                    |
+| **documentation**           | always                      | Documentation standards: surface-aware diagrams (Mermaid where markdown renders, ASCII for terminals and diffs), structured plan format, compact tables for comparisons.                                                                          |
+| **github-issue-lifecycle**  | always                      | Issue-first workflow and lifecycle hygiene for GitHub: every piece of work runs against an issue, Projects v2 status stays current on every touch, PRs reference issues without triggering auto-close, and issues close with a verification note. |
+| **gitlab-issue-lifecycle**  | always                      | Issue-first workflow and lifecycle hygiene for GitLab: every piece of work runs against an issue, work-item statuses stay current on every touch, MRs reference issues without auto-closing, and issues close with a verification note.           |
+| **gitops-master**           | always                      | GitOps operations master for ArgoCD + Kargo.                                                                                                                                                                                                      |
+| **issue-raiser**            | always                      | Raises well-structured GitLab issues with root cause analysis, proposed solutions, and correct assignees based on git history.                                                                                                                    |
+| **product-intelligence**    | `--with product`            | Build an evidence-backed product brief from a website, a repository, or supplied documents.                                                                                                                                                       |
+| **product-review**          | `--with product`            | Review a product the way a user meets it — build it, run it, use it — instead of reading a diff.                                                                                                                                                  |
+| **project-planning**        | always                      | Structured project planning: break down a new project idea into plan files covering architecture, file structure, and implementation roadmap.                                                                                                     |
+| **publish-page**            | always                      | Publish content as a live web page with a stable URL (AgentKit Pages, self-hosted artifacts).                                                                                                                                                     |
+| **resource-safe-execution** | always                      | Apply Linux-only deterministic systemd cgroup limits with bounded-run to resource-intensive developer commands.                                                                                                                                   |
+| **test-driven-development** | always                      | Enforces strict Test-Driven Development (TDD) workflow: RED-GREEN-REFACTOR cycle.                                                                                                                                                                 |
+
+<!-- generated:skills:end -->
 
 ### Rules (auto-loaded by file glob match)
 

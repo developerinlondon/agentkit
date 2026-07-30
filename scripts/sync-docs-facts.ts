@@ -145,9 +145,24 @@ function frontmatterDescription(skill: string, root: string): string {
   const source = readFileSync(join(root, 'skills', skill, 'SKILL.md'), 'utf-8');
   const match = /^---\n([\s\S]*?)\n---/.exec(source);
   if (!match) throw new Error(`skills/${skill}/SKILL.md has no frontmatter`);
-  const description = /^description:\s*(.+)$/m.exec(match[1] ?? '');
-  if (!description?.[1]) throw new Error(`skills/${skill}/SKILL.md has no description`);
-  return description[1].trim();
+  const frontmatter = match[1] ?? '';
+  const head = /^description:[ \t]*(.*)$/m.exec(frontmatter);
+  if (!head) throw new Error(`skills/${skill}/SKILL.md has no description`);
+  const value = (head[1] ?? '').trim();
+  // A block scalar (>-, |, …) keeps its text on the following indented lines;
+  // taking the head line verbatim would record the indicator itself.
+  if (!/^[>|][+-]?$/.test(value)) {
+    if (!value) throw new Error(`skills/${skill}/SKILL.md has no description`);
+    return value;
+  }
+  const lines: string[] = [];
+  for (const line of frontmatter.slice(head.index + head[0].length).split('\n').slice(1)) {
+    if (line.trim() === '') continue;
+    if (!/^[ \t]/.test(line)) break;
+    lines.push(line.trim());
+  }
+  if (lines.length === 0) throw new Error(`skills/${skill}/SKILL.md has no description`);
+  return lines.join(' ');
 }
 
 function collectSkills(groups: GroupFact[], membership: Map<string, string>, root: string): SkillFact[] {
@@ -253,6 +268,61 @@ export function serialise(facts: KitFacts): string {
   return `${JSON.stringify(facts, null, 2)}\n`;
 }
 
+const README_MARKERS = {
+  start: '<!-- generated:skills:start — edit skills/*/SKILL.md, then run scripts/sync-docs-facts.ts -->',
+  end: '<!-- generated:skills:end -->',
+} as const;
+
+function firstSentence(text: string): string {
+  const match = /^(.*?\.)\s/.exec(`${text} `);
+  return (match?.[1] ?? text).trim();
+}
+
+function installCell(skill: SkillFact): string {
+  if (skill.group === 'core') return 'always';
+  return skill.explicit ? `\`--with ${skill.group}\` only` : `\`--with ${skill.group}\``;
+}
+
+function markdownTable(header: string[], rows: string[][]): string {
+  const widths = header.map((cell, column) =>
+    Math.max(cell.length, ...rows.map((row) => (row[column] ?? '').length)));
+  const line = (cells: string[]) =>
+    `| ${cells.map((cell, column) => cell.padEnd(widths[column] ?? 0)).join(' | ')} |`;
+  return [
+    line(header),
+    `| ${widths.map((width) => '-'.repeat(width)).join(' | ')} |`,
+    ...rows.map(line),
+  ].join('\n');
+}
+
+export function renderReadmeSkillsSection(facts: KitFacts): string {
+  const rows = facts.skills.map((skill) => [
+    `**${skill.name}**`,
+    installCell(skill),
+    firstSentence(skill.description),
+  ]);
+  return [
+    README_MARKERS.start,
+    '',
+    markdownTable(['Skill', 'Install', 'Description'], rows),
+    '',
+    README_MARKERS.end,
+  ].join('\n');
+}
+
+export function spliceReadme(readme: string, facts: KitFacts): string {
+  const start = readme.indexOf(README_MARKERS.start);
+  const end = readme.indexOf(README_MARKERS.end);
+  if (start === -1 || end === -1 || end < start) {
+    throw new Error('README.md is missing the generated:skills marker pair');
+  }
+  return readme.slice(0, start)
+    + renderReadmeSkillsSection(facts)
+    + readme.slice(end + README_MARKERS.end.length);
+}
+
+const readmePath = join(repoRoot, 'README.md');
+
 export function committedFacts(): string {
   return readFileSync(factsPath, 'utf-8');
 }
@@ -279,7 +349,10 @@ if (import.meta.main) {
     process.exit(0);
   }
 
-  const fresh = serialise(collectFacts());
+  const facts = collectFacts();
+  const fresh = serialise(facts);
+  const readme = readFileSync(readmePath, 'utf-8');
+  const freshReadme = spliceReadme(readme, facts);
 
   if (process.argv.includes('--check')) {
     let committed = '';
@@ -294,7 +367,11 @@ if (import.meta.main) {
       console.error('  run: bun run scripts/sync-docs-facts.ts');
       process.exit(1);
     }
-    const facts = collectFacts();
+    if (readme !== freshReadme) {
+      console.error('docs facts: the README skills table disagrees with the tree');
+      console.error('  run: bun run scripts/sync-docs-facts.ts');
+      process.exit(1);
+    }
     console.log(
       `docs facts: ${facts.units.length} units, ${facts.skills.length} skills, ` +
         `${facts.groups.length} groups, ${facts.tools.length} tools`,
@@ -302,5 +379,9 @@ if (import.meta.main) {
   } else {
     writeFileSync(factsPath, fresh);
     console.log(`docs facts: wrote ${factsPath}`);
+    if (readme !== freshReadme) {
+      writeFileSync(readmePath, freshReadme);
+      console.log(`docs facts: wrote ${readmePath}`);
+    }
   }
 }

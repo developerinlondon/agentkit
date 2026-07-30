@@ -8,6 +8,7 @@ import {
   committedFacts,
   pluginHookDrift,
   serialise,
+  spliceReadme,
 } from '../../scripts/sync-docs-facts.ts';
 import {
   factsFor,
@@ -293,6 +294,38 @@ describe('the wiring table comes from the harness settings', () => {
     write('hooks/claude/settings.json', 'not json');
 
     expect(collectWiring(root)).toEqual([]);
+  });
+});
+
+describe('the README skills table comes from the tree', () => {
+  test('a block-scalar description folds to its prose, not the indicator', () => {
+    write('skills/GROUPS', 'group core Everyday skills\n');
+    write(
+      'skills/folded/SKILL.md',
+      '---\nname: folded\ndescription: >-\n  First half of the\n  folded prose.\n---\n',
+    );
+
+    const facts = collectFacts(root);
+    expect(facts.skills[0]?.description).toBe('First half of the folded prose.');
+  });
+
+  test('the committed README matches a regeneration, and an edited row is caught', () => {
+    const repo = join(import.meta.dir, '..', '..');
+    const readme = readFileSync(join(repo, 'README.md'), 'utf-8');
+    const facts = collectFacts(repo);
+
+    expect(spliceReadme(readme, facts)).toBe(readme);
+
+    const tampered = readme.replace('**gitops-master**', '**gitops-master-renamed**');
+    expect(spliceReadme(tampered, facts)).not.toBe(tampered);
+  });
+
+  test('a README without the marker pair fails loudly instead of silently skipping', () => {
+    write('skills/GROUPS', 'group core Everyday skills\n');
+    skill('ordinary', 'Always installed.');
+
+    expect(() => spliceReadme('# no markers here\n', collectFacts(root)))
+      .toThrow('marker pair');
   });
 });
 
