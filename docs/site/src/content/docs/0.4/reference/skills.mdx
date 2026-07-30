@@ -7,7 +7,7 @@ sidebar:
 slug: 0.4/reference/skills
 ---
 
-import GroupTable from "../../../../components/GroupTable.astro";
+import KitTable from "../../../../components/KitTable.astro";
 import SkillTable from "../../../../components/SkillTable.astro";
 
 A skill is a set of instructions the agent loads when the work matches it. Unlike a hook, a skill
@@ -23,7 +23,7 @@ the skills' own frontmatter, which is also what the agent sees when deciding whe
 A group decides whether a skill is installed. Anything with no group record belongs to `core`,
 which always installs.
 
-<GroupTable />
+<KitTable />
 
 :::caution[An explicit group is consent-gated in both directions]
 An explicit group is never offered by the interactive picker and is excluded from `--all`. It
