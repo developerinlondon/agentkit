@@ -32,15 +32,20 @@ jobs:
     # a public repository, and GitHub does not fall back when one is offline: a
     # job targeting an absent label queues instead. So the choice is made here,
     # before dispatch, and every uncertain answer resolves to the hosted runner.
-    permissions:
-      administration: read
+    #
+    # `administration` is not a permission workflow YAML can grant GITHUB_TOKEN —
+    # naming it fails the whole workflow at parse. Listing runners needs it, so
+    # the pick reads RUNNER_LIST_TOKEN (fine-grained PAT, Administration: read)
+    # when present and otherwise probes with the default token; a 403 lands in
+    # the same fallback as an offline runner. Forks never see the secret, which
+    # composes with the fork guard: fork PRs resolve to hosted twice over.
     outputs:
       matrix: ${{ steps.pick.outputs.matrix }}
     steps:
       - name: Choose the macOS runner
         id: pick
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.RUNNER_LIST_TOKEN || github.token }}
           IS_FORK: ${{ github.event.pull_request.head.repo.fork || false }}
         run: |
           mac='["macos-15"]'
