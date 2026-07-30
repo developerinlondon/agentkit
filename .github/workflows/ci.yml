@@ -5,9 +5,16 @@ on:
   push:
     branches:
       - main
+    tags:
+      - "v*"
   schedule:
     - cron: "17 4 * * 1"
   workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish the worker and the docs site from this ref"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -160,7 +167,14 @@ jobs:
 
   worker-publish:
     name: Publish the Pages worker
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # A publish is a release act or an explicit one, never a side effect of a
+    # merge: installs resolve to the newest tag, so `/docs/` must describe the
+    # release people actually get rather than whatever landed on main last. The
+    # manual trigger is the safety valve — a false statement on a docs site
+    # cannot wait for the next release.
+    if: >-
+      startsWith(github.ref, 'refs/tags/v')
+      || (github.event_name == 'workflow_dispatch' && inputs.publish)
     # Deployed on every push to main rather than only when pages/worker changes:
     # this is the job that guarantees the live worker matches main. A drifted
     # worker is invisible until a deploy fails against it, which is exactly how
@@ -196,7 +210,9 @@ jobs:
 
   docs-publish:
     name: Publish the docs site
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: >-
+      startsWith(github.ref, 'refs/tags/v')
+      || (github.event_name == 'workflow_dispatch' && inputs.publish)
     # Publishing waits for the whole suite, not just the docs slice: without this
     # the deploy races the tests and can put a site live that they then reject.
     # It also waits for the worker, which must be able to accept the upload
@@ -252,19 +268,25 @@ jobs:
           WORKER_PUBLISH_RESULT: ${{ needs.worker-publish.result }}
           EVENT_NAME: ${{ github.event_name }}
           GIT_REF: ${{ github.ref }}
+          PUBLISH_INPUT: ${{ inputs.publish }}
           FULL_RESULT: ${{ needs.full.result }}
         run: |
           if [ "$DOCS_RESULT" != 'success' ]; then
             echo "Docs result: $DOCS_RESULT"
             exit 1
           fi
-          if [ "$EVENT_NAME" = 'push' ] && [ "$GIT_REF" = 'refs/heads/main' ]; then
+          PUBLISH_EXPECTED=0
+          case "$GIT_REF" in refs/tags/v*) PUBLISH_EXPECTED=1 ;; esac
+          if [ "$EVENT_NAME" = 'workflow_dispatch' ] && [ "$PUBLISH_INPUT" = 'true' ]; then
+            PUBLISH_EXPECTED=1
+          fi
+          if [ "$PUBLISH_EXPECTED" = '1' ]; then
             if [ "$DOCS_PUBLISH_RESULT" != 'success' ] || [ "$WORKER_PUBLISH_RESULT" != 'success' ]; then
               echo "Publish results: worker=$WORKER_PUBLISH_RESULT docs=$DOCS_PUBLISH_RESULT"
               exit 1
             fi
           elif [ "$DOCS_PUBLISH_RESULT" != 'skipped' ] || [ "$WORKER_PUBLISH_RESULT" != 'skipped' ]; then
-            echo "Publish ran outside main: worker=$WORKER_PUBLISH_RESULT docs=$DOCS_PUBLISH_RESULT"
+            echo "Publish ran without a release tag or an explicit request: worker=$WORKER_PUBLISH_RESULT docs=$DOCS_PUBLISH_RESULT"
             exit 1
           fi
           if [ "$EVENT_NAME" = 'pull_request' ]; then
