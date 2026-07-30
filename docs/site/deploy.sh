@@ -97,4 +97,52 @@ for path in "" getting-started/install/; do
 	}
 done
 
+# Uploading never removes: before this, a page deleted from the build kept
+# answering 200 and nothing reported it. Ten migration redirects had to be deleted
+# by hand once for exactly that reason.
+#
+# The failure direction is chosen deliberately. Deleting the wrong object is worse
+# than keeping a stale one, so an implausible diff refuses instead of pruning: a
+# listing that fails, or one that would remove more than half of what is live,
+# stops the deploy rather than guessing.
+#
+# Key lists live in files rather than arrays: under `set -u`, bash 3.2 treats
+# "${empty[@]}" as an unbound variable, and macOS ships 3.2.
+live_keys=$(mktemp)
+built_keys=$(mktemp)
+stale_keys=$(mktemp)
+trap 'rm -f "$auth" "$live_keys" "$built_keys" "$stale_keys"' EXIT
+
+# The fetch is checked on its own: piping it straight into a filter conflates "the
+# listing failed" with "the listing was empty", because grep exits 1 on no match
+# and pipefail then reports the whole pipeline as failed.
+listing=$(mktemp)
+if ! curl -sS --fail-with-body --config "$auth" "$ENDPOINT/api/site-list/docs/" > "$listing" 2>/dev/null; then
+	echo "deploy: could not list what is live — not pruning" >&2
+	exit 1
+fi
+tr ',' '\n' < "$listing" | grep -oE '"docs/[^"]+"' | tr -d '"' | sort -u > "$live_keys" || true
+rm -f "$listing"
+(cd dist && find . -type f | sed 's|^\./|docs/|') | sort -u > "$built_keys"
+comm -23 "$live_keys" "$built_keys" > "$stale_keys"
+
+stale_count=$(grep -c . "$stale_keys" || true)
+live_count=$(grep -c . "$live_keys" || true)
+if [[ "${stale_count:-0}" -gt 0 ]]; then
+	if [[ "$stale_count" -gt $((live_count / 2)) ]]; then
+		echo "deploy: refusing to prune $stale_count of $live_count live objects — that is not a redeploy" >&2
+		sed 's/^/  /' "$stale_keys" >&2
+		exit 1
+	fi
+	while IFS= read -r key; do
+		[[ -n "$key" ]] || continue
+		curl -sS --fail-with-body -X DELETE --config "$auth" "$ENDPOINT/api/site/$key" >/dev/null 2>&1 \
+			|| { echo "deploy: failed to prune $key" >&2; exit 1; }
+		echo "pruned: $key"
+	done < "$stale_keys"
+	echo "deploy: pruned $stale_count object(s) no longer in the build"
+else
+	echo "deploy: nothing to prune"
+fi
+
 echo "deploy: verified live at $SITE_URL/docs/ ($sha)"

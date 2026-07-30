@@ -38,6 +38,12 @@ function bucket(seed: Record<string, string> = {}): Bucket {
     async delete(key) {
       writes.delete(key);
     },
+    async list({ prefix }: { prefix: string }) {
+      const objects = [...writes.keys()]
+        .filter((key) => key.startsWith(prefix))
+        .map((key) => ({ key }));
+      return { objects, truncated: false };
+    },
   };
 }
 
@@ -709,5 +715,93 @@ describe('the relaxed docs policy cannot leak onto marketing pages', () => {
     expect(csp).not.toContain("'self'");
     expect(csp).not.toContain('wasm-unsafe-eval');
     expect(res.headers.get('cache-control')).toBeNull();
+  });
+});
+
+describe('the docs listing is what makes pruning possible', () => {
+  const seeded = {
+    '_site/docs/index.html': 'a',
+    '_site/docs/_astro/app.css': 'b',
+    '_site/docs/pagefind/pagefind.js': 'c',
+    '_site/index.html': 'marketing',
+    'pages/deadbeef/index.html': 'a page',
+  };
+
+  test('a site token lists the docs subtree, and nothing outside it', async () => {
+    const store = bucket(seeded);
+    const res = await worker.fetch(
+      new Request('https://agentkit.sbs/api/site-list/docs/', {
+        headers: { authorization: `Bearer ${SITE_TOKEN}` },
+      }),
+      env(store),
+    );
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      ok: true,
+      prefix: 'docs/',
+      keys: ['docs/_astro/app.css', 'docs/index.html', 'docs/pagefind/pagefind.js'],
+    });
+  });
+
+  test.each([
+    ['the publish token', PUBLISH_TOKEN],
+    ['no token', null],
+  ])('%s cannot list', async (_label, token) => {
+    const store = bucket(seeded);
+    const headers: Record<string, string> = {};
+    if (token) headers.authorization = `Bearer ${token}`;
+    const res = await worker.fetch(
+      new Request('https://agentkit.sbs/api/site-list/docs/', { headers }),
+      env(store),
+    );
+
+    expect(res.status).toBe(401);
+  });
+
+  test('an unset site token fails closed', async () => {
+    const store = bucket(seeded);
+    const res = await worker.fetch(
+      new Request('https://agentkit.sbs/api/site-list/docs/', {
+        headers: { authorization: 'Bearer ' },
+      }),
+      env(store, { SITE_TOKEN: undefined }),
+    );
+
+    expect(res.status).toBe(401);
+  });
+
+  // The router strips the trailing slash, so the prefix arrives as `docs`. Listing
+  // on that would also match a sibling keyspace.
+  test('a sibling keyspace is not swept in by the prefix', async () => {
+    const store = bucket({
+      '_site/docs/index.html': 'docs',
+      '_site/docsy/index.html': 'not docs',
+    });
+    const res = await worker.fetch(
+      new Request('https://agentkit.sbs/api/site-list/docs/', {
+        headers: { authorization: `Bearer ${SITE_TOKEN}` },
+      }),
+      env(store),
+    );
+
+    expect((await res.json()).keys).toEqual(['docs/index.html']);
+  });
+
+  // Listing outside docs/ would expose the marketing keyspace to a token scoped
+  // to the docs subtree everywhere else.
+  test.each([
+    'https://agentkit.sbs/api/site-list/',
+    'https://agentkit.sbs/api/site-list/pages/',
+    'https://agentkit.sbs/api/site-list/docsy/',
+    'https://agentkit.sbs/api/site-list/../',
+  ])('%s is refused', async (url) => {
+    const store = bucket(seeded);
+    const res = await worker.fetch(
+      new Request(url, { headers: { authorization: `Bearer ${SITE_TOKEN}` } }),
+      env(store),
+    );
+
+    expect(res.status).not.toBe(200);
   });
 });

@@ -82,12 +82,16 @@ function stubCurl(): void {
       `LOG=${JSON.stringify(join(root, '.uploads'))}`,
       `ARGV=${JSON.stringify(join(root, '.argv'))}`,
       `LIVE=${JSON.stringify(join(root, '.live-sha'))}`,
+      `REMOTE=${JSON.stringify(join(root, '.remote-keys'))}`,
+      `DEL=${JSON.stringify(join(root, '.deleted'))}`,
       'printf "%s\\n" "$*" >> "$ARGV"',
-      'is_put=; is_code=',
+      'is_put=; is_code=; is_delete=',
       'for a in "$@"; do',
-      '  case "$a" in PUT) is_put=1 ;; -w) is_code=1 ;; esac',
+      '  case "$a" in PUT) is_put=1 ;; DELETE) is_delete=1 ;; -w) is_code=1 ;; esac',
       'done',
       'eval "url=\\${$#}"',
+      'if [ -n "$is_delete" ]; then printf "%s\\n" "${url##*/api/site/}" >> "$DEL"; exit 0; fi',
+      'case "$url" in *api/site-list/*) cat "$REMOTE" 2>/dev/null || printf "{\\"keys\\":[]}"; exit 0 ;; esac',
       'if [ -n "$is_put" ]; then printf "%s\\n" "${url##*/api/site/docs/}" >> "$LOG"; exit 0; fi',
       'if [ -n "$is_code" ]; then printf "200"; exit 0; fi',
       'if [ -f "$LIVE" ]; then cat "$LIVE"; fi',
@@ -136,6 +140,16 @@ function deploy(env: Record<string, string> = {}): ReturnType<typeof spawnSync> 
   });
 }
 
+function remoteKeys(keys: string[]): void {
+  writeFileSync(join(root, '.remote-keys'), JSON.stringify({ ok: true, keys }));
+}
+
+function deleted(): string[] {
+  const path = join(root, '.deleted');
+  if (!existsSync(path)) return [];
+  return readFileSync(path, 'utf-8').trim().split('\n').filter(Boolean);
+}
+
 function uploads(): string[] {
   const path = join(root, '.uploads');
   if (!existsSync(path)) return [];
@@ -158,7 +172,7 @@ beforeEach(() => {
   cpSync(DEPLOY, join(site, 'deploy.sh'));
   chmodSync(join(site, 'deploy.sh'), 0o755);
   write('token', 'site-secret');
-  write('.gitignore', 'dist/\n.bin/\n.uploads\n.argv\n.live-sha\ntoken\n');
+  write('.gitignore', 'dist/\n.bin/\n.uploads\n.argv\n.live-sha\n.remote-keys\n.deleted\ntoken\n');
   stubCurl();
   stubBuild(BUILT);
   git('init', '-q');
@@ -285,5 +299,64 @@ describe('a rejected upload stops the deploy', () => {
 
     expect(result.status).toBe(1);
     expect(uploads()).not.toContain('build-sha.txt');
+  });
+});
+
+describe('a page removed from the build stops being served', () => {
+  // Uploading never removed anything, so a deleted page kept answering 200 with
+  // nothing reporting it. Ten migration redirects were deleted by hand for exactly
+  // that reason before this existed.
+  test('an object no longer in the build is pruned and reported', () => {
+    remoteKeys([...BUILT.map((f) => `docs/${f}`), 'docs/retired/index.html', 'docs/build-sha.txt']);
+    const result = deploy();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(deleted()).toEqual(['docs/retired/index.html']);
+    expect(result.stdout).toContain('pruned: docs/retired/index.html');
+  });
+
+  test('nothing to prune is stated rather than implied', () => {
+    remoteKeys([...BUILT.map((f) => `docs/${f}`), 'docs/build-sha.txt']);
+    const result = deploy();
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('nothing to prune');
+    expect(deleted()).toEqual([]);
+  });
+
+  // Deleting the wrong object is worse than keeping a stale one, so an implausible
+  // diff has to stop the deploy rather than act on it.
+  test('a diff that would remove most of the site refuses instead of pruning', () => {
+    remoteKeys([
+      ...BUILT.map((f) => `docs/${f}`),
+      ...Array.from({ length: 40 }, (_, i) => `docs/retired-${i}/index.html`),
+    ]);
+    const result = deploy();
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('refusing to prune');
+    expect(deleted()).toEqual([]);
+  });
+
+  test('a listing that cannot be read stops the deploy rather than pruning blind', () => {
+    stub(
+      'curl',
+      [
+        '#!/usr/bin/env bash',
+        'set -eu',
+        `LIVE=${JSON.stringify(join(root, '.live-sha'))}`,
+        'for a in "$@"; do case "$a" in *api/site-list/*) exit 22 ;; esac; done',
+        'eval "url=\\${$#}"',
+        // the stamp read-back runs before the prune, so it has to succeed or the
+        // deploy never reaches the step under test
+        'case "$url" in *build-sha.txt) cat "$LIVE"; exit 0 ;; esac',
+        'printf "200"',
+        'exit 0',
+      ].join('\n'),
+    );
+    const result = deploy();
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('could not list');
   });
 });
