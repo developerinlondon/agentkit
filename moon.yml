@@ -58,6 +58,23 @@ fileGroups:
     - "tools/review-gate"
     - "tools/review-profile"
 
+  # The generated tables are derived from the enforcement tree, so a change there
+  # has to re-run the drift check. Without these the docs slice stayed green while
+  # the thing it documents moved underneath it.
+  docsInputs:
+    - "docs/site/astro.config.mjs"
+    - "docs/site/deploy.sh"
+    - "docs/site/package.json"
+    - "docs/site/src/**/*"
+    - "hooks/**/*"
+    - "plugins/*.ts"
+    - "plugins-cc/*/hooks/**/*"
+    - "policies/**/*"
+    - "scripts/sync-docs-facts.ts"
+    - "skills/**/*"
+    - "tools/**/*"
+    - "tests/docs/**/*"
+
   diagramInputs:
     - "bun.lock"
     - "package.json"
@@ -202,6 +219,12 @@ tasks:
     inputs:
       - "group://ciConfig"
       - "group://diagramInputs"
+
+  test-docs:
+    command: "bun run scripts/check-test-slices.ts docs"
+    inputs:
+      - "group://ciConfig"
+      - "group://docsInputs"
 
   test-hooks:
     command: "bun run scripts/check-test-slices.ts hooks"

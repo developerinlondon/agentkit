@@ -426,3 +426,288 @@ describe('size limits', () => {
     expect(store.writes.get('_site/docs/index.html')?.body.length).toBe(MAX_PAGE_BYTES);
   });
 });
+
+describe('the docs subtree serves a generated site', () => {
+  test.each([
+    ['https://agentkit.sbs/docs/', '_site/docs/index.html'],
+    ['https://agentkit.sbs/docs/getting-started/install/', '_site/docs/getting-started/install/index.html'],
+    ['https://agentkit.sbs/docs/0.4/getting-started/install/', '_site/docs/0.4/getting-started/install/index.html'],
+    ['https://agentkit.sbs/docs/0.4/reference/hooks/pkg-police/checks/', '_site/docs/0.4/reference/hooks/pkg-police/checks/index.html'],
+  ])('%s resolves as a page', async (url, key) => {
+    const store = bucket({ [key]: '<h1>docs</h1>' });
+    const res = await worker.fetch(get(url), env(store));
+
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe('<h1>docs</h1>');
+    expect(store.reads).toEqual([key]);
+  });
+
+  test.each([
+    ['_astro/common.aYS1OYVv.css', 'text/css; charset=utf-8'],
+    ['_astro/page.LAbJoB63.js', 'text/javascript; charset=utf-8'],
+    ['pagefind/index/en_c83d5de.pf_index', 'application/octet-stream'],
+    ['pagefind/wasm.en.pagefind', 'application/octet-stream'],
+    ['favicon.svg', 'image/svg+xml'],
+    ['sitemap-0.xml', 'application/xml; charset=utf-8'],
+  ])('docs/%s is served verbatim as %s', async (path, type) => {
+    const key = `_site/docs/${path}`;
+    const store = bucket({ [key]: 'asset-body' });
+    const res = await worker.fetch(get(`https://agentkit.sbs/docs/${path}`), env(store));
+
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe('asset-body');
+    expect(res.headers.get('content-type')).toBe(type);
+    expect(res.headers.get('x-content-type-options')).toBe('nosniff');
+    expect(store.reads).toEqual([key]);
+  });
+
+  test('an unknown extension resolves as a page, not a file', async () => {
+    const store = bucket();
+    await worker.fetch(get('https://agentkit.sbs/docs/0.4'), env(store));
+
+    expect(store.reads).toEqual(['_site/docs/0.4/index.html']);
+  });
+
+  test('a missing asset 404s without the site 404 page', async () => {
+    const store = bucket();
+    const res = await worker.fetch(get('https://agentkit.sbs/docs/_astro/gone.css'), env(store));
+
+    expect(res.status).toBe(404);
+    expect(await res.text()).not.toContain('No page lives at this address');
+  });
+
+  test('a docs page carries the relaxed policy and stays indexable', async () => {
+    const store = bucket({ '_site/docs/index.html': '<h1>docs</h1>' });
+    const res = await worker.fetch(get('https://agentkit.sbs/docs/'), env(store));
+    const csp = res.headers.get('content-security-policy') ?? '';
+
+    expect(csp).toContain("script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'");
+    expect(csp).toContain("style-src 'self' 'unsafe-inline'");
+    expect(csp).toContain("connect-src 'self'");
+    expect(csp).toContain("worker-src 'self'");
+    expect(csp).toContain("frame-ancestors 'none'");
+    expect(res.headers.get('x-robots-tag')).toBeNull();
+  });
+
+  test('the marketing home keeps the strict policy', async () => {
+    const store = bucket({ '_site/index.html': '<h1>home</h1>' });
+    const res = await worker.fetch(get('https://agentkit.sbs/'), env(store));
+    const csp = res.headers.get('content-security-policy') ?? '';
+
+    expect(csp).toContain("default-src 'none'");
+    expect(csp).not.toContain("'self'");
+    expect(csp).not.toContain('wasm-unsafe-eval');
+  });
+
+  test.each([
+    'https://agentkit.sbs/index.html',
+    'https://agentkit.sbs/pages-index.html',
+    'https://agentkit.sbs/_astro/app.css',
+    'https://agentkit.sbs/assets/app.css',
+    'https://agentkit.sbs/docsy/app.css',
+  ])('%s is not an asset path', async (url) => {
+    const store = bucket();
+    const res = await worker.fetch(get(url), env(store));
+
+    expect(res.status).toBe(404);
+    expect(store.reads).toEqual([]);
+  });
+
+  test('a published page host never serves docs assets', async () => {
+    const store = bucket({ '_site/docs/_astro/app.css': 'css' });
+    const res = await worker.fetch(get('https://pages.agentkit.sbs/docs/_astro/app.css'), env(store));
+
+    expect(res.status).toBe(404);
+    expect(store.writes.has('_site/docs/_astro/app.css')).toBe(true);
+  });
+});
+
+describe('docs asset writes are SITE_TOKEN only', () => {
+  test('a site token writes the key verbatim with a derived content type', async () => {
+    const store = bucket();
+    const res = await worker.fetch(
+      write('https://agentkit.sbs/api/site/docs/_astro/app.aYS1OYVv.css', SITE_TOKEN, 'body{}'),
+      env(store),
+    );
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      ok: true,
+      path: 'docs/_astro/app.aYS1OYVv.css',
+      url: 'https://agentkit.sbs/docs/_astro/app.aYS1OYVv.css',
+    });
+    expect(store.writes.get('_site/docs/_astro/app.aYS1OYVv.css')).toEqual({
+      body: 'body{}',
+      contentType: 'text/css; charset=utf-8',
+    });
+  });
+
+  test.each([
+    ['the publish token', PUBLISH_TOKEN],
+    ['no token', null],
+  ])('%s cannot write a docs asset', async (_label, token) => {
+    const store = bucket();
+    const res = await worker.fetch(
+      write('https://agentkit.sbs/api/site/docs/_astro/app.css', token, 'body{}'),
+      env(store),
+    );
+
+    expect(res.status).toBe(401);
+    expect([...store.writes.keys()]).toEqual([]);
+  });
+
+  test('an unset site token fails closed', async () => {
+    const store = bucket();
+    const res = await worker.fetch(
+      write('https://agentkit.sbs/api/site/docs/_astro/app.css', '', 'body{}'),
+      env(store, { SITE_TOKEN: undefined }),
+    );
+
+    expect(res.status).toBe(401);
+    expect([...store.writes.keys()]).toEqual([]);
+  });
+
+  test.each([
+    'https://agentkit.sbs/api/site/index.html',
+    'https://agentkit.sbs/api/site/assets/app.css',
+    'https://agentkit.sbs/api/site/docs/app.unknownext',
+    'https://agentkit.sbs/api/site/docs/.hidden/app.css',
+    'https://agentkit.sbs/api/site/docs/getting-started',
+  ])('%s is rejected as a path', async (url) => {
+    const store = bucket();
+    const res = await worker.fetch(write(url, SITE_TOKEN, 'body{}'), env(store));
+
+    expect(res.status).toBe(400);
+    expect([...store.writes.keys()]).toEqual([]);
+  });
+
+  test('an empty asset body is rejected', async () => {
+    const store = bucket();
+    const res = await worker.fetch(
+      write('https://agentkit.sbs/api/site/docs/_astro/app.css', SITE_TOKEN, ''),
+      env(store),
+    );
+
+    expect(res.status).toBe(413);
+    expect([...store.writes.keys()]).toEqual([]);
+  });
+
+  test('a declared length over the cap is rejected before the body is read', async () => {
+    const store = bucket();
+    const res = await worker.fetch(
+      write('https://agentkit.sbs/api/site/docs/_astro/app.css', SITE_TOKEN, 'body{}', {
+        'content-length': String(MAX_PAGE_BYTES + 1),
+      }),
+      env(store),
+    );
+
+    expect(res.status).toBe(413);
+    expect([...store.writes.keys()]).toEqual([]);
+  });
+
+  test('a site token deletes a docs asset', async () => {
+    const store = bucket({ '_site/docs/_astro/app.css': 'body{}' });
+    const res = await worker.fetch(
+      new Request('https://agentkit.sbs/api/site/docs/_astro/app.css', {
+        method: 'DELETE',
+        headers: { authorization: `Bearer ${SITE_TOKEN}` },
+      }),
+      env(store),
+    );
+
+    expect(res.status).toBe(200);
+    expect(store.writes.has('_site/docs/_astro/app.css')).toBe(false);
+  });
+
+  test('deleting an absent docs asset 404s', async () => {
+    const store = bucket();
+    const res = await worker.fetch(
+      new Request('https://agentkit.sbs/api/site/docs/_astro/app.css', {
+        method: 'DELETE',
+        headers: { authorization: `Bearer ${SITE_TOKEN}` },
+      }),
+      env(store),
+    );
+
+    expect(res.status).toBe(404);
+  });
+
+  test('the publish token cannot delete a docs asset', async () => {
+    const store = bucket({ '_site/docs/_astro/app.css': 'body{}' });
+    const res = await worker.fetch(
+      new Request('https://agentkit.sbs/api/site/docs/_astro/app.css', {
+        method: 'DELETE',
+        headers: { authorization: `Bearer ${PUBLISH_TOKEN}` },
+      }),
+      env(store),
+    );
+
+    expect(res.status).toBe(401);
+    expect(store.writes.has('_site/docs/_astro/app.css')).toBe(true);
+  });
+});
+
+describe('docs asset caching', () => {
+  test('a hashed bundle is immutable for a year', async () => {
+    const store = bucket({ '_site/docs/_astro/app.aYS1OYVv.css': 'body{}' });
+    const res = await worker.fetch(
+      get('https://agentkit.sbs/docs/_astro/app.aYS1OYVv.css'),
+      env(store),
+    );
+
+    expect(res.headers.get('cache-control')).toBe('public, max-age=31536000, immutable');
+  });
+
+  test('an unhashed asset revalidates', async () => {
+    const store = bucket({ '_site/docs/pagefind/pagefind.js': 'js' });
+    const res = await worker.fetch(get('https://agentkit.sbs/docs/pagefind/pagefind.js'), env(store));
+
+    expect(res.headers.get('cache-control')).toBe('public, max-age=300');
+  });
+
+  test('a document is never cached, so a deploy is verifiable', async () => {
+    const store = bucket({ '_site/docs/index.html': '<h1>docs</h1>' });
+    const res = await worker.fetch(get('https://agentkit.sbs/docs/'), env(store));
+
+    expect(res.headers.get('cache-control')).toBeNull();
+  });
+});
+
+describe('an html asset path is still a document', () => {
+  test.each([
+    'https://agentkit.sbs/docs/index.html',
+    'https://agentkit.sbs/docs/getting-started/install/index.html',
+  ])('%s carries the document headers, not bare asset headers', async (url) => {
+    const key = `_site/${new URL(url).pathname.replace(/^\//, '')}`;
+    const store = bucket({ [key]: '<h1>docs</h1>' });
+    const res = await worker.fetch(get(url), env(store));
+    const csp = res.headers.get('content-security-policy') ?? '';
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toBe('text/html; charset=utf-8');
+    expect(csp).toContain("default-src 'none'");
+    expect(csp).toContain("script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'");
+    expect(res.headers.get('referrer-policy')).toBe('no-referrer');
+  });
+});
+
+describe('the relaxed docs policy cannot leak onto marketing pages', () => {
+  // The apex serves its home page and its sub-pages from two different branches.
+  // Asserting only the home page left the sub-page branch free to hand out the
+  // docs policy with every test still green.
+  test.each([
+    ['https://agentkit.sbs/', '_site/index.html'],
+    ['https://agentkit.sbs/install', '_site/install/index.html'],
+    ['https://agentkit.sbs/docsomething', '_site/docsomething/index.html'],
+  ])('%s keeps the strict policy', async (url, key) => {
+    const store = bucket({ [key]: '<h1>marketing</h1>' });
+    const res = await worker.fetch(get(url), env(store));
+    const csp = res.headers.get('content-security-policy') ?? '';
+
+    expect(res.status).toBe(200);
+    expect(csp).toContain("default-src 'none'");
+    expect(csp).not.toContain("'self'");
+    expect(csp).not.toContain('wasm-unsafe-eval');
+    expect(res.headers.get('cache-control')).toBeNull();
+  });
+});
