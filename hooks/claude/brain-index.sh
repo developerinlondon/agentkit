@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # PostToolUse Edit|Write (memory kit): keep brain/index.md agreeing with the
 # files on disk. Deterministic — bare wikilinks grouped by top-level directory,
-# no generated prose. Only fires for writes inside brain/ of a project that
-# already has an index; everything else exits untouched.
+# no generated prose. Names are never fed to a regex engine, headers avoid
+# bash-4-only expansions, and the index is replaced atomically: this file
+# rewrites user memory, so a mid-run failure must leave the old index intact.
 set -euo pipefail
 
 # shellcheck source=lib/hook-input.sh
@@ -17,40 +18,45 @@ brain_dir="$root/brain"
 index="$brain_dir/index.md"
 [[ -f "$index" ]] || exit 0
 
+[[ "$file_path" != /* ]] && file_path="$PWD/$file_path"
 case "$file_path" in
-"$brain_dir"/* | brain/*) ;;
+"$brain_dir"/*) ;;
 *) exit 0 ;;
 esac
 
-disk=$(find "$brain_dir" -name "*.md" ! -name "index.md" -type f \
-	| sed "s|^${brain_dir}/||; s|\.md$||" \
-	| sort)
+disk="$(cd "$brain_dir" && find . -name '*.md' ! -name 'index.md' -type f \
+	| sed 's|^\./||; s|\.md$||' \
+	| sort)"
 
-indexed=$(sed -n 's/.*\[\[\([^]]*\)\]\].*/\1/p' "$index" | sort)
+indexed="$(grep -o '\[\[[^]]*\]\]' "$index" | sed 's/^\[\[//; s/\]\]$//' | sort || true)"
 
 [[ "$disk" == "$indexed" ]] && exit 0
 
-emit_files() {
-	while IFS= read -r f; do
-		[[ -z "$f" ]] && continue
-		echo "- [[$f]]"
-	done
-}
+dirs="$(awk -F/ 'NF>1{print $1}' <<<"$disk" | sort -u)"
 
-dirs=$(echo "$disk" | grep '/' | sed 's|/.*||' | sort -u || true)
-
+tmp="$(mktemp "$brain_dir/.index-rebuild.XXXXXX")"
+trap 'rm -f "$tmp"' EXIT
 {
 	echo "# Brain"
-	for section in $dirs; do
-		files=$(echo "$disk" | grep "^${section}\(/\|$\)" || true)
-		[[ -z "$files" ]] && continue
-		printf '\n## %s\n' "${section^}"
-		echo "$files" | emit_files
-	done
-	standalone=$(echo "$disk" | grep -v '/' || true)
-	if [[ -n "$standalone" ]]; then
-		printf '\n## Other\n'
-		echo "$standalone" | emit_files
-	fi
+	while IFS= read -r section; do
+		[[ -n "$section" ]] || continue
+		first="$(printf '%s' "${section:0:1}" | LC_ALL=C tr '[:lower:]' '[:upper:]')"
+		printf '\n## %s%s\n' "$first" "${section:1}"
+		while IFS= read -r f; do
+			case "$f" in "$section"/*) echo "- [[$f]]" ;; esac
+		done <<<"$disk"
+	done <<<"$dirs"
+	other=false
+	while IFS= read -r f; do
+		[[ -n "$f" ]] || continue
+		case "$f" in */*) continue ;; esac
+		if [[ "$other" == false ]]; then
+			printf '\n## Other\n'
+			other=true
+		fi
+		echo "- [[$f]]"
+	done <<<"$disk"
 	echo ""
-} >"$index"
+} >"$tmp"
+mv "$tmp" "$index"
+trap - EXIT

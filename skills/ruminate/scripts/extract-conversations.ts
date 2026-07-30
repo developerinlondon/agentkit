@@ -29,7 +29,9 @@ export function extractMessages(jsonl: string): string[] {
       texts.push(content);
     } else if (Array.isArray(content)) {
       for (const part of content) {
-        if (part && typeof part === 'object' && part.type === 'text') texts.push(part.text);
+        if (part && typeof part === 'object' && part.type === 'text' && typeof part.text === 'string') {
+          texts.push(part.text);
+        }
       }
     }
 
@@ -38,9 +40,9 @@ export function extractMessages(jsonl: string): string[] {
       if (clean.length <= 10) continue;
       if (clean.startsWith('<system-reminder>') && clean.endsWith('</system-reminder>')) continue;
       if (record.type === 'user' && !record.isMeta) {
-        messages.push(`[USER]: ${text.slice(0, USER_LIMIT)}`);
+        messages.push(`[USER]: ${clean.slice(0, USER_LIMIT)}`);
       } else if (record.type === 'assistant') {
-        messages.push(`[ASSISTANT]: ${text.slice(0, ASSISTANT_LIMIT)}`);
+        messages.push(`[ASSISTANT]: ${clean.slice(0, ASSISTANT_LIMIT)}`);
       }
     }
   }
@@ -63,6 +65,17 @@ interface Options {
   minSize: number;
 }
 
+// A malformed date must fail the run: an Invalid Date compares false to
+// everything, which silently disables the filter and mines the whole history.
+function parseDate(value: string | undefined, flag: string, suffix: string): Date {
+  const parsed = new Date(`${value}${suffix}`);
+  if (value === undefined || Number.isNaN(parsed.getTime())) {
+    console.error(`${flag} needs a YYYY-MM-DD date, got: ${value}`);
+    process.exit(2);
+  }
+  return parsed;
+}
+
 function parseArgs(argv: string[]): Options {
   const positional: string[] = [];
   const opts: Options = { projectDir: '', outputDir: '', batches: 5, minSize: 500 };
@@ -73,10 +86,10 @@ function parseArgs(argv: string[]): Options {
         opts.batches = Number(argv[++i]);
         break;
       case '--from':
-        opts.from = new Date(`${argv[++i]}T00:00:00`);
+        opts.from = parseDate(argv[++i], '--from', 'T00:00:00');
         break;
       case '--to':
-        opts.to = new Date(`${argv[++i]}T23:59:59.999`);
+        opts.to = parseDate(argv[++i], '--to', 'T23:59:59.999');
         break;
       case '--min-size':
         opts.minSize = Number(argv[++i]);
@@ -101,15 +114,18 @@ function main() {
 
   const candidates = readdirSync(opts.projectDir)
     .filter((name) => name.endsWith('.jsonl'))
-    .map((name) => join(opts.projectDir, name))
-    .filter((path) => {
-      const stat = statSync(path);
+    .map((name) => {
+      const path = join(opts.projectDir, name);
+      return { path, stat: statSync(path) };
+    })
+    .filter(({ stat }) => {
       if (stat.size < opts.minSize) return false;
       if (opts.from && stat.mtime < opts.from) return false;
       if (opts.to && stat.mtime > opts.to) return false;
       return true;
     })
-    .sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs);
+    .sort((a, b) => b.stat.mtimeMs - a.stat.mtimeMs)
+    .map(({ path }) => path);
   console.error(`Found ${candidates.length} conversations passing filters`);
 
   const extracted: string[] = [];

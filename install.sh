@@ -987,20 +987,27 @@ install_claude_hooks() {
 		local owning_kit
 		owning_kit="$(hook_kit "$name")"
 		if [[ "$owning_kit" != core ]] && ! kit_selected "$owning_kit"; then
-			if command -v jq &>/dev/null; then
-				if [[ -e "$install_dir/$name" || -L "$install_dir/$name" ]]; then
-					echo "[claude] Removing hook ($owning_kit kit not selected): $name"
-					rm -f "$install_dir/$name"
+			if kit_explicit "$owning_kit"; then
+				if command -v jq &>/dev/null; then
+					if [[ -e "$install_dir/$name" || -L "$install_dir/$name" ]]; then
+						echo "[claude] Removing hook ($owning_kit kit not selected): $name"
+						rm -f "$install_dir/$name"
+					fi
+					if [[ "$hooks_dir" != "$install_dir" && (-e "$hooks_dir/$name" || -L "$hooks_dir/$name") ]]; then
+						rm -f "$hooks_dir/$name"
+					fi
+					continue
 				fi
-				if [[ "$hooks_dir" != "$install_dir" && (-e "$hooks_dir/$name" || -L "$hooks_dir/$name") ]]; then
-					rm -f "$hooks_dir/$name"
+				if [[ ! -e "$install_dir/$name" && ! -L "$install_dir/$name" ]]; then
+					continue
 				fi
+				echo "[claude] WARNING: jq missing — keeping $name so its settings.json entries stay functional." >&2
+			elif [[ ! -e "$install_dir/$name" && ! -L "$install_dir/$name" ]]; then
+				# Mirror install_skills: an installed non-explicit kit stays
+				# refreshed, a never-installed one is skipped.
+				echo "[claude] Skipping hook (kit '$owning_kit' — add --with $owning_kit): $name"
 				continue
 			fi
-			if [[ ! -e "$install_dir/$name" && ! -L "$install_dir/$name" ]]; then
-				continue
-			fi
-			echo "[claude] WARNING: jq missing — keeping $name so its settings.json entries stay functional." >&2
 		fi
 
 		if [[ -f "$install_dir/$name" && ! -L "$install_dir/$name" ]]; then
@@ -1075,17 +1082,41 @@ merge_claude_settings() {
 	# The merge below replaces the whole hooks section, so filtering review
 	# entries here both withholds them on fresh installs and strips previously
 	# merged ones on upgrade — the settings side of removing the scripts above.
-	local review_selected=true memory_selected=true
+	local review_selected=true
 	kit_selected adversarial-review || review_selected=false
-	kit_selected memory || memory_selected=false
+
+	# The memory strip list derives from hook_kit so it cannot drift from
+	# ownership. Wiring follows the scripts: selected, or already installed —
+	# non-explicit kits keep their installed hooks like install_skills keeps
+	# their skills, so the settings must keep matching them.
+	local memory_hooks_json hook_name
+	memory_hooks_json="$(for hook_file in "$REPO_DIR"/hooks/claude/*.sh; do
+		hook_name="$(basename "$hook_file")"
+		if [[ "$(hook_kit "$hook_name")" == memory ]]; then
+			printf '%s\n' "$hook_name"
+		fi
+	done | jq -R . | jq -s .)"
+	local memory_wired=false
+	if kit_selected memory; then
+		memory_wired=true
+	else
+		for hook_name in $(printf '%s' "$memory_hooks_json" | jq -r '.[]'); do
+			if [[ -e "$hooks_dir/$hook_name" || -L "$hooks_dir/$hook_name" ]]; then
+				memory_wired=true
+				break
+			fi
+		done
+	fi
 
 	local hooks_json
 	hooks_json=$(jq --arg dir "$hooks_dir" \
-		--argjson review "$review_selected" --argjson memory "$memory_selected" '
+		--argjson review "$review_selected" --argjson memory "$memory_wired" \
+		--argjson memoryHooks "$memory_hooks_json" '
     {hooks: (.hooks | with_entries(
       .value |= (map(.hooks |= map(
         select($review or ((.command // "") | contains("review-police") | not))
-        | select($memory or ((.command // "") | contains("/brain-") | not))
+        | select($memory or ((.command // "") as $c
+            | (any($memoryHooks[]; . as $h | $c | contains($h))) | not))
         | .command |= gsub("\\$HOME/\\.claude/hooks"; $dir)
       )) | map(select((.hooks | length) > 0)))
     ) | with_entries(select((.value | length) > 0)))}
@@ -1108,14 +1139,18 @@ merge_claude_settings() {
 		# must survive, so agentkit's entry appends after its old copy is
 		# stripped. The police events stay replace-semantics on purpose: there
 		# agentkit's wiring is the single source of truth.
-		echo "$existing" | jq --argjson new_hooks "$hooks_json" '
+		echo "$existing" | jq --argjson new_hooks "$hooks_json" \
+			--argjson memoryHooks "$memory_hooks_json" '
       ($new_hooks.hooks.SessionStart // []) as $ours
       | ((.hooks // {}).SessionStart // []) as $theirs
       | . * ($new_hooks | del(.hooks.SessionStart))
       | .hooks.SessionStart = (
           ($theirs
             | map(.hooks = ((.hooks // []) | map(select(
-                ((.command // "") | contains("update-notice.sh")) | not
+                ((.command // "") as $c
+                 | ($c | contains("update-notice.sh"))
+                   or (any($memoryHooks[]; . as $h | $c | contains($h))))
+                | not
               ))))
             | map(select((.hooks | length) > 0))
           ) + $ours
