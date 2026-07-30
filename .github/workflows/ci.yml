@@ -2,6 +2,9 @@ name: Cross-platform CI
 
 on:
   pull_request:
+  # The merge queue validates the projected merge result; the full suite runs
+  # there (the event is not a pull_request), which is what a queue is for.
+  merge_group:
   push:
     branches:
       - main
@@ -395,7 +398,9 @@ jobs:
 
   ci-gate:
     name: CI gate
-    if: always()
+    # Not on cancellation: a superseded run's test jobs die cancelled, and a
+    # gate that still runs then reports a failure for work nobody needs.
+    if: always() && !cancelled()
     needs:
       - affected
       - docs
