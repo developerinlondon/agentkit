@@ -136,6 +136,16 @@
             "timeout": 8
           }
         ]
+      },
+      {
+        "matcher": "startup|resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/brain-inject.sh",
+            "timeout": 10
+          }
+        ]
       }
     ]
   }

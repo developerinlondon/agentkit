@@ -98,7 +98,9 @@ describe('Claude Code and Codex hook wiring', () => {
       expect(commandNames(settings.hooks.PreToolUse[0].hooks)).toContain('review-police.sh');
       expect(commandNames(settings.hooks.PostToolUse[0].hooks)).toContain('comment-police.sh');
       expect(commandNames(settings.hooks.PostToolUse[0].hooks)).toContain('brain-index.sh');
-      expect(commandNames(settings.hooks.SessionStart[0].hooks)).toContain('brain-inject.sh');
+      expect(
+        settings.hooks.SessionStart.flatMap((kit: any) => commandNames(kit.hooks)),
+      ).toContain('brain-inject.sh');
 
       const codexDir = join(home, '.codex');
       const codexHooks = JSON.parse(readFileSync(join(codexDir, 'hooks.json'), 'utf-8'));
@@ -150,8 +152,11 @@ describe('Claude Code and Codex hook wiring', () => {
           (name) => name !== 'brain-index.sh',
         ),
       );
-      expect(canonical.hooks.SessionStart).toHaveLength(1);
-      expect(settings.hooks.SessionStart).toBeUndefined();
+      // The update-notice kit is core and stays; only the brain-inject kit
+      // leaves with the memory kit.
+      expect(canonical.hooks.SessionStart).toHaveLength(2);
+      expect(settings.hooks.SessionStart).toHaveLength(1);
+      expect(commandNames(settings.hooks.SessionStart[0].hooks)).toEqual(['update-notice.sh']);
       for (const kits of Object.values<any>(settings.hooks)) {
         for (const kit of kits) {
           for (const entry of kit.hooks) {
@@ -192,8 +197,8 @@ describe('Claude Code and Codex hook wiring', () => {
       const settings = installedSettings(claudeDir);
 
       expect(commandNames(settings.hooks.PostToolUse[0].hooks)).toContain('brain-index.sh');
-      expect(settings.hooks.SessionStart).toHaveLength(1);
-      expect(commandNames(settings.hooks.SessionStart[0].hooks)).toEqual(['brain-inject.sh']);
+      expect(settings.hooks.SessionStart).toHaveLength(2);
+      expect(commandNames(settings.hooks.SessionStart[1].hooks)).toEqual(['brain-inject.sh']);
       for (const kits of Object.values<any>(settings.hooks)) {
         for (const kit of kits) {
           for (const entry of kit.hooks) {
