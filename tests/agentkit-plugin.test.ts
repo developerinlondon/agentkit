@@ -132,7 +132,7 @@ describe('agentkit plugin manifest', () => {
   test('plugin.json declares agentkit without duplicating its standard hooks path', () => {
     const plugin = readJson('.claude-plugin', 'plugin.json');
     expect(plugin.name).toBe('agentkit');
-    expect(plugin.version).toBe('0.3.0');
+    expect(plugin.version).toBe('0.3.1');
     // Claude automatically loads hooks/hooks.json. Declaring that same path in
     // the manifest makes a fresh install appear enabled while hook loading
     // fails with "Duplicate hooks file detected".
@@ -421,7 +421,7 @@ describe('marketplace lists the agentkit plugin', () => {
     const agentkit = marketplace.plugins.find((p: { name: string }) => p.name === 'agentkit');
     expect(agentkit.source).toBe('./plugins-cc/agentkit');
     expect(agentkit.version).toBe(readJson('.claude-plugin', 'plugin.json').version);
-    expect(agentkit.version).toBe('0.3.0');
+    expect(agentkit.version).toBe('0.3.1');
     expect(agentkit.description).toContain('bounded-run');
     expect(agentkit.description).toContain('agent-work.slice');
     expect(agentkit.description).toContain('Linux bounded execution additionally requires');
