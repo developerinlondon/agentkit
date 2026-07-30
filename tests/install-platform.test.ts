@@ -48,7 +48,7 @@ function createFixture(): Fixture {
   writeFixtureFile(join(repo, 'skills', 'sample', 'SKILL.md'), '# Sample\n');
   writeFixtureFile(
     join(repo, 'skills', 'GROUPS'),
-    'group core Sample core group\ngroup review Sample review group\nexplicit review\n',
+    'group core Sample core group\ngroup strict-review Sample review group\nexplicit strict-review\n',
   );
   writeFixtureFile(join(repo, 'rules', 'sample.md'), '# Sample\n');
   mkdirSync(join(repo, 'instructions'), { recursive: true });
@@ -99,7 +99,7 @@ function runInstall(
         ...(disableSessionScope ? ['--no-session-scope'] : []),
       ]
     : [join(fixture.repo, 'install.sh'), fixture.target];
-  if (withReview) args.push('--with', 'review');
+  if (withReview) args.push('--with', 'strict-review');
   return spawnSync('bash', args, {
     cwd: fixture.repo,
     env: {

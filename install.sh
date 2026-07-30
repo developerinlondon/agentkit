@@ -17,17 +17,18 @@ Options:
   --with <group>       Also install an opt-in skill group (repeatable). Groups
                        are declared in skills/GROUPS; every unlisted skill is
                        in the always-installed `core` group.
-                         --with product   product-intelligence, product-review
-                         --with review    adversarial-review + hard merge gate
+                         --with product        product-intelligence, product-review
+                         --with strict-review  adversarial-review + hard merge gate
+                       (`--with review` remains an alias for strict-review.)
                        A global install run on a terminal with no group flags
                        and nothing remembered yet asks about each optional
                        group instead; every other run is unattended.
-                       Groups marked `explicit` in skills/GROUPS (review) are
-                       never offered by that prompt and are excluded from
-                       --all: only a literal --with installs them, and when
-                       one is not selected the installer REMOVES its
-                       previously installed hooks, tools, skills, and prompt
-                       wiring.
+                       Groups marked `explicit` in skills/GROUPS
+                       (strict-review) are never offered by that prompt and are
+                       excluded from --all: only a literal --with installs
+                       them, and when one is not selected the installer REMOVES
+                       its previously installed hooks, tools, skills, and
+                       prompt wiring.
   --no-prompt          Never ask about optional groups, even on a terminal.
                        AGENTKIT_SKIP_PROMPT=1 and a non-empty CI do the same.
   --without <group>    Drop a group from the selection and from the remembered
@@ -143,6 +144,32 @@ fi
 source "$REPO_DIR/lib/skill-groups.sh"
 validate_skill_groups || exit 1
 
+# The group shipped as `review` before it was renamed `strict-review`. Both ways
+# a name reaches the selection — a flag now, a selection persisted by an older
+# install — normalize the old spelling so neither becomes an unknown group.
+# Kept above `group_selected` deliberately: tests lift the block between that
+# function and the validation loop below, and this needs the parsed flags.
+GROUP_RENAMED_FROM=review
+GROUP_RENAMED_TO=strict-review
+
+normalize_group_list() {
+	local group out=""
+	for group in $1; do
+		if [[ "$group" == "$GROUP_RENAMED_FROM" ]]; then group="$GROUP_RENAMED_TO"; fi
+		out="${out:+$out }$group"
+	done
+	printf '%s' "$out"
+}
+
+# Said once for the whole command line: two flags naming it are still one rename.
+case " $EXTRA_GROUPS $DROP_GROUPS " in
+*" $GROUP_RENAMED_FROM "*)
+	echo "[groups] '$GROUP_RENAMED_FROM' is now '$GROUP_RENAMED_TO' — accepted as an alias" >&2
+	EXTRA_GROUPS="$(normalize_group_list "$EXTRA_GROUPS")"
+	DROP_GROUPS="$(normalize_group_list "$DROP_GROUPS")"
+	;;
+esac
+
 group_selected() {
 	case " $SELECTED_GROUPS " in
 	*" $1 "*) return 0 ;;
@@ -174,6 +201,8 @@ read_persisted_groups() {
 	local entry
 	while read -r entry _; do
 		case "$entry" in '' | '#'*) continue ;; esac
+		# Silent here, unlike the flag path: the operator did not type this name.
+		if [[ "$entry" == "$GROUP_RENAMED_FROM" ]]; then entry="$GROUP_RENAMED_TO"; fi
 		# A stale entry must not resurrect a selection, and must not decide the
 		# loop's exit status: as the tail, a bare `cond && action` returning 1
 		# kills the whole install under set -e with nothing printed.
@@ -734,7 +763,7 @@ install_grok_prompt() {
 
 instruction_group() {
 	case "$(basename "$1")" in
-	evidence-gated-review.md) printf 'review' ;;
+	evidence-gated-review.md) printf 'strict-review' ;;
 	*) printf 'core' ;;
 	esac
 }
@@ -913,10 +942,10 @@ install_claude_hooks() {
 		# DENY every Bash call — the settings merge below strips entries in the
 		# same run. Without jq that merge cannot run, so the scripts must stay
 		# until it can: they live and die together.
-		if review_hook "$name" && ! group_selected review; then
+		if review_hook "$name" && ! group_selected strict-review; then
 			if command -v jq &>/dev/null; then
 				if [[ -e "$install_dir/$name" || -L "$install_dir/$name" ]]; then
-					echo "[claude] Removing hook (review group not selected): $name"
+					echo "[claude] Removing hook (strict-review group not selected): $name"
 					rm -f "$install_dir/$name"
 				fi
 				if [[ "$hooks_dir" != "$install_dir" && (-e "$hooks_dir/$name" || -L "$hooks_dir/$name") ]]; then
@@ -1003,7 +1032,7 @@ merge_claude_settings() {
 	# entries here both withholds them on fresh installs and strips previously
 	# merged ones on upgrade — the settings side of removing the scripts above.
 	local review_selected=true
-	group_selected review || review_selected=false
+	group_selected strict-review || review_selected=false
 
 	local hooks_json
 	hooks_json=$(jq --arg dir "$hooks_dir" --argjson review "$review_selected" '
@@ -1174,7 +1203,7 @@ remove_codex_review_hooks() {
 	fi
 
 	if [[ "$removed" == true ]]; then
-		echo "[codex] Removed review gate hooks (review group not selected)."
+		echo "[codex] Removed review gate hooks (strict-review group not selected)."
 	fi
 }
 
@@ -1576,7 +1605,7 @@ if [[ "$GLOBAL" == true ]]; then
 	CODEX_RULES="$CODEX_ROOT/rules"
 	CODEX_PROMPTS="$CODEX_ROOT/prompts"
 	echo "--- Codex CLI (review gate hook) ---"
-	if group_selected review; then
+	if group_selected strict-review; then
 		install_codex_review_hooks "$CODEX_ROOT"
 	else
 		remove_codex_review_hooks "$CODEX_ROOT"
@@ -1652,7 +1681,7 @@ else
 	CODEX_ROOT="$TARGET_DIR/.codex"
 	CODEX_RULES="$CODEX_ROOT/rules"
 	echo "--- Codex CLI (review gate hook) ---"
-	if group_selected review; then
+	if group_selected strict-review; then
 		install_codex_review_hooks "$CODEX_ROOT"
 	else
 		remove_codex_review_hooks "$CODEX_ROOT"

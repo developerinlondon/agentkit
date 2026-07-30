@@ -138,15 +138,54 @@ describe('skill group selection', () => {
     const home = mkdtempSync(join(tmpdir(), 'agentkit-groups-'));
 
     try {
-      expect(install(home, ['--with', 'review']).status).toBe(0);
+      expect(install(home, ['--with', 'strict-review']).status).toBe(0);
       expect(existsSync(join(canonSkill(home, 'adversarial-review'), 'SKILL.md'))).toBe(true);
 
-      expect(install(home, ['--without', 'review']).status).toBe(0);
+      expect(install(home, ['--without', 'strict-review']).status).toBe(0);
       expect(existsSync(canonSkill(home, 'adversarial-review'))).toBe(false);
     } finally {
       rmSync(home, { force: true, recursive: true });
     }
   }, globalInstallTimeoutMs * 2);
+
+  // The group was renamed from `review`; a scripted flag that still says `review`
+  // must install the same thing rather than die on an unknown group.
+  test('--with review is accepted as an alias for the renamed group', () => {
+    const home = mkdtempSync(join(tmpdir(), 'agentkit-groups-'));
+
+    try {
+      const result = install(home, ['--with', 'review']);
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.stderr).toContain('alias');
+      expect(result.stdout).toContain('Skill groups:    core strict-review');
+      expect(existsSync(join(canonSkill(home, 'adversarial-review'), 'SKILL.md'))).toBe(true);
+      expect(existsSync(join(home, '.agentkit', 'tools', 'review-gate'))).toBe(true);
+      // The alias is not persisted: what is remembered is the group that exists.
+      expect(readFileSync(join(home, '.agentkit', 'groups'), 'utf-8')).toContain('strict-review');
+    } finally {
+      rmSync(home, { force: true, recursive: true });
+    }
+  }, globalInstallTimeoutMs);
+
+  // A selection persisted by a pre-rename install, upgraded by a bare run: the
+  // operator typed nothing this time, so the normalization says nothing either.
+  test('a persisted `review` selection resolves to strict-review silently', () => {
+    const home = mkdtempSync(join(tmpdir(), 'agentkit-groups-'));
+
+    try {
+      mkdirSync(join(home, '.agentkit'), { recursive: true });
+      writeFileSync(join(home, '.agentkit', 'groups'), 'review\n');
+
+      const upgrade = install(home);
+      expect(upgrade.status, upgrade.stderr).toBe(0);
+      expect(upgrade.stdout).toContain('Skill groups:    core strict-review');
+      expect(existsSync(join(canonSkill(home, 'adversarial-review'), 'SKILL.md'))).toBe(true);
+      expect(upgrade.stderr).not.toContain('alias');
+      expect(upgrade.stderr).not.toContain('Ignoring unknown group');
+    } finally {
+      rmSync(home, { force: true, recursive: true });
+    }
+  }, globalInstallTimeoutMs);
 
   test('a later bare install keeps the groups chosen once', () => {
     const home = mkdtempSync(join(tmpdir(), 'agentkit-groups-'));
