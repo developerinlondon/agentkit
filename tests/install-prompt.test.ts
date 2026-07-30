@@ -93,10 +93,25 @@ describe('global prompt installation', () => {
         'instructions',
         'resource-safety.md',
       );
+      const reviewDiscipline = join(
+        home,
+        '.agentkit',
+        'instructions',
+        'review-discipline.md',
+      );
       expect(existsSync(antiGlaze)).toBe(true);
       expect(existsSync(codingDiscipline)).toBe(true);
       expect(existsSync(collaborationVisibility)).toBe(true);
       expect(existsSync(resourceSafety)).toBe(true);
+      expect(existsSync(reviewDiscipline)).toBe(true);
+      const grokReviewDiscipline = join(home, '.grok', 'rules', 'review-discipline.md');
+      expect(lstatSync(grokReviewDiscipline).isSymbolicLink()).toBe(true);
+      expect(readFileSync(reviewDiscipline, 'utf-8')).toContain(
+        'agentkit:review-discipline:start',
+      );
+      expect(readFileSync(reviewDiscipline, 'utf-8')).toContain(
+        'did not author',
+      );
       const agentsAntiGlaze = join(home, '.agents', 'instructions', 'anti-glaze.md');
       expect(lstatSync(agentsAntiGlaze).isSymbolicLink()).toBe(true);
       expect(readlinkSync(agentsAntiGlaze)).toBe(antiGlaze);
