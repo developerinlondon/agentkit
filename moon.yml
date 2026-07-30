@@ -58,6 +58,13 @@ fileGroups:
     - "tools/review-gate"
     - "tools/review-profile"
 
+  docsInputs:
+    - "docs/site/astro.config.mjs"
+    - "docs/site/deploy.sh"
+    - "docs/site/package.json"
+    - "docs/site/src/**/*"
+    - "tests/docs/**/*"
+
   diagramInputs:
     - "bun.lock"
     - "package.json"
@@ -202,6 +209,12 @@ tasks:
     inputs:
       - "group://ciConfig"
       - "group://diagramInputs"
+
+  test-docs:
+    command: "bun run scripts/check-test-slices.ts docs"
+    inputs:
+      - "group://ciConfig"
+      - "group://docsInputs"
 
   test-hooks:
     command: "bun run scripts/check-test-slices.ts hooks"
