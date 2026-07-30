@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-plugin.json",
   "name": "agentkit",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Claude Code bundle with enforcement hooks, skills, a bounded runner, and the assay + infra-tools MCP toolchains. Hooks require jq, awk, cat, and python3; MCPs require bun and assay. Linux bounded execution additionally requires cgroup v2, a systemd user manager, and a provisioned agent-work.slice.",
   "author": {
     "name": "developerinlondon",
