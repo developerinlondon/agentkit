@@ -5,18 +5,24 @@ top and ships with the next tag.
 
 ## [Unreleased]
 
+## v0.6.3 — 2026-07-31
+
 - perf(ci): `agentkit:test-full` runs the slice inventory as concurrent per-file
   `bun test` children (`scripts/run-test-slices.ts`), buffering each file's
   output until it finishes so the transcript stays readable; a child that ends
   without a completion summary is reported as a failure rather than counted as
-  a pass. On a 4-CPU budget the full suite goes from 281s to 62s. Lane count
-  defaults to `min(4, cores/2)`; `--lanes N` overrides it (a flag, because the
-  installed `bounded-run` neither forwards `AGENTKIT_TEST_CONCURRENCY` nor
-  accepts an `env NAME=value` prefix) and `--serial` restores the one-at-a-time
-  run
+  a pass. CI wall clock drops from 366s to 108-151s on `ubuntu-24.04` and from
+  608s to 154s on the self-hosted macOS runner. Lane count defaults to
+  `min(4, cores/2)`; `--lanes N` overrides it (a flag, because the installed
+  `bounded-run` neither forwards `AGENTKIT_TEST_CONCURRENCY` nor accepts an
+  `env NAME=value` prefix) and `--serial` restores the one-at-a-time run
 - perf(tests): the install suites set `AGENTKIT_SKIP_SKILL_DEPS=1` — exactly one
   test, the first in `tests/install-prompt.test.ts`, still resolves and builds
   real skill dependencies
+- fix(ci): `tests/hook-supervisor.test.ts` runs with the machine to itself. It
+  asserts `fail-closed-hook.sh` relays its child inside a one-second deadline,
+  which lane contention makes the child miss — the supervisor then fails closed
+  correctly and the assertion breaks on load rather than on behaviour
 
 ## v0.6.2 — 2026-07-31
 
