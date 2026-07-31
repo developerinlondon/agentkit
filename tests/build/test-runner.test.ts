@@ -101,11 +101,12 @@ describe('the test runner schedules solo units exclusively', () => {
     expect(overlappingPairs(intervals)).toEqual([]);
   });
 
-  // Named rather than derived: the supervisor suite asserts a one-second
-  // deadline is met, and CI proved it fails on a loaded machine when it shares
-  // lanes. Dropping it from this set is a silent return to a red macOS run.
-  test('the hook supervisor suite is registered as unshareable', () => {
+  // Named rather than derived: both suites spawn an external process against a
+  // fixed budget, and CI proved each fails on a loaded machine when it shares
+  // lanes. Dropping either is a silent return to an intermittently red run.
+  test('the budget-bound suites are registered as unshareable', () => {
     expect([...soloFiles]).toContain('tests/hook-supervisor.test.ts');
+    expect([...soloFiles]).toContain('tests/publish-page/mermaid-runtime.test.ts');
   });
 
   test('a unit that throws surfaces as a rejection instead of hanging the pool', async () => {

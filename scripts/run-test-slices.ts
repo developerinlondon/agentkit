@@ -10,11 +10,12 @@ import {
 
 const repoRoot = join(import.meta.dir, '..');
 
-// Cannot share the machine: the supervisor suite asserts fail-closed-hook.sh
-// relays its child inside a one-second deadline that contention makes it miss;
-// the opt-in containment suite takes the machine-wide agentkit-run.lock.
+// Cannot share lanes: each spawns an external process against a fixed budget
+// (one second for fail-closed-hook.sh, twenty for Chrome's devtools endpoint)
+// that contention makes it miss; the opt-in suite takes the machine-wide lock.
 export const soloFiles = new Set([
   'tests/hook-supervisor.test.ts',
+  'tests/publish-page/mermaid-runtime.test.ts',
   ...(process.env.AGENTKIT_RUN_INTEGRATION === '1'
     ? ['tests/resource-run.integration.test.ts']
     : []),
