@@ -46,7 +46,7 @@ a skill may name only one kit.
 | `product`            | `product-intelligence`, `product-review` | `--with product`, the picker, or `--all`       |
 | `adversarial-review` | `adversarial-review`                     | **only** a literal `--with adversarial-review` |
 
-:::caution[`adversarial-review` is explicit opt-in, and deselection removes it]
+:::note[`adversarial-review` is consent-gated in both directions]
 `adversarial-review` is marked `explicit` in the manifest. It is never offered by the interactive picker
 and is **excluded from `--all`**. Only a literal `--with adversarial-review` selects it.
 

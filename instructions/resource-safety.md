@@ -33,4 +33,7 @@ runner with verified limits for container, remote, or service-managed work.
   or remote access as part of a dependency or build workflow. Handle production infrastructure as a
   separately approved change with explicit rollback.
 
+Enforcement scope follows the `resource-police` and `delegation-police` sections of
+`~/.config/agentkit/config.yaml`; this instruction is installed only while one of them is enabled.
+
 <!-- agentkit:resource-safety:end -->

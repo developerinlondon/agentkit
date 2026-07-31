@@ -13,7 +13,7 @@ is touched.
 
 | Dependency   | Role                                                                                                                                                                                                 |
 | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `jq`         | **Effectively mandatory** — see the warning below. A core-only install still exits 0 without it; `--with adversarial-review` aborts at the Codex review-hook stage.                                  |
+| `jq`         | **Effectively mandatory** — see below. A core-only install still exits 0 without it; `--with adversarial-review` aborts at the Codex review-hook stage.                                              |
 | `bun`        | Optional. Only skills shipping a `package.json` need it — a missing bun prints a warning naming the skill and the install continues.                                                                 |
 | `python3`    | Runtime dependency of the fail-closed hook supervisor and the merge gate, not checked at install time.                                                                                               |
 | `awk`, `cat` | Required by `install.sh` itself — the kit-manifest reader, the Codex prompt writer and the marker rewrite all use them — as well as by the hooks. Neither is probed, so a missing one fails mid-run. |
@@ -21,7 +21,8 @@ is touched.
 | `claude`     | Only for `--claude-plugin`.                                                                                                                                                                          |
 | `dprint`     | Runtime dependency of `format-police`, which formats files after a write.                                                                                                                            |
 
-:::danger[Without `jq`, a core-only install succeeds and enforces nothing on Claude Code]
+:::caution[Install `jq` before running the installer]
+`jq` is what registers the hooks with Claude Code and wires the global prompt into OpenCode.
 Observed on a sandboxed install with `jq` removed from `PATH`: the run exits **0**, links all 13
 skills, all 5 rules and all 10 hook scripts into place — and then prints
 
@@ -30,10 +31,10 @@ skills, all 5 rules and all 10 hook scripts into place — and then prints
 [opencode] WARNING: jq not found. Cannot wire global prompt into opencode.json.
 ```
 
-`~/.claude/settings.json` is **never created**. The hook scripts are all present under
-`~/.claude/hooks/`, but nothing registers them, so no guard fires. The OpenCode `instructions[]`
-wiring is skipped too. The closing summary says `Claude Code: manual` — that line is the only
-signal that the install did not finish the job.
+`~/.claude/settings.json` is not created. The hook scripts are all present under
+`~/.claude/hooks/`, but nothing registers them, so no guard fires; the OpenCode `instructions[]`
+wiring is skipped as well. The closing summary reports `Claude Code: manual`, which is the line to
+look for.
 
 Install `jq` and re-run.
 :::

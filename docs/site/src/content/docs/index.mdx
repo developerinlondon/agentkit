@@ -43,11 +43,14 @@ express the check.
 
 | Mechanisms it exists in    | Units                                                          |
 | -------------------------- | -------------------------------------------------------------- |
-| all three                  | `coding` `git` `kubectl` `pkg` `resource`                       |
+| all three                  | `coding` `git` `kubectl` `pkg` `resource` `delegation`          |
 | hook + OpenCode plugin     | `comment` `format`                                              |
 | hook only                  | `mr` `pages` `review`                                           |
 | OpenCode plugin only       | `version`                                                       |
-| Codex exec policy only     | `delegation`                                                    |
+
+The `resource` and `delegation` units are opt-in: with the default configuration they enforce
+nothing, and their Codex policy files are not installed. Enable and tune them through
+`~/.config/agentkit/config.yaml`.
 
 The `review-police` hook script also reaches Codex, through its `PreToolUse` hook interface
 rather than as an exec policy. Codex requires an explicit trust review in `/hooks` after that
@@ -59,25 +62,24 @@ they block force pushes, `--no-verify`, AI-attribution trailers, commits to prot
 stacked merge requests, oversized files and functions, duplicated blocks, and rotting comment
 references. Every refusal names the legitimate override.
 
-## Say plainly what it is not
+## What the guards cover
 
-:::caution[Not a security boundary]
-None of this contains a hostile agent.
+agentkit is built against ordinary failure — the wrong command, the skipped step, the stale
+review — which is what almost every failure is. It is not a sandbox, and the boundary is worth
+knowing precisely:
 
-- Hooks are **guards**: they detect a pattern in a tool call and refuse it. They are not a
-  sandbox. An agent that writes the same effect a different way is not stopped by a guard that
-  did not match it.
-- Codex policies match literal argv prefixes. They do not recursively parse shell payloads, so a
-  script that delegates through an API or a socket walks straight past them.
-- The review record lives in the repository and the agent can write it. A determined agent can
-  forge a pass. Only forge-side required approvals actually prevent a merge; the gate makes the
-  honest path correct and a *stale* review mechanically impossible to merge past.
-- Containment excludes delegated workloads — `docker`, `podman`, `systemd-run`, `ssh` — by
-  design, because the child work can escape the cgroup.
+- Hooks are **guards**: they detect a pattern in a tool call and refuse it. An effect written a
+  different way is outside what a given guard matches.
+- Codex policies match literal argv prefixes rather than parsing shell payloads, so work delegated
+  through an API or a socket is outside their reach.
+- The review record lives in the repository and the agent can write it. The gate makes the honest
+  path correct and a *stale* review mechanically impossible to merge past; forge-side required
+  approvals are what actually prevent a merge.
+- Containment deliberately excludes delegated workloads — `docker`, `podman`, `systemd-run`,
+  `ssh` — because the child work can escape the cgroup.
 
-agentkit documents its own limits because a guard you wrongly believe in is worse than no guard:
-you stop watching.
-:::
+Stating that precisely is the point: a guard you wrongly believe in is worse than no guard,
+because you stop watching.
 
 ## Start here
 

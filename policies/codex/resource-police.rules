@@ -1,15 +1,21 @@
 # resource-police.rules — Codex CLI exec policy
 # agentkit:platforms linux
 # Heavy commands must start with bounded-run so systemd owns and limits the process tree.
+#
+# Installed only when the agentkit config sets resource-police.enabled: true.
+# Blocks marked `# agentkit:resource-class <class>` install only when that
+# class is in resource-police.bounded (no list means every class). `env` is a
+# legitimate bounded-run child: the runner unwraps it and classifies the real
+# command itself.
 
 prefix_rule(
-    pattern = [["bounded-run", "agentkit-run"], "--profile", ["canary", "default", "compile", "browser"], "--", ["agentkit-run", "ansible", "ansible-playbook", "bounded-run", "buildah", "doas", "docker", "env", "kubectl", "machinectl", "mosh", "nerdctl", "pkexec", "podman", "run0", "service", "ssh", "su", "sudo", "systemctl", "systemd-run"]],
+    pattern = [["bounded-run", "agentkit-run"], "--profile", ["canary", "default", "compile", "browser"], "--", ["agentkit-run", "ansible", "ansible-playbook", "bounded-run", "buildah", "doas", "docker", "kubectl", "machinectl", "mosh", "nerdctl", "pkexec", "podman", "run0", "service", "ssh", "su", "sudo", "systemctl", "systemd-run"]],
     decision = "forbidden",
     justification = "bounded-run refuses nested, privileged, remote, container, and service-managed payloads because they escape or obscure its cgroup boundary.",
 )
 
 prefix_rule(
-    pattern = [["bounded-run", "agentkit-run"], "--", ["agentkit-run", "ansible", "ansible-playbook", "bounded-run", "buildah", "doas", "docker", "env", "kubectl", "machinectl", "mosh", "nerdctl", "pkexec", "podman", "run0", "service", "ssh", "su", "sudo", "systemctl", "systemd-run"]],
+    pattern = [["bounded-run", "agentkit-run"], "--", ["agentkit-run", "ansible", "ansible-playbook", "bounded-run", "buildah", "doas", "docker", "kubectl", "machinectl", "mosh", "nerdctl", "pkexec", "podman", "run0", "service", "ssh", "su", "sudo", "systemctl", "systemd-run"]],
     decision = "forbidden",
     justification = "bounded-run refuses nested, privileged, remote, container, and service-managed payloads because they escape or obscure its cgroup boundary.",
 )
@@ -26,74 +32,100 @@ prefix_rule(
     justification = "Pre-rename compat alias for bounded-run (installed symlink).",
 )
 
+# agentkit:resource-class js-packages
 prefix_rule(
-    pattern = ["bun", ["add", "install", "update", "test"]],
+    pattern = ["bun", ["add", "install", "update"]],
     decision = "forbidden",
-    justification = "Run package changes and test suites with bounded-run.",
+    justification = "Run package changes with bounded-run.",
+)
+
+# agentkit:resource-class js-scripts
+prefix_rule(
+    pattern = ["bun", "test"],
+    decision = "forbidden",
+    justification = "Run test suites with bounded-run.",
 )
 
 # Deliberately broader than the Claude hook: prefix rules cannot pattern-match
 # script names (typecheck:ci, test:e2e), so all `bun run` scripts stay bounded.
+# agentkit:resource-class js-scripts
 prefix_rule(
     pattern = ["bun", "run"],
     decision = "forbidden",
     justification = "Run build, check, lint, and test scripts with bounded-run.",
 )
 
+# agentkit:resource-class js-packages
 prefix_rule(
-    pattern = [["npm", "pnpm"], ["add", "install", "i", "ci", "update", "upgrade", "test", "run"]],
+    pattern = [["npm", "pnpm"], ["add", "install", "i", "ci", "update", "upgrade"]],
     decision = "forbidden",
-    justification = "Run package changes, test suites, and scripts with bounded-run.",
+    justification = "Run package changes with bounded-run.",
 )
 
+# agentkit:resource-class js-scripts
 prefix_rule(
-    pattern = ["yarn", ["add", "install", "up", "upgrade", "test", "run", "build", "check", "typecheck", "lint"]],
+    pattern = [["npm", "pnpm"], ["test", "run"]],
     decision = "forbidden",
-    justification = "Run package changes, test suites, and scripts with bounded-run.",
+    justification = "Run test suites and scripts with bounded-run.",
 )
 
+# agentkit:resource-class js-packages
 prefix_rule(
-    pattern = ["npx", ["tsc", "playwright"]],
+    pattern = ["yarn", ["add", "install", "up", "upgrade"]],
     decision = "forbidden",
-    justification = "Run the TypeScript compiler and Playwright with bounded-run.",
+    justification = "Run package changes with bounded-run.",
 )
 
+# agentkit:resource-class js-scripts
 prefix_rule(
-    pattern = ["bunx", "tsc"],
+    pattern = ["yarn", ["test", "run", "build", "check", "typecheck", "lint"]],
+    decision = "forbidden",
+    justification = "Run test suites and scripts with bounded-run.",
+)
+
+# agentkit:resource-class typescript
+prefix_rule(
+    pattern = [["npx", "bunx"], "tsc"],
     decision = "forbidden",
     justification = "Run the TypeScript compiler with bounded-run --profile compile.",
 )
 
+# agentkit:resource-class playwright
 prefix_rule(
-    pattern = ["bunx", "playwright"],
+    pattern = [["npx", "bunx"], "playwright"],
     decision = "forbidden",
     justification = "Run Playwright with bounded-run --profile browser.",
 )
 
+# agentkit:resource-class typescript
 prefix_rule(
     pattern = ["tsc"],
     decision = "forbidden",
     justification = "Run the TypeScript compiler with bounded-run --profile compile.",
 )
 
+# agentkit:resource-class playwright
 prefix_rule(
     pattern = ["playwright"],
     decision = "forbidden",
     justification = "Run Playwright with bounded-run --profile browser.",
 )
 
+# agentkit:resource-class cargo
 prefix_rule(
     pattern = ["cargo", ["build", "check", "test", "clippy"]],
     decision = "forbidden",
     justification = "Run Rust compiler and test workloads with bounded-run.",
 )
 
+# agentkit:resource-class go
 prefix_rule(
     pattern = ["go", ["build", "test"]],
     decision = "forbidden",
     justification = "Run Go compiler and test workloads with bounded-run.",
 )
 
+# agentkit:resource-class moon
 prefix_rule(
     pattern = ["moon", ["ci", "check", "run"]],
     decision = "forbidden",
@@ -112,36 +144,42 @@ prefix_rule(
     justification = "Reading the installed Moon version does not execute project tasks.",
 )
 
+# agentkit:resource-class python
 prefix_rule(
     pattern = ["pytest"],
     decision = "forbidden",
     justification = "Run Python test suites with bounded-run.",
 )
 
+# agentkit:resource-class python
 prefix_rule(
     pattern = [["python", "python3"], "-m", "pytest"],
     decision = "forbidden",
     justification = "Run Python test suites with bounded-run.",
 )
 
+# agentkit:resource-class python
 prefix_rule(
     pattern = [["pip", "pip3"], "install"],
     decision = "forbidden",
     justification = "Run Python dependency installs with bounded-run.",
 )
 
+# agentkit:resource-class python
 prefix_rule(
     pattern = ["uv", ["add", "sync"]],
     decision = "forbidden",
     justification = "Run Python dependency installs with bounded-run.",
 )
 
+# agentkit:resource-class python
 prefix_rule(
     pattern = ["uv", "pip", "install"],
     decision = "forbidden",
     justification = "Run Python dependency installs with bounded-run.",
 )
 
+# agentkit:resource-class python
 prefix_rule(
     pattern = ["uv", "run", "pytest"],
     decision = "forbidden",

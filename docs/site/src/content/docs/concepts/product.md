@@ -45,10 +45,10 @@ Two field-level rules carry most of the value:
 report it as _not verified_, instead of skipping it quietly and leaving a green report that covers less
 than it appears to.
 
-:::caution[Only one block of this file is schema-validated]
+:::note[What the schema validates]
 The kit ships a JSON Schema for the `part_of` back-pointer, with valid and invalid fixtures under test.
-The `surfaces`, `requires` and `cannot_verify` blocks are deliberately **outside** it. "Every field is
-optional except `surfaces`" is a convention the template states, not something a parser enforces.
+The `surfaces`, `requires` and `cannot_verify` blocks sit deliberately outside it: "every field is
+optional except `surfaces`" is a convention the template states rather than one a parser enforces.
 :::
 
 ## agentkit's own manifest
@@ -134,10 +134,10 @@ plus a medium finding — and never returns a silent pass. There is deliberately
 because inferring a build from the file tree is exactly the guess that produces a confident, wrong
 report.
 
-:::caution[Do not overstate the enforcement]
-Product review is mechanically required only when the exact target commit carries a review policy whose
-derived tier requires it. Without a target policy, the legacy merge gate does not inspect this lane at
-all. Never describe optional or legacy product review as enforced.
+:::note[When product review is mechanically required]
+The exact target commit has to carry a review policy whose derived tier requires it. Without a target
+policy, the legacy merge gate does not inspect this lane, and product review runs as a discipline
+rather than a gate — describe it that way when reporting on it.
 :::
 
 ## Evidence-backed briefs

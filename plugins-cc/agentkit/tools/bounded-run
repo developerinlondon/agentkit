@@ -12,6 +12,7 @@ readonly USER_RUNTIME_ROOT=/run/user
 readonly CGROUP_CONTROLLERS=/sys/fs/cgroup/cgroup.controllers
 readonly GUARD_CONF=/etc/agentkit/resource-guard.conf
 readonly VERIFY_CONTROL_OWNERSHIP=1
+readonly MAX_ENV_UNWRAP=4
 readonly AWK_BIN=/usr/bin/awk
 readonly ENV_BIN=/usr/bin/env
 readonly FLOCK_BIN=/usr/bin/flock
@@ -306,29 +307,76 @@ reject_command_basename() {
 	esac
 }
 
-resolve_command() {
-	local executable
-	reject_command_basename "${COMMAND[0]##*/}"
-	if [[ "${COMMAND[0]}" == */* ]]; then
-		executable="$("$REALPATH_BIN" -e -- "${COMMAND[0]}" 2>/dev/null || true)"
+resolve_path() {
+	local candidate="$1" resolved
+	if [[ "$candidate" == */* ]]; then
+		resolved="$("$REALPATH_BIN" -e -- "$candidate" 2>/dev/null || true)"
 	else
-		executable="$(type -P -- "${COMMAND[0]}" || true)"
-		if [[ -n "$executable" ]]; then
-			executable="$("$REALPATH_BIN" -e -- "$executable" 2>/dev/null || true)"
+		resolved="$(type -P -- "$candidate" || true)"
+		if [[ -n "$resolved" ]]; then
+			resolved="$("$REALPATH_BIN" -e -- "$resolved" 2>/dev/null || true)"
 		fi
 	fi
+	printf '%s' "$resolved"
+}
+
+# `env VAR=1 bun test` is the child that matters; classifying the literal `env`
+# refused a benign command and, worse, would have read `env VAR=1 sudo x` as
+# equally benign had the refusal been lifted without looking past the prefix.
+unwrap_environment_prefix() {
+	local depth=0
+	CHILD_INDEX=0
+	while [[ "${COMMAND[$CHILD_INDEX]##*/}" == env ]]; do
+		depth=$((depth + 1))
+		((depth <= MAX_ENV_UNWRAP)) \
+			|| die "more than $MAX_ENV_UNWRAP env wrappers before the command" "$EX_USAGE"
+		CHILD_INDEX=$((CHILD_INDEX + 1))
+		# Allowlist, not blocklist: getopt_long accepts any unambiguous
+		# abbreviation (--s= is --split-string), so only options that cannot
+		# change what runs may be skipped.
+		while [[ "${COMMAND[$CHILD_INDEX]:-}" == -* \
+			|| "${COMMAND[$CHILD_INDEX]:-}" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; do
+			if [[ "${COMMAND[$CHILD_INDEX]}" == -- ]]; then
+				CHILD_INDEX=$((CHILD_INDEX + 1))
+				break
+			fi
+			case "${COMMAND[$CHILD_INDEX]}" in
+			--ignore-environment | --debug | --null) ;;
+			-*)
+				[[ "${COMMAND[$CHILD_INDEX]}" =~ ^-[iv0]+$ ]] \
+					|| die "env option '${COMMAND[$CHILD_INDEX]}' is not allowed inside bounded-run; use -i/-v/-0, their long forms, --, or NAME=value" "$EX_USAGE"
+				;;
+			esac
+			CHILD_INDEX=$((CHILD_INDEX + 1))
+		done
+		[[ -n "${COMMAND[$CHILD_INDEX]:-}" ]] || die 'expected a command after env' "$EX_USAGE"
+	done
+}
+
+resolve_command() {
+	local executable child
+	unwrap_environment_prefix
+	reject_command_basename "${COMMAND[$CHILD_INDEX]##*/}"
+	executable="$(resolve_path "${COMMAND[0]}")"
 	[[ -n "$executable" && -x "$executable" ]] \
 		|| die "command '${COMMAND[0]}' is not an executable file" "$EX_USAGE"
 	COMMAND[0]="$executable"
-	reject_command_basename "${COMMAND[0]##*/}"
+	if ((CHILD_INDEX == 0)); then
+		reject_command_basename "${COMMAND[0]##*/}"
+		return 0
+	fi
+	child="$(resolve_path "${COMMAND[$CHILD_INDEX]}")"
+	[[ -n "$child" && -x "$child" ]] \
+		|| die "command '${COMMAND[$CHILD_INDEX]}' is not an executable file" "$EX_USAGE"
+	reject_command_basename "${child##*/}"
 }
 
 inspect_command_arguments() {
-	local executable="${COMMAND[0]##*/}"
+	local executable="${COMMAND[$CHILD_INDEX]##*/}"
 	local argument
 	case "$executable" in
 	bash | dash | fish | sh | zsh)
-		for argument in "${COMMAND[@]:1}"; do
+		for argument in "${COMMAND[@]:$((CHILD_INDEX + 1))}"; do
 			case "$argument" in
 			--command | --command=*)
 				die 'shell command strings are not allowed; pass direct argv' "$EX_USAGE"
@@ -384,7 +432,7 @@ run_bounded() {
 declare -a COMMAND=()
 declare -a CLEAN_ENV=()
 declare PROFILE MEMORY_HIGH MEMORY_MAX MEMORY_MAX_KIB CPU_QUOTA TASKS_MAX COMMAND_TIMEOUT RUNTIME_MAX
-declare CONTROL_RUNTIME_DIR CONTROL_BUS_ADDRESS
+declare CONTROL_RUNTIME_DIR CONTROL_BUS_ADDRESS CHILD_INDEX=0
 declare EXPECTED_MEMORY_HIGH EXPECTED_MEMORY_MAX EXPECTED_MEMORY_SWAP_MAX EXPECTED_CPU_QUOTA EXPECTED_TASKS_MAX
 
 parse_args "$@"

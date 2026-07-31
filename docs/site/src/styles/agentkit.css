@@ -188,3 +188,30 @@ kbd {
 	border: 1px solid var(--rule);
 	font-family: var(--ak-mono);
 }
+
+/* The header controls read as one pair of terminal fields, so the box lives
+   here rather than in either component: two copies would drift. */
+.ak-control {
+	display: flex;
+	align-items: center;
+	gap: 0.4rem;
+	height: 2rem;
+	padding-inline: 0.5rem;
+	background: var(--sunk);
+	border: 1px solid var(--rule);
+	color: var(--ink-dim);
+	font-family: var(--ak-mono);
+	font-size: 0.8125rem;
+	line-height: 1;
+}
+
+.ak-control:hover {
+	border-color: var(--fill);
+	color: var(--ink);
+}
+
+.ak-control:focus-within,
+.ak-control:focus-visible {
+	outline: 2px solid var(--fill);
+	outline-offset: 1px;
+}

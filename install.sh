@@ -49,6 +49,19 @@ Options:
   --no-session-scope   Global only: skip the per-session resource shims that
                        run each agent CLI in its own systemd scope, and leave
                        ~/.bashrc untouched.
+  --uninstall          Remove what the installer wrote instead of writing it.
+                       Honours --global and a target-project-dir the same way
+                       an install does, so the uninstall mirrors the install.
+                       Files are removed by the names this checkout ships, or
+                       by symlinks pointing into the shared root; managed
+                       blocks and entries are stripped out of the configs you
+                       own (~/.claude/settings.json, ~/.claude/CLAUDE.md,
+                       ~/.config/opencode/opencode.json, $CODEX_HOME/config.toml,
+                       $CODEX_HOME/hooks.json, ~/.bashrc). Anything the
+                       installer did not write is left alone, including
+                       ~/.config/agentkit/config.yaml. Add --claude-plugin to
+                       also uninstall the Claude plugins and marketplace.
+  --purge-config       With --uninstall: also delete ~/.config/agentkit/config.yaml.
   target-project-dir   Project directory to install into (default: current dir)
 
 Global install locations:
@@ -79,6 +92,9 @@ Examples:
   ./install.sh --global --claude-plugin  # Claude Code via plugin, rest as usual
   ./install.sh                        # Install into current project
   ./install.sh ~/code/my-project      # Install into specific project
+  ./install.sh --global --uninstall   # Remove the global install
+  ./install.sh --uninstall ~/code/my-project   # Remove a project install
+  ./install.sh --global --without memory       # Keep everything but the memory kit
 USAGE
 	exit "${1:-1}"
 }
@@ -89,6 +105,8 @@ AGENTKIT_HOME="${AGENTKIT_HOME:-$HOME/.agentkit}"
 
 CLAUDE_PLUGIN=false
 SESSION_SCOPE=true
+UNINSTALL=false
+PURGE_CONFIG=false
 EXTRA_KITS=""
 DROP_KITS=""
 ALL_KITS=false
@@ -105,6 +123,8 @@ while [[ $# -gt 0 ]]; do
 	--global) GLOBAL=true ;;
 	--claude-plugin) CLAUDE_PLUGIN=true ;;
 	--no-session-scope) SESSION_SCOPE=false ;;
+	--uninstall) UNINSTALL=true ;;
+	--purge-config) PURGE_CONFIG=true ;;
 	--no-prompt) PROMPT=false ;;
 	--with)
 		shift
@@ -139,6 +159,17 @@ done
 if [[ "$CLAUDE_PLUGIN" == true && "$GLOBAL" != true ]]; then
 	echo "ERROR: --claude-plugin requires --global (plugins are user-level)." >&2
 	exit 1
+fi
+
+if [[ "$PURGE_CONFIG" == true && "$UNINSTALL" != true ]]; then
+	echo "ERROR: --purge-config only applies to --uninstall." >&2
+	exit 1
+fi
+
+# Kit selection decides what an install writes; an uninstall removes every kit's
+# artifacts regardless, so the picker would only be a question with no answer.
+if [[ "$UNINSTALL" == true ]]; then
+	PROMPT=false
 fi
 
 # ─── Shared: Skill Kits ────────────────────────────────────────────────────
@@ -509,7 +540,9 @@ install_skills() {
 		# Skills that ship runtime dependencies (a package.json) need an install
 		# step: bun does NOT auto-install when a package.json is present.
 		if [[ -f "$target/package.json" ]]; then
-			if [[ -n "$bun_bin" && -x "$bun_bin" ]]; then
+			if [[ "${AGENTKIT_SKIP_SKILL_DEPS:-}" == 1 ]]; then
+				echo "[skills] Skipping dependencies (AGENTKIT_SKIP_SKILL_DEPS): $skill_name"
+			elif [[ -n "$bun_bin" && -x "$bun_bin" ]]; then
 				echo "[skills] Installing dependencies: $skill_name"
 				(cd "$target" && "$bun_bin" install --silent)
 				# Build-time artifacts (e.g. browser bundles) are gitignored and
@@ -882,6 +915,12 @@ install_global_agent_prompt() {
 		[[ -f "$source_file" ]] || continue
 		if ! kit_selected "$(instruction_kit "$source_file")"; then
 			remove_agent_prompt_file "$instructions_dir" "$(basename "$source_file")"
+			continue
+		fi
+		if [[ "$(basename "$source_file")" == resource-safety.md ]] \
+			&& ! agentkit_unit_enabled resource-police \
+			&& ! agentkit_unit_enabled delegation-police; then
+			remove_agent_prompt_file "$instructions_dir" resource-safety.md
 			continue
 		fi
 		install_agent_prompt_file "$instructions_dir" "$source_file"
@@ -1261,6 +1300,7 @@ install_codex_review_hooks() {
 
 remove_codex_review_hooks() {
 	local codex_dir="$1"
+	local reason="${2:-adversarial-review kit not selected}"
 	local hooks_file="$codex_dir/hooks.json"
 	local name removed=false
 
@@ -1302,7 +1342,7 @@ remove_codex_review_hooks() {
 	fi
 
 	if [[ "$removed" == true ]]; then
-		echo "[codex] Removed review gate hooks (adversarial-review kit not selected)."
+		echo "[codex] Removed review gate hooks ($reason)."
 	fi
 }
 
@@ -1611,6 +1651,491 @@ install_config() {
 		echo "[config] Edit to customize: $config_file"
 	fi
 }
+
+# ─── Uninstall ───────────────────────────────────────────────────────────────
+
+# Ownership is decided two ways and never inferred: a NAME this checkout ships,
+# or a symlink whose target sits inside the shared root. A rules file the
+# operator wrote themselves sits beside the managed ones and matches neither.
+
+uninstall_removed() {
+	echo "[uninstall] Removed: $1"
+}
+
+drop_path() {
+	if [[ -e "$1" || -L "$1" ]]; then
+		rm -rf "$1"
+		uninstall_removed "$1"
+	fi
+	return 0
+}
+
+drop_empty_dir() {
+	[[ -d "$1" ]] || return 0
+	if rmdir "$1" 2>/dev/null; then
+		uninstall_removed "$1"
+	fi
+	return 0
+}
+
+managed_names() {
+	local path
+	for path in "$@"; do
+		[[ -e "$path" ]] || continue
+		basename "$path"
+	done
+	return 0
+}
+
+repo_tool_names() {
+	managed_names "$REPO_DIR"/tools/*
+	# Created by the installer as a compat alias rather than shipped as a file.
+	printf '%s\n' agentkit-run
+}
+
+repo_hook_names() {
+	managed_names "$REPO_DIR"/hooks/claude/*.sh
+}
+
+repo_plugin_names() {
+	managed_names "$REPO_DIR"/plugins/*.ts
+	printf '%s\n' "${DEPRECATED_PLUGINS[@]}"
+}
+
+repo_policy_names() {
+	managed_names "$REPO_DIR"/policies/codex/*.rules
+}
+
+repo_rule_names() {
+	managed_names "$REPO_DIR"/rules/*.md
+}
+
+repo_instruction_names() {
+	managed_names "$REPO_DIR"/instructions/*.md
+}
+
+repo_skill_names() {
+	local dir
+	for dir in "$REPO_DIR"/skills/*/; do
+		[[ -d "$dir" ]] || continue
+		basename "$dir"
+	done
+	return 0
+}
+
+drop_managed_names() {
+	local dir="$1"
+	shift
+	local name
+	[[ -d "$dir" ]] || return 0
+	for name in "$@"; do
+		drop_path "$dir/$name"
+	done
+	return 0
+}
+
+drop_shared_root_links() {
+	local dir="$1"
+	[[ -d "$dir" ]] || return 0
+	local entry target
+	for entry in "$dir"/*; do
+		[[ -L "$entry" ]] || continue
+		target="$(readlink "$entry")"
+		case "$target" in
+		"$AGENTKIT_HOME"/*) ;;
+		*) continue ;;
+		esac
+		rm -f "$entry"
+		uninstall_removed "$entry"
+	done
+	return 0
+}
+
+# A real directory where a link into the shared root belongs has no agentkit
+# provenance — it may be the operator's own fork of a skill, so it is reported
+# rather than deleted. Mirrors what the installer does in the same situation.
+warn_unmanaged_leftovers() {
+	local dir="$1"
+	shift
+	[[ -d "$dir" ]] || return 0
+	local name
+	for name in "$@"; do
+		if [[ -e "$dir/$name" && ! -L "$dir/$name" ]]; then
+			echo "[uninstall] WARNING: leaving $dir/$name — not installed as a link into $AGENTKIT_HOME." >&2
+		fi
+	done
+	return 0
+}
+
+# Entries are identified by the hook script they run, so hooks another toolkit
+# wired into the same file survive.
+remove_claude_settings_hooks() {
+	local settings_file="$1"
+	[[ -f "$settings_file" ]] || return 0
+	if ! command -v jq >/dev/null 2>&1; then
+		echo "[uninstall] WARNING: jq missing — agentkit hooks left in $settings_file" >&2
+		return 0
+	fi
+
+	local names_json tmp="${settings_file}.tmp"
+	names_json="$(repo_hook_names | jq -R . | jq -s .)"
+	if ! jq --argjson names "$names_json" '
+    if ((.hooks // null) | type) == "object" then
+      .hooks = (.hooks | with_entries(
+        .value |= (map(
+          .hooks = ((.hooks // []) | map(select(
+            (.command // "") as $c
+            | (any($names[]; . as $n | $c | contains($n))) | not
+          )))
+        ) | map(select((.hooks | length) > 0)))
+      ) | with_entries(select((.value | length) > 0)))
+      | if (.hooks | length) == 0 then del(.hooks) else . end
+    else . end
+  ' "$settings_file" >"$tmp"; then
+		rm -f "$tmp"
+		echo "[uninstall] WARNING: could not parse $settings_file — left unchanged." >&2
+		return 0
+	fi
+	mv "$tmp" "$settings_file"
+	echo "[uninstall] Stripped agentkit hooks: $settings_file"
+
+	# What is left holds nothing at all, so it cannot be holding user content.
+	if jq -e '. == {}' "$settings_file" >/dev/null 2>&1; then
+		drop_path "$settings_file"
+	fi
+	return 0
+}
+
+remove_codex_developer_instructions() {
+	local config_file="$1"
+	local instructions_dir="$2"
+	[[ -f "$config_file" ]] || return 0
+	grep -Eq '^[[:space:]]*developer_instructions[[:space:]]*=' "$config_file" || return 0
+	if ! codex_has_managed_prompt "$config_file" "$instructions_dir"; then
+		echo "[uninstall] WARNING: developer_instructions in $config_file is not agentkit's; left in place." >&2
+		return 0
+	fi
+
+	local tmp="${config_file}.tmp"
+	awk '
+		BEGIN { in_section = 0; skip_multiline = 0 }
+		skip_multiline && /^[[:space:]]*"""[[:space:]]*$/ {
+			skip_multiline = 0
+			next
+		}
+		skip_multiline { next }
+		/^[[:space:]]*\[/ { in_section = 1; print; next }
+		!in_section && /^[[:space:]]*developer_instructions[[:space:]]*=/ {
+			if ($0 ~ /"""[[:space:]]*$/ && $0 !~ /^[[:space:]]*developer_instructions[[:space:]]*=[[:space:]]*""".*"""[[:space:]]*$/) {
+				skip_multiline = 1
+			}
+			next
+		}
+		{ print }
+	' "$config_file" >"$tmp"
+	mv "$tmp" "$config_file"
+	echo "[uninstall] Removed developer_instructions: $config_file"
+	return 0
+}
+
+remove_shim_path() {
+	local rc_file="$1"
+	local begin="# >>> agentkit session shims >>>"
+	local end="# <<< agentkit session shims <<<"
+
+	[[ -f "$rc_file" ]] || return 0
+	grep -Fq "$begin" "$rc_file" || return 0
+
+	local tmp="${rc_file}.tmp"
+	# Blank lines are buffered rather than printed so the separator the
+	# installer wrote before its block goes with the block, while blank lines
+	# the operator put there survive a write/remove cycle.
+	awk -v start="$begin" -v end="$end" '
+		$0 == start { if (blank > 0) blank-- ; skip = 1; next }
+		skip && $0 == end { skip = 0; next }
+		skip { next }
+		/^[[:space:]]*$/ { blank++; next }
+		{ while (blank > 0) { print ""; blank-- } ; print }
+		END { while (blank > 0) { print ""; blank-- } }
+	' "$rc_file" >"$tmp"
+	mv "$tmp" "$rc_file"
+	echo "[uninstall] Removed session shim PATH block: $rc_file"
+	return 0
+}
+
+uninstall_session_scoping() {
+	local shim_dir="$1"
+	local unit_dir="$2"
+	local unit="$unit_dir/agent-sessions.slice"
+	local runtime target had_unit=false
+
+	for runtime in "${SESSION_RUNTIMES[@]}"; do
+		[[ -L "$shim_dir/$runtime" ]] || continue
+		target="$(readlink "$shim_dir/$runtime")"
+		case "$target" in
+		*/agent-session) drop_path "$shim_dir/$runtime" ;;
+		esac
+	done
+	drop_empty_dir "$shim_dir"
+	drop_empty_dir "$(dirname "$shim_dir")"
+
+	if [[ -f "$unit" ]]; then
+		had_unit=true
+		drop_path "$unit"
+	fi
+	remove_shim_path "$HOME/.bashrc"
+
+	# Only worth a reload when a unit actually went away, and only where a user
+	# manager is reachable — a service-spawned terminal has neither.
+	if [[ "$had_unit" == true ]] && user_bus_env; then
+		systemctl --user daemon-reload || true
+		echo "[uninstall] Reloaded user systemd manager"
+	fi
+	return 0
+}
+
+uninstall_claude_hooks_dir() {
+	local dir="$1"
+	[[ -d "$dir" ]] || return 0
+
+	local name lib_file
+	for name in $(repo_hook_names); do
+		drop_path "$dir/$name"
+	done
+
+	# Globally lib/ is a directory symlink into canon; in a project install it is
+	# a real directory other toolkits also drop helpers into, so only agentkit's
+	# files leave and the directory goes only if nothing else is left.
+	if [[ -L "$dir/lib" ]]; then
+		drop_path "$dir/lib"
+	elif [[ -d "$dir/lib" ]]; then
+		for lib_file in "$REPO_DIR"/hooks/claude/lib/*; do
+			[[ -f "$lib_file" ]] || continue
+			drop_path "$dir/lib/$(basename "$lib_file")"
+		done
+		drop_empty_dir "$dir/lib"
+	fi
+	drop_empty_dir "$dir"
+	return 0
+}
+
+uninstall_codex() {
+	local codex_dir="$1"
+	local with_prompts="$2"
+	local name
+
+	remove_codex_review_hooks "$codex_dir" "uninstall"
+	drop_empty_dir "$codex_dir/hooks/lib"
+	drop_empty_dir "$codex_dir/hooks"
+	drop_empty_dir "$codex_dir/tools"
+
+	local hooks_file="$codex_dir/hooks.json"
+	# Left behind by the strip above with every entry gone; the installer
+	# created the file, so an empty shell of it is ours to take away.
+	if [[ -f "$hooks_file" ]] && command -v jq >/dev/null 2>&1; then
+		if jq -e '((.hooks // {}) | to_entries | map(.value) | flatten | length) == 0' \
+			"$hooks_file" >/dev/null 2>&1; then
+			drop_path "$hooks_file"
+		fi
+	fi
+
+	for name in $(repo_policy_names); do
+		drop_path "$codex_dir/rules/$name"
+	done
+	drop_empty_dir "$codex_dir/rules"
+
+	if [[ "$with_prompts" == true ]]; then
+		for name in $(repo_skill_names); do
+			drop_path "$codex_dir/prompts/$name.md"
+		done
+		drop_empty_dir "$codex_dir/prompts"
+	fi
+	drop_empty_dir "$codex_dir"
+	return 0
+}
+
+uninstall_global_prompts() {
+	local instructions_dir="$1"
+	local name title
+	for name in $(repo_instruction_names); do
+		title=""
+		[[ -f "$REPO_DIR/instructions/$name" ]] && title="$(prompt_title "$REPO_DIR/instructions/$name")"
+		remove_claude_prompt "$name" "$title"
+		remove_opencode_prompt "$instructions_dir/$name"
+	done
+
+	local claude_file="$HOME/.claude/CLAUDE.md"
+	# The installer creates this file from a prompt when none exists; nothing
+	# but whitespace is left of it then, and that is not user content.
+	if [[ -f "$claude_file" && -z "$(tr -d '[:space:]' <"$claude_file")" ]]; then
+		drop_path "$claude_file"
+	fi
+	return 0
+}
+
+uninstall_claude_plugins() {
+	if ! command -v claude >/dev/null 2>&1 || ! command -v jq >/dev/null 2>&1; then
+		echo "[uninstall] WARNING: claude and jq are needed to remove the Claude plugins." >&2
+		return 0
+	fi
+	local installed kit id
+	installed="$(claude plugin list --json 2>/dev/null)" || installed=""
+	printf '%s' "$installed" | jq -e 'type == "array"' >/dev/null 2>&1 || installed="[]"
+
+	for kit in $(declared_kits) $RETIRED_KIT_NAMES; do
+		id="$(kit_plugin_id "$kit")@agentkit"
+		if plugin_is_installed "$id" "$installed"; then
+			echo "[uninstall] Uninstalling plugin: $id"
+			claude plugin uninstall "$id" || echo "[uninstall] WARNING: failed to uninstall $id." >&2
+		fi
+	done
+	claude plugin marketplace remove agentkit >/dev/null 2>&1 \
+		&& echo "[uninstall] Removed marketplace: agentkit"
+	return 0
+}
+
+uninstall_global() {
+	echo "Uninstalling agentkit globally"
+	echo "Shared root: $AGENTKIT_HOME"
+	echo ""
+
+	local codex_root="${CODEX_HOME:-$HOME/.codex}"
+	local instructions_canon="$AGENTKIT_HOME/instructions"
+	local config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/agentkit"
+	local shim_dir="${XDG_DATA_HOME:-$HOME/.local/share}/agentkit/shims"
+	local name client
+
+	# Config edits first: identifying the managed Codex prompt reads the
+	# instruction files, which the shared-root removal below takes away.
+	echo "--- Managed config edits ---"
+	remove_codex_developer_instructions "$codex_root/config.toml" "$instructions_canon"
+	uninstall_global_prompts "$instructions_canon"
+	remove_claude_settings_hooks "$HOME/.claude/settings.json"
+	echo ""
+
+	echo "--- Per-session resource scoping ---"
+	uninstall_session_scoping "$shim_dir" "${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
+	echo ""
+
+	echo "--- Client links ---"
+	for client in "$HOME/.agents/skills" "$HOME/.agents/rules" "$HOME/.agents/instructions" \
+		"$HOME/.claude/skills" "$HOME/.claude/rules" "$HOME/.claude/tools" \
+		"$HOME/.grok/skills" "$HOME/.grok/rules"; do
+		drop_shared_root_links "$client"
+	done
+	# shellcheck disable=SC2046 # names are filenames from this checkout, never globbed paths
+	warn_unmanaged_leftovers "$HOME/.claude/skills" $(repo_skill_names)
+	# shellcheck disable=SC2046
+	warn_unmanaged_leftovers "$HOME/.agents/skills" $(repo_skill_names)
+	# shellcheck disable=SC2046
+	warn_unmanaged_leftovers "$HOME/.grok/skills" $(repo_skill_names)
+	echo ""
+
+	echo "--- Claude Code ---"
+	uninstall_claude_hooks_dir "$HOME/.claude/hooks"
+	# Older installs put real tool copies here instead of links into canon.
+	# shellcheck disable=SC2046
+	drop_managed_names "$HOME/.claude/tools" $(repo_tool_names)
+	drop_empty_dir "$HOME/.claude/tools"
+	if [[ "$CLAUDE_PLUGIN" == true ]]; then
+		uninstall_claude_plugins
+	fi
+	echo ""
+
+	echo "--- OpenCode ---"
+	# shellcheck disable=SC2046
+	drop_managed_names "$HOME/.config/opencode/plugins" $(repo_plugin_names)
+	drop_empty_dir "$HOME/.config/opencode/plugins"
+	echo ""
+
+	echo "--- Codex CLI ---"
+	uninstall_codex "$codex_root" true
+	echo ""
+
+	echo "--- PATH tools ---"
+	# shellcheck disable=SC2046
+	drop_managed_names "$HOME/.local/bin" $(repo_tool_names)
+	echo ""
+
+	echo "--- Shared root ---"
+	for name in skills rules instructions hooks tools; do
+		drop_path "$AGENTKIT_HOME/$name"
+	done
+	# kits and its retired name record the selection; version stamps the build.
+	for name in kits groups version; do
+		drop_path "$AGENTKIT_HOME/$name"
+	done
+	drop_empty_dir "$AGENTKIT_HOME"
+	echo ""
+
+	if [[ "$PURGE_CONFIG" == true ]]; then
+		drop_path "$config_dir/config.yaml"
+		drop_empty_dir "$config_dir"
+	elif [[ -f "$config_dir/config.yaml" ]]; then
+		echo "[uninstall] Kept your config: $config_dir/config.yaml (--purge-config removes it)"
+	fi
+
+	echo ""
+	echo "Done. Anything not written by the installer was left alone:"
+	echo "  your own skills, rules, prompts, tools and hook entries"
+	echo "  Codex rules files this checkout does not ship"
+	echo "  ${config_dir}/config.yaml unless --purge-config was passed"
+	return 0
+}
+
+uninstall_project() {
+	local target_dir="$1"
+	target_dir="$(cd "$target_dir" && pwd)"
+	echo "Uninstalling agentkit from: $target_dir"
+	echo ""
+
+	local name
+
+	echo "--- Skills and rules ---"
+	# shellcheck disable=SC2046
+	drop_managed_names "$target_dir/.opencode/skills" $(repo_skill_names)
+	drop_empty_dir "$target_dir/.opencode/skills"
+	# shellcheck disable=SC2046
+	drop_managed_names "$target_dir/.opencode/rules" $(repo_rule_names)
+	drop_empty_dir "$target_dir/.opencode/rules"
+	# shellcheck disable=SC2046
+	drop_managed_names "$target_dir/.claude/skills" $(repo_skill_names)
+	drop_empty_dir "$target_dir/.claude/skills"
+	echo ""
+
+	echo "--- OpenCode ---"
+	# shellcheck disable=SC2046
+	drop_managed_names "$target_dir/.opencode/plugins" $(repo_plugin_names)
+	drop_empty_dir "$target_dir/.opencode/plugins"
+	drop_empty_dir "$target_dir/.opencode"
+	echo ""
+
+	echo "--- Claude Code ---"
+	uninstall_claude_hooks_dir "$target_dir/.claude/hooks"
+	# shellcheck disable=SC2046
+	drop_managed_names "$target_dir/.claude/tools" $(repo_tool_names)
+	drop_empty_dir "$target_dir/.claude/tools"
+	remove_claude_settings_hooks "$target_dir/.claude/settings.json"
+	drop_empty_dir "$target_dir/.claude"
+	echo ""
+
+	echo "--- Codex CLI ---"
+	uninstall_codex "$target_dir/.codex" false
+	echo ""
+
+	echo "Done. A project install writes no global config, so nothing outside"
+	echo "$target_dir was touched."
+	return 0
+}
+
+if [[ "$UNINSTALL" == true ]]; then
+	if [[ "$GLOBAL" == true ]]; then
+		uninstall_global
+	else
+		uninstall_project "${TARGET_DIR:-.}"
+	fi
+	exit 0
+fi
 
 # ─── Main: Global Install ────────────────────────────────────────────────────
 

@@ -7,10 +7,15 @@ import { spawnSync } from 'node:child_process';
 const repoRoot = dirname(dirname(import.meta.dir));
 const notice = join(repoRoot, 'hooks', 'claude', 'update-notice.sh');
 
+// The runner user's global git config must not reach the fixtures or the
+// check: forced commit/tag signing breaks fixture creation on a headless box,
+// and url rewrites would redirect ls-remote.
+const gitIsolation = { GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_SYSTEM: '/dev/null' };
+
 function sh(command: string, env: Record<string, string> = {}) {
   return spawnSync('bash', ['-c', command], {
     encoding: 'utf-8',
-    env: { ...process.env, ...env },
+    env: { ...process.env, ...gitIsolation, ...env },
     timeout: 30_000,
   });
 }
@@ -111,6 +116,7 @@ describe('the session-start update notice', () => {
         encoding: 'utf-8',
         timeout: 30_000,
         env: {
+          ...gitIsolation,
           PATH: bin,
           HOME: h,
           AGENTKIT_HOME: join(h, '.agentkit'),

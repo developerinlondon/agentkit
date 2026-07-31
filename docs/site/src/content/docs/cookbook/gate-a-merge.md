@@ -12,10 +12,10 @@ bound to the exact source head the forge is about to merge.
 ./agentkit/install.sh --global --with adversarial-review
 ```
 
-:::caution
-This is the one kit `--all` does not give you and the interactive picker never offers. Without a
-literal `--with adversarial-review`, `review-police`, `review-gate` and `review-profile` are not
-installed — and if a previous run installed them, this run removes them.
+:::note[The flag is the whole consent story]
+This is the one kit `--all` does not give you and the interactive picker never offers. A literal
+`--with adversarial-review` installs `review-police`, `review-gate` and `review-profile`; a run
+without it removes them again.
 :::
 
 ## 1. See how much review the change earns
@@ -82,13 +82,13 @@ Any drift is a denial.
 Policy is read from the exact **target** commit, never the source checkout — otherwise a change
 could weaken the rules judging that same change.
 
-:::danger[Never commit the record]
-`.gitignore` excludes `.agentkit/reviews/`, and that is load-bearing. Committing a record moves
-`HEAD`, which stales the record against the branch it reviews. The gate would then deny its own
-merge and invite regenerating records to suit — exactly the loop the gate exists to stop.
+:::caution[Keep the record out of git]
+`.gitignore` excludes `.agentkit/reviews/`, and that exclusion is load-bearing. Committing a record
+moves `HEAD`, which stales the record against the branch it reviews: the gate then denies the merge
+and invites regenerating records to suit — the loop the gate exists to stop.
 
 Durable evidence belongs in a redacted PR/MR comment or a controlled forge artifact.
-`~/.agentkit/review-audit.log` is only the local record of gate decisions.
+`~/.agentkit/review-audit.log` is the local record of gate decisions.
 :::
 
 ## 3. Merge with the reviewed head, explicitly
@@ -124,10 +124,10 @@ merge-queue targets are refused for the same reason.
 
 Every denial names the retry: the flag to add, or the record to regenerate against the current head.
 
-:::note[It is not security]
-The record lives in the repository and the agent can write it, so a determined agent can forge a
-pass. What the gate buys is that a _stale_ review is mechanically impossible to merge past. Only
-forge-side required approvals actually prevent a merge.
+:::note[What the gate guarantees]
+A _stale_ review is mechanically impossible to merge past. The record itself lives in the repository
+and the agent can write it, so the gate is a consistency check rather than an authentication one —
+pair it with forge-side required approvals, which are what actually prevent a merge.
 :::
 
 The doctrine behind all of this, including the opt-in advisory lane (`--with advisory-review`):

@@ -1,4 +1,7 @@
 import type { Plugin, PluginModule } from '@opencode-ai/plugin';
+import { readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 
 interface Launch {
   token: string;
@@ -16,7 +19,81 @@ interface Finding {
   undecidable?: boolean;
 }
 
+/** Both units are off unless the config turns them on. `classes: null` means
+ *  every class is bounded; a list narrows it, and an empty list bounds none. */
+interface PolicyConfig {
+  resource: boolean;
+  delegation: boolean;
+  classes: string[] | null;
+}
+
+interface PolicyContext extends PolicyConfig {
+  delegatedOk: boolean;
+  containmentRequired: boolean;
+}
+
 const MAX_ANALYSIS_DEPTH = 4;
+
+function configPath(): string {
+  const xdg = process.env.XDG_CONFIG_HOME || join(homedir(), '.config');
+  return join(xdg, 'agentkit', 'config.yaml');
+}
+
+// Quoting a scalar is legal YAML, so `enabled: "true"` must read as true rather
+// than as an unrecognised value that silently disables the unit.
+function scalar(value: string): string {
+  return value.replace(/\s+#.*$/, '').trim().replace(/^["']/, '').replace(/["']$/, '')
+    .toLowerCase();
+}
+
+function readPolicyConfig(): PolicyConfig {
+  const config: PolicyConfig = { resource: false, delegation: false, classes: null };
+  let content: string;
+  try {
+    content = readFileSync(configPath(), 'utf-8');
+  } catch {
+    return config;
+  }
+  let section = '';
+  let inList = false;
+  for (const line of content.split('\n')) {
+    if (/^[^\s#]/.test(line)) {
+      section = /^resource-police:/.test(line)
+        ? 'resource'
+        : /^delegation-police:/.test(line)
+        ? 'delegation'
+        : '';
+      inList = false;
+      continue;
+    }
+    const body = line.trim();
+    if (!section || !body || body.startsWith('#')) continue;
+    if (body.startsWith('-')) {
+      if (inList) config.classes?.push(scalar(body.slice(1)));
+      continue;
+    }
+    inList = false;
+    const match = /^([\w-]+):\s*(.*)$/.exec(body);
+    if (!match) continue;
+    const [, key = '', raw = ''] = match;
+    if (key === 'enabled') {
+      if (section === 'resource') config.resource = scalar(raw) === 'true';
+      else config.delegation = scalar(raw) === 'true';
+      continue;
+    }
+    if (key !== 'bounded' || section !== 'resource') continue;
+    config.classes = [];
+    const value = raw.replace(/\s+#.*$/, '').trim();
+    if (value.startsWith('[')) {
+      for (const entry of value.replace(/[[\]]/g, '').split(',')) {
+        if (entry.trim()) config.classes.push(scalar(entry));
+      }
+    } else if (!value) {
+      inList = true;
+    }
+  }
+  return config;
+}
 
 function splitShellSegments(command: string): string[] {
   const segments: string[] = [];
@@ -102,53 +179,59 @@ function parseLaunch(segment: string): Launch | null {
 
 const RUN_SCRIPT_PATTERN = /^(build|check|type-?check|lint|test)(?::[\w-]+)?$/i;
 
-function isHeavy(launch: Launch): boolean {
+function heavyClass(launch: Launch): string | null {
   const [first = '', second = ''] = launch.args;
   switch (launch.executable.toLowerCase()) {
     case 'bun':
-      if (/^(add|install|update|test)$/i.test(first)) return true;
-      return first === 'run' && RUN_SCRIPT_PATTERN.test(second);
+      if (/^(add|install|update)$/i.test(first)) return 'js-packages';
+      if (/^test$/i.test(first)) return 'js-scripts';
+      return first === 'run' && RUN_SCRIPT_PATTERN.test(second) ? 'js-scripts' : null;
     case 'bunx':
     case 'npx':
-      if (first === 'tsc') return second !== '--version';
-      return first === 'playwright' && second === 'test';
+      if (first === 'tsc') return second === '--version' ? null : 'typescript';
+      return first === 'playwright' && second === 'test' ? 'playwright' : null;
     case 'npm':
     case 'pnpm':
-      if (/^(add|install|i|ci|update|upgrade|test)$/i.test(first)) return true;
-      return first === 'run' && RUN_SCRIPT_PATTERN.test(second);
+      if (/^(add|install|i|ci|update|upgrade)$/i.test(first)) return 'js-packages';
+      if (/^test$/i.test(first)) return 'js-scripts';
+      return first === 'run' && RUN_SCRIPT_PATTERN.test(second) ? 'js-scripts' : null;
     case 'yarn':
-      if (!first) return true;
-      if (/^(add|install|up|upgrade|test)$/i.test(first)) return true;
-      if (first === 'run' && RUN_SCRIPT_PATTERN.test(second)) return true;
-      return /^(build|check|type-?check|lint)(?::[\w-]+)?$/i.test(first);
+      if (!first) return 'js-packages';
+      if (/^(add|install|up|upgrade)$/i.test(first)) return 'js-packages';
+      if (/^test$/i.test(first)) return 'js-scripts';
+      if (first === 'run' && RUN_SCRIPT_PATTERN.test(second)) return 'js-scripts';
+      return /^(build|check|type-?check|lint)(?::[\w-]+)?$/i.test(first) ? 'js-scripts' : null;
     case 'tsc':
-      return first !== '--version';
+      return first === '--version' ? null : 'typescript';
     case 'playwright':
-      return first === 'test';
+      return first === 'test' ? 'playwright' : null;
     case 'cargo':
-      return /^(build|check|test|clippy)$/i.test(first);
+      return /^(build|check|test|clippy)$/i.test(first) ? 'cargo' : null;
     case 'go':
-      return /^(build|test)$/i.test(first);
+      return /^(build|test)$/i.test(first) ? 'go' : null;
     case 'moon':
-      return /^(ci|check|run)$/i.test(first);
+      return /^(ci|check|run)$/i.test(first) ? 'moon' : null;
     case 'pip':
     case 'pip3':
-      return first === 'install';
+      return first === 'install' ? 'python' : null;
     case 'uv':
-      if (/^(add|sync)$/i.test(first)) return true;
-      if (first === 'pip' && second === 'install') return true;
-      return first === 'run' && second === 'pytest';
-    case 'docker':
-    case 'podman':
-      return false;
+      if (/^(add|sync)$/i.test(first)) return 'python';
+      if (first === 'pip' && second === 'install') return 'python';
+      return first === 'run' && second === 'pytest' ? 'python' : null;
     case 'pytest':
-      return true;
+      return 'python';
     case 'python':
     case 'python3':
-      return first === '-m' && second === 'pytest';
+      return first === '-m' && second === 'pytest' ? 'python' : null;
     default:
-      return false;
+      return null;
   }
+}
+
+function isHeavy(launch: Launch, classes: string[] | null): boolean {
+  const heavy = heavyClass(launch);
+  if (heavy === null) return false;
+  return classes === null || classes.includes(heavy);
 }
 
 function shellCommandPayload(launch: Launch): string | null {
@@ -227,11 +310,14 @@ function wrappedCommand(launch: Launch): string | null {
   return launch.args.slice(separator + 1).join(' ');
 }
 
+function blocksDelegation(context: PolicyContext, launch: Launch): boolean {
+  return context.delegation && !context.delegatedOk && isDelegating(launch);
+}
+
 function detectUnboundedCommand(
   command: string,
+  context: PolicyContext,
   depth = 0,
-  delegatedOk = false,
-  containmentRequired = true,
   contained = false,
 ): Finding | null {
   if (depth > MAX_ANALYSIS_DEPTH) {
@@ -248,19 +334,13 @@ function detectUnboundedCommand(
         if (nestedLaunch?.undecidable) {
           return { segment, delegated: false, undecidable: true };
         }
-        if (nestedLaunch && !delegatedOk && isDelegating(nestedLaunch)) {
+        if (nestedLaunch && blocksDelegation(context, nestedLaunch)) {
           return { segment, delegated: true };
         }
-        const finding = detectUnboundedCommand(
-          nestedCommand,
-          depth + 1,
-          delegatedOk,
-          containmentRequired,
-          true,
-        );
+        const finding = detectUnboundedCommand(nestedCommand, context, depth + 1, true);
         if (finding) return finding;
       }
-      if (containmentRequired && !isTrustedRunner(launch.token)) {
+      if (context.containmentRequired && !isTrustedRunner(launch.token)) {
         return { segment, delegated: false, untrustedRunner: true };
       }
       continue;
@@ -268,19 +348,13 @@ function detectUnboundedCommand(
     if (isShell(launch.executable)) {
       const payload = shellCommandPayload(launch);
       if (payload !== null) {
-        const finding = detectUnboundedCommand(
-          payload,
-          depth + 1,
-          delegatedOk,
-          containmentRequired,
-          contained,
-        );
+        const finding = detectUnboundedCommand(payload, context, depth + 1, contained);
         if (finding) return finding;
         continue;
       }
     }
-    if (!delegatedOk && isDelegating(launch)) return { segment, delegated: true };
-    if (containmentRequired && !contained && isHeavy(launch)) {
+    if (blocksDelegation(context, launch)) return { segment, delegated: true };
+    if (context.containmentRequired && !contained && isHeavy(launch, context.classes)) {
       return { segment, delegated: false };
     }
   }
@@ -308,12 +382,13 @@ function containmentRequired(platform: string): boolean {
 }
 
 export function enforceResourcePolicy(command: string, platform = process.platform): void {
-  const finding = detectUnboundedCommand(
-    command,
-    0,
-    isDelegatedOverride(command),
-    containmentRequired(platform),
-  );
+  const config = readPolicyConfig();
+  if (!config.resource && !config.delegation) return;
+  const finding = detectUnboundedCommand(command, {
+    ...config,
+    delegatedOk: isDelegatedOverride(command),
+    containmentRequired: config.resource && containmentRequired(platform),
+  });
   if (!finding) return;
   if (finding.undecidable) {
     throw new Error(

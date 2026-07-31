@@ -14,11 +14,18 @@ const gitIdentity = {
   GIT_COMMITTER_EMAIL: "t@t",
 };
 
+// Fixtures and clones must not see the runner user's global git config —
+// forced signing or url rewrites there would fail them on that box only.
+const gitIsolation = {
+  GIT_CONFIG_GLOBAL: "/dev/null",
+  GIT_CONFIG_SYSTEM: "/dev/null",
+};
+
 function git(args: string[], opts: Record<string, unknown> = {}) {
   const result = spawnSync("git", args, {
     encoding: "utf-8",
     timeout: timeoutMs,
-    env: { ...process.env, ...gitIdentity },
+    env: { ...process.env, ...gitIsolation, ...gitIdentity },
     maxBuffer: 64 * 1024 * 1024,
     ...opts,
   });
@@ -63,6 +70,8 @@ function runBootstrap(home: string, extraEnv: Record<string, string> = {}, extra
     cwd: tmpdir(),
     env: {
       ...process.env,
+      ...gitIsolation,
+      AGENTKIT_SKIP_SKILL_DEPS: "1",
       HOME: home,
       XDG_CONFIG_HOME: join(home, ".config"),
       AGENTKIT_HOME: join(home, ".agentkit"),

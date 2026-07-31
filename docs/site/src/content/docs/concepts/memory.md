@@ -36,7 +36,8 @@ silent self-modification.
 
 Like every non-explicit kit, deselecting it later (`--without memory`) stops future installs but
 leaves already-installed skills _and_ hooks in place — the hooks stay silent no-ops wherever no
-vault exists; remove the `brain-*` files from your hooks directory by hand for a full uninstall.
+vault exists. To get them off the machine, uninstall and reinstall without the kit
+(`install.sh --global --uninstall`, then a plain `install.sh --global`).
 
 The kit is opt-in:
 

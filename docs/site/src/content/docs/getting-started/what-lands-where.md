@@ -63,10 +63,11 @@ runtime only gets a shim when its real binary resolves on a `PATH` with the shim
 Operator overrides for the slice belong in `agent-sessions.slice.d/` drop-ins, which systemd
 layers on top and a re-install will not clobber.
 
-:::caution[The slice the installer writes is not the slice `bounded-run` needs]
+:::note[Two slices, two owners]
 `install.sh` provisions the **session** slice, `agent-sessions.slice`. The **work** slice that
-`bounded-run` verifies before running a heavy command — `agent-work.slice` — is host-provisioned
-separately. The installer never creates it, and `bounded-run` fails closed without it.
+`bounded-run` verifies before running a heavy command — `agent-work.slice` — is provisioned on the
+host separately, and `bounded-run` fails closed until it is in place. See
+[contain a heavy build](/docs/cookbook/contain-a-build/).
 :::
 
 ## Global versus project

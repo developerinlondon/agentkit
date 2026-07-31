@@ -101,9 +101,9 @@ The child gets `env -i` plus an allowlist: `HOME`, `USER`, `LOGNAME`, `PATH`, `S
 | `75`          | another `bounded-run` holds the lock (`flock --conflict-exit-code`) |
 | anything else | the command's own status                                            |
 
-:::caution[Judge by output, not only by status]
-Failures are reported on stderr prefixed `bounded-run:`. Read the output rather than trusting a
-status alone.
+:::note[Read the stderr, not only the status]
+Failures are reported on stderr prefixed `bounded-run:`, which is where the reason for a refusal or
+a preflight failure appears.
 :::
 
 ## `agent-session`
@@ -147,10 +147,10 @@ missing, the user bus is unreachable, or a scope already wraps this process
 Exit codes: `64` when invoked as `agent-session` with no command, `69` when the target cannot be
 found on `PATH` outside the shim directory. Otherwise it `exec`s and the runtime owns the status.
 
-:::caution[`agent-session` has no `--help`]
-It is the one tool here without one. Its first argument is taken as the command to run, so
+:::note[`agent-session` takes a command, not flags]
+It is the one tool here with no `--help`. Its first argument is the command to run, so
 `agent-session --help` tries to resolve `--help` on `PATH` and exits `69` with
-`cannot find '--help' on PATH outside the shim directory`. Verified by running it.
+`cannot find '--help' on PATH outside the shim directory`.
 :::
 
 ## `review-gate`
@@ -190,10 +190,10 @@ Blocking severities default to `["BLOCKER","HIGH"]` and are configurable via
 `gate.blocking_severities` in the target policy. `user_consent` must be **absent** from a passing
 record, and is refused outright on a tier whose policy sets `allow_local_consent: false`.
 
-:::caution[Not an authentication boundary]
-The file header says so in the first three lines: this is a structural and semantic consistency
-gate. It cannot prove reviewer identity, independence, command execution, redaction, or the truth of
-any referenced evidence. Forge protections own those.
+:::note[A consistency gate, not an authentication one]
+The file header says so in its first three lines: `review-gate` checks structural and semantic
+consistency. Reviewer identity, independence, command execution, redaction and the truth of any
+referenced evidence are owned by forge protections.
 :::
 
 ## `review-profile`
@@ -254,9 +254,9 @@ python3 tools/fix-ascii-boxes.py                   # every .md under the cwd
 Exit `0` prints `PASS: All ASCII boxes aligned`; exit `1` prints `FAIL:` and lists every misaligned
 line, marking `UNFIXABLE` ones. A missing file is a warning on stderr, not a failure.
 
-:::caution[No arguments means the whole tree]
-With no file arguments it globs `**/*.md` recursively from the current directory and rewrites what
-it can. Pass an explicit file list.
+:::caution[Pass an explicit file list]
+With no file arguments it globs `**/*.md` recursively from the current directory and rewrites every
+file it can.
 :::
 
 ## Environment variables

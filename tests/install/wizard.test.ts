@@ -50,6 +50,9 @@ function installEnv(home: string) {
   const env: Record<string, string | undefined> = {
     ...process.env,
     AGENTKIT_PLATFORM: 'linux',
+    // These tests pin wizard behavior, not dependency fetching — a runner
+    // whose registry view is broken must not be able to fail them.
+    AGENTKIT_SKIP_SKILL_DEPS: '1',
     HOME: home,
     XDG_CONFIG_HOME: join(home, '.config'),
     AGENTKIT_HOME: join(home, '.agentkit'),

@@ -59,7 +59,8 @@ describe('resource-safe-execution assets', () => {
   test('documents Grok resource behavior per platform and parser availability', () => {
     const grok = readFileSync(join(repoRoot, 'docs', 'grok.md'), 'utf-8').replace(/\s+/g, ' ');
 
-    expect(grok).toContain('On Linux, `resource-police` requires `bounded-run`');
+    expect(grok).toContain('opt-in: it enforces nothing until `resource-police.enabled: true`');
+    expect(grok).toContain('When enabled on Linux, `resource-police` requires `bounded-run`');
     expect(grok).toContain('On non-Linux hosts');
     expect(grok).toContain('`jq`, `awk`, and `cat`');
     expect(grok).toContain('warns and intentionally fails open');

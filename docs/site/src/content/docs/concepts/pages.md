@@ -9,10 +9,10 @@ An agent finishes something worth looking at — a report, an architecture page,
 the wrong container for it. Pages is the other end: one command renders that content through a house
 theme and returns a live URL.
 
-:::caution[Public by slug is not private]
-Reads are unauthenticated. An unguessable slug is not access control. Published pages carry a
-`noindex, nofollow` robots header so an unlinked slug stays unlisted, and that is the entire
-protection. Publish nothing secret.
+:::caution[Published pages are public]
+Reads are unauthenticated, so anyone with the URL can load the page. A `noindex, nofollow` robots
+header keeps an unlinked slug out of search results, and an unguessable slug is not access
+control. Publish nothing confidential.
 :::
 
 ## The serving path
@@ -104,10 +104,8 @@ publish API. Publishing
 through the skill enforces the figure lint, the size cap and the canonical commit; a raw write bypasses
 all three.
 
-:::caution[A guard against the convenient path, not a boundary]
-The hook matches command shapes. A script that speaks HTTP directly is not covered. It exists because
-the convenient wrong path is the one an agent actually takes.
-:::
+The hook matches command shapes, so it covers the convenient wrong path — the one an agent actually
+takes — rather than every possible route to the API.
 
 ## Self-containment is enforced, not advised
 

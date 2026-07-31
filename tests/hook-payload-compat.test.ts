@@ -1,7 +1,7 @@
-import { describe, expect, test } from 'bun:test';
+import { afterAll, describe, expect, test } from 'bun:test';
 import { dirname, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 
 /**
  * Police hooks used to read only Claude snake_case (`tool_input`, `tool_name`).
@@ -13,13 +13,28 @@ const repoRoot = dirname(import.meta.dir);
 const hooksDir = join(repoRoot, 'hooks', 'claude');
 const canBound = existsSync('/sys/fs/cgroup/cgroup.controllers');
 
-function runHook(script: string, payload: unknown): { stdout: string; status: number | null } {
+function runHook(
+  script: string,
+  payload: unknown,
+  env: Record<string, string> = {},
+): { stdout: string; status: number | null } {
   const result = spawnSync('bash', [join(hooksDir, script)], {
     input: JSON.stringify(payload),
     encoding: 'utf-8',
+    env: { ...process.env, ...env },
   });
   return { stdout: result.stdout ?? '', status: result.status };
 }
+
+// resource-police enforces nothing until a config turns it on, so a payload
+// test that skipped the config would be asserting the opt-out, not the shape.
+const scratch = mkdtempSync('/var/tmp/hook-payload-compat-');
+afterAll(() => rmSync(scratch, { recursive: true, force: true }));
+mkdirSync(join(scratch, 'agentkit'), { recursive: true });
+writeFileSync(
+  join(scratch, 'agentkit', 'config.yaml'),
+  'resource-police:\n  enabled: true\ndelegation-police:\n  enabled: true\n',
+);
 
 function isDeny(stdout: string): boolean {
   try {
@@ -100,7 +115,7 @@ describe('hook payload compat (Claude + Grok)', () => {
       const { stdout } = runHook('resource-police.sh', {
         toolName: 'run_terminal_command',
         toolInput: { command: 'cargo build' },
-      });
+      }, { XDG_CONFIG_HOME: scratch });
       expect(isDeny(stdout)).toBe(true);
       expect(stdout).toContain('bounded-run');
     });

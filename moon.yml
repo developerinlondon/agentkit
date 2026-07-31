@@ -70,7 +70,6 @@ fileGroups:
     - "tests/site/**/*"
 
   docsInputs:
-    - "docs/site/archived-versions.json"
     - "docs/site/astro.config.mjs"
     - "docs/site/build-archives.sh"
     - "docs/site/deploy.sh"
