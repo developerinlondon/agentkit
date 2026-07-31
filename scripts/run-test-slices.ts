@@ -10,15 +10,15 @@ import {
 
 const repoRoot = join(import.meta.dir, '..');
 
-// The real systemd containment suite takes the single machine-wide
-// agentkit-run.lock, so anything else invoking bounded-run at the same moment
-// fails it on contention rather than on behavior. It is opt-in and skipped by
-// default, so this only costs a lane when it is switched on.
-const soloFiles = new Set(
-  process.env.AGENTKIT_RUN_INTEGRATION === '1'
+// Cannot share the machine: the supervisor suite asserts fail-closed-hook.sh
+// relays its child inside a one-second deadline that contention makes it miss;
+// the opt-in containment suite takes the machine-wide agentkit-run.lock.
+export const soloFiles = new Set([
+  'tests/hook-supervisor.test.ts',
+  ...(process.env.AGENTKIT_RUN_INTEGRATION === '1'
     ? ['tests/resource-run.integration.test.ts']
-    : [],
-);
+    : []),
+]);
 
 interface Unit {
   slice: TestSlice;
@@ -67,11 +67,14 @@ function units(slices: readonly TestSlice[]): Unit[] {
       slicePriority: TEST_SLICES[slice].length,
     }))
   );
-  // Longest-first, with no timing data to sort by: the slice holding the most
-  // files is the heaviest, and within it size is the best static cost proxy.
-  // A bad guess costs tail latency, never correctness.
-  return list.sort(
-    (left, right) => right.slicePriority - left.slicePriority || right.bytes - left.bytes,
+  // Solo units first: they idle every other lane whenever they run, and at
+  // startup the pool is empty anyway. Then longest-first, with no timing data
+  // to sort by — the slice holding the most files is the heaviest, and within
+  // it size is the best static cost proxy. A bad guess costs tail latency.
+  return list.sort((left, right) =>
+    Number(soloFiles.has(right.file)) - Number(soloFiles.has(left.file))
+    || right.slicePriority - left.slicePriority
+    || right.bytes - left.bytes
   );
 }
 

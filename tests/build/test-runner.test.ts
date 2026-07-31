@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { schedule } from '../../scripts/run-test-slices';
+import { schedule, soloFiles } from '../../scripts/run-test-slices';
 
 interface Interval {
   unit: string;
@@ -99,6 +99,13 @@ describe('the test runner schedules solo units exclusively', () => {
 
     expect(intervals).toHaveLength(3);
     expect(overlappingPairs(intervals)).toEqual([]);
+  });
+
+  // Named rather than derived: the supervisor suite asserts a one-second
+  // deadline is met, and CI proved it fails on a loaded machine when it shares
+  // lanes. Dropping it from this set is a silent return to a red macOS run.
+  test('the hook supervisor suite is registered as unshareable', () => {
+    expect([...soloFiles]).toContain('tests/hook-supervisor.test.ts');
   });
 
   test('a unit that throws surfaces as a rejection instead of hanging the pool', async () => {
