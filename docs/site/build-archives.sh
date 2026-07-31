@@ -8,6 +8,7 @@ cd "$(dirname "$0")"
 
 DIST="${1:-dist}"
 LIST=src/lib/list-archives.ts
+INJECT=src/lib/inject-banner.ts
 REPO_ROOT=$(git rev-parse --show-toplevel)
 
 die() {
@@ -68,5 +69,11 @@ while IFS=$'\t' read -r slug tag; do
 	escapes=$(grep -rhoE '(href|src)="/docs/[^"]*"' "$DIST_ABS/$slug" 2>/dev/null \
 		| grep -vE "(href|src)=\"/docs/$slug_re/" | sort -u | head -3 || true)
 	[[ -z "$escapes" ]] || die "archive $slug links escape its mount: $escapes"
+
+	# After the escape check, never before: the banner's whole job is to link out
+	# of the archive, and the guard above exists to catch exactly that in the
+	# archive's own content.
+	bun "$INJECT" "$slug" "$DIST_ABS/$slug" || die "archive $slug: banner injection failed"
+
 	echo "[archive] $slug: $(find "$DIST_ABS/$slug" -type f | wc -l | tr -d ' ') files"
 done < "$ENTRIES"
