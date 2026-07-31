@@ -1,6 +1,6 @@
 ---
 title: Upgrading and removing
-description: What a second install run does to each class of installed file, and why removal is manual.
+description: What a second install run does to each class of installed file, and what --uninstall takes back.
 sidebar:
   order: 4
 ---
@@ -44,17 +44,52 @@ Observed on a second bare `--global` over the same install: exit 0, **29** `Upda
 **0** `Installing:` lines, `[config] Existing config preserved`, and still exactly 5 marker blocks
 in `CLAUDE.md` and 5 entries in the OpenCode `instructions[]` array rather than 10.
 
-## Removing it
+## Removing one kit
 
-:::danger[There is no uninstaller]
-The kit ships no uninstall script and no `--uninstall` flag. Removal is manual.
+`--without <kit>` drops a kit from the selection and from the remembered set, but what that
+does on disk depends on the kind of kit:
+
+| Kit                                     | `install.sh --global --without <kit>`                                  |
+| --------------------------------------- | ---------------------------------------------------------------------- |
+| `adversarial-review`, `advisory-review` | Fully removed — skills, hooks, `settings.json` entries, tools, prompts |
+| `memory`, `product`                     | De-selected only; installed skills and hooks stay and keep updating    |
+
+That asymmetry is the same rule as above: a consent-gated kit goes when consent is withdrawn,
+an ordinary one is never taken out from under someone using it. To get an ordinary kit off a
+machine, uninstall and reinstall the set you want — the uninstall clears the remembered
+selection along with everything else.
+
+## Removing all of it
+
+```sh
+./install.sh --global --uninstall                  # undo a global install
+./install.sh --uninstall ~/code/my-project         # undo a project install
+./install.sh --global --uninstall --purge-config   # ...and drop config.yaml too
+```
+
+Run it from a checkout of the repo that installed it: artifacts are removed by the names that
+checkout ships and by symlinks pointing into `~/.agentkit`, never by pattern. It is idempotent —
+a second run prints nothing and exits 0, and so does a run against a machine that never had it.
+
+Dropping the files is not the whole job, and the uninstaller does the other half too. Every
+config the installer edits is edited back, scoped to a marker or to agentkit ownership, with
+the rest of the file left alone:
+
+| File                               | Reverted                                                      |
+| ---------------------------------- | ------------------------------------------------------------- |
+| `~/.claude/settings.json`          | Hook entries running an agentkit hook script                  |
+| `~/.claude/CLAUDE.md`              | `<!-- agentkit:<name>:start/end -->` blocks, and legacy ones  |
+| `~/.config/opencode/opencode.json` | Only the `instructions[]` entries pointing at the shared root |
+| `$CODEX_HOME/config.toml`          | `developer_instructions`, only when it is the agentkit prompt |
+| `$CODEX_HOME/hooks.json`           | Only entries tagged `AGENTKIT_HOOK_TARGET=codex`              |
+| `~/.bashrc`                        | The `agentkit session shims` block                            |
+
+Kept on purpose: `~/.config/agentkit/config.yaml` unless you pass `--purge-config`, Codex rules
+files the checkout does not ship (a hand-written `default.rules` survives), anything another
+toolkit installed alongside agentkit, and any real directory sitting where a link into the
+shared root belongs — that is your own fork of a skill, so it is reported rather than deleted.
+
+:::tip[Check for dangling links, not for absence]
+`test -e` reports a symlink into a deleted shared root as absent while it is still on disk.
+`find ~/.claude ~/.agents ~/.grok -xtype l` is the check that actually proves the job is done.
 :::
-
-What has to be removed is whatever the installer wrote. Read
-[`install.sh`](https://github.com/developerinlondon/agentkit/blob/main/install.sh) for that,
-rather than a list here that could fall behind it.
-
-The one thing worth knowing up front: dropping the _files_ is not the whole job. The installer
-also edits configs you own — `~/.claude/settings.json`, `~/.claude/CLAUDE.md`,
-`~/.config/opencode/opencode.json`, `$CODEX_HOME/config.toml`, `$CODEX_HOME/hooks.json` and
-`~/.bashrc`. Those edits stay until you remove them.

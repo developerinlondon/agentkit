@@ -29,9 +29,9 @@ Reading down that table is reading force increasing and reach shrinking. A skill
 "never run an unbounded build" and be right, and the agent can still not load it. A hook that
 refuses the unbounded form has no reach at all outside `Bash` — and cannot be talked out of it.
 
-:::caution[Two different fours]
-There are four _surfaces_ (above) and four _clients_ (below). They are unrelated counts. Earlier
-versions of this documentation conflated them.
+:::note[Two different fours]
+There are four _surfaces_ (above) and four _clients_ (below). The counts are unrelated — read each
+table for what it enumerates.
 :::
 
 ## The four clients
@@ -57,9 +57,11 @@ families, so one script serves both.
 
 **The three are not equivalent, and the kit says so.** The Codex layer evaluates literal argument
 prefixes: it does not recursively parse shell payloads. Where the policy cannot express a narrow
-rule it is deliberately made broader. That weakness is why `delegation-police` exists on Codex and
-nowhere else — it refuses whole classes of mutating container, service-manager, privilege and
-remote commands outright rather than pretending to inspect them.
+rule it is deliberately made broader. That is why `delegation-police` ships as a dedicated Codex
+policy file — installed only when `delegation-police.enabled` is set in the config — refusing
+whole classes of mutating container, service-manager, privilege and remote commands outright
+rather than pretending to inspect them, while the Claude hook and OpenCode plugin implement the
+same opt-in unit with real payload analysis.
 
 ## Install topology: one tree, symlink fans
 

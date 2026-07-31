@@ -291,6 +291,57 @@ printf 'secret=<%s>\n' "\${UNSAFE_SECRET:-}" >> "${output}"
     expect(() => readFileSync(systemdLog, 'utf-8')).toThrow();
   });
 
+  test('classifies the real command behind an env prefix', () => {
+    const workload = join(binDir, 'workload');
+    writeExecutable(workload, '#!/usr/bin/env bash\nexit 0\n');
+
+    const allowed = runRunner(['--profile', 'canary', '--', 'env', 'CI=1', 'workload']);
+    expect(allowed.status, allowed.stderr).toBe(0);
+    expect(readFileSync(systemdLog, 'utf-8')).toContain('CI=1\n');
+
+    // Positive control for the option allowlist: inverting it to die on every
+    // option word must fail this, not just the refusal cases below.
+    const optioned = runRunner(['--profile', 'canary', '--', 'env', '-i', '-v', workload]);
+    expect(optioned.status, optioned.stderr).toBe(0);
+    // `--` is honored by env in option position only; after an assignment it
+    // would itself be the command.
+    const terminated = runRunner(['--profile', 'canary', '--', 'env', '--', 'workload']);
+    expect(terminated.status, terminated.stderr).toBe(0);
+
+    // The prefix is skipped for classification only: what runs is still the
+    // argv as written, env and all.
+    for (
+      const command of [
+        ['env', 'CI=1', 'sudo', 'make', 'test'],
+        // Refused by name before anything resolves it: a delegating command
+        // that is not installed here must not read as a missing executable.
+        ['env', 'CI=1', 'podman', 'run', 'builder'],
+        ['env', '-i', 'ssh', 'build-host', 'true'],
+        ['env', 'CI=1', 'env', 'DEBUG=1', 'docker', 'build', '.'],
+        ['env', 'CI=1', runner, '--profile', 'canary', '--', '/bin/true'],
+        ['env', 'env', 'env', 'env', 'env', '/bin/true'],
+        // -S re-splits its value into argv, --argv0 spoofs what runs, and
+        // getopt_long accepts abbreviations — the allowlist must refuse
+        // every spelling, not just the canonical ones.
+        ['env', '-Ssudo -n id', 'true'],
+        ['env', '--split-string=sudo -n id', 'true'],
+        ['env', '--split=sudo -n id', 'true'],
+        ['env', '--spl=sudo -n id', 'true'],
+        ['env', '--s=sudo -n id', 'true'],
+        ['env', '--argv0=sudo', '/bin/true'],
+        ['env', '-iS', 'sudo -n id', 'true'],
+        ['env', '-S', 'sudo -n id'],
+        ['env', '-u', 'NODE_OPTIONS', 'sudo', 'true'],
+      ]
+    ) {
+      const result = runRunner(['--profile', 'canary', '--', ...command]);
+      expect(result.status, command.join(' ')).toBe(64);
+      expect(result.stderr, command.join(' ')).toMatch(
+        /not allowed|delegates work outside|env wrappers|split-string/,
+      );
+    }
+  });
+
   test('rejects shell command strings and environment indirection', () => {
     for (const shell of ['fish', 'zsh']) {
       writeExecutable(join(binDir, shell), '#!/bin/bash\nexit 0\n');

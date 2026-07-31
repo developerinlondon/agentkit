@@ -26,11 +26,11 @@ Five rules ship, each a markdown file whose frontmatter carries a `globs` key:
 | `issue-tracking.md`       | everything                                       |
 | `credential-bootstrap.md` | `gitops/**/*.{yaml,yml}`                         |
 
-:::caution[The glob is read by the client, not by agentkit]
-No script in the kit parses that frontmatter key. Glob auto-loading is documented OpenCode
-behaviour. The installer also links rules into the Claude and Grok rule directories, and the kit
-makes **no claim** that those clients honour the pattern — Grok's rules directory loads always-on
-rather than glob-gated. If you depend on a rule being scoped, verify your client scopes it.
+:::note[The client reads the glob, not agentkit]
+Glob auto-loading is documented OpenCode behaviour; no script in the kit parses the frontmatter key.
+The installer links the same rules into the Claude and Grok rule directories, where the client
+decides how to load them — Grok's rules directory loads always-on rather than glob-gated. Confirm
+your client scopes a rule before relying on that scoping.
 :::
 
 `credential-bootstrap.md` is the one rule that is not generic advice: it mandates a specific
@@ -64,10 +64,10 @@ The Claude blocks are delimited by `<!-- agentkit:<name>:start -->` / `:end` com
 makes removal surgical rather than a best-effort text match. Legacy blocks appended without markers
 are still recognised by their heading.
 
-:::note[Out of scope for the plugin distribution]
-Instructions cannot ship in the Claude Code plugin bundle. A plugin cannot inject always-on global
-context — only the file installer can place it. If you install via `--claude-plugin`, you get the
-hooks and skills and none of this layer.
+:::note[Instructions ship with the file installer]
+Always-on global context is placed by the file installer; the Claude Code plugin format has no way
+to inject it. An install via `--claude-plugin` therefore carries the hooks and skills, and this
+layer comes from a file install.
 :::
 
 ## Why the split exists

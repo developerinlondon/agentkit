@@ -6,10 +6,10 @@ lifecycle hooks**.
 
 ## Soft vs hard enforcement
 
-| Layer | What it is | How Grok gets it | Blocks tools? |
-| --- | --- | --- | --- |
-| **Soft** | Rules, instructions, skills | `~/.grok/rules/*.md`, `~/.grok/skills/*` | No — model guidance only |
-| **Hard** | Police hooks (git/resource/pkg/…) | Loaded from `~/.claude/settings.json` when `compat.claude.hooks` is on (default) | Yes — PreToolUse deny |
+| Layer    | What it is                        | How Grok gets it                                                                 | Blocks tools?            |
+| -------- | --------------------------------- | -------------------------------------------------------------------------------- | ------------------------ |
+| **Soft** | Rules, instructions, skills       | `~/.grok/rules/*.md`, `~/.grok/skills/*`                                         | No — model guidance only |
+| **Hard** | Police hooks (git/resource/pkg/…) | Loaded from `~/.claude/settings.json` when `compat.claude.hooks` is on (default) | Yes — PreToolUse deny    |
 
 `grok inspect` listing hooks under `Hooks` means they are **registered**, not that
 they enforced the last command. After install, verify with the probe below.
@@ -68,10 +68,10 @@ skills = false
 
 ## Payload contract (why hooks used to fail open)
 
-| Harness | Tool name examples | Stdin keys |
-| --- | --- | --- |
-| Claude Code | `Bash`, `Edit`, `Write` | `tool_name`, `tool_input`, `session_id` |
-| Grok CLI | `run_terminal_command`, `search_replace`, `write` | `toolName`, `toolInput`, `sessionId` |
+| Harness     | Tool name examples                                | Stdin keys                              |
+| ----------- | ------------------------------------------------- | --------------------------------------- |
+| Claude Code | `Bash`, `Edit`, `Write`                           | `tool_name`, `tool_input`, `session_id` |
+| Grok CLI    | `run_terminal_command`, `search_replace`, `write` | `toolName`, `toolInput`, `sessionId`    |
 
 Grok **matcher** aliases map Claude names onto Grok tools, so a settings entry
 with `matcher: "Bash"` still fires on `run_terminal_command`. Scripts must still
@@ -94,7 +94,9 @@ Deny responses dual-emit:
 
 ## Resource bounding on Grok
 
-On Linux, `resource-police` requires `bounded-run` the same way as on Claude.
+The unit is opt-in: it enforces nothing until `resource-police.enabled: true` is set in
+`~/.config/agentkit/config.yaml` (delegation blocking follows `delegation-police.enabled`).
+When enabled on Linux, `resource-police` requires `bounded-run` the same way as on Claude.
 Grok does not rewrite the agent’s shell command; the model (and soft rules) must
 use `bounded-run --profile … -- <cmd>`. The hook only **denies** unbounded heavy
 commands. Linux host requirements are cgroup v2, `agent-work.slice`, and matching

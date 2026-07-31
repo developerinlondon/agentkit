@@ -1,0 +1,4 @@
+interface:
+  display_name: "Uninstall AgentKit"
+  short_description: "Remove AgentKit or one of its kits, reverting config edits"
+  default_prompt: "Use $uninstall to remove AgentKit from this machine and revert the config edits it made."

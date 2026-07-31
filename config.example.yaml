@@ -82,6 +82,46 @@ pkg-police:
   # single command regardless of this setting.
   manager: auto
 
+resource-police:
+  # Whether resource-intensive commands (builds, tests, typechecks, dependency
+  # installs) must run through bounded-run. Off by default: nothing is bounded
+  # anywhere, and the Codex resource policy is not installed. Claude Code and
+  # OpenCode honor a change immediately; Codex policies update on the next
+  # install.sh run. The value must be the literal `true` to enable.
+  # Bounding matches command prefixes, so privileged or remote wrappers
+  # (sudo, ssh) around a heavy command are only caught when delegation-police
+  # below is also enabled.
+  enabled: false
+
+  # When enabled, the command classes that require bounded-run. Remove entries
+  # to relax individual classes; omitting the whole list bounds every class.
+  #   js-packages — bun/npm/pnpm/yarn dependency changes (add/install/update)
+  #   js-scripts  — package-script builds, checks, lints, and test suites
+  #   typescript  — tsc (direct, bunx, npx)
+  #   playwright  — playwright test
+  #   cargo       — cargo build/check/test/clippy
+  #   go          — go build/test
+  #   moon        — moon ci/check/run
+  #   python      — pytest, pip/uv installs
+  bounded:
+    - js-packages
+    - js-scripts
+    - typescript
+    - playwright
+    - cargo
+    - go
+    - moon
+    - python
+
+delegation-police:
+  # Whether delegated and privileged workloads (ssh, sudo, ansible, container
+  # engines, service managers, kubectl mutations) are blocked outside
+  # engine-native limits. Off by default: nothing is blocked. Claude Code and
+  # OpenCode honor a change immediately; the Codex policy installs or
+  # uninstalls on the next install.sh run. Read-only diagnostics are always
+  # allowed even when enabled.
+  enabled: false
+
 version-police:
   # Set to false to disable stale-major dependency-pin blocking.
   # Can also be disabled via AGENTKIT_SKIP_HOOKS=version-police.

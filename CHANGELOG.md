@@ -5,6 +5,43 @@ top and ships with the next tag.
 
 ## [Unreleased]
 
+## v0.6.1 — 2026-07-31
+
+- **Enforcement is now opt-in everywhere** (#237). The `resource-police` and
+  `delegation-police` units default to disabled: nothing is bounded and no
+  delegated/privileged command is blocked until the corresponding section in
+  `~/.config/agentkit/config.yaml` sets `enabled: true`. The Claude/Grok hook
+  and OpenCode plugin read the config at runtime; the Codex policy files
+  install, regenerate, or uninstall from the config on each `install.sh` run
+- feat(config): `resource-police.bounded` class list tunes which command
+  families require `bounded-run` (`js-packages`, `js-scripts`, `typescript`,
+  `playwright`, `cargo`, `go`, `moon`, `python`); the installed Codex resource
+  policy is filtered to the same classes
+- fix(codex): the delegation policy no longer blanket-blocks engine
+  administration groups — read-only diagnostics (`docker system df`,
+  `docker buildx ls`, `docker volume ls`, `podman container inspect`, …) are
+  allowed when the unit is enabled, with forbidden/allowed lists kept disjoint
+- fix(codex): `pkg-police.rules` installs only when the config names
+  `pkg-police.manager: bun` explicitly, matching the configurable-manager
+  design; `auto`/`off`/other managers remove it (#193)
+- fix(bounded-run): `env VAR=value …` prefixes are unwrapped and the real
+  child command classified, so `bounded-run -- env CI=1 bun test` works while
+  privileged/delegating children stay refused; the Codex rules no longer
+  reject `env` as a bounded-run child
+- feat(install): managed Codex policies reconcile on upgrade — a policy that
+  is deselected, disabled, or platform-unsupported is removed from
+  `~/.codex/rules/` without touching user rules such as `default.rules`
+- feat(install): `install.sh --uninstall` removes everything the installer
+  wrote and reverts its managed edits in `~/.claude/settings.json`,
+  `~/.claude/CLAUDE.md`, `opencode.json`, Codex `config.toml`/`hooks.json`,
+  and `~/.bashrc`, preserving user content; a new `uninstall` skill guides
+  per-kit removal (`--drop <kit>`) and full removal
+- fix(site): the docs version picker is back, and the site title on docs pages
+  links to the main site again
+- docs: enforcement pages describe the opt-in model; the stale claim that
+  `review-discipline` is a core instruction is corrected; weakness-flavoured
+  warning callouts reworked into neutral notes
+
 ## v0.6.0 — 2026-07-30
 
 - feat(memory): opt-in **memory** kit — a per-project `brain/` vault the agent

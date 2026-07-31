@@ -75,15 +75,52 @@ function createFixture(): Fixture {
   writeFixtureFile(join(repo, 'tools', 'review-profile'), '#!/usr/bin/env bash\n', true);
   writeFixtureFile(
     join(repo, 'policies', 'codex', 'resource-police.rules'),
-    '# agentkit:platform linux # local cgroup containment\n',
+    [
+      '# agentkit:platform linux # local cgroup containment',
+      'prefix_rule(',
+      '    runner-allow',
+      ')',
+      '# agentkit:resource-class cargo',
+      'prefix_rule(',
+      '    cargo-block',
+      ')',
+      '# tsc orphan comment',
+      '# agentkit:resource-class typescript',
+      'prefix_rule(',
+      '    tsc-block',
+      ')',
+      '',
+    ].join('\n'),
   );
   writeFixtureFile(
     join(repo, 'policies', 'codex', 'delegation-police.rules'),
     '# universal delegation policy\n',
   );
+  writeFixtureFile(
+    join(repo, 'policies', 'codex', 'pkg-police.rules'),
+    '# bun-only package policy\n',
+  );
+  writeFixtureFile(
+    join(repo, 'policies', 'codex', 'git-police.rules'),
+    '# universal git policy\n',
+  );
 
   return { home, repo, root, target };
 }
+
+function writeAgentkitConfig(fixture: Fixture, contents: string): void {
+  writeFixtureFile(join(fixture.home, '.config', 'agentkit', 'config.yaml'), contents);
+}
+
+const ENFORCEMENT_ON = [
+  'resource-police:',
+  '  enabled: true',
+  'delegation-police:',
+  '  enabled: true',
+  'pkg-police:',
+  '  manager: bun',
+  '',
+].join('\n');
 
 function runInstall(
   fixture: Fixture,
@@ -140,8 +177,10 @@ describe('platform-aware artifact installation', () => {
         expect(existsSync(join(tools, 'bounded-run'))).toBe(true);
         expect(lstatSync(join(tools, 'agentkit-run')).isSymbolicLink()).toBe(true);
         expect(existsSync(join(tools, 'portable-tool'))).toBe(true);
-        expect(existsSync(join(policies, 'resource-police.rules'))).toBe(true);
-        expect(existsSync(join(policies, 'delegation-police.rules'))).toBe(true);
+        expect(existsSync(join(policies, 'git-police.rules'))).toBe(true);
+        expectMissing(join(policies, 'resource-police.rules'));
+        expectMissing(join(policies, 'delegation-police.rules'));
+        expectMissing(join(policies, 'pkg-police.rules'));
         expect(existsSync(join(codex, 'hooks', 'review-police.sh'))).toBe(true);
         expect(existsSync(join(codex, 'hooks', 'fail-closed-hook.sh'))).toBe(true);
         expect(existsSync(join(codex, 'hooks', 'lib', 'hook-input.sh'))).toBe(true);
@@ -158,6 +197,7 @@ describe('platform-aware artifact installation', () => {
     test(`${mode} install removes stale Linux-only artifacts on macOS`, () => {
       const fixture = createFixture();
       try {
+        writeAgentkitConfig(fixture, ENFORCEMENT_ON);
         const { codex, policies, tools } = installedPaths(fixture, global);
         for (const path of [
           join(tools, 'bounded-run'),
@@ -181,6 +221,7 @@ describe('platform-aware artifact installation', () => {
         expect(existsSync(join(tools, 'portable-tool'))).toBe(true);
         expectMissing(join(policies, 'resource-police.rules'));
         expect(existsSync(join(policies, 'delegation-police.rules'))).toBe(true);
+        expect(existsSync(join(policies, 'pkg-police.rules'))).toBe(true);
         expect(existsSync(join(codex, 'hooks', 'review-police.sh'))).toBe(true);
         expect(existsSync(join(codex, 'tools', 'review-gate'))).toBe(true);
         expect(existsSync(join(codex, 'tools', 'review-profile'))).toBe(true);
@@ -280,6 +321,120 @@ describe('platform-aware artifact installation', () => {
       expect(result.stderr).toContain('invalid AGENTKIT_PLATFORM');
       expect(readFileSync(staleRunner, 'utf-8')).toBe('leave-me-alone\n');
       expect(existsSync(join(fixture.target, '.claude', 'tools', 'portable-tool'))).toBe(false);
+    } finally {
+      rmSync(fixture.root, { force: true, recursive: true });
+    }
+  });
+});
+
+describe('config-driven Codex enforcement policies', () => {
+  test('upgrade removes previously installed enforcement policies and preserves user rules', () => {
+    const fixture = createFixture();
+    try {
+      const { policies } = installedPaths(fixture, true);
+      for (const name of [
+        'resource-police.rules',
+        'delegation-police.rules',
+        'pkg-police.rules',
+      ]) {
+        writeFixtureFile(join(policies, name), 'stale enforcement\n');
+      }
+      writeFixtureFile(join(policies, 'default.rules'), 'user-owned rules\n');
+
+      const result = runInstall(fixture, 'linux', true);
+      expect(result.status, result.stderr).toBe(0);
+
+      expectMissing(join(policies, 'resource-police.rules'));
+      expectMissing(join(policies, 'delegation-police.rules'));
+      expectMissing(join(policies, 'pkg-police.rules'));
+      expect(readFileSync(join(policies, 'default.rules'), 'utf-8')).toBe('user-owned rules\n');
+      expect(existsSync(join(policies, 'git-police.rules'))).toBe(true);
+    } finally {
+      rmSync(fixture.root, { force: true, recursive: true });
+    }
+  });
+
+  test('enabling the config installs enforcement policies, filtered to the bounded classes', () => {
+    const fixture = createFixture();
+    try {
+      writeAgentkitConfig(
+        fixture,
+        [
+          'resource-police:',
+          '  enabled: true',
+          '  bounded:',
+          '    - cargo',
+          'delegation-police:',
+          '  enabled: true',
+          'pkg-police:',
+          '  manager: bun',
+          '',
+        ].join('\n'),
+      );
+
+      const result = runInstall(fixture, 'linux', true);
+      expect(result.status, result.stderr).toBe(0);
+
+      const { policies } = installedPaths(fixture, true);
+      expect(existsSync(join(policies, 'delegation-police.rules'))).toBe(true);
+      expect(existsSync(join(policies, 'pkg-police.rules'))).toBe(true);
+      const resource = readFileSync(join(policies, 'resource-police.rules'), 'utf-8');
+      expect(resource).toContain('runner-allow');
+      expect(resource).toContain('cargo-block');
+      expect(resource).not.toContain('tsc-block');
+      expect(resource).not.toContain('agentkit:resource-class');
+      expect(resource).not.toContain('tsc orphan comment');
+    } finally {
+      rmSync(fixture.root, { force: true, recursive: true });
+    }
+  });
+
+  test('an empty bounded list installs the policy with no class blocks', () => {
+    const fixture = createFixture();
+    try {
+      writeAgentkitConfig(fixture, 'resource-police:\n  enabled: true\n  bounded: []\n');
+
+      const result = runInstall(fixture, 'linux', true);
+      expect(result.status, result.stderr).toBe(0);
+
+      const { policies } = installedPaths(fixture, true);
+      const resource = readFileSync(join(policies, 'resource-police.rules'), 'utf-8');
+      expect(resource).toContain('runner-allow');
+      expect(resource).not.toContain('cargo-block');
+      expect(resource).not.toContain('tsc-block');
+    } finally {
+      rmSync(fixture.root, { force: true, recursive: true });
+    }
+  });
+
+  test('an enabled resource policy without a bounded list keeps every class', () => {
+    const fixture = createFixture();
+    try {
+      writeAgentkitConfig(fixture, 'resource-police:\n  enabled: true\n');
+
+      const result = runInstall(fixture, 'linux', true);
+      expect(result.status, result.stderr).toBe(0);
+
+      const { policies } = installedPaths(fixture, true);
+      const resource = readFileSync(join(policies, 'resource-police.rules'), 'utf-8');
+      expect(resource).toContain('cargo-block');
+      expect(resource).toContain('tsc-block');
+      expectMissing(join(policies, 'delegation-police.rules'));
+    } finally {
+      rmSync(fixture.root, { force: true, recursive: true });
+    }
+  });
+
+  test('the Codex pkg policy requires an explicitly configured bun manager', () => {
+    const fixture = createFixture();
+    try {
+      writeAgentkitConfig(fixture, 'pkg-police:\n  manager: auto\n');
+      const { policies } = installedPaths(fixture, true);
+      writeFixtureFile(join(policies, 'pkg-police.rules'), 'stale enforcement\n');
+
+      const result = runInstall(fixture, 'linux', true);
+      expect(result.status, result.stderr).toBe(0);
+      expectMissing(join(policies, 'pkg-police.rules'));
     } finally {
       rmSync(fixture.root, { force: true, recursive: true });
     }

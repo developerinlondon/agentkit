@@ -84,11 +84,11 @@ source and mirrored into its docs and the CI workflow. The wrapper shells the bi
 version, and refuses any other build: a render is only reproducible on the build it was authored against.
 An absent binary fails with the pin and the release URL in the message.
 
-:::note[Nothing in the installer places that binary]
-A user installs D2 from the release the error names. In CI the same pin is installed by a composite
-action that verifies the download against a recorded checksum per platform, then re-checks the resulting
-version. A platform with no recorded checksum is a hard failure by design rather than an unverified
-download — which does mean the verified path covers two platforms today.
+:::note[Install D2 separately]
+The renderer is not placed by the installer — install it from the release the error names. In CI the
+same pin is installed by a composite action that verifies the download against a recorded checksum per
+platform, then re-checks the resulting version. Checksums are recorded for two platforms today, and a
+platform without one fails hard by design rather than taking an unverified download.
 :::
 
 What the wrapper refuses:
@@ -136,11 +136,11 @@ unpacked size and entry count are all capped, a link entry or one escaping its r
 archive, per-icon screening treats scripts and inline handlers as fatal, and the install is staged then
 swapped in whole — a half-written tree would resolve some icons and not others.
 
-:::note[AWS is absent, for a stated reason]
-Its icon archive URL embeds both a release date and a content hash that cannot be derived, and superseded
-URLs stop resolving — so a pin would break every quarter, and scraping the current URL would defeat the
-point of pinning. The bundled CC0 set already carries the common AWS marks, so what is missing is the full
-stencil library, not its iconography.
+:::note[AWS marks come from the bundled set]
+There is no AWS vendor pack: its icon archive URL embeds both a release date and a content hash that
+cannot be derived, and superseded URLs stop resolving — so a pin would break every quarter, and scraping
+the current URL would defeat the point of pinning. The bundled CC0 set carries the common AWS marks, so
+what a vendor pack would add is the full stencil library rather than the iconography itself.
 :::
 
 The trademark rule is absolute: vendor logos are never recoloured, distorted or theme-filtered, and are
@@ -188,17 +188,15 @@ keyword-shaped fields constrained by pattern and a reserved-word list that slugg
 provenance comment records what produced the figure but deliberately records **no input path**, so a
 render cannot depend on where the checkout sits.
 
-## What is not there yet
-
-:::caution[The sketch register has no test coverage]
-Every test in the diagram suite exercises the technical path — the D2 wrapper, the icon resolution, the
-extractors, the committed examples. Nothing on disk asserts anything about the headless scene renderer.
-Its self-containment rests on upstream export behaviour.
-:::
+## What the tests hold
 
 The technical register is held to its claims by test: the same input renders byte-identically twice,
 committed examples byte-match a fresh render, hostile column types and mount paths compile through the
 real renderer, and the kit's own module graph is asserted to come out as a figure rather than a hairball.
 Those tests are conditional on the pinned renderer and the dependency-graph tool being present, and skip
-loudly when either is missing. That asymmetry is the honest summary of where this skill is mature and
-where it is not.
+loudly when either is missing.
+
+The diagram suite covers that technical path — the D2 wrapper, the icon resolution, the extractors, the
+committed examples. The sketch register is authored and reviewed visually instead, and its
+self-containment comes from the headless renderer's export behaviour rather than from an assertion in
+this repository.

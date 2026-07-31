@@ -6,7 +6,7 @@ set -euo pipefail
 # A parse error here is fatal: this is a PreToolUse Bash hook, so it would
 # deny EVERY command with the kill switch unreachable.
 RE_BARE_TASK='^(build|check|type-?check|lint)(:[[:alnum:]_-]+)?$'
-RE_BUN_HEAVY='^(add|install|update|test)$'
+RE_BUN_PACKAGE='^(add|install|update)$'
 RE_CARGO_HEAVY='^(build|check|test|clippy)$'
 RE_DELEGATING='^(ansible|ansible-playbook|doas|mosh|pkexec|run0|ssh|sudo|systemd-run)$'
 RE_DOCKER_READONLY='^(diff|events|history|images|info|inspect|logs|port|ps|stats|top|version)$'
@@ -14,15 +14,19 @@ RE_GO_HEAVY='^(build|test)$'
 RE_KUBECTL_READONLY='^(api-resources|api-versions|auth|cluster-info|describe|explain|get|logs|top|version)$'
 RE_MACHINECTL_READONLY='^(list|show|status)$'
 RE_MOON_HEAVY='^(ci|check|run)$'
-RE_NPM_HEAVY='^(add|install|i|ci|update|upgrade|test)$'
+RE_NPM_PACKAGE='^(add|install|i|ci|update|upgrade)$'
 RE_ORCHESTRATOR='^(buildah|docker|kubectl|machinectl|nerdctl|podman|service|systemctl)$'
 RE_BUILDAH_READONLY='^(containers|images|info|inspect|version)$'
 RE_SCRIPT_TASK='^(build|check|type-?check|lint|test)(:[[:alnum:]_-]+)?$'
 RE_SHELL='^(bash|dash|fish|sh|zsh)$'
 RE_SYSTEMCTL_READONLY='^(cat|get-default|is-active|is-enabled|is-failed|list-|show|status)'
 RE_UV_HEAVY='^(add|sync)$'
-RE_YARN_HEAVY='^(add|install|up|upgrade|test)$'
+RE_YARN_PACKAGE='^(add|install|up|upgrade)$'
 readonly MAX_ANALYSIS_DEPTH=4
+
+# `${HOME:-}` rather than `$HOME`: under `set -u` an unset HOME would abort the
+# hook here, which the harness reports only as a non-blocking status code.
+AGENTKIT_CONFIG="${XDG_CONFIG_HOME:-${HOME:-}/.config}/agentkit/config.yaml"
 
 
 # Absolute paths are deliberate: a hook that inspects a command must not
@@ -61,6 +65,104 @@ if [[ -z "$AWK_BIN" || -z "$CAT_BIN" || -z "$JQ_BIN" ]]; then
 	exit 0
 fi
 
+# Both units are off unless the config turns them on: an installed hook that
+# starts denying commands nobody asked it to police is worse than no hook.
+RESOURCE_ENABLED=""
+RESOURCE_CLASSES=""
+RESOURCE_CLASS_FILTER=0
+DELEGATION_ENABLED=""
+
+unquote() {
+	local value="$1"
+	value="${value%\"}"
+	value="${value#\"}"
+	value="${value%\'}"
+	value="${value#\'}"
+	printf '%s' "$value"
+}
+
+config_entries() {
+	"$AWK_BIN" '
+    /^[^[:space:]#]/ {
+      section = ""
+      if ($0 ~ /^resource-police:/) section = "resource"
+      else if ($0 ~ /^delegation-police:/) section = "delegation"
+      in_list = 0
+      next
+    }
+    section == "" { next }
+    {
+      line = $0
+      sub(/^[[:space:]]+/, "", line)
+      sub(/[[:space:]]+$/, "", line)
+      if (line == "" || line ~ /^#/) next
+      if (line ~ /^-/) {
+        if (!in_list) next
+        sub(/^-[[:space:]]*/, "", line)
+        sub(/[[:space:]]*#.*$/, "", line)
+        if (line != "") print section ".item=" tolower(line)
+        next
+      }
+      in_list = 0
+      if (line !~ /^[[:alnum:]_-]+:/) next
+      key = line
+      sub(/:.*$/, "", key)
+      sub(/^[^:]*:[[:space:]]*/, "", line)
+      sub(/[[:space:]]*#.*$/, "", line)
+      if (key == "enabled") {
+        sub(/[[:space:]].*$/, "", line)
+        print section ".enabled=" tolower(line)
+        next
+      }
+      if (key != "bounded") next
+      print section ".list=1"
+      if (line ~ /^\[/) {
+        gsub(/[][]/, "", line)
+        count = split(line, parts, ",")
+        for (position = 1; position <= count; position++) {
+          value = parts[position]
+          gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+          if (value != "") print section ".item=" tolower(value)
+        }
+      } else if (line == "") {
+        in_list = 1
+      }
+    }
+  ' "$AGENTKIT_CONFIG"
+}
+
+load_config() {
+	[[ -f "$AGENTKIT_CONFIG" ]] || return 0
+	local key value
+	while IFS='=' read -r key value; do
+		value=$(unquote "$value")
+		case "$key" in
+		resource.enabled) RESOURCE_ENABLED="$value" ;;
+		resource.list) RESOURCE_CLASS_FILTER=1 ;;
+		resource.item) RESOURCE_CLASSES="$RESOURCE_CLASSES $value" ;;
+		delegation.enabled) DELEGATION_ENABLED="$value" ;;
+		esac
+	done < <(config_entries || true)
+}
+
+load_config
+RESOURCE_ACTIVE=0
+DELEGATION_ACTIVE=0
+if [[ "$RESOURCE_ENABLED" == true ]]; then RESOURCE_ACTIVE=1; fi
+if [[ "$DELEGATION_ENABLED" == true ]]; then DELEGATION_ACTIVE=1; fi
+if [[ "$RESOURCE_ACTIVE" == 0 && "$DELEGATION_ACTIVE" == 0 ]]; then
+	exit 0
+fi
+
+# A class list narrows what counts as heavy; no list at all means every class.
+class_bounded() {
+	[[ "$RESOURCE_CLASS_FILTER" == 1 ]] || return 0
+	case " $RESOURCE_CLASSES " in
+	*" $1 "*) return 0 ;;
+	esac
+	return 1
+}
+
 # Stand down from LOCAL containment where bounding is impossible, but keep
 # parsing commands: delegated work and undecidable nesting remain blocked on
 # every platform because neither becomes safe when cgroups are unavailable.
@@ -88,16 +190,18 @@ detect_platform() {
 
 PLATFORM="$(detect_platform)"
 CONTAINMENT_REQUIRED=0
-if [[ "$PLATFORM" == linux && -r /sys/fs/cgroup/cgroup.controllers ]]; then
-	CONTAINMENT_REQUIRED=1
-else
-	# Keyed on PPID — the client process, stable across every hook invocation
-	# in one session. $$ is this hook's own pid and changes each time, which
-	# would make "once" mean "always".
-	notice="${TMPDIR:-/tmp}/.agentkit-resource-police-inactive.$PPID"
-	if [[ ! -e "$notice" ]]; then
-		: >"$notice" 2>/dev/null || true
-		printf 'resource-police: local containment INACTIVE on %s — bounded-run is unavailable. Delegated and undecidable commands remain blocked.\n' "$PLATFORM" >&2
+if [[ "$RESOURCE_ACTIVE" == 1 ]]; then
+	if [[ "$PLATFORM" == linux && -r /sys/fs/cgroup/cgroup.controllers ]]; then
+		CONTAINMENT_REQUIRED=1
+	else
+		# Keyed on PPID — the client process, stable across every hook invocation
+		# in one session. $$ is this hook's own pid and changes each time, which
+		# would make "once" mean "always".
+		notice="${TMPDIR:-/tmp}/.agentkit-resource-police-inactive.$PPID"
+		if [[ ! -e "$notice" ]]; then
+			: >"$notice" 2>/dev/null || true
+			printf 'resource-police: local containment INACTIVE on %s — bounded-run is unavailable. Delegated and undecidable commands remain blocked.\n' "$PLATFORM" >&2
+		fi
 	fi
 fi
 
@@ -245,7 +349,7 @@ parse_launch() {
 	ARGS=("${TOKENS[@]:$((index + 1))}")
 }
 
-is_heavy() {
+heavy_class() {
 	# `${VAR,,}` is bash 4+. macOS ships bash 3.2 at /bin/bash, which this
 	# script's shebang selects, so that expansion is a hard parse error there —
 	# and with `set -e` it killed the hook mid-run, leaving the guard off. `tr`
@@ -256,38 +360,133 @@ is_heavy() {
 	local second="${ARGS[1]:-}"
 	case "$executable" in
 	bun)
-		[[ "$first" =~ $RE_BUN_HEAVY ]] && return 0
-		[[ "$first" == run && "$second" =~ $RE_SCRIPT_TASK ]]
+		[[ "$first" =~ $RE_BUN_PACKAGE ]] && {
+			printf 'js-packages'
+			return 0
+		}
+		[[ "$first" == test ]] && {
+			printf 'js-scripts'
+			return 0
+		}
+		[[ "$first" == run && "$second" =~ $RE_SCRIPT_TASK ]] && {
+			printf 'js-scripts'
+			return 0
+		}
 		;;
 	bunx | npx)
-		[[ "$first" == tsc && "$second" != --version ]] \
-			|| [[ "$first" == playwright && "$second" == test ]]
+		[[ "$first" == tsc && "$second" != --version ]] && {
+			printf 'typescript'
+			return 0
+		}
+		[[ "$first" == playwright && "$second" == test ]] && {
+			printf 'playwright'
+			return 0
+		}
 		;;
 	npm | pnpm)
-		[[ "$first" =~ $RE_NPM_HEAVY ]] && return 0
-		[[ "$first" == run && "$second" =~ $RE_SCRIPT_TASK ]]
+		[[ "$first" =~ $RE_NPM_PACKAGE ]] && {
+			printf 'js-packages'
+			return 0
+		}
+		[[ "$first" == test ]] && {
+			printf 'js-scripts'
+			return 0
+		}
+		[[ "$first" == run && "$second" =~ $RE_SCRIPT_TASK ]] && {
+			printf 'js-scripts'
+			return 0
+		}
 		;;
 	yarn)
-		[[ -z "$first" ]] && return 0
-		[[ "$first" =~ $RE_YARN_HEAVY ]] && return 0
-		[[ "$first" == run && "$second" =~ $RE_SCRIPT_TASK ]] && return 0
-		[[ "$first" =~ $RE_BARE_TASK ]]
+		[[ -z "$first" ]] && {
+			printf 'js-packages'
+			return 0
+		}
+		[[ "$first" =~ $RE_YARN_PACKAGE ]] && {
+			printf 'js-packages'
+			return 0
+		}
+		[[ "$first" == test ]] && {
+			printf 'js-scripts'
+			return 0
+		}
+		[[ "$first" =~ $RE_BARE_TASK ]] && {
+			printf 'js-scripts'
+			return 0
+		}
+		[[ "$first" == run && "$second" =~ $RE_SCRIPT_TASK ]] && {
+			printf 'js-scripts'
+			return 0
+		}
 		;;
-	tsc) [[ "$first" != --version ]] ;;
-	playwright) [[ "$first" == test ]] ;;
-	cargo) [[ "$first" =~ $RE_CARGO_HEAVY ]] ;;
-	go) [[ "$first" =~ $RE_GO_HEAVY ]] ;;
-	moon) [[ "$first" =~ $RE_MOON_HEAVY ]] ;;
-	pip | pip3) [[ "$first" == install ]] ;;
+	tsc)
+		[[ "$first" != --version ]] && {
+			printf 'typescript'
+			return 0
+		}
+		;;
+	playwright)
+		[[ "$first" == test ]] && {
+			printf 'playwright'
+			return 0
+		}
+		;;
+	cargo)
+		[[ "$first" =~ $RE_CARGO_HEAVY ]] && {
+			printf 'cargo'
+			return 0
+		}
+		;;
+	go)
+		[[ "$first" =~ $RE_GO_HEAVY ]] && {
+			printf 'go'
+			return 0
+		}
+		;;
+	moon)
+		[[ "$first" =~ $RE_MOON_HEAVY ]] && {
+			printf 'moon'
+			return 0
+		}
+		;;
+	pip | pip3)
+		[[ "$first" == install ]] && {
+			printf 'python'
+			return 0
+		}
+		;;
 	uv)
-		[[ "$first" =~ $RE_UV_HEAVY ]] && return 0
-		[[ "$first" == pip && "$second" == install ]] && return 0
-		[[ "$first" == run && "$second" == pytest ]]
+		[[ "$first" =~ $RE_UV_HEAVY ]] && {
+			printf 'python'
+			return 0
+		}
+		[[ "$first" == pip && "$second" == install ]] && {
+			printf 'python'
+			return 0
+		}
+		[[ "$first" == run && "$second" == pytest ]] && {
+			printf 'python'
+			return 0
+		}
 		;;
-	pytest) return 0 ;;
-	python | python3) [[ "$first" == -m && "$second" == pytest ]] ;;
-	*) return 1 ;;
+	pytest)
+		printf 'python'
+		return 0
+		;;
+	python | python3)
+		[[ "$first" == -m && "$second" == pytest ]] && {
+			printf 'python'
+			return 0
+		}
+		;;
 	esac
+	return 1
+}
+
+is_heavy() {
+	local class
+	class=$(heavy_class) || return 1
+	class_bounded "$class"
 }
 
 shell_command_payload() {
@@ -409,7 +608,9 @@ analyze_command() {
 				local nested_command="$WRAPPED_COMMAND"
 				parse_launch "$nested_command"
 				if [[ "$PARSE_UNDECIDABLE" == 1 ]]; then deny "$segment" undecidable; fi
-				if is_delegating && [[ "$DELEGATED_OK" != 1 ]]; then deny "$segment" delegated; fi
+				if [[ "$DELEGATION_ACTIVE" == 1 && "$DELEGATED_OK" != 1 ]] && is_delegating; then
+					deny "$segment" delegated
+				fi
 				analyze_command "$nested_command" $((depth + 1)) 1
 			fi
 			if [[ "$CONTAINMENT_REQUIRED" == 1 && "$trusted_runner" != 1 ]]; then
@@ -421,7 +622,7 @@ analyze_command() {
 			analyze_command "$PAYLOAD" $((depth + 1)) "$contained"
 			continue
 		fi
-		if is_delegating && [[ "$DELEGATED_OK" != 1 ]]; then
+		if [[ "$DELEGATION_ACTIVE" == 1 && "$DELEGATED_OK" != 1 ]] && is_delegating; then
 			deny "$segment" delegated
 		fi
 		if [[ "$CONTAINMENT_REQUIRED" == 1 && "$contained" != 1 ]] && is_heavy; then

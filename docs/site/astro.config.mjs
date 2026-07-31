@@ -1,19 +1,10 @@
-import { execFileSync } from "node:child_process";
 import starlight from "@astrojs/starlight";
 import { defineConfig } from "astro/config";
-import { currentVersionLabel } from "./src/lib/release";
+import { currentVersionLabel, environmentSources } from "./src/lib/release";
 import mermaid from "astro-mermaid";
 import starlightLinksValidator from "starlight-links-validator";
-import archivedVersions from "./archived-versions.json";
 
-const versionLabel = currentVersionLabel({
-	env: process.env.AGENTKIT_DOCS_VERSION,
-	describe: () =>
-		execFileSync("git", ["describe", "--tags", "--abbrev=0"], {
-			encoding: "utf8",
-			stdio: ["ignore", "pipe", "ignore"],
-		}),
-});
+const versionLabel = currentVersionLabel(environmentSources());
 
 export default defineConfig({
 	site: "https://agentkit.sbs",
@@ -26,6 +17,10 @@ export default defineConfig({
 			description: "Discipline for coding agents: hooks that refuse, skills that instruct.",
 			customCss: ["./src/styles/agentkit.css"],
 			pagefind: true,
+			routeMiddleware: "./src/starlightRouteData.ts",
+			// The version select rides the theme select's slot in the header, which
+			// is the one place a component override can reach the nav bar.
+			components: { ThemeSelect: "./src/components/ThemeSelect.astro" },
 			plugins: [
 				// Starlight does not check internal links itself, so before this a
 				// renamed page left dangling links that shipped silently.
@@ -42,16 +37,6 @@ export default defineConfig({
 				{ label: "Reference", items: [{ autogenerate: { directory: "reference" } }] },
 				{ label: "Cookbook", items: [{ autogenerate: { directory: "cookbook" } }] },
 				{ label: "Community", items: [{ autogenerate: { directory: "community" } }] },
-				// Archived versions are separate sites built from their own git tags
-				// by build-archives.sh at publish time; nothing on main can alter or
-				// break them, which is the whole point of building them from tags.
-				{
-					label: "Older versions",
-					items: archivedVersions.map(({ slug, label }) => ({
-						label,
-						link: `/${slug}/`,
-					})),
-				},
 			],
 		}),
 	],

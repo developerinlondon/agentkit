@@ -1,11 +1,16 @@
 # delegation-police.rules — Codex CLI exec policy
 # Delegated workloads escape local process containment on every platform.
 #
+# Installed only when the agentkit config sets delegation-police.enabled: true;
+# by default nothing here is enforced.
+#
 # This policy evaluates direct command prefixes only. Codex prefix rules do not
 # parse shell payloads, skip arbitrary global options, or recursively inspect a
 # launched script. Claude and OpenCode resource-police provide that recursive
 # analysis. This file blocks direct forms the prefix language can represent and
-# explicitly allows their direct read-only diagnostic forms.
+# explicitly allows their direct read-only diagnostic forms. Forbidden and
+# allowed subcommand lists are kept disjoint so no two rules overlap; a
+# subcommand in neither list falls through to the default decision.
 
 # Always-delegating executables have no safe direct diagnostic mode.
 
@@ -86,9 +91,75 @@ prefix_rule(
 )
 
 prefix_rule(
-    pattern = ["docker", ["builder", "buildx", "context", "network", "node", "plugin", "secret", "service", "stack", "swarm", "system", "trust", "volume"]],
+    pattern = ["docker", ["node", "plugin", "secret", "service", "stack", "swarm", "trust"]],
     decision = "forbidden",
     justification = "Docker engine administration can mutate workloads outside local process containment.",
+)
+
+prefix_rule(
+    pattern = ["docker", "builder", ["build", "prune"]],
+    decision = "forbidden",
+    justification = "Docker builds and cache mutation run outside local process containment.",
+)
+
+prefix_rule(
+    pattern = ["docker", "buildx", ["bake", "build", "create", "prune", "rm", "stop", "use"]],
+    decision = "forbidden",
+    justification = "Docker builds and builder mutation run outside local process containment.",
+)
+
+prefix_rule(
+    pattern = ["docker", "buildx", ["du", "inspect", "ls", "version"]],
+    decision = "allow",
+    justification = "Direct buildx inspection is read-only.",
+)
+
+prefix_rule(
+    pattern = ["docker", "context", ["create", "import", "rm", "update", "use"]],
+    decision = "forbidden",
+    justification = "Docker context mutation redirects workloads to other engines.",
+)
+
+prefix_rule(
+    pattern = ["docker", "context", ["export", "inspect", "ls", "show"]],
+    decision = "allow",
+    justification = "Direct context inspection is read-only.",
+)
+
+prefix_rule(
+    pattern = ["docker", "network", ["connect", "create", "disconnect", "prune", "rm"]],
+    decision = "forbidden",
+    justification = "Docker network mutation changes engine state outside local containment.",
+)
+
+prefix_rule(
+    pattern = ["docker", "network", ["inspect", "ls"]],
+    decision = "allow",
+    justification = "Direct network inspection is read-only.",
+)
+
+prefix_rule(
+    pattern = ["docker", "system", ["prune"]],
+    decision = "forbidden",
+    justification = "Docker system prune destroys engine state outside local containment.",
+)
+
+prefix_rule(
+    pattern = ["docker", "system", ["df", "events", "info"]],
+    decision = "allow",
+    justification = "Direct system inspection is read-only.",
+)
+
+prefix_rule(
+    pattern = ["docker", "volume", ["create", "prune", "rm", "update"]],
+    decision = "forbidden",
+    justification = "Docker volume mutation changes engine state outside local containment.",
+)
+
+prefix_rule(
+    pattern = ["docker", "volume", ["inspect", "ls"]],
+    decision = "allow",
+    justification = "Direct volume inspection is read-only.",
 )
 
 prefix_rule(
@@ -128,9 +199,69 @@ prefix_rule(
 )
 
 prefix_rule(
-    pattern = ["podman", ["container", "farm", "kube", "machine", "network", "pod", "secret", "system", "volume"]],
+    pattern = ["podman", ["farm", "kube", "machine", "secret"]],
     decision = "forbidden",
     justification = "Podman administration can mutate workloads outside local process containment.",
+)
+
+prefix_rule(
+    pattern = ["podman", "container", ["attach", "checkpoint", "clone", "commit", "cp", "create", "exec", "export", "init", "kill", "mount", "pause", "prune", "restart", "restore", "rm", "run", "start", "stop", "unmount", "unpause", "update"]],
+    decision = "forbidden",
+    justification = "Podman container mutation delegates workloads outside local containment.",
+)
+
+prefix_rule(
+    pattern = ["podman", "container", ["diff", "exists", "inspect", "list", "logs", "port", "ps", "stats", "top"]],
+    decision = "allow",
+    justification = "Direct container inspection is read-only.",
+)
+
+prefix_rule(
+    pattern = ["podman", "network", ["connect", "create", "disconnect", "prune", "reload", "rm", "update"]],
+    decision = "forbidden",
+    justification = "Podman network mutation changes engine state outside local containment.",
+)
+
+prefix_rule(
+    pattern = ["podman", "network", ["exists", "inspect", "ls"]],
+    decision = "allow",
+    justification = "Direct network inspection is read-only.",
+)
+
+prefix_rule(
+    pattern = ["podman", "pod", ["clone", "create", "kill", "pause", "prune", "restart", "rm", "start", "stop", "unpause"]],
+    decision = "forbidden",
+    justification = "Podman pod mutation delegates workloads outside local containment.",
+)
+
+prefix_rule(
+    pattern = ["podman", "pod", ["exists", "inspect", "logs", "ps", "stats", "top"]],
+    decision = "allow",
+    justification = "Direct pod inspection is read-only.",
+)
+
+prefix_rule(
+    pattern = ["podman", "system", ["migrate", "prune", "renumber", "reset", "service"]],
+    decision = "forbidden",
+    justification = "Podman system mutation changes engine state outside local containment.",
+)
+
+prefix_rule(
+    pattern = ["podman", "system", ["df", "events", "info"]],
+    decision = "allow",
+    justification = "Direct system inspection is read-only.",
+)
+
+prefix_rule(
+    pattern = ["podman", "volume", ["create", "export", "import", "mount", "prune", "reload", "rm", "unmount"]],
+    decision = "forbidden",
+    justification = "Podman volume mutation changes engine state outside local containment.",
+)
+
+prefix_rule(
+    pattern = ["podman", "volume", ["exists", "inspect", "ls"]],
+    decision = "allow",
+    justification = "Direct volume inspection is read-only.",
 )
 
 prefix_rule(

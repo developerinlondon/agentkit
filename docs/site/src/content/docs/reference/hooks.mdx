@@ -41,10 +41,10 @@ agent is expected to fix what it reports.
 
 <WiringTable />
 
-:::caution[Exit codes decide whether a refusal is heard]
-A `PostToolUse` hook that exits `0` is mute no matter what it printed — the harness discards the
-output. Refusal requires exit `2`. A unit that crashes, or whose dependency is missing, therefore
-reads as approval unless something makes it fail closed.
+:::note[Exit codes carry the refusal]
+A `PostToolUse` refusal is exit `2`; the harness discards the output of one that exits `0`. Because a
+missing decision is what allows the call through, a unit that crashes or loses a dependency reads as
+approval unless something makes it fail closed.
 :::
 
 The fail-closed budget in the last column is that something. `review-police` runs behind
@@ -74,22 +74,21 @@ a unit cannot go missing from this table, but a cell can be incomplete.
 | `version-police` | a dependency pin that lags the upstream latest by a major version; a pin merely behind within its major warns instead |
 | `delegation-police` | commands whose work escapes local containment — off-machine delegation such as `ansible`, and privilege wrappers such as `doas`. Read-only diagnostic forms are explicitly allowed, so `kubectl get` and `docker ps` pass |
 
-:::caution[Two of these fail open by design]
-`format-police` skips silently when `dprint` or a `dprint.json` is absent, so formatting enforcement
-is simply off on a machine without them.
+:::note[Keep `jq` and `dprint` on `PATH`]
+The units depend on them, and each direction of failure is chosen deliberately. `format-police`
+skips when `dprint` or a `dprint.json` is absent, so formatting enforcement is off on a machine
+without them. Without `jq`, most units allow the call — `comment-police` exits 0 deliberately, and
+the rest read the payload under `set -euo pipefail`, where a `PreToolUse` hook that emits no
+decision is an allow. **`review-police` is the exception and fails closed**, refusing the merge
+rather than letting it through.
 
-Without `jq`, most units fail open — `comment-police` exits 0 deliberately, and the rest have no `jq`
-check at all: reading the payload aborts under `set -euo pipefail`, and a `PreToolUse` hook that emits
-no decision reads as approval. **`review-police` is the exception and fails closed**, refusing the
-merge outright rather than letting it through.
-
-Neither is a bug — it is the repository's stated convention — but neither is visible while it is
-happening.
+The convention is fail open for detection and fail closed for the gate. Neither state announces
+itself while it is happening, so confirm both dependencies resolve after an install.
 :::
 
-:::note[These are guards, not a boundary]
-Every unit above detects a pattern and refuses it. None of them contains a hostile agent: an agent
-that writes the same effect a different way is not stopped by a guard that did not match it, and
-Codex policies do not recursively parse shell payloads. Treat them as the thing that stops the
-ordinary mistake, which is what almost every mistake is.
+:::note[What a guard reaches]
+Every unit above detects a pattern in a tool call and refuses it, which is what stops the ordinary
+mistake — and almost every mistake is ordinary. Detection is not isolation: an effect written a
+different way is outside what a given guard matches, and Codex policies match argv prefixes rather
+than parsing shell payloads.
 :::

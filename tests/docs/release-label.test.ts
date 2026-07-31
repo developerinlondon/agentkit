@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import {
   currentRelease,
   currentVersionLabel,
+  versionOptions,
 } from '../../docs/site/src/lib/release.ts';
 
 // The picker said "Latest" with no version, so a reader had no way to tell which
@@ -44,5 +45,36 @@ describe('the current version label names the release', () => {
     ['empty output', { describe: () => '' }],
   ])('%s yields a bare Latest rather than a guess', (_label, sources) => {
     expect(currentVersionLabel(sources)).toBe('latest');
+  });
+});
+
+// The select is how a reader reaches an archived version and how they see which
+// one they are reading; a release once shipped with neither, and the archives
+// were only findable from a sidebar group.
+describe('the version select offers the release and the archives', () => {
+  const archived = [{ slug: '0.4', label: 'v0.4' }];
+
+  test('the current release leads and says it is the current one', () => {
+    expect(versionOptions('v0.6.0', archived)[0]).toEqual({
+      label: 'v0.6.0 (latest)',
+      path: '/docs/',
+    });
+  });
+
+  test('an unresolved release states no number it cannot back up', () => {
+    expect(versionOptions('', archived)[0]?.label).toBe('latest');
+  });
+
+  // Base-relative paths would keep an archived reader inside the archive, which
+  // is the one place the select exists to escape.
+  test('each archive is an absolute path under the docs root', () => {
+    expect(versionOptions('v0.6.0', archived).map(({ path }) => path)).toEqual([
+      '/docs/',
+      '/docs/0.4/',
+    ]);
+  });
+
+  test('no archives leaves the current release as the only option', () => {
+    expect(versionOptions('v0.6.0', [])).toHaveLength(1);
   });
 });

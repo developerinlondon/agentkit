@@ -5,8 +5,8 @@ sidebar:
   order: 2
 ---
 
-One YAML file tunes the police units. It is not where behaviour is switched on — every unit is
-installed active, and config only moves thresholds, allowlists and review effort.
+One YAML file tunes the police units: thresholds, allowlists, review effort, and the `enabled`
+switch that `resource-police`, `delegation-police` and `version-police` each carry.
 
 |                 |                                                         |
 | --------------- | ------------------------------------------------------- |
@@ -18,42 +18,42 @@ installed active, and config only moves thresholds, allowlists and review effort
 A global install copies `config.example.yaml` into place if nothing is there, and prints
 `[config] Existing config preserved` otherwise (`install.sh`). A project install never touches it.
 
-:::caution[Current limitation: the repo-level file covers `review:` and nothing else]
+:::note[The repo-level file carries the `review` section]
 `tools/review-profile` reads `<repo>/.agentkit/config.yaml` and merges its `review:` section over
-the global one. Every police hook and OpenCode plugin reads the global path only — `coding-police`
-thresholds in a repo's `.agentkit/config.yaml` are silently ignored. `config.example.yaml` says
-"Repositories may override this section in `.agentkit/config.yaml`" without scoping that to `review`,
-which reads broader than the code is.
+the global one. Every other section is resolved from the global path — put `coding-police`
+thresholds and the rest in `~/.config/agentkit/config.yaml`.
 :::
 
-## Known gaps in config coverage
+## Where a key's reach is narrower than its name
 
-Four places where a documented key does less than it appears to. These are current limitations of the
-implementations, not design intent — a key that only some surfaces honour is a gap, and the tables
-below mark each one.
+Three keys are honoured by some surfaces and not others. Read these before relying on one, and
+note that the tables below mark each case at the point it applies.
 
-| Gap                                                                        | Effect                                    |
-| -------------------------------------------------------------------------- | ----------------------------------------- |
-| `comment-police.forbidden-patterns` **replaces** the built-in list         | a seeded config silently drops 7 matchers |
-| `comment-police.max-header-lines` + `forbidden-patterns` are OpenCode-only | no effect under Claude Code or Grok       |
-| repo-level `.agentkit/config.yaml` covers `review:` only                   | every other section is ignored there      |
+| Key                                                                | Reach                                      |
+| ------------------------------------------------------------------ | ------------------------------------------ |
+| `comment-police.forbidden-patterns` **replaces** the built-in list | a seeded config matches 6 patterns, not 13 |
+| `comment-police.max-header-lines` + `forbidden-patterns`           | the OpenCode plugin only                   |
+| repo-level `.agentkit/config.yaml`                                 | the `review:` section only                 |
 
 ## Which implementation reads which section
 
 A police unit is a policy with up to three implementations, and they do not read config equally.
 
-| Section          | Claude/Grok hook              | OpenCode plugin         | Codex policy   |
-| ---------------- | ----------------------------- | ----------------------- | -------------- |
-| `review`         | — (`review-profile` reads it) | —                       | —              |
-| `git-police`     | `allowed-repos`               | `allowed-repos`         | not read       |
-| `coding-police`  | all keys                      | all keys                | not read       |
-| `comment-police` | 3 of 5 keys (below)           | all keys                | not read       |
-| `pkg-police`     | `manager`                     | `manager`               | fixed to bun   |
-| `version-police` | no such hook                  | `enabled`, `exceptions` | no such policy |
+| Section             | Claude/Grok hook              | OpenCode plugin         | Codex policy                      |
+| ------------------- | ----------------------------- | ----------------------- | --------------------------------- |
+| `review`            | — (`review-profile` reads it) | —                       | —                                 |
+| `git-police`        | `allowed-repos`               | `allowed-repos`         | not read                          |
+| `coding-police`     | all keys                      | all keys                | not read                          |
+| `comment-police`    | 3 of 5 keys (below)           | all keys                | not read                          |
+| `pkg-police`        | `manager`                     | `manager`               | installed only for explicit `bun` |
+| `resource-police`   | `enabled`, `bounded`          | `enabled`, `bounded`    | installed only when `enabled`     |
+| `delegation-police` | `enabled`                     | `enabled`               | installed only when `enabled`     |
+| `version-police`    | no such hook                  | `enabled`, `exceptions` | no such policy                    |
 
-`format-police`, `kubectl-police`, `mr-police`, `pages-police` and `resource-police` read no config
-at all; their exceptions are per-command environment variables. The Codex `.rules` files contain no
-config reader — they are static argv-prefix policies.
+`format-police`, `kubectl-police`, `mr-police` and `pages-police` read no config at all; their
+exceptions are per-command environment variables. The Codex `.rules` files contain no config
+reader — they are static argv-prefix policies, so the installer reads the config for them and
+installs, filters, or removes the corresponding rules file on each run.
 
 ## `review`
 
@@ -154,9 +154,9 @@ built-in default stands, with no error.
 | `max-header-lines`   | `10`                 | **not read**     | read            |
 | `forbidden-patterns` | 13 built-in patterns | **not read**     | read            |
 
-:::caution[Current limitation: two of these keys are OpenCode-only]
-`max-header-lines` and `forbidden-patterns` have no effect under Claude Code or Grok CLI.
-`config.example.yaml` documents all five keys with no such caveat.
+:::note[Two of these keys are read by the OpenCode plugin only]
+`max-header-lines` and `forbidden-patterns` tune the OpenCode plugin. The Claude/Grok hook uses its
+own fixed behaviour for both, described below.
 :::
 
 The two implementations diverge here, and the divergence is asymmetric:
@@ -167,12 +167,11 @@ The two implementations diverge here, and the divergence is asymmetric:
 - The plugin ships 13 default patterns and **replaces** them wholesale when
   `forbidden-patterns` is present.
 
-:::caution[Current limitation: the seeded config narrows the OpenCode plugin]
-`config.example.yaml` sets `forbidden-patterns` to six entries. Because a present key **replaces**
-the default list rather than extending it, a freshly seeded config leaves the OpenCode plugin
-matching six patterns instead of its built-in 13 — dropping seven, including the bare `#123`,
-forge-URL and commit-sha matchers. Delete the key to keep the built-in set. There is no
-extend-rather-than-replace syntax.
+:::note[`forbidden-patterns` replaces the built-in list]
+Delete the key to keep the plugin's built-in 13 patterns. A present key **replaces** that list
+rather than extending it, and the seeded `config.example.yaml` sets six entries — so a freshly
+seeded config matches those six, without the bare `#123`, forge-URL and commit-sha matchers. Any
+pattern you want kept has to be listed alongside your own.
 :::
 
 ## `pkg-police`
@@ -194,14 +193,66 @@ The walk starts at the working directory and stops at the git root, so a lockfil
 repository never decides policy. `AGENTKIT_ALLOW_PKG=1` overrides a single command regardless of this
 setting, from the environment or as an inline prefix.
 
-:::caution[This is not "bun only"]
-In a repository whose only lockfile is `package-lock.json`, `bun install` is refused and `npm install`
-is required. The unit enforces _the project's_ manager, not a favourite one.
+:::note[The unit enforces the project's manager, not a favoured one]
+In a repository whose only lockfile is `package-lock.json`, `npm install` is what passes and
+`bun install` is refused — the inference runs in every direction.
 :::
 
-Read by the Claude/Grok hook, the OpenCode plugin and — with one deliberate difference — the Codex
-policy. Codex rules match literal argv prefixes and cannot read a lockfile, so
-`policies/codex/pkg-police.rules` enforces bun unconditionally there. The rules file documents this.
+Read by the Claude/Grok hook and the OpenCode plugin. Codex rules match literal argv prefixes and
+cannot read a lockfile, so the static `policies/codex/pkg-police.rules` (which enforces bun) is
+installed only when the config names `bun` explicitly; for `auto`, `off`, or any other manager the
+installer removes it and Codex sessions rely on the recursive hooks of the other clients.
+
+## `resource-police`
+
+```yaml
+resource-police:
+  enabled: false
+  bounded:
+    - js-packages
+    - js-scripts
+    - typescript
+    - playwright
+    - cargo
+    - go
+    - moon
+    - python
+```
+
+Off by default: nothing is bounded anywhere. When enabled, resource-intensive commands must run
+through `bounded-run`, and `bounded` selects which command classes that covers — remove entries to
+relax individual classes; omitting the list bounds every class, and an empty list bounds none.
+`enabled` must be the literal `true`. Bounding matches command prefixes, so a privileged or remote
+wrapper (`sudo`, `ssh`) around a heavy command is only caught when `delegation-police` is also
+enabled. The Claude/Grok hook and the
+OpenCode plugin honour a change immediately; the Codex policy is regenerated from the class list on
+the next `install.sh` run.
+
+| Class         | Covers                                            |
+| ------------- | ------------------------------------------------- |
+| `js-packages` | bun/npm/pnpm/yarn dependency changes              |
+| `js-scripts`  | package-script builds, checks, lints, test suites |
+| `typescript`  | `tsc` (direct, `bunx`, `npx`)                     |
+| `playwright`  | `playwright test`                                 |
+| `cargo`       | `cargo build/check/test/clippy`                   |
+| `go`          | `go build/test`                                   |
+| `moon`        | `moon ci/check/run`                               |
+| `python`      | `pytest`, pip/uv installs                         |
+
+## `delegation-police`
+
+```yaml
+delegation-police:
+  enabled: false
+```
+
+Off by default: nothing is blocked. When enabled, delegated and privileged workloads — `ssh`,
+`sudo`, ansible, container engines, service managers, kubectl mutations — are refused outside
+engine-native limits, while read-only diagnostics (`docker ps`, `docker system df`,
+`podman container inspect`, `systemctl status`, `kubectl get` …) stay allowed.
+`AGENTKIT_ALLOW_DELEGATED=1` overrides a single command when the unit is enabled. The Claude/Grok
+hook and the OpenCode plugin honour a change immediately; the Codex policy installs or uninstalls
+on the next `install.sh` run.
 
 ## `version-police`
 

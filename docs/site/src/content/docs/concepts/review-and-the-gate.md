@@ -18,7 +18,7 @@ mis-describe this kit.
 These are AgentKit's two review modes, and they are independent: enable either, both, or neither.
 Neither is installed by default.
 
-:::caution[Neither review mode is on by default]
+:::note[Both review modes are opt-in]
 Both kits are marked `explicit` in the manifest. Neither is in `--all`, neither is ever offered by
 the interactive picker, and only a literal `--with advisory-review` / `--with adversarial-review` installs one. When a run does not select one, the installer
 **removes** what it previously installed for it — for the gate that is its hooks, its tools, its
@@ -159,18 +159,18 @@ local profile omits. The same asymmetry applies to the config file: a repository
 `.agentkit/review-policy.json` can require stricter evidence and cannot be weakened by
 `~/.config/agentkit/config.yaml`.
 
-## Honest limits
+## What the gate proves
 
-:::caution[The gate is not a security boundary]
-The review record lives in the repository and the agent can write it. The gate therefore cannot prove
-reviewer identity, model-family independence, that any command actually ran, that evidence was
-redacted, or that a referenced evidence link says what the record claims. A determined agent can
-forge a pass.
+The gate proves **binding**: a review record satisfies it only when the record's context matches the
+forge's exact source and target SHAs and the digest of the policy read from the target commit. That
+makes the honest path correct and a stale review mechanically impossible to merge past by accident.
 
-What it does is make the honest path correct and a stale review mechanically impossible to merge past
-by accident. **Only forge-side required approvals actually prevent a merge.**
-:::
+It is a consistency gate, not an authentication one. The record lives in the repository and the agent
+can write it, so the gate does not attest reviewer identity, model-family independence, that a
+recorded command ran, that evidence was redacted, or that a referenced link says what the record
+claims. **Forge-side required approvals are what actually prevent a merge**, and the gate is designed
+to sit alongside them.
 
-That limit is restated in the process doc, the gate validator, the hook itself, the
-`evidence-gated-review` instruction, the README, and both review skills — specifically so nobody has
-to go looking for it.
+That scope statement is repeated in the process doc, the gate validator, the hook itself, the
+`evidence-gated-review` instruction, the README, and both review skills — so nobody has to go looking
+for it.

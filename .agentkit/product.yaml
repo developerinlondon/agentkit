@@ -138,9 +138,12 @@ requires:
       requires the installed `agentkit-run` entry point and fails closed if it
       is absent.
     - >-
-      Local containment is Linux-only and requires cgroup v2, a systemd user
-      manager, and a provisioned agent-work.slice. On non-Linux hosts the
-      installer omits bounded-run and its Codex resource policy. OpenCode
+      Resource bounding and delegation blocking are opt-in: the
+      resource-police and delegation-police config sections default to
+      disabled, and the units enforce nothing until enabled. Local containment
+      is Linux-only and requires cgroup v2, a systemd user manager, and a
+      provisioned agent-work.slice. On non-Linux hosts the installer omits
+      bounded-run and its Codex resource policy. When enabled, OpenCode
       delegation protection remains active. Claude hook protection requires
       jq, awk, cat, and python3. The review gate fails closed when its jq/python3
       evaluation cannot run; some older non-review hooks still fail open when

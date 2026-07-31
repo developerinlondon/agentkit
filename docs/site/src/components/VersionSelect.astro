@@ -1,0 +1,37 @@
+---
+import Select from "@astrojs/starlight/components/Select.astro";
+import archivedVersions from "../../archived-versions.json";
+import { currentRelease, environmentSources, versionOptions } from "../lib/release";
+
+// Trailing slash normalised because the option paths carry one and BASE_URL
+// does not always: the comparison is how the select knows where it is.
+const base = import.meta.env.BASE_URL.endsWith("/")
+	? import.meta.env.BASE_URL
+	: `${import.meta.env.BASE_URL}/`;
+
+const options = versionOptions(currentRelease(environmentSources()), archivedVersions).map((
+	{ label, path },
+) => ({ label, value: path, selected: path === base }));
+---
+
+<agentkit-version-select>
+	<!-- Wider than the theme select beside it: the label is a release plus a word,
+	     in a monospace face, and a truncated version identifies nothing. -->
+	<Select icon="clock" label="Select version" options={options} width="14em" />
+</agentkit-version-select>
+
+<script>
+	customElements.define(
+		"agentkit-version-select",
+		class extends HTMLElement {
+			constructor() {
+				super();
+				this.querySelector("select")?.addEventListener("change", (event) => {
+					if (event.currentTarget instanceof HTMLSelectElement) {
+						window.location.pathname = event.currentTarget.value;
+					}
+				});
+			}
+		},
+	);
+</script>

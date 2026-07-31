@@ -6,7 +6,10 @@ sidebar:
 ---
 
 On Linux, heavy commands run inside a bounded systemd user service with fixed limits.
-`resource-police` refuses the unbounded form and names the bounded one.
+With `resource-police.enabled: true` in `~/.config/agentkit/config.yaml`, `resource-police`
+refuses the unbounded form and names the bounded one; the `bounded` class list tunes which
+command families that covers. By default the unit is off and `bounded-run` is simply available
+as a tool.
 
 ```sh
 bounded-run --profile compile -- cargo build --release
@@ -71,10 +74,11 @@ refused rather than guessed at.
 
 Hosts sized differently pin their values in root-owned `/etc/agentkit/resource-guard.conf`.
 
-:::caution[The installer does not create the work slice]
-`install.sh` provisions `agent-sessions.slice`, the per-session scope. `agent-work.slice` — the one
-`bounded-run` verifies — is host-provisioned separately. A missing or mismatched aggregate slice is
-a **failed safety gate**, not a reason to fall back to the unbounded command.
+:::caution[Provision `agent-work.slice` on the host first]
+`install.sh` provisions `agent-sessions.slice`, the per-session scope. The aggregate work slice
+`bounded-run` verifies — `agent-work.slice` — is provisioned on the host separately. Until it
+matches, `bounded-run` refuses to run: treat that as a safety gate to fix, not a reason to fall
+back to the unbounded command.
 :::
 
 Treat a timeout, an OOM, high load, memory pressure, or a missing slice the same way: stop and

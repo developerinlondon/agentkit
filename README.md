@@ -31,6 +31,7 @@ Reusable AI agent skills, rules, plugins, hooks, and tools for OpenCode, Claude 
 | **resource-safe-execution** | always                           | Apply Linux-only deterministic systemd cgroup limits with bounded-run to resource-intensive developer commands.                                                                                                                                   |
 | **ruminate**                | `--with memory`                  | Mine past Claude Code conversations for corrections, preferences, and knowledge that never reached the brain vault.                                                                                                                               |
 | **test-driven-development** | always                           | Enforces strict Test-Driven Development (TDD) workflow: RED-GREEN-REFACTOR cycle.                                                                                                                                                                 |
+| **uninstall**               | always                           | Remove AgentKit, or one of its skill kits, without hand-deleting files.                                                                                                                                                                           |
 
 <!-- generated:skills:end -->
 

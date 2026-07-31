@@ -44,9 +44,9 @@ Exceptions: bug fixes in already-approved work, read-only research, formatting.
 This section and the review-effort resolver below apply when the explicit
 `adversarial-review` skill kit is installed (`install.sh --with adversarial-review` or
 the `agentkit-adversarial-review` plugin). Without it there is no merge gate and no
-`review-profile`/`adversarial-review` lane — the core `review-discipline`
-instruction already covers that case: one advisory reviewer pass from a
-non-authoring context, then merge on approval.
+`review-profile`/`adversarial-review` lane — the `review-discipline` instruction
+(from the opt-in `advisory-review` kit) covers that case when installed: one
+advisory reviewer pass from a non-authoring context, then merge on approval.
 
 Review is a gate, not a parallel task and not advice. `review-police.sh` allows
 one standalone `gh pr merge` or `glab mr merge` only with a passing record for

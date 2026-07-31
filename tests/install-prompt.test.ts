@@ -22,6 +22,11 @@ function countOccurrences(text: string, needle: string): number {
   return text.split(needle).length - 1;
 }
 
+function writeAgentkitConfig(home: string, contents: string): void {
+  mkdirSync(join(home, '.config', 'agentkit'), { recursive: true });
+  writeFileSync(join(home, '.config', 'agentkit', 'config.yaml'), contents);
+}
+
 function runGlobalInstall(home: string, extraArgs: string[] = []) {
   return spawnSync('bash', [installScript, '--global', '--no-session-scope', ...extraArgs], {
     cwd: repoRoot,
@@ -48,6 +53,7 @@ describe('global prompt installation', () => {
       mkdirSync(codexDir, { recursive: true });
       mkdirSync(claudeDir, { recursive: true });
       mkdirSync(opencodeDir, { recursive: true });
+      writeAgentkitConfig(home, 'resource-police:\n  enabled: true\n');
       writeFileSync(
         join(codexDir, 'config.toml'),
         'model = "gpt-5.5"\nmodel_reasoning_effort = "xhigh"\n',
@@ -326,4 +332,38 @@ describe('the advisory review instruction is opt-in', () => {
       rmSync(home, { recursive: true, force: true });
     }
   }, globalInstallTimeoutMs);
+});
+
+describe('the resource-safety instruction follows the enforcement config', () => {
+  const promptPath = (home: string) => join(home, '.claude', 'CLAUDE.md');
+  const instructionPath = (home: string) =>
+    join(home, '.agentkit', 'instructions', 'resource-safety.md');
+
+  test('a default install leaves it out; enabling installs it; disabling removes it', () => {
+    const home = mkdtempSync(join(tmpdir(), 'agentkit-resource-config-'));
+
+    try {
+      expect(runGlobalInstall(home).status).toBe(0);
+      expect(existsSync(instructionPath(home))).toBe(false);
+      expect(readFileSync(promptPath(home), 'utf-8')).not.toContain(
+        'agentkit:resource-safety:start',
+      );
+
+      writeAgentkitConfig(home, 'delegation-police:\n  enabled: true\n');
+      expect(runGlobalInstall(home).status).toBe(0);
+      expect(existsSync(instructionPath(home))).toBe(true);
+      expect(readFileSync(promptPath(home), 'utf-8')).toContain(
+        'agentkit:resource-safety:start',
+      );
+
+      writeAgentkitConfig(home, 'delegation-police:\n  enabled: false\n');
+      expect(runGlobalInstall(home).status).toBe(0);
+      expect(existsSync(instructionPath(home))).toBe(false);
+      expect(readFileSync(promptPath(home), 'utf-8')).not.toContain(
+        'agentkit:resource-safety:start',
+      );
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  }, 3 * globalInstallTimeoutMs);
 });

@@ -97,6 +97,13 @@ npx skills add developerinlondon/agentkit
 | issue-raiser        | GitLab issue creation with root cause analysis |
 | project-planning    | Structured project breakdown                   |
 
+## Editing the docs site
+
+Content under `docs/site/src/content/docs/` is user-facing product documentation. Follow
+`docs/site/EDITORIAL.md`: lead with what the system does, state boundaries as neutral facts, never
+frame a limitation as a defect. The callout policy (`:::danger` never; `:::caution` only from the
+allowlist) is enforced by `tests/docs/docs-tone.test.ts`.
+
 ## Commands
 
 ```bash

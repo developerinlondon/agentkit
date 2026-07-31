@@ -8,11 +8,10 @@ sidebar:
 A police hook is a script the harness runs _before_ it executes a tool call, or _after_ it writes a
 file. It gets the tool payload on stdin and it gets to say no.
 
-:::caution[Guards, not boundaries]
-None of this is a sandbox. A police hook detects and refuses; it does not isolate, contain, or
-constrain hostile code. A script that speaks HTTP directly, or delegates work into a container, is
-outside what any of these hooks can see. Treat them as defence-in-depth detection against the
-convenient wrong path — which is the path an agent actually takes.
+:::note[What a guard reaches]
+A police hook detects a pattern in a tool call and refuses it; it is detection, not isolation. A
+script that speaks HTTP directly, or delegates work into a container, is outside what any hook can
+see. They cover the convenient wrong path — which is the path an agent actually takes.
 :::
 
 ## The interception path
@@ -37,6 +36,10 @@ registrations out of `settings.json` on the way in — so the default chain is s
 `Edit` and `Write` are followed by three quality hooks: `format-police`, `coding-police`,
 `comment-police`.
 
+`resource-police` sits in that chain but is configuration-gated: with the default config
+(`resource-police` and `delegation-police` both disabled) it exits without checking anything.
+See the [configuration reference](/docs/reference/configuration/) for enabling and tuning it.
+
 What each unit checks belongs to the [hooks reference](/docs/reference/hooks/). What follows is the
 mechanism, which is where the interesting failures live.
 
@@ -59,11 +62,12 @@ it is silently off while appearing installed. That has happened in this kit — 
 path that did not exist on one platform killed a hook immediately, and the harness reported only a
 non-blocking status code.
 
-:::caution[A `PostToolUse` hook that exits 0 is mute]
-Claude Code discards a `PostToolUse` hook's stderr when it exits 0. The check runs, prints its
-findings, and nobody hears it. `format-police`, `coding-police` and `comment-police` therefore exit
-2 — blocking the write — rather than exiting 0 with a warning. The OpenCode plugins diverge
-deliberately: they are advisory, appending findings to the tool output instead of throwing.
+:::note[Why the write hooks exit 2]
+Claude Code discards a `PostToolUse` hook's stderr when it exits 0, so findings printed on a
+zero exit reach nobody. `format-police`, `coding-police` and `comment-police` therefore exit 2,
+blocking the write, which is how their findings get in front of the agent. The OpenCode plugins
+take the other route by design: they are advisory, appending findings to the tool output instead
+of throwing.
 :::
 
 ## The fail-closed supervisor

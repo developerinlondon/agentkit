@@ -12,7 +12,13 @@ export const TEST_SLICES = {
     'tests/diagram/render.test.ts',
     'tests/diagram/vendor-icons.test.ts',
   ],
-  docs: ['tests/docs/asset-types.test.ts', 'tests/docs/deploy.test.ts', 'tests/docs/facts.test.ts', 'tests/docs/release-label.test.ts'],
+  docs: [
+    'tests/docs/asset-types.test.ts',
+    'tests/docs/deploy.test.ts',
+    'tests/docs/docs-tone.test.ts',
+    'tests/docs/facts.test.ts',
+    'tests/docs/release-label.test.ts',
+  ],
   site: ['tests/site/links.test.ts'],
   hooks: [
     'tests/agentkit-plugin.test.ts',
@@ -41,6 +47,7 @@ export const TEST_SLICES = {
     'tests/install/manifest-readers.test.ts',
     'tests/install/plugin-scripts.test.ts',
     'tests/install/skill-kits.test.ts',
+    'tests/install/uninstall.test.ts',
     'tests/install/update-notice.test.ts',
     'tests/install/wizard.test.ts',
   ],
