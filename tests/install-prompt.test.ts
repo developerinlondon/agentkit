@@ -1,4 +1,4 @@
-import { describe, test, expect } from 'bun:test';
+import { afterAll, describe, test, expect } from 'bun:test';
 import {
   existsSync,
   lstatSync,
@@ -28,7 +28,7 @@ function writeAgentkitConfig(home: string, contents: string): void {
   writeFileSync(join(home, '.config', 'agentkit', 'config.yaml'), contents);
 }
 
-function runGlobalInstall(home: string, extraArgs: string[] = []) {
+function runInstall(home: string, extraArgs: string[], extraEnv: Record<string, string>) {
   return spawnSync('bash', [installScript, '--global', '--no-session-scope', ...extraArgs], {
     cwd: repoRoot,
     env: {
@@ -36,10 +36,23 @@ function runGlobalInstall(home: string, extraArgs: string[] = []) {
       HOME: home,
       XDG_CONFIG_HOME: join(home, '.config'),
       AGENTKIT_HOME: join(home, '.agentkit'),
+      ...extraEnv,
     },
     encoding: 'utf-8',
     timeout: globalInstallTimeoutMs,
   });
+}
+
+// The one install in the whole suite that resolves and builds real skill
+// dependencies, so a dependency that stops resolving still fails something.
+function runGlobalInstallWithSkillDeps(home: string) {
+  return runInstall(home, [], {});
+}
+
+// Everywhere else pins prompt splicing, which the dependency step does not
+// touch, and paying for it once per install is most of these tests' runtime.
+function runGlobalInstall(home: string, extraArgs: string[] = []) {
+  return runInstall(home, extraArgs, { AGENTKIT_SKIP_SKILL_DEPS: '1' });
 }
 
 describe('global prompt installation', () => {
@@ -76,7 +89,7 @@ describe('global prompt installation', () => {
       );
 
       for (let i = 0; i < 2; i += 1) {
-        const result = runGlobalInstall(home);
+        const result = runGlobalInstallWithSkillDeps(home);
         expect(result.status, result.stderr.toString()).toBe(0);
       }
 
@@ -270,6 +283,23 @@ describe('the advisory review instruction is opt-in', () => {
   const instructionPath = (home: string) =>
     join(home, '.agentkit', 'instructions', 'review-discipline.md');
 
+  // Two of these read a plain default install without touching it, and the
+  // install is the whole cost. The ones that re-install or deselect still get
+  // their own home, because they change what the next assertion would see.
+  let plainInstall: string | null = null;
+  function defaultInstall(): string {
+    if (plainInstall) return plainInstall;
+    // Recorded before the install can fail its assertion, so a failed run still
+    // takes its temp home with it rather than leaking one per attempt.
+    plainInstall = mkdtempSync(join(tmpdir(), 'agentkit-review-flag-'));
+    const result = runGlobalInstall(plainInstall);
+    expect(result.status, result.stderr).toBe(0);
+    return plainInstall;
+  }
+  afterAll(() => {
+    if (plainInstall) rmSync(plainInstall, { recursive: true, force: true });
+  });
+
   test('--with advisory-review installs it and splices it into the prompt', () => {
     const home = mkdtempSync(join(tmpdir(), 'agentkit-review-flag-'));
 
@@ -286,18 +316,12 @@ describe('the advisory review instruction is opt-in', () => {
   }, globalInstallTimeoutMs);
 
   test('a default install leaves it out of the prompt entirely', () => {
-    const home = mkdtempSync(join(tmpdir(), 'agentkit-review-flag-'));
+    const home = defaultInstall();
 
-    try {
-      const result = runGlobalInstall(home);
-      expect(result.status, result.stderr).toBe(0);
-      expect(existsSync(instructionPath(home))).toBe(false);
-      expect(readFileSync(promptPath(home), 'utf-8')).not.toContain(
-        'agentkit:review-discipline:start',
-      );
-    } finally {
-      rmSync(home, { recursive: true, force: true });
-    }
+    expect(existsSync(instructionPath(home))).toBe(false);
+    expect(readFileSync(promptPath(home), 'utf-8')).not.toContain(
+      'agentkit:review-discipline:start',
+    );
   }, globalInstallTimeoutMs);
 
   // Presence without a recorded selection is not consent, so deselecting has to
@@ -321,16 +345,9 @@ describe('the advisory review instruction is opt-in', () => {
   }, globalInstallTimeoutMs);
 
   test('the other core instructions are unaffected', () => {
-    const home = mkdtempSync(join(tmpdir(), 'agentkit-review-flag-'));
-
-    try {
-      expect(runGlobalInstall(home).status).toBe(0);
-      const prompt = readFileSync(promptPath(home), 'utf-8');
-      for (const name of ['anti-glaze', 'coding-discipline', 'collaboration-visibility']) {
-        expect(prompt).toContain(`agentkit:${name}:start`);
-      }
-    } finally {
-      rmSync(home, { recursive: true, force: true });
+    const prompt = readFileSync(promptPath(defaultInstall()), 'utf-8');
+    for (const name of ['anti-glaze', 'coding-discipline', 'collaboration-visibility']) {
+      expect(prompt).toContain(`agentkit:${name}:start`);
     }
   }, globalInstallTimeoutMs);
 });

@@ -16,6 +16,10 @@ function install(home: string, extraArgs: string[] = []) {
     env: {
       ...process.env,
       AGENTKIT_PLATFORM: 'linux',
+      // Kit selection is what these pin, not dependency fetching. The real
+      // bun-install path is exercised once, by the first test in
+      // tests/install-prompt.test.ts.
+      AGENTKIT_SKIP_SKILL_DEPS: '1',
       HOME: home,
       XDG_CONFIG_HOME: join(home, '.config'),
       AGENTKIT_HOME: join(home, '.agentkit'),

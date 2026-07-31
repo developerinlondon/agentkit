@@ -77,6 +77,7 @@ export const TEST_SLICES = {
   review: [
     'tests/build/mutate.test.ts',
     'tests/build/preflight.test.ts',
+    'tests/build/test-runner.test.ts',
     'tests/codex-review-hooks.test.ts',
     'tests/product-command.test.ts',
     'tests/review-disciplines.test.ts',

@@ -14,7 +14,13 @@ const helperTimeoutMs = 5_000;
 function install(home: string, extraArgs: string[] = []) {
   return spawnSync('bash', [installScript, '--global', ...extraArgs], {
     cwd: repoRoot,
-    env: { ...process.env, HOME: home, XDG_CONFIG_HOME: join(home, '.config') },
+    env: {
+      ...process.env,
+      // The systemd slice unit is what these pin, not dependency fetching.
+      AGENTKIT_SKIP_SKILL_DEPS: '1',
+      HOME: home,
+      XDG_CONFIG_HOME: join(home, '.config'),
+    },
     encoding: 'utf-8',
     timeout: globalInstallTimeoutMs,
   });

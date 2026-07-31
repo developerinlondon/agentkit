@@ -54,6 +54,7 @@ const CRITICAL_INPUTS = [
   'policies/**/*',
   'scripts/check-test-slices.ts',
   'scripts/product-command',
+  'scripts/run-test-slices.ts',
   'scripts/skill-kits.ts',
   'scripts/sync-cc-plugin.sh',
   'skills/KITS',
