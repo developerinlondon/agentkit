@@ -10,16 +10,23 @@ import {
 
 const repoRoot = join(import.meta.dir, '..');
 
-// Cannot share lanes: each spawns an external process against a fixed budget
-// (one second for fail-closed-hook.sh, twenty for Chrome's devtools endpoint)
-// that contention makes it miss; the opt-in suite takes the machine-wide lock.
+// Cannot share lanes: each asserts how long spawned work takes — a one-second
+// relay deadline, a twenty-second wait for Chrome's devtools endpoint, a
+// ten-second duplicate scan — so contention fails them on load, not behaviour.
+// The opt-in containment suite is here instead for the machine-wide lock.
 export const soloFiles = new Set([
+  'tests/coding-police-hook.test.ts',
   'tests/hook-supervisor.test.ts',
   'tests/publish-page/mermaid-runtime.test.ts',
   ...(process.env.AGENTKIT_RUN_INTEGRATION === '1'
     ? ['tests/resource-run.integration.test.ts']
     : []),
 ]);
+
+// bun caps a test declaring no timeout at 5s; several that shell out to an
+// external binary sit close enough that contention pushes them over. A test
+// wanting a real bound declares one, and that still wins.
+const DEFAULT_TEST_TIMEOUT_MS = 60_000;
 
 interface Unit {
   slice: TestSlice;
@@ -135,7 +142,7 @@ function count(summary: string, label: string): number {
 async function runUnit(unit: Unit, stream: boolean): Promise<UnitResult> {
   const started = Bun.nanoseconds();
   const child = Bun.spawn({
-    cmd: [process.execPath, 'test', unit.file],
+    cmd: [process.execPath, 'test', `--timeout=${DEFAULT_TEST_TIMEOUT_MS}`, unit.file],
     cwd: repoRoot,
     env: process.env,
     stdout: stream ? 'inherit' : 'pipe',
