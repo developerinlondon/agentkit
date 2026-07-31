@@ -1,0 +1,80 @@
+---
+import { Icon } from "@astrojs/starlight/components";
+---
+
+<agentkit-theme-toggle>
+	<button class="ak-control toggle" type="button" aria-label="Switch to light theme">
+		<Icon name="sun" class="to-light" />
+		<Icon name="moon" class="to-dark" />
+	</button>
+</agentkit-theme-toggle>
+
+<style>
+	.toggle {
+		cursor: pointer;
+		padding-inline: 0.5rem;
+	}
+
+	/* Each icon names the theme the click moves to, and the pair is swapped in
+	   CSS so the right one is painted before any script runs. */
+	:global(:root[data-theme="light"]) .to-light,
+	:global(:root[data-theme="dark"]) .to-dark {
+		display: none;
+	}
+
+	.toggle :global(svg) {
+		font-size: 1rem;
+	}
+</style>
+
+<script>
+	const STORAGE_KEY = "starlight-theme";
+	const root = document.documentElement;
+
+	const currentTheme = () => (root.dataset.theme === "light" ? "light" : "dark");
+
+	const storedTheme = () => {
+		try {
+			return localStorage.getItem(STORAGE_KEY);
+		} catch {
+			return null;
+		}
+	};
+
+	// Every toggle on the page, because the header and the mobile drawer each
+	// render one and the label of the untouched copy would otherwise lie.
+	function syncLabels() {
+		const next = currentTheme() === "dark" ? "light" : "dark";
+		for (const button of document.querySelectorAll("agentkit-theme-toggle button")) {
+			button.setAttribute("aria-label", `Switch to ${next} theme`);
+		}
+	}
+
+	function applyTheme(theme: "light" | "dark") {
+		root.dataset.theme = theme;
+		syncLabels();
+	}
+
+	// Only while the reader has expressed no preference; a stored choice outranks
+	// the system for the same reason Starlight's own select stores one.
+	matchMedia("(prefers-color-scheme: light)").addEventListener("change", (event) => {
+		if (!storedTheme()) applyTheme(event.matches ? "light" : "dark");
+	});
+
+	customElements.define(
+		"agentkit-theme-toggle",
+		class extends HTMLElement {
+			constructor() {
+				super();
+				syncLabels();
+				this.querySelector("button")?.addEventListener("click", () => {
+					const next = currentTheme() === "dark" ? "light" : "dark";
+					try {
+						localStorage.setItem(STORAGE_KEY, next);
+					} catch {}
+					applyTheme(next);
+				});
+			}
+		},
+	);
+</script>

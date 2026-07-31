@@ -7,7 +7,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 DIST="${1:-dist}"
-MANIFEST=archived-versions.json
+LIST=src/lib/list-archives.ts
 REPO_ROOT=$(git rev-parse --show-toplevel)
 
 die() {
@@ -15,16 +15,21 @@ die() {
 	exit 1
 }
 
-command -v jq >/dev/null || die "jq is required to read $MANIFEST"
-[[ -f "$MANIFEST" ]] || die "missing $MANIFEST"
-jq -e 'type == "array" and all(.[]; has("slug") and has("tag"))' "$MANIFEST" >/dev/null 2>&1 \
-	|| die "$MANIFEST is not an array of {slug, tag} entries"
+command -v bun >/dev/null || die "bun is required to derive the archive list"
 [[ -d "$DIST" ]] || die "no $DIST — build the current docs first"
 DIST_ABS=$(cd "$DIST" && pwd)
 
+# Derived from the tags through the same module the picker renders from, and
+# captured before the loop: a process substitution would swallow a derivation
+# failure and read as "no archives", publishing a site whose picker offers
+# versions that were never built.
+ENTRIES=$(mktemp)
+trap 'rm -f "$ENTRIES"' EXIT
+bun "$LIST" > "$ENTRIES" || die "could not derive the archive list from $LIST"
+
 while IFS=$'\t' read -r slug tag; do
 	[[ "$slug" =~ ^[0-9][0-9.]*$ && "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] \
-		|| die "manifest entry is malformed: slug='$slug' tag='$tag'"
+		|| die "derived entry is malformed: slug='$slug' tag='$tag'"
 	git -C "$REPO_ROOT" rev-parse -q --verify "refs/tags/$tag" >/dev/null \
 		|| die "tag $tag is not present — fetch tags before building archives"
 
@@ -64,4 +69,4 @@ while IFS=$'\t' read -r slug tag; do
 		| grep -vE "(href|src)=\"/docs/$slug_re/" | sort -u | head -3 || true)
 	[[ -z "$escapes" ]] || die "archive $slug links escape its mount: $escapes"
 	echo "[archive] $slug: $(find "$DIST_ABS/$slug" -type f | wc -l | tr -d ' ') files"
-done < <(jq -r '.[] | "\(.slug)\t\(.tag)"' "$MANIFEST")
+done < "$ENTRIES"

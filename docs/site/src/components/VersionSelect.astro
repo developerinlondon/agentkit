@@ -1,7 +1,6 @@
 ---
-import Select from "@astrojs/starlight/components/Select.astro";
-import archivedVersions from "../../archived-versions.json";
-import { currentRelease, environmentSources, versionOptions } from "../lib/release";
+import { Icon } from "@astrojs/starlight/components";
+import { archivedReleases, currentRelease, environmentSources, versionOptions } from "../lib/release";
 
 // Trailing slash normalised because the option paths carry one and BASE_URL
 // does not always: the comparison is how the select knows where it is.
@@ -9,16 +8,71 @@ const base = import.meta.env.BASE_URL.endsWith("/")
 	? import.meta.env.BASE_URL
 	: `${import.meta.env.BASE_URL}/`;
 
-const options = versionOptions(currentRelease(environmentSources()), archivedVersions).map((
-	{ label, path },
-) => ({ label, value: path, selected: path === base }));
+const options = versionOptions(currentRelease(environmentSources()), archivedReleases());
 ---
 
 <agentkit-version-select>
-	<!-- Wider than the theme select beside it: the label is a release plus a word,
-	     in a monospace face, and a truncated version identifies nothing. -->
-	<Select icon="clock" label="Select version" options={options} width="14em" />
+	<label class="ak-control version">
+		<span class="sr-only">Select version</span>
+		<Icon name="clock" class="lead" />
+		<select autocomplete="off">
+			{
+				options.map(({ label, path }) => (
+					<option value={path} selected={path === base}>
+						{label}
+					</option>
+				))
+			}
+		</select>
+		<Icon name="down-caret" class="caret" />
+	</label>
 </agentkit-version-select>
+
+<style>
+	.version {
+		max-width: 100%;
+	}
+
+	/* No width is set: a native select is already as wide as its widest option.
+	   Every fixed width tried here truncated "vX.Y.Z (latest)" in the monospace
+	   face, and the label is worthless once the release is cut off. */
+	select {
+		appearance: none;
+		border: 0;
+		padding: 0;
+		background: transparent;
+		color: inherit;
+		font: inherit;
+		cursor: pointer;
+		max-width: 100%;
+		text-overflow: ellipsis;
+	}
+
+	select:focus-visible {
+		outline: none;
+	}
+
+	option {
+		background: var(--panel);
+		color: var(--ink);
+	}
+
+	.lead,
+	.caret {
+		flex: none;
+		color: var(--muted);
+		pointer-events: none;
+	}
+
+	.caret {
+		font-size: 1.125rem;
+	}
+
+	.version:hover .lead,
+	.version:hover .caret {
+		color: var(--fill);
+	}
+</style>
 
 <script>
 	customElements.define(

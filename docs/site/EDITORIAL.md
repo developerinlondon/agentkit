@@ -16,6 +16,19 @@ instruction. Accuracy is never sacrificed — framing is.
   deliberate, reviewed act.
 - Everything else is prose, `:::note`, or `:::tip`.
 
+## Version picker retention
+
+The picker offers the current release plus the last 20 releases, derived from
+the git tags — there is no list to curate, and `ARCHIVE_LIMIT` in
+`src/lib/release.ts` is the one knob. Releases are excluded automatically when
+they are at or above the release being built, or when their tag predates the
+docs site and so cannot build an archive at all.
+
+Each entry is a full site build from its own tag at deploy time, so raising the
+cap costs a build per release added. A release whose tag stops building fails
+the deploy naming that tag, which is the intended failure: an archive that
+cannot be rebuilt is not a version the picker should still be offering.
+
 ## Voice
 
 - Never present a limitation as a defect of the product ("silently off",
