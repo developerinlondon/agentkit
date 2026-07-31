@@ -152,13 +152,39 @@ jobs:
       matrix:
         os: ${{ fromJSON(needs.pick-runners.outputs.matrix) }}
     steps:
+      # A tag names a commit the main-push run already tested — same SHA, same
+      # tree, same workflow — so a green run for the exact SHA stands in for a
+      # re-run. Tags only: an untested SHA (direct tag) still runs everything,
+      # and any lookup failure falls through to running the suite.
+      - name: Reuse a green run for this exact commit
+        id: reuse
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tested=false
+          if [ "${GITHUB_REF_TYPE:-}" = "tag" ]; then
+            runs=$(curl -sS --max-time 20 -H "Authorization: Bearer $GH_TOKEN" \
+              "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$GITHUB_SHA&status=success&per_page=20" \
+              || true)
+            if [ -n "$runs" ] && printf '%s' "$runs" | jq -e \
+              --arg wf "$GITHUB_WORKFLOW" --arg id "$GITHUB_RUN_ID" \
+              '[.workflow_runs[]? | select(.name == $wf and (.id | tostring) != $id)] | length > 0' \
+              >/dev/null 2>&1; then
+              tested=true
+              echo "commit $GITHUB_SHA already passed a full $GITHUB_WORKFLOW run — reusing it"
+            fi
+          fi
+          echo "tested=$tested" >> "$GITHUB_OUTPUT"
+
       - name: Check out full history
+        if: steps.reuse.outputs.tested != 'true'
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           fetch-depth: 0
           filter: blob:none
 
       - name: Install pinned Moon and Bun toolchains
+        if: steps.reuse.outputs.tested != 'true'
         uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
         env:
           # proto resolves tool versions against the GitHub API; the self-hosted
@@ -169,22 +195,27 @@ jobs:
           auto-install: true
 
       - name: Install dependencies from the lockfile
+        if: steps.reuse.outputs.tested != 'true'
         run: bun install --frozen-lockfile
 
       - name: Install publish-page skill dependencies
+        if: steps.reuse.outputs.tested != 'true'
         run: bun install --frozen-lockfile --cwd skills/publish-page
 
       - name: Install the pinned d2 renderer
+        if: steps.reuse.outputs.tested != 'true'
         uses: ./.github/actions/install-d2
         with:
           version: 0.7.1
 
       - name: Install the pinned dprint formatter
+        if: steps.reuse.outputs.tested != 'true'
         uses: ./.github/actions/install-dprint
         with:
           version: 0.55.2
 
       - name: Run complete suite
+        if: steps.reuse.outputs.tested != 'true'
         run: moon run agentkit:test-full
 
   docs:

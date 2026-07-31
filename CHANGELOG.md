@@ -5,6 +5,23 @@ top and ships with the next tag.
 
 ## [Unreleased]
 
+## v0.6.2 — 2026-07-31
+
+- fix(site): archived doc versions carry an injected, version-independent
+  switching banner — a tag-era page without the picker no longer strands the
+  reader; the banner reads `/docs/versions.json`, so old archives list even
+  releases that postdate them
+- feat(site): the current docs build emits `/docs/versions.json`, the one
+  source the header picker and the archive banner share
+- ci: the docs publish builds and uploads an archived site per release, so its
+  timeout moves from 20 to 45 minutes — the v0.6.1 tag run died mid-upload,
+  which is why v0.6.1 has no GitHub Release or docs deploy (#240)
+- ci: a tag reuses the green full-suite run of its exact commit instead of
+  re-running both platform suites on a SHA the main push just tested (#243)
+- ci: archives publish incrementally — a slug whose live `archive-stamp.txt`
+  matches (tag, tag sha, banner hash) is neither rebuilt nor re-uploaded, and
+  the prune spares it; dropped slugs still prune (#243)
+
 ## v0.6.1 — 2026-07-31
 
 - **Enforcement is now opt-in everywhere** (#237). The `resource-police` and

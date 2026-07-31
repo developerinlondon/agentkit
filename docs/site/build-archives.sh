@@ -8,7 +8,9 @@ cd "$(dirname "$0")"
 
 DIST="${1:-dist}"
 LIST=src/lib/list-archives.ts
+INJECT=src/lib/inject-banner.ts
 REPO_ROOT=$(git rev-parse --show-toplevel)
+SITE_URL="${AGENTKIT_SITE_URL:-https://agentkit.sbs}"
 
 die() {
 	echo "build-archives: $*" >&2
@@ -19,6 +21,11 @@ command -v bun >/dev/null || die "bun is required to derive the archive list"
 [[ -d "$DIST" ]] || die "no $DIST — build the current docs first"
 DIST_ABS=$(cd "$DIST" && pwd)
 
+# Rewritten every run: a list left by an earlier run would tell the deploy to
+# spare live objects this build did not reuse.
+REUSED="$DIST_ABS/.reused-archives"
+rm -f "$REUSED"
+
 # Derived from the tags through the same module the picker renders from, and
 # captured before the loop: a process substitution would swallow a derivation
 # failure and read as "no archives", publishing a site whose picker offers
@@ -27,11 +34,29 @@ ENTRIES=$(mktemp)
 trap 'rm -f "$ENTRIES"' EXIT
 bun "$LIST" > "$ENTRIES" || die "could not derive the archive list from $LIST"
 
-while IFS=$'\t' read -r slug tag; do
+while IFS=$'\t' read -r slug tag banner_hash; do
 	[[ "$slug" =~ ^[0-9][0-9.]*$ && "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] \
 		|| die "derived entry is malformed: slug='$slug' tag='$tag'"
+	[[ "$banner_hash" =~ ^[0-9a-f]{16}$ ]] \
+		|| die "derived entry carries no banner hash: slug='$slug'"
 	git -C "$REPO_ROOT" rev-parse -q --verify "refs/tags/$tag" >/dev/null \
 		|| die "tag $tag is not present — fetch tags before building archives"
+
+	stamp="$tag $(git -C "$REPO_ROOT" rev-parse "refs/tags/$tag^{commit}") $banner_hash"
+
+	# An archive is a build of an immutable tag, so only the tag it came from and
+	# the banner injected into it can change what it should contain. When the
+	# published stamp already matches, the live objects are what this run would
+	# produce. Every doubt builds: a failed fetch, an empty read, any mismatch.
+	if [[ "${AGENTKIT_ARCHIVE_REUSE:-}" == 1 ]]; then
+		live_stamp=$(curl -fsS --max-time 20 "$SITE_URL/docs/$slug/archive-stamp.txt" 2>/dev/null || true)
+		if [[ -n "$live_stamp" && "$live_stamp" == "$stamp" ]]; then
+			rm -rf "${DIST_ABS:?}/$slug"
+			printf '%s\n' "$slug" >> "$REUSED"
+			echo "[archive] $slug: reused the published build of $tag"
+			continue
+		fi
+	fi
 
 	echo "[archive] $slug from $tag"
 	tmp=$(mktemp -d)
@@ -68,5 +93,15 @@ while IFS=$'\t' read -r slug tag; do
 	escapes=$(grep -rhoE '(href|src)="/docs/[^"]*"' "$DIST_ABS/$slug" 2>/dev/null \
 		| grep -vE "(href|src)=\"/docs/$slug_re/" | sort -u | head -3 || true)
 	[[ -z "$escapes" ]] || die "archive $slug links escape its mount: $escapes"
+
+	# After the escape check, never before: the banner's whole job is to link out
+	# of the archive, and the guard above exists to catch exactly that in the
+	# archive's own content.
+	bun "$INJECT" "$slug" "$DIST_ABS/$slug" || die "archive $slug: banner injection failed"
+
+	# Written last, so a stamp only ever describes an archive that finished
+	# building and was injected.
+	printf '%s\n' "$stamp" > "$DIST_ABS/$slug/archive-stamp.txt"
+
 	echo "[archive] $slug: $(find "$DIST_ABS/$slug" -type f | wc -l | tr -d ' ') files"
 done < "$ENTRIES"

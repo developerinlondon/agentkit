@@ -29,8 +29,11 @@ fi
 node ./node_modules/astro/bin/astro.mjs build
 
 # Archived versions build from their own tags into dist/<slug>/ — a declared
-# version that fails to build fails the deploy, naming its tag.
-./build-archives.sh dist
+# version that fails to build fails the deploy, naming its tag. Reuse is enabled
+# here and nowhere else: a local build must keep producing the whole site, or the
+# only place the archives are exercised is the one place that skips them.
+AGENTKIT_ARCHIVE_REUSE=1 ./build-archives.sh dist
+REUSED=dist/.reused-archives
 
 # Checked before the stamp is written: a failed build leaves no dist/ at all, and
 # writing the stamp first turns that into a confusing redirection error instead
@@ -70,7 +73,7 @@ uploaded=0
 while IFS= read -r file; do
 	put "$file"
 	uploaded=$((uploaded + 1))
-done < <(find dist -type f ! -name '*.html' ! -path "$STAMP" | sort)
+done < <(find dist -type f ! -name '*.html' ! -path "$STAMP" ! -name .reused-archives | sort)
 
 while IFS= read -r file; do
 	put "$file"
@@ -129,6 +132,21 @@ tr ',' '\n' < "$listing" | grep -oE '"docs/[^"]+"' | tr -d '"' | sort -u > "$liv
 rm -f "$listing"
 (cd dist && find . -type f | sed 's|^\./|docs/|') | sort -u > "$built_keys"
 comm -23 "$live_keys" "$built_keys" > "$stale_keys"
+
+# A reused archive is deliberately absent from dist/, so every one of its live
+# objects looks stale here. Spare exactly the slugs this run reused — dots
+# escaped so `0.5.3` cannot bless `0X5X3` — and do it before the refusal below,
+# which would otherwise measure a deletion nobody proposed. A slug dropped from
+# the selection is in neither list and prunes normally.
+if [[ -s "$REUSED" ]]; then
+	keep_re=$(mktemp)
+	kept=$(mktemp)
+	sed 's/\./\\./g; s|.*|^docs/&/|' "$REUSED" > "$keep_re"
+	grep -vEf "$keep_re" "$stale_keys" > "$kept" || true
+	mv "$kept" "$stale_keys"
+	rm -f "$keep_re"
+	echo "deploy: kept $(grep -c . "$REUSED" || true) reused archive(s) out of the prune"
+fi
 
 stale_count=$(grep -c . "$stale_keys" || true)
 live_count=$(grep -c . "$live_keys" || true)
