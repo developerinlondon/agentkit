@@ -40,9 +40,9 @@ interface UnitResult {
   seconds: number;
 }
 
-// --lanes rather than only an environment variable: bounded-run passes an
-// allowlist of names through and refuses an `env NAME=value` prefix outright,
-// so on a contained host a flag is the only override that survives.
+// --lanes rather than only an environment variable: the installed bounded-run
+// passes an allowlist of names through and refuses an `env NAME=value` prefix
+// outright, so on a contained host a flag is the only override that survives.
 function concurrency(requested: string | undefined): number {
   if (requested === undefined) {
     return Math.max(1, Math.min(4, Math.floor(cpus().length / 2)));
@@ -75,6 +75,48 @@ function units(slices: readonly TestSlice[]): Unit[] {
   );
 }
 
+// Runs `queue` through `run`, `lanes` at a time, giving any unit `isSolo` marks
+// exclusive use of the pool. The exclusion holds both ways: gating only the solo
+// unit on an idle pool leaves ordinary units free to start alongside it the
+// moment after it begins, which delays the overlap rather than preventing it.
+export async function schedule<T>(
+  queue: readonly T[],
+  lanes: number,
+  isSolo: (unit: T) => boolean,
+  run: (unit: T) => Promise<void>,
+): Promise<void> {
+  const pending = [...queue];
+  let running = 0;
+  let soloRunning = 0;
+
+  async function lane(): Promise<void> {
+    for (;;) {
+      const index = pending.findIndex((unit) =>
+        isSolo(unit) ? running === 0 : soloRunning === 0
+      );
+      if (index === -1) {
+        // An idle pool always makes something eligible, so this only waits for
+        // an in-flight unit rather than deadlocking on an empty one.
+        if (pending.length === 0) return;
+        await Bun.sleep(5);
+        continue;
+      }
+      const unit = pending.splice(index, 1)[0] as T;
+      const solo = isSolo(unit);
+      running += 1;
+      if (solo) soloRunning += 1;
+      try {
+        await run(unit);
+      } finally {
+        running -= 1;
+        if (solo) soloRunning -= 1;
+      }
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.max(1, lanes) }, () => lane()));
+}
+
 // A colored summary defeats the anchored counters, and FORCE_COLOR reaches the
 // children through the inherited environment.
 function plain(output: string): string {
@@ -103,12 +145,15 @@ async function runUnit(unit: Unit, stream: boolean): Promise<UnitResult> {
       new Response(child.stderr).text(),
     ]);
   const exitCode = await child.exited;
-  const output = stdout + stderr;
-  const summary = plain(output);
+  // Counters and the completion line come from stderr alone. Bun puts only its
+  // version banner on stdout, so folding the two together would let a test that
+  // prints "0 fail" — or a whole fake summary — outrank the real one and pass
+  // the died-mid-run check on output the child never produced.
+  const summary = plain(stderr);
 
   return {
     unit,
-    output,
+    output: stdout + stderr,
     exitCode,
     signal: child.signalCode,
     pass: count(summary, 'pass'),
@@ -141,25 +186,44 @@ function report(result: UnitResult, stream: boolean): void {
   );
 }
 
-async function main(): Promise<never> {
-  const argv = process.argv.slice(2);
-  const requested: string[] = [];
+interface Options {
+  serial: boolean;
+  lanes: string | undefined;
+  slices: string[];
+}
+
+function parseArgs(argv: readonly string[]): Options {
+  const slices: string[] = [];
   let serial = false;
-  let laneFlag: string | undefined;
+  let lanes: string | undefined;
+
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index] as string;
-    if (argument === '--serial') serial = true;
-    else if (argument === '--lanes') {
-      laneFlag = argv[index + 1];
-      index += 1;
-    } else if (argument.startsWith('--lanes=')) laneFlag = argument.slice('--lanes='.length);
-    else if (argument.startsWith('-')) {
+    if (argument === '--serial') {
+      serial = true;
+    } else if (argument === '--lanes' || argument.startsWith('--lanes=')) {
+      const value = argument === '--lanes' ? argv[++index] : argument.slice('--lanes='.length);
+      // Swallowing a missing value would silently fall back to the auto-detected
+      // default, which is the one thing someone passing --lanes did not want.
+      if (value === undefined || value.startsWith('-')) {
+        console.error('--lanes needs a positive integer');
+        process.exit(2);
+      }
+      lanes = value;
+    } else if (argument.startsWith('-')) {
       console.error(`Unknown option: ${argument}`);
       process.exit(2);
-    } else requested.push(argument);
+    } else {
+      slices.push(argument);
+    }
   }
 
-  const unknown = requested.filter((name) => !Object.hasOwn(TEST_SLICES, name));
+  return { serial, lanes, slices };
+}
+
+async function main(): Promise<never> {
+  const options = parseArgs(process.argv.slice(2));
+  const unknown = options.slices.filter((name) => !Object.hasOwn(TEST_SLICES, name));
   if (unknown.length > 0) {
     console.error(`Unknown test slice: ${unknown.join(', ')}`);
     process.exit(2);
@@ -173,34 +237,23 @@ async function main(): Promise<never> {
     process.exit(1);
   }
 
-  const slices = (requested.length > 0 ? requested : Object.keys(TEST_SLICES)) as TestSlice[];
-  const queue = units(slices);
+  const names = (
+    options.slices.length > 0 ? options.slices : Object.keys(TEST_SLICES)
+  ) as TestSlice[];
+  const queue = units(names);
   const total = queue.length;
-  const lanes = serial
-    ? 1
-    : Math.min(concurrency(laneFlag ?? process.env.AGENTKIT_TEST_CONCURRENCY), total);
+  // An empty variable is how a shell spells "unset"; treating it as a value
+  // would abort the run over an exported-but-blank name.
+  const envLanes = process.env.AGENTKIT_TEST_CONCURRENCY || undefined;
+  const lanes = options.serial ? 1 : Math.min(concurrency(options.lanes ?? envLanes), total);
   const results: UnitResult[] = [];
-  let running = 0;
-
-  async function lane(): Promise<void> {
-    for (;;) {
-      const index = queue.findIndex((unit) => !soloFiles.has(unit.file) || running === 0);
-      if (index === -1) {
-        if (queue.length === 0) return;
-        await Bun.sleep(50);
-        continue;
-      }
-      const unit = queue.splice(index, 1)[0] as Unit;
-      running += 1;
-      const result = await runUnit(unit, serial);
-      running -= 1;
-      report(result, serial);
-      results.push(result);
-    }
-  }
 
   const started = Bun.nanoseconds();
-  await Promise.all(Array.from({ length: lanes }, () => lane()));
+  await schedule(queue, lanes, (unit) => soloFiles.has(unit.file), async (unit) => {
+    const result = await runUnit(unit, options.serial);
+    report(result, options.serial);
+    results.push(result);
+  });
   const elapsed = (Bun.nanoseconds() - started) / 1e9;
 
   const totals = results.reduce(
@@ -213,6 +266,10 @@ async function main(): Promise<never> {
     { pass: 0, fail: 0, skip: 0, todo: 0 },
   );
   const failed = results.filter(broke);
+  // A child that died mid-run reported no counters at all, so it adds nothing to
+  // the fail column. Left out of this line, the one line a human scans reads
+  // "0 fail" for a run that crashed.
+  const crashed = results.filter((result) => !result.completed).length;
 
   process.stdout.write(`\n===== ${lanes} lanes, ${results.length} files =====\n`);
   for (
@@ -224,9 +281,10 @@ async function main(): Promise<never> {
   // count. Printing zeroes there would read as "nothing ran"; bun already
   // printed a real summary per file.
   process.stdout.write(
-    serial
+    options.serial
       ? `per-file summaries above, ${results.length} files in ${elapsed.toFixed(1)}s\n`
-      : `${totals.pass} pass, ${totals.fail} fail, ${totals.skip} skip, ${totals.todo} todo`
+      : `${totals.pass} pass, ${totals.fail} fail${crashed > 0 ? ` (+${crashed} crashed)` : ''},`
+        + ` ${totals.skip} skip, ${totals.todo} todo`
         + ` across ${results.length} files in ${elapsed.toFixed(1)}s\n`,
   );
   if (failed.length > 0) {

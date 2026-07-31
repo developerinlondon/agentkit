@@ -289,11 +289,12 @@ describe('the advisory review instruction is opt-in', () => {
   let plainInstall: string | null = null;
   function defaultInstall(): string {
     if (plainInstall) return plainInstall;
-    const home = mkdtempSync(join(tmpdir(), 'agentkit-review-flag-'));
-    const result = runGlobalInstall(home);
+    // Recorded before the install can fail its assertion, so a failed run still
+    // takes its temp home with it rather than leaking one per attempt.
+    plainInstall = mkdtempSync(join(tmpdir(), 'agentkit-review-flag-'));
+    const result = runGlobalInstall(plainInstall);
     expect(result.status, result.stderr).toBe(0);
-    plainInstall = home;
-    return home;
+    return plainInstall;
   }
   afterAll(() => {
     if (plainInstall) rmSync(plainInstall, { recursive: true, force: true });

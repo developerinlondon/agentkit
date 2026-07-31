@@ -43,6 +43,9 @@ function runGlobalInstall(
       ...skipSkillDeps,
       HOME: home,
       XDG_CONFIG_HOME: join(home, '.config'),
+      // Pinned rather than inherited: a runner with AGENTKIT_HOME exported would
+      // otherwise install into it and assert against the temp home.
+      AGENTKIT_HOME: join(home, '.agentkit'),
       ...extraEnv,
     },
     encoding: 'utf-8',
