@@ -16,6 +16,11 @@ top and ships with the next tag.
 - ci: the docs publish builds and uploads an archived site per release, so its
   timeout moves from 20 to 45 minutes — the v0.6.1 tag run died mid-upload,
   which is why v0.6.1 has no GitHub Release or docs deploy (#240)
+- ci: a tag reuses the green full-suite run of its exact commit instead of
+  re-running both platform suites on a SHA the main push just tested (#243)
+- ci: archives publish incrementally — a slug whose live `archive-stamp.txt`
+  matches (tag, tag sha, banner hash) is neither rebuilt nor re-uploaded, and
+  the prune spares it; dropped slugs still prune (#243)
 
 ## v0.6.1 — 2026-07-31
 
