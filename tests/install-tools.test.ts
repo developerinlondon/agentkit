@@ -26,6 +26,8 @@ describe('standalone tool installation', () => {
         env: {
           ...process.env,
           AGENTKIT_PLATFORM: 'linux',
+          // Tool placement is what this pins, not dependency fetching.
+          AGENTKIT_SKIP_SKILL_DEPS: '1',
           HOME: home,
           XDG_CONFIG_HOME: join(home, '.config'),
         },

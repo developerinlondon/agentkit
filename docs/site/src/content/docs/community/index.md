@@ -128,7 +128,7 @@ The repository ships its own build gate, and it is deterministic — nothing in 
 ```sh
 scripts/preflight                 # everything touched since origin/main
 scripts/preflight --slice review  # also run one test slice
-bun test                          # the full suite
+bun run test:full                 # the full suite, run in parallel
 ```
 
 `preflight` reads the touched set from git — committed, staged, unstaged and untracked — and exits 1

@@ -27,6 +27,9 @@ const WITH_REVIEW = ['--with', 'adversarial-review'];
 // Full canonical parity needs every hook-owning kit selected.
 const WITH_ALL_HOOK_KITS = [...WITH_REVIEW, '--with', 'memory'];
 const WITH_MEMORY = ['--with', 'memory'];
+// Hook wiring is what these pin, not dependency fetching. The real bun-install
+// path is exercised once, by the first test in tests/install-prompt.test.ts.
+const skipSkillDeps = { AGENTKIT_SKIP_SKILL_DEPS: '1' };
 
 function runGlobalInstall(
   home: string,
@@ -37,6 +40,7 @@ function runGlobalInstall(
     cwd: repoRoot,
     env: {
       ...process.env,
+      ...skipSkillDeps,
       HOME: home,
       XDG_CONFIG_HOME: join(home, '.config'),
       ...extraEnv,

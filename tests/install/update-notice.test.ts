@@ -195,6 +195,8 @@ describe('the installed version stamp', () => {
         env: {
           ...process.env,
           AGENTKIT_PLATFORM: 'linux',
+          // The version stamp is what this pins, not dependency fetching.
+          AGENTKIT_SKIP_SKILL_DEPS: '1',
           HOME: h,
           XDG_CONFIG_HOME: join(h, '.config'),
           AGENTKIT_HOME: join(h, '.agentkit'),

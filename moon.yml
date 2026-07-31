@@ -9,6 +9,7 @@ fileGroups:
     - "moon.yml"
     - "package.json"
     - "scripts/check-test-slices.ts"
+    - "scripts/run-test-slices.ts"
 
   criticalInputs:
     - ".agentkit/config.yaml"
@@ -41,6 +42,7 @@ fileGroups:
     - "policies/**/*"
     - "scripts/check-test-slices.ts"
     - "scripts/product-command"
+    - "scripts/run-test-slices.ts"
     - "scripts/skill-kits.ts"
     - "scripts/sync-cc-plugin.sh"
     - "skills/KITS"
@@ -301,6 +303,6 @@ tasks:
       - "group://sessionInputs"
 
   test-full:
-    command: "bun test"
+    command: "bun run scripts/run-test-slices.ts"
     inputs:
       - "group://criticalInputs"
