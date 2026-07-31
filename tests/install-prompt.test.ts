@@ -15,8 +15,9 @@ import { spawnSync } from 'node:child_process';
 
 const repoRoot = dirname(import.meta.dir);
 const installScript = join(repoRoot, 'install.sh');
-// A global install intentionally installs and builds dependency-bearing skills.
-const globalInstallTimeoutMs = 60_000;
+// A global install intentionally installs and builds dependency-bearing
+// skills; a cold-cache runner has crossed 60s doing it.
+const globalInstallTimeoutMs = 120_000;
 
 function countOccurrences(text: string, needle: string): number {
   return text.split(needle).length - 1;
