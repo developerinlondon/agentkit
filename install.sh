@@ -540,7 +540,9 @@ install_skills() {
 		# Skills that ship runtime dependencies (a package.json) need an install
 		# step: bun does NOT auto-install when a package.json is present.
 		if [[ -f "$target/package.json" ]]; then
-			if [[ -n "$bun_bin" && -x "$bun_bin" ]]; then
+			if [[ "${AGENTKIT_SKIP_SKILL_DEPS:-}" == 1 ]]; then
+				echo "[skills] Skipping dependencies (AGENTKIT_SKIP_SKILL_DEPS): $skill_name"
+			elif [[ -n "$bun_bin" && -x "$bun_bin" ]]; then
 				echo "[skills] Installing dependencies: $skill_name"
 				(cd "$target" && "$bun_bin" install --silent)
 				# Build-time artifacts (e.g. browser bundles) are gitignored and
