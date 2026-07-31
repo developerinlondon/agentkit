@@ -383,3 +383,96 @@ describe('a page removed from the build stops being served', () => {
     expect(result.stderr).toContain('could not list');
   });
 });
+
+// Archives build from immutable tags, so rebuilding every one on every deploy is
+// pure waste. Reusing them means their objects are live but absent from dist/,
+// which is exactly the shape the prune treats as deleted.
+describe('a reused archive survives the prune that removes deleted pages', () => {
+  function stubArchives(slugs: readonly string[]): void {
+    writeFileSync(
+      join(site, 'build-archives.sh'),
+      [
+        '#!/usr/bin/env bash',
+        'set -eu',
+        `printf '%s\\n' ${slugs.map((slug) => JSON.stringify(slug)).join(' ')} > dist/.reused-archives`,
+        'exit 0',
+      ].join('\n'),
+    );
+    chmodSync(join(site, 'build-archives.sh'), 0o755);
+    // Committed because deploy.sh refuses a dirty tree, and the live sha follows
+    // because the read-back compares against the commit it just published.
+    git('add', '-A');
+    git('commit', '-qm', 'archive stub');
+    writeFileSync(join(root, '.live-sha'), headSha());
+  }
+
+  const live = (extra: readonly string[]) => [
+    ...BUILT.map((file) => `docs/${file}`),
+    ...extra,
+    'docs/build-sha.txt',
+  ];
+
+  test('its live objects are kept even though the build did not produce them', () => {
+    stubArchives(['0.5.3']);
+    remoteKeys(live(['docs/0.5.3/index.html', 'docs/0.5.3/archive-stamp.txt']));
+    const result = deploy();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(deleted()).toEqual([]);
+    expect(result.stdout).toContain('kept 1 reused archive');
+  });
+
+  // The other half of the contract: sparing reused slugs must not spare a version
+  // that left the selection, or dropped archives would be published forever.
+  test('an archive that left the selection still prunes', () => {
+    stubArchives(['0.5.3']);
+    remoteKeys(live(['docs/0.5.3/index.html', 'docs/0.4.5/index.html']));
+    const result = deploy();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(deleted()).toEqual(['docs/0.4.5/index.html']);
+  });
+
+  // The slug reaches a regex, where an unescaped dot matches any character.
+  test('a reused slug spares itself and not a lookalike key', () => {
+    stubArchives(['0.5.3']);
+    remoteKeys(live(['docs/0.5.3/index.html', 'docs/0X5X3/index.html']));
+    const result = deploy();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(deleted()).toEqual(['docs/0X5X3/index.html']);
+  });
+
+  // Sparing has to happen before the >50% refusal. Measured after, a handful of
+  // reused archives reads as a mass deletion and stops every deploy.
+  test('reused objects are not counted by the refusal that guards mass deletion', () => {
+    stubArchives(['0.5.3']);
+    remoteKeys(
+      live(Array.from({ length: 40 }, (_, index) => `docs/0.5.3/page-${index}/index.html`)),
+    );
+    const result = deploy();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain('nothing to prune');
+    expect(result.stderr).not.toContain('refusing to prune');
+  });
+
+  test('the reuse list is a build artefact and is never uploaded', () => {
+    stubArchives(['0.5.3']);
+    remoteKeys(live(['docs/0.5.3/index.html']));
+    const result = deploy();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(uploads()).not.toContain('.reused-archives');
+    expect(uploads().filter((key) => key.includes('reused-archives'))).toEqual([]);
+  });
+
+  test('no reuse leaves the prune exactly as it was', () => {
+    remoteKeys(live(['docs/retired/index.html']));
+    const result = deploy();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(deleted()).toEqual(['docs/retired/index.html']);
+    expect(result.stdout).not.toContain('reused archive');
+  });
+});

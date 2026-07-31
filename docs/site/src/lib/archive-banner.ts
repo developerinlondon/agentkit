@@ -5,6 +5,8 @@
 // and it reads the version list from the live site rather than from the frozen
 // tag, which cannot know about releases that came after it.
 
+import { createHash } from "node:crypto";
+
 export const BANNER_MARKER = "<!--agentkit-archive-banner-->";
 export const BANNER_ID = "agentkit-archive-banner";
 export const VERSIONS_URL = "/docs/versions.json";
@@ -85,6 +87,13 @@ export function bannerHtml(slug: string): string {
 		+ `<span>You are viewing the v${safe} documentation</span>`
 		+ `<a href="/docs/">Back to the latest documentation &rarr;</a>`
 		+ `</div><style>${style}</style><script>${script}</script>`;
+}
+
+// Identity of the exact bytes a build would inject. An archive is otherwise a
+// build of an immutable tag, so without this a banner change would leave every
+// already-published archive carrying the old one forever.
+export function bannerHash(slug: string): string {
+	return createHash("sha256").update(bannerHtml(slug)).digest("hex").slice(0, 16);
 }
 
 export interface Injection {

@@ -62,3 +62,15 @@ describe('every artifact a Starlight build can emit is publishable', () => {
     expect((await put('_astro/app.unmapped')).status).toBe(400);
   });
 });
+
+// Archived versions mount under a dotted directory segment, which is the shape
+// the extension probe has to read as a path rather than as a suffix.
+describe('an archived version publishes under its own slug', () => {
+  test.each([
+    '0.5.3/index.html',
+    '0.5.3/archive-stamp.txt',
+    '0.5.3/_astro/app.aYS1OYVv.css',
+  ])('%s is accepted on the write route', async (rel) => {
+    expect((await put(rel)).status).toBe(200);
+  });
+});
