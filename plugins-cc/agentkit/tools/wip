@@ -4,8 +4,9 @@
 # Read-only: it blocks nothing and changes nothing. It exists so a human never
 # has to take an agent's summary of its own work on trust.
 #
-# The one thing here worth knowing: merged-ness is decided by CONTENT, never by
-# ancestry. See branch_is_merged for why every cheaper rule gets it wrong.
+# The one thing here worth knowing: whether a branch is finished is answered by
+# the FORGE, never by git topology. See forge_branch_states for the measurement
+# behind that, and for why there is no local rule to fall back to.
 set -euo pipefail
 
 VERSION=1
@@ -62,46 +63,84 @@ base_ref() {
 	fi
 }
 
-# Merging the branch into the default branch and getting the default branch's
-# own tree back means its content is already there — however it arrived, and
-# whatever the default branch has done since.
+# A squash merge destroys the topological evidence by design: the squashed
+# commit is not an ancestor of the branch, and the merge base stays before the
+# squash forever. Only the forge records that a change from this branch merged.
 #
-# Every cheaper rule was tried against a squash-merge fixture and fails:
-# `rev-list --count base..branch` counts a squashed branch as ahead forever,
-# because the squashed commit is not an ancestor of anything. A two-dot diff
-# reports the default branch's own later commits as deletions on the branch. A
-# three-dot diff answers a different question entirely — the branch's changes
-# since the merge base — which is non-empty for every branch that did anything.
-branch_is_merged() {
-	local merged_tree base_tree merge_base files
-	local -a paths=()
+# Measured against nine branches of known outcome, every git-only rule reported
+# all seven merged ones as outstanding: ancestry counts, a two-dot diff, a
+# three-dot diff, and an in-memory merge-tree comparison alike. The last of
+# those passed a two-commit fixture and still failed here, because a fixture
+# whose default branch has not moved cannot distinguish the case it exists to
+# prove. There is no local rule to fall back to, so when the forge cannot
+# answer, this reports that it does not know rather than guessing loudly.
 
-	if ! base_tree=$(git_in rev-parse "$BASE^{tree}" 2>/dev/null); then
-		return 1
+# BRANCH<TAB>STATE<TAB>REF for every change the forge knows of. States are
+# normalised to merged / opened / closed.
+forge_branch_states() {
+	case "$FORGE" in
+	github)
+		(cd "$REPO" && GH_HOST="$GH_HOSTNAME" gh pr list --state all --limit 200 \
+			--json headRefName,number,state 2>/dev/null) |
+			jq -r '.[] | [.headRefName, (.state | ascii_downcase), ("#" + (.number | tostring))] | @tsv' || true
+		;;
+	gitlab)
+		(cd "$REPO" && GITLAB_HOST="$GITLAB_HOSTNAME" \
+			glab api "projects/:fullpath/merge_requests?state=all&per_page=100&order_by=updated_at" 2>/dev/null) |
+			jq -r 'if type == "array" then .[] else empty end
+				| [.source_branch, .state, ("!" + (.iid | tostring))] | @tsv' || true
+		;;
+	esac
+	return 0
+}
+
+# The bulk listing is capped, so a branch older than the window needs asking for
+# by name rather than being silently called untracked.
+forge_branch_state_one() {
+	case "$FORGE" in
+	github)
+		(cd "$REPO" && GH_HOST="$GH_HOSTNAME" gh pr list --head "$1" --state all --limit 10 \
+			--json headRefName,number,state 2>/dev/null) |
+			jq -r '.[] | [.headRefName, (.state | ascii_downcase), ("#" + (.number | tostring))] | @tsv' || true
+		;;
+	gitlab)
+		(cd "$REPO" && GITLAB_HOST="$GITLAB_HOSTNAME" \
+			glab api "projects/:fullpath/merge_requests?source_branch=$1&state=all" 2>/dev/null) |
+			jq -r 'if type == "array" then .[] else empty end
+				| [.source_branch, .state, ("!" + (.iid | tostring))] | @tsv' || true
+		;;
+	esac
+	return 0
+}
+
+# A branch may carry several changes over its life. Merged wins: one merged
+# change means the work landed, whatever was closed alongside it.
+best_state_for() {
+	local branch="$1" rows name state ref
+	local open_ref="" closed_ref=""
+	rows=$(printf '%s\n' "$2" | grep -F "$branch	" || true)
+	if [[ -z "$rows" ]]; then
+		printf ''
+		return 0
 	fi
-	if merged_tree=$(git_in merge-tree --write-tree "$BASE" "$1" 2>/dev/null); then
-		if [[ "$merged_tree" == "$base_tree" ]]; then
+	while IFS=$'\t' read -r name state ref; do
+		[[ "$name" == "$branch" ]] || continue
+		case "$state" in
+		merged)
+			printf 'merged\t%s' "$ref"
 			return 0
-		fi
-		return 1
+			;;
+		# GitHub says OPEN, GitLab says opened; merged and closed coincide.
+		open | opened | locked) [[ -n "$open_ref" ]] || open_ref="$ref" ;;
+		closed) [[ -n "$closed_ref" ]] || closed_ref="$ref" ;;
+		esac
+	done <<<"$rows"
+	if [[ -n "$open_ref" ]]; then
+		printf 'opened\t%s' "$open_ref"
+	elif [[ -n "$closed_ref" ]]; then
+		printf 'closed\t%s' "$closed_ref"
 	fi
-
-	# Older git has no --write-tree. Comparing only the files the branch touched
-	# keeps the default branch's unrelated progress out of the answer.
-	if ! merge_base=$(git_in merge-base "$BASE" "$1" 2>/dev/null); then
-		return 1
-	fi
-	files=$(git_in diff --name-only "$merge_base" "$1" 2>/dev/null || true)
-	if [[ -z "$files" ]]; then
-		return 0
-	fi
-	while IFS= read -r line; do
-		[[ -n "$line" ]] && paths+=("$line")
-	done <<<"$files"
-	if git_in diff --quiet "$BASE" "$1" -- "${paths[@]}" 2>/dev/null; then
-		return 0
-	fi
-	return 1
+	return 0
 }
 
 age_days() {
@@ -254,57 +293,80 @@ bound_list() {
 CHANGES=""
 CLEANUP=""
 
-change_for_branch() {
-	local head number
-	while IFS=$'\t' read -r number head _; do
-		if [[ -n "$head" && "$head" == "$1" ]]; then
-			printf '%s' "$number"
-			return 0
-		fi
-	done <<<"$CHANGES"
+# Tab counts as IFS whitespace, so `read` collapses a run of them: an empty
+# field silently shifts every later field one place left, and the reference
+# lands in the variable meant for the upstream marker. A placeholder keeps the
+# columns aligned; consumers turn it back into an empty string.
+emit_class() {
+	printf '%s\t%s\t%s\t%s\n' "$1" "$2" "${3:--}" "${4:--}"
 	return 0
 }
 
-# STATUS<TAB>BRANCH<TAB>UPSTREAM_TRACK, judged once. A caller that classified
-# inside a command substitution would lose the merged list to the subshell.
+# STATE<TAB>BRANCH<TAB>REF<TAB>TRACK, judged once. A caller that classified
+# inside a command substitution would lose the result to the subshell.
+# STATE is merged / opened / closed / none / unknown, where `none` means the
+# forge answered and has never seen a change from this branch — the genuinely
+# interesting case — and `unknown` means nobody could answer.
 classify_branches() {
-	local branch track
+	local branch track answer state ref
 	while IFS=$'\t' read -r branch track; do
 		[[ -n "$branch" ]] || continue
 		[[ "$branch" == "$DEFAULT" ]] && continue
-		if branch_is_merged "$branch"; then
-			printf 'MERGED\t%s\t%s\n' "$branch" "$track"
-		else
-			printf 'OPEN\t%s\t%s\n' "$branch" "$track"
+		if [[ -z "$FORGE" ]]; then
+			emit_class 'unknown' "$branch" '' "$track"
+			continue
 		fi
+		answer=$(best_state_for "$branch" "$FORGE_STATES")
+		if [[ -z "$answer" ]]; then
+			answer=$(best_state_for "$branch" "$(forge_branch_state_one "$branch")")
+		fi
+		if [[ -z "$answer" ]]; then
+			emit_class 'none' "$branch" '' "$track"
+			continue
+		fi
+		IFS=$'\t' read -r state ref <<<"$answer"
+		emit_class "$state" "$branch" "$ref" "$track"
 	done < <(git_in for-each-ref --format='%(refname:short)%09%(upstream:track)' refs/heads 2>/dev/null)
 	return 0
 }
 
 merged_branch_names() {
-	local status branch
-	while IFS=$'\t' read -r status branch _; do
-		[[ "$status" == "MERGED" ]] && printf ' %s' "$branch"
+	local state branch
+	while IFS=$'\t' read -r state branch _ _; do
+		[[ "$state" == "merged" ]] && printf ' %s' "$branch"
 	done <<<"$BRANCH_CLASS"
 	return 0
 }
 
+branch_is_cleanup() {
+	local state branch
+	while IFS=$'\t' read -r state branch _ _; do
+		if [[ "$branch" == "$1" && "$state" == "merged" ]]; then
+			return 0
+		fi
+	done <<<"$BRANCH_CLASS"
+	return 1
+}
+
+# Merged branches are cleanup, not unfinished work, and leave this section.
 section_branches() {
-	local status branch track ahead days change note body=""
-	while IFS=$'\t' read -r status branch track; do
-		[[ "$status" == "OPEN" ]] || continue
+	local state branch track ref ahead days note body=""
+	while IFS=$'\t' read -r state branch ref track; do
+		[[ "$ref" == "-" ]] && ref=""
+		[[ "$track" == "-" ]] && track=""
+		case "$state" in
+		opened | none | unknown) ;;
+		*) continue ;;
+		esac
 		ahead=$(git_in rev-list --count "$BASE..$branch" 2>/dev/null || printf '0')
 		days=$(age_days "$branch")
-		change=$(change_for_branch "$branch")
-		if [[ -n "$change" ]]; then
-			note="$change"
-		elif [[ -n "$FORGE" ]]; then
-			note="no MR/PR"
-		else
-			note="MR/PR unknown"
-		fi
+		case "$state" in
+		opened) note="$ref open" ;;
+		none) note="no MR/PR ever opened" ;;
+		unknown) note="state UNKNOWN — forge could not be asked" ;;
+		esac
 		if [[ "$track" == *gone* ]]; then
-			note="$note; upstream gone but content NOT merged"
+			note="$note; upstream branch deleted"
 		fi
 		body="$body$(printf ' %-9s %-34s %3sd  %3s commits  %s' 'BRANCH' "$branch" "$days" "$ahead" "$note")"$'\n'
 	done <<<"$BRANCH_CLASS"
@@ -312,8 +374,20 @@ section_branches() {
 	return 0
 }
 
-# A dirty worktree is called out because removing one destroys the uncommitted
-# and untracked files in it; the branch ref does not carry them.
+# A change closed without merging is a decision, not an oversight. It reads
+# differently from work nobody ever opened, so it gets its own row.
+section_abandoned() {
+	local state branch track ref days body=""
+	while IFS=$'\t' read -r state branch ref track; do
+		[[ "$state" == "closed" ]] || continue
+		[[ "$ref" == "-" ]] && ref=""
+		days=$(age_days "$branch")
+		body="$body$(printf ' %-9s %-34s %3sd  %s closed without merging' 'ABANDONED' "$branch" "$days" "$ref")"$'\n'
+	done <<<"$BRANCH_CLASS"
+	printf '%s' "$body"
+	return 0
+}
+
 section_worktrees() {
 	local path branch modified untracked state body=""
 	while IFS= read -r line; do
@@ -334,6 +408,8 @@ section_worktrees() {
 			untracked=$(git -C "$path" status --porcelain 2>/dev/null | grep -c '^??' || true)
 			if [[ "$modified" -gt 0 || "$untracked" -gt 0 ]]; then
 				state=$(printf 'DIRTY %s modified, %s untracked — do NOT remove' "$modified" "$untracked")
+			elif [[ -n "$branch" ]] && branch_is_cleanup "$branch"; then
+				state="clean; branch already merged — cleanup"
 			else
 				state="clean"
 			fi
@@ -403,7 +479,7 @@ count_lines() {
 }
 
 report_repo() {
-	local branches worktrees changes issues plans total
+	local branches abandoned worktrees changes issues plans total
 
 	DEFAULT="$(default_branch)"
 	BASE="$(base_ref "$DEFAULT")"
@@ -417,30 +493,37 @@ report_repo() {
 	if [[ -n "$PLAN_GATE" ]]; then
 		PLAN_ROWS="$("$PLAN_GATE" --repo "$REPO" --tsv 2>/dev/null | grep '^OPEN	' || true)"
 	fi
+	FORGE_STATES=""
+	if [[ -n "$FORGE" ]]; then
+		FORGE_STATES="$(forge_branch_states)"
+	fi
 	BRANCH_CLASS="$(classify_branches)"
 	CLEANUP="$(merged_branch_names)"
 
 	branches="$(section_branches)"
+	abandoned="$(section_abandoned)"
 	worktrees="$(section_worktrees)"
 	changes="$(section_changes)"
 	issues="$(section_issues)"
 	plans="$(section_plans)"
 
-	total=$(($(count_lines "$branches") + $(count_lines "$worktrees") +
+	total=$(($(count_lines "$branches") + $(count_lines "$abandoned") + $(count_lines "$worktrees") +
 		$(count_lines "$CHANGES") + $(count_lines "$ISSUES") + $(count_lines "$plans")))
 
 	printf '%s — %d half-done\n' "${REPO##*/}" "$total"
 	emit_bounded 'branch(es)' "$branches"
+	emit_bounded 'abandoned branch(es)' "$abandoned"
 	emit_bounded 'worktree(s)' "$worktrees"
 	emit_bounded 'change(s)' "$changes"
 	emit_bounded 'issue line(s)' "$issues"
 	emit_bounded 'plan(s)' "$plans"
 
 	if [[ -n "$CLEANUP" ]]; then
-		printf ' %-9s %s\n' 'MERGED' "$(bound_list "$CLEANUP") — content already on $DEFAULT; safe to delete"
+		printf ' %-9s %s\n' 'MERGED' "$(bound_list "$CLEANUP") — merged on the forge; cleanup, not unfinished work"
 	fi
 	if [[ -n "$FORGE_NOTE" ]]; then
 		printf ' %-9s %s\n' 'NOTE' "$FORGE_NOTE"
+		printf ' %-9s %s\n' 'NOTE' 'branch state is DEGRADED: only the forge can tell a squash-merged branch from an unfinished one, so no branch above is known to be outstanding'
 	fi
 	if [[ -z "$PLAN_GATE" ]]; then
 		printf ' %-9s %s\n' 'NOTE' 'plan-gate not found beside this tool — plans not checked'

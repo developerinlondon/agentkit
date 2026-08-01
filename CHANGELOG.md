@@ -6,15 +6,22 @@ top and ships with the next tag.
 ## [Unreleased]
 
 - feat(wip): `wip` reports what was started and not finished in a repository —
-  unmerged branches with age and commit count, worktrees with a loud warning on
-  dirty ones, open merge requests or pull requests and what holds each, open
-  issues you authored (separating those whose text says they were carved out of
-  other work), and plans with unclosed gaps. GitHub and GitLab both resolve from
-  the `origin` host, including self-hosted; a repository with neither CLI still
-  reports the git-only sections and names in a `NOTE` what went unchecked.
-  Merged-ness is decided by merging into the default branch in memory and
-  comparing trees: an ancestry count calls a squash-merged branch outstanding
-  forever, and neither a two-dot nor a three-dot diff answers the question
+  branches with age and commit count, worktrees with a loud warning on dirty
+  ones, open merge requests or pull requests and what holds each, open issues
+  you authored (separating those whose text says they were carved out of other
+  work), and plans with unclosed gaps. GitHub and GitLab both resolve from the
+  `origin` host, including self-hosted.
+  Whether a branch is finished is the **forge's** answer, never git topology. A
+  squash merge destroys the topological evidence by design, and measured against
+  nine branches of known outcome every git-only rule called all seven merged ones
+  outstanding: ancestry counts, two-dot and three-dot diffs, and an in-memory
+  `merge-tree` tree comparison alike — the last passing a two-commit fixture and
+  failing on a real repository, because a fixture whose default branch has not
+  moved cannot distinguish the case it exists to prove. States are separated into
+  merged (cleanup), closed-without-merging (a decision), open, and never-opened
+  (the interesting one). With no forge reachable there is no local rule to fall
+  back to, so the branch state is reported as UNKNOWN and marked DEGRADED rather
+  than guessed at in the alarming direction
 - feat(plan-gate): a plan may not be treated as done while its own gaps section
   lists work that is neither ticked, struck through, nor carrying an issue
   reference. `tools/plan-gate` is the single parser; `plan-police` is a

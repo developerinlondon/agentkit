@@ -25,26 +25,29 @@ wip --no-forge            # git and plans only, no network
 
 ```
 neutron — 9 half-done
- BRANCH    fix/voice-truncate-275    5d    3 commits  no MR/PR
- WORKTREE  wt/corename2              DIRTY 11 modified, 2 untracked — do NOT remove at ~/wt/corename2
- MR/PR     !628 (fix/voice)          held: no approving review
+ BRANCH    feat/incidents-ui           0d    1 commits  !633 open
+ BRANCH    fix/core-name-everywhere    7d    0 commits  no MR/PR ever opened
+ ABANDONED feat/model-catalog-auto     5d   !492 closed without merging
+ WORKTREE  wt/corename2                DIRTY 11 modified, 2 untracked — do NOT remove at ~/wt/corename2
+ MR/PR     !628 (fix/voice)            held: no approving review
  FILED     #311 #312 — authored, open, unfixed
  DEFERRED  #313 — carved out of other work
- PLAN      plans/057.md              2 gap(s) unclosed
- MERGED    fix/old — content already on main; safe to delete
+ PLAN      plans/057.md                2 gap(s) unclosed
+ MERGED    fix/old — merged on the forge; cleanup, not unfinished work
  NOTE      unrecognised forge host 'git.example.com' — merge requests and issues not checked
 ```
 
-| Row        | Means                                                                        |
-| ---------- | ---------------------------------------------------------------------------- |
-| `BRANCH`   | content is not on the default branch yet                                     |
-| `WORKTREE` | a checkout that still exists; `DIRTY` ones hold work no branch ref will save |
-| `MR/PR`    | open and authored by you, with what stands between it and merging            |
-| `FILED`    | issues you opened that are still open                                        |
-| `DEFERRED` | filed issues whose text says they were carved out of other work              |
-| `PLAN`     | a plan whose gaps section lists work that is neither closed nor tracked      |
-| `MERGED`   | branches whose content already landed — cleanup, not work                    |
-| `NOTE`     | something that was **not** checked, and why                                  |
+| Row         | Means                                                                        |
+| ----------- | ---------------------------------------------------------------------------- |
+| `BRANCH`    | an open change, or none ever opened, or state unknown                        |
+| `ABANDONED` | a change closed without merging — a decision, not an oversight               |
+| `WORKTREE`  | a checkout that still exists; `DIRTY` ones hold work no branch ref will save |
+| `MR/PR`     | open and authored by you, with what stands between it and merging            |
+| `FILED`     | issues you opened that are still open                                        |
+| `DEFERRED`  | filed issues whose text says they were carved out of other work              |
+| `PLAN`      | a plan whose gaps section lists work neither closed nor tracked              |
+| `MERGED`    | merged on the forge — cleanup, not unfinished work                           |
+| `NOTE`      | something that was **not** checked, and why                                  |
 
 A `NOTE` row is the important one. An absent section means "nothing found";
 a `NOTE` means "not looked at". They are never conflated, and a bounded list
@@ -55,21 +58,33 @@ always says how many entries it dropped.
 Uncommitted and untracked files die with the checkout, and the branch ref does
 not carry them. Commit them, stash them, or leave the worktree alone.
 
-## Why merged-ness is not counted by commits
+## Whether a branch is finished is the forge's answer, not git's
 
-`git rev-list --count origin/main..branch` calls a branch ahead **forever** in a
-squash-merge repository — the squashed commit is not an ancestor of anything.
-Trusting it invents abandoned work that does not exist. Two other rules fail as
-well, both verified against a squash-merge fixture rather than assumed:
+A squash merge destroys the topological evidence by design: the squashed commit is not an ancestor
+of the branch, and the merge base stays before the squash forever.
 
-| Rule                          | Fails because                                                                                                          |
-| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `rev-list --count base..head` | a squashed branch is ahead forever                                                                                     |
-| `git diff base..head`         | the default branch's own later commits appear as deletions on yours                                                    |
-| `git diff base...head`        | answers a different question — the branch's changes since the merge base, non-empty for every branch that did anything |
+Measured against nine branches of known outcome, **every git-only rule reported all seven merged
+ones as still outstanding**:
 
-`wip` merges the branch into the default branch in memory and asks whether the
-result differs from the default branch. Nothing else survives a squash merge.
+| Rule                                    | On a squash-merged branch                                       |
+| --------------------------------------- | --------------------------------------------------------------- |
+| `rev-list --count base..head`           | ahead forever — the squash is not an ancestor                   |
+| `git diff base..head`                   | shows the default branch's own later commits as deletions       |
+| `git diff base...head`                  | shows the branch's changes since the merge base — never empty   |
+| `merge-tree --write-tree`, tree compare | correct on a small fixture, wrong once the default branch moves |
+
+The last row is the trap: it passes a two-commit fixture and fails on a real repository, because a
+fixture whose default branch has not moved cannot distinguish the case it exists to prove.
+
+So `wip` asks the forge, and distinguishes four answers that mean different things:
+
+- **merged** — cleanup, not unfinished work
+- **closed without merging** — deliberately abandoned, which reads differently from forgotten
+- **open** — in flight
+- **no change ever opened** — the genuinely interesting one
+
+**When the forge cannot answer, it says so and stops.** There is no local rule to fall back to, and
+guessing loudly in the alarming direction is how a tool like this gets ignored.
 
 ## Plans: when a plan may be called done
 

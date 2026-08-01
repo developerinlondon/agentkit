@@ -40,53 +40,107 @@ function lineFor(output: string, label: string, needle: string): string | undefi
   return output.split('\n').find((line) => line.includes(` ${label} `) && line.includes(needle));
 }
 
-describe('merged-ness is decided by content, not ancestry', () => {
-  test('a squash-merged branch is reported as merged, not as work in progress', () => {
-    const out = report();
+const PR = (number: number, headRefName: string, state: string) => ({ number, headRefName, state });
+
+// The forge is the only authority on a squash merge. `feat/squashed` in this
+// fixture is squash-merged in git terms — its content is on main and its
+// commits are not ancestors of anything — so every classification below is a
+// statement about what the forge says, not about git topology.
+function installFakeGh(
+  prs: unknown[],
+  issues: unknown[] = [],
+  byHead: Record<string, unknown[]> = {},
+): void {
+  writeExecutable(
+    join(box.binDir, 'gh'),
+    [
+      '#!/usr/bin/env bash',
+      // Listing resolves the repository from gh's own working directory, so a
+      // caller that queries from elsewhere silently gets nothing back. Auth
+      // status reads config and works anywhere, as the real gh does.
+      `inrepo() { [[ "$PWD" == "${repo}" ]] || exit 1; }`,
+      'case "$*" in',
+      '  *"auth status"*) exit 0 ;;',
+      ...Object.entries(byHead).map(([branch, rows]) =>
+        `  *"--head ${branch}"*) inrepo; printf '%s' '${JSON.stringify(rows)}' ;;`
+      ),
+      `  *"--head "*) inrepo; printf '%s' '[]' ;;`,
+      `  *"pr list"*) inrepo; printf '%s' '${JSON.stringify(prs)}' ;;`,
+      `  *"issue list"*) inrepo; printf '%s' '${JSON.stringify(issues)}' ;;`,
+      '  *) exit 1 ;;',
+      'esac',
+    ].join('\n'),
+  );
+}
+
+function withForge(prs: unknown[], byHead: Record<string, unknown[]> = {}) {
+  installFakeGh(prs, [], byHead);
+  return run([wip, '--limit', '0', repo], box, box.root).stdout;
+}
+
+describe('branch state comes from the forge, not from git topology', () => {
+  test('a squash-merged branch the forge calls merged is cleanup, not unfinished work', () => {
+    const out = withForge([PR(1, 'feat/squashed', 'MERGED')]);
     expect(lineFor(out, 'BRANCH', 'feat/squashed')).toBeUndefined();
-    expect(out).toContain('MERGED');
     expect(lineFor(out, 'MERGED', 'feat/squashed')).toBeDefined();
+    expect(out).toContain('cleanup, not unfinished work');
   });
 
-  test('a branch whose content is not on the default branch is still reported', () => {
-    const out = report();
-    expect(lineFor(out, 'BRANCH', 'feat/unmerged')).toBeDefined();
+  test('a branch with an open change is in flight and names its reference', () => {
+    const line = lineFor(withForge([PR(7, 'feat/unmerged', 'OPEN')]), 'BRANCH', 'feat/unmerged') ?? '';
+    expect(line).toContain('#7 open');
   });
 
-  test('the default branch advancing does not turn a merged branch back into work', () => {
-    commitFile(repo, box, 'later.txt', 'later\n', 'main moves on');
-    git(repo, box, 'update-ref', 'refs/remotes/origin/main', 'main');
-    const out = report();
+  test('a branch closed without merging is abandoned, not outstanding and not merged', () => {
+    const out = withForge([PR(9, 'feat/unmerged', 'CLOSED')]);
+    const line = lineFor(out, 'ABANDONED', 'feat/unmerged') ?? '';
+    expect(line).toContain('#9 closed without merging');
+    expect(lineFor(out, 'BRANCH', 'feat/unmerged')).toBeUndefined();
+    expect(lineFor(out, 'MERGED', 'feat/unmerged')).toBeUndefined();
+  });
+
+  test('a branch the forge has never seen is the genuinely interesting case', () => {
+    const line = lineFor(withForge([]), 'BRANCH', 'feat/unmerged') ?? '';
+    expect(line).toContain('no MR/PR ever opened');
+  });
+
+  test('one merged change outranks a closed one on the same branch', () => {
+    const out = withForge([PR(2, 'feat/squashed', 'CLOSED'), PR(3, 'feat/squashed', 'MERGED')]);
+    expect(lineFor(out, 'MERGED', 'feat/squashed')).toBeDefined();
+    expect(lineFor(out, 'ABANDONED', 'feat/squashed')).toBeUndefined();
+  });
+
+  test('a branch older than the bulk listing window is asked for by name', () => {
+    // The bulk query is capped, so a branch missing from it must be queried
+    // directly rather than silently reported as never having had a change.
+    const out = withForge([], { 'feat/squashed': [PR(4, 'feat/squashed', 'MERGED')] });
+    expect(lineFor(out, 'MERGED', 'feat/squashed')).toBeDefined();
     expect(lineFor(out, 'BRANCH', 'feat/squashed')).toBeUndefined();
-    expect(lineFor(out, 'MERGED', 'feat/squashed')).toBeDefined();
-    expect(lineFor(out, 'BRANCH', 'feat/unmerged')).toBeDefined();
   });
 
-  test('git without merge-tree --write-tree still answers both cases correctly', () => {
-    const realGit = spawnSync('sh', ['-c', 'command -v git'], { encoding: 'utf8' }).stdout.trim();
-    writeExecutable(
-      join(box.binDir, 'git'),
-      ['#!/usr/bin/env bash', 'for a in "$@"; do', '  if [[ "$a" == "merge-tree" ]]; then exit 129; fi', 'done', `exec ${realGit} "$@"`]
-        .join('\n'),
-    );
-    const out = report();
-    expect(lineFor(out, 'MERGED', 'feat/squashed')).toBeDefined();
-    expect(lineFor(out, 'BRANCH', 'feat/unmerged')).toBeDefined();
-    expect(lineFor(out, 'BRANCH', 'feat/squashed')).toBeUndefined();
-  });
-
-  test('an unmerged branch reports its age and commit count', () => {
-    const line = lineFor(report(), 'BRANCH', 'feat/unmerged') ?? '';
-    expect(line).toMatch(/\d+d/);
-    expect(line).toMatch(/1 commits/);
-  });
-
-  test('a branch whose upstream is gone but whose content is not merged says so', () => {
+  test('a deleted upstream branch is annotated, not treated as an answer', () => {
     git(repo, box, 'update-ref', 'refs/remotes/origin/feat/unmerged', 'feat/unmerged');
     git(repo, box, 'branch', '--set-upstream-to=origin/feat/unmerged', 'feat/unmerged');
     git(repo, box, 'update-ref', '-d', 'refs/remotes/origin/feat/unmerged');
-    const line = lineFor(report(), 'BRANCH', 'feat/unmerged') ?? '';
-    expect(line).toContain('upstream gone but content NOT merged');
+    const line = lineFor(withForge([]), 'BRANCH', 'feat/unmerged') ?? '';
+    expect(line).toContain('upstream branch deleted');
+    expect(line).toContain('no MR/PR ever opened');
+  });
+
+  test('an unreachable forge says the state is unknown instead of guessing', () => {
+    const out = report([], { PATH: restrictedPath(box, BARE_TOOLS) });
+    expect(lineFor(out, 'BRANCH', 'feat/squashed')).toContain('state UNKNOWN');
+    expect(out).toContain('branch state is DEGRADED');
+    // The alarming direction: never claim work is outstanding, or finished,
+    // when nothing could answer.
+    expect(out).not.toContain('cleanup, not unfinished work');
+    expect(out).not.toContain('no MR/PR ever opened');
+  });
+
+  test('an unmerged branch reports its age and commit count', () => {
+    const line = lineFor(withForge([]), 'BRANCH', 'feat/unmerged') ?? '';
+    expect(line).toMatch(/\d+d/);
+    expect(line).toMatch(/1 commits/);
   });
 });
 
@@ -111,6 +165,15 @@ describe('worktrees', () => {
     const line = lineFor(report(), 'WORKTREE', 'feat/unmerged') ?? '';
     expect(line).toContain('clean');
     expect(line).not.toContain('DIRTY');
+  });
+
+  test('a worktree on a merged branch is marked cleanup, not unfinished work', () => {
+    const wt = join(box.root, 'wt-merged');
+    git(repo, box, 'worktree', 'add', '-q', wt, 'feat/squashed');
+    const out = withForge([PR(1, 'feat/squashed', 'MERGED')]);
+    const line = lineFor(out, 'WORKTREE', 'feat/squashed') ?? '';
+    expect(line).toContain('branch already merged — cleanup');
+    expect(lineFor(out, 'BRANCH', 'feat/squashed')).toBeUndefined();
   });
 
   test('the primary checkout is not listed as a worktree of itself', () => {
@@ -169,30 +232,12 @@ describe('forge degradation', () => {
 });
 
 describe('forge sections', () => {
-  function installFakeGh(prs: unknown[], issues: unknown[]): void {
-    writeExecutable(
-      join(box.binDir, 'gh'),
-      [
-        '#!/usr/bin/env bash',
-        // Listing resolves the repository from gh's own working directory, so a
-        // caller that queries from elsewhere silently gets nothing back. Auth
-        // status reads config and works anywhere, as the real gh does.
-        `inrepo() { [[ "$PWD" == "${repo}" ]] || exit 1; }`,
-        'case "$*" in',
-        '  *"auth status"*) exit 0 ;;',
-        `  *"pr list"*) inrepo; printf '%s' '${JSON.stringify(prs)}' ;;`,
-        `  *"issue list"*) inrepo; printf '%s' '${JSON.stringify(issues)}' ;;`,
-        '  *) exit 1 ;;',
-        'esac',
-      ].join('\n'),
-    );
-  }
-
   test('an open change reports what holds it, and binds to its branch', () => {
     installFakeGh(
       [{
         number: 42,
         headRefName: 'feat/unmerged',
+        state: 'OPEN',
         isDraft: true,
         mergeable: 'CONFLICTING',
         reviewDecision: '',
@@ -219,6 +264,7 @@ describe('forge sections', () => {
       [{
         number: 7,
         headRefName: 'feat/unmerged',
+        state: 'OPEN',
         isDraft: false,
         mergeable: 'MERGEABLE',
         reviewDecision: 'APPROVED',
@@ -241,11 +287,15 @@ describe('forge sections', () => {
   });
 
   test('the merged-cleanup list is bounded and says how many it dropped', () => {
+    const merged: unknown[] = [];
     for (let i = 0; i < 8; i += 1) {
       git(repo, box, 'branch', `merged/${i}`, 'main');
+      merged.push({ number: 100 + i, headRefName: `merged/${i}`, state: 'MERGED' });
     }
+    installFakeGh(merged, []);
     const out = report(['--limit', '3']);
-    expect(lineFor(out, 'MERGED', '+')).toContain('more (--limit 0 for all)');
+    const line = lineFor(out, 'MERGED', '+') ?? '';
+    expect(line).toContain('more (--limit 0 for all)');
   });
 
   test('a bounded list says how many it dropped', () => {
