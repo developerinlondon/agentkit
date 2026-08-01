@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import {
+  flattenForMarkdown,
   inlineMonochromeIcons,
   MONO_INK_DARK,
   MONO_INK_LIGHT,
@@ -94,5 +95,27 @@ describe('icon discovery', () => {
     // logos ships 1861 icons and no traefik; a look-alike would be worse than
     // an honest miss.
     expect(searchIcons('zzzznotarealmark')).toEqual([]);
+  });
+});
+
+describe('markdown-safe flattening', () => {
+  test('blank lines and leading indentation are removed', () => {
+    // CommonMark ends a raw-HTML block at a blank line and reads tab-indented
+    // text as a code block, so d2's own formatting destroys an inlined figure.
+    const out = flattenForMarkdown('<svg>\n\n\t\t<style>.a{fill:red}</style>\n    <g/>\n</svg>');
+    expect(out.split('\n').some((l) => l.trim() === '')).toBe(false);
+    expect(out.split('\n').some((l) => /^[\t ]/.test(l))).toBe(false);
+    expect(out).toContain('<style>.a{fill:red}</style>');
+    expect(out).toContain('<g/>');
+  });
+
+  test('markup is preserved verbatim apart from that whitespace', () => {
+    const out = flattenForMarkdown('<svg>\n  <text>keep  inner  spaces</text>\n</svg>');
+    expect(out).toBe('<svg>\n<text>keep  inner  spaces</text>\n</svg>');
+  });
+
+  test('an already-flat svg is unchanged', () => {
+    const flat = '<svg>\n<g/>\n</svg>';
+    expect(flattenForMarkdown(flat)).toBe(flat);
   });
 });

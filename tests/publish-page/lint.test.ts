@@ -89,3 +89,28 @@ describe('publish-page figure lint', () => {
     expect(result.warnings).toHaveLength(1);
   });
 });
+
+describe('diagram stylesheet leakage', () => {
+  const d2Style = '<style>.d2-123 .fill-N1{fill:#0A0F25;}.background-color-N7{background-color:#FFFFFF;}</style>';
+
+  test("d2's own stylesheet does not trip the white-ground warning", () => {
+    // It always ships background-color:#FFFFFF, so scanning it as page CSS
+    // fires on every correct figure and trains the author to ignore the check.
+    const html = `<div class="figure"><!-- svg-source:d2 --><svg class="d2">${d2Style}</svg></div>`;
+    expect(lintFigures(html).warnings).toEqual([]);
+  });
+
+  test('a page that really hardcodes a white ground is still warned about', () => {
+    const html = `<style>.mine{background:#ffffff}</style>`
+      + `<div class="figure"><!-- svg-source:d2 --><svg class="d2">${d2Style}</svg></div>`;
+    expect(lintFigures(html).warnings.join(' ')).toContain('white background');
+  });
+
+  test('a stylesheet escaped into page text is an error, not a silent pass', () => {
+    // The figure island and caption are intact; only the diagram is gone, so
+    // every structural check passes while the page shows a wall of CSS.
+    const html = '<div class="figure"><!-- svg-source:d2 -->'
+      + '<pre><code>&lt;style&gt;.d2-mono{color:#3f3f46;}&lt;/style&gt;</code></pre></div>';
+    expect(lintFigures(html).errors.join(' ')).toContain('leaked into the page as text');
+  });
+});

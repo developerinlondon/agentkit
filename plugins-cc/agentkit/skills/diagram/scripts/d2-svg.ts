@@ -60,6 +60,18 @@ export function dropBackgroundRect(svg: string): { svg: string; dropped: boolean
   return { svg: svg.replace(re, "$1"), dropped: true };
 }
 
+// CommonMark ends a raw-HTML block at a blank line and reads tab-indented text
+// as a code block, so d2's own stylesheet formatting destroys any figure inlined
+// into markdown. Neither blank lines nor leading indentation mean anything in
+// SVG or CSS, and d2 never wraps text content across lines.
+export function flattenForMarkdown(svg: string): string {
+  return svg
+    .split("\n")
+    .map((line) => line.replace(/^[\t ]+/, ""))
+    .filter((line) => line.trim() !== "")
+    .join("\n");
+}
+
 export function applyHouseAttributes(svg: string, ariaLabel: string): string {
   const open = svg.match(/^<svg\b[^>]*>/);
   if (!open) throw new SvgError("output does not start with an <svg> tag");

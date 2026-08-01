@@ -13,8 +13,26 @@ const CONTAINER_RE = /<(?:div|section|figure)\b[^>]*class\s*=\s*["']([^"']*)["']
 const TAG_RE = /<(\/?)(?:div|section|figure)\b/gi;
 const NEARBY = 900;
 
+// d2 salts its own classes as .d2-<digits> and always ships
+// .background-color-N7{background-color:#FFFFFF}. Scanning that as page CSS
+// fires the white-ground warning on every correct d2 figure, which teaches the
+// author to ignore the one case it exists to catch.
 function styleBlocks(html: string): string {
-  return [...html.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi)].map((m) => m[1]).join("\n");
+  return [...html.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi)]
+    .map((m) => m[1])
+    .filter((css) => !/\.d2-(?:\d|mono)/.test(css))
+    .join("\n");
+}
+
+// A mangled inline SVG still looks like a figure to every structural check —
+// the island is there, the caption is there, and the diagram is a wall of text.
+// Real rules live inside a <style> element, which is stripped before this runs;
+// a d2 selector surviving as text means the markup was escaped into prose.
+const LEAKED_CSS = /\.d2-(?:\d+|mono)\s*(?:\{|\.(?:fill|stroke|background-color))/;
+
+function leakedStylesheet(html: string): boolean {
+  const stripped = html.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "");
+  return LEAKED_CSS.test(stripped);
 }
 
 function classHasDiagramBg(cls: string, css: string): boolean {
@@ -59,6 +77,14 @@ export function lintFigures(html: string, allowBareSvg = false): LintResult {
   const result: LintResult = { errors: [], warnings: [] };
   const marks = [...html.matchAll(SOURCE_MARK)].map((m) => m.index ?? 0);
   if (marks.length === 0) return result;
+
+  if (leakedStylesheet(html)) {
+    result.errors.push(
+      "a diagram's stylesheet leaked into the page as text — the figure will render as "
+        + "raw CSS. A blank line or tab-indented line inside an inlined SVG ends the "
+        + "markdown HTML block; re-render the SVG so it carries neither",
+    );
+  }
 
   const css = styleBlocks(html);
   if (/background(?:-color)?:\s*(white\b|#fff\b|#ffffff\b|rgb\(\s*255\s*,\s*255\s*,\s*255)/i.test(css)) {

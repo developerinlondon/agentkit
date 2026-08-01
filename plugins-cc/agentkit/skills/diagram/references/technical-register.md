@@ -326,6 +326,12 @@ The published SVG carries `class="d2"`, `role="img"`, an `aria-label`, and a
 Publishing outside a `.figure` island (or a container with
 `background: var(--diagram-bg)`) is refused by the publish lint.
 
+The emitted SVG carries no blank lines and no leading indentation, so it can be
+pasted into a markdown page as-is. Both would otherwise end the raw-HTML block —
+CommonMark reads the rest as an indented code block, and the figure renders as a
+wall of literal CSS. The publish lint now fails a page where that has happened
+rather than shipping an intact island around a missing diagram.
+
 **Theme handling differs from the sketch register, deliberately.** A baked
 Excalidraw SVG is authored dark and the page derives light mode by inverting
 it. D2 emits _both_ palettes; the wrapper rewrites D2's
