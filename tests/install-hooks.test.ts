@@ -146,9 +146,11 @@ describe('Claude Code and Codex hook wiring', () => {
       // The canonical file carries the whole wiring; a default install ships it
       // minus the kit-owned hooks: the review gate leaves the Bash kit and takes
       // the merge-shaped matcher kit with it, the brain hooks leave PostToolUse
-      // and take the SessionStart kit with them.
-      expect(canonical.hooks.PreToolUse).toHaveLength(2);
-      expect(settings.hooks.PreToolUse.map((kit: any) => kit.matcher)).toEqual(['Bash']);
+      // and take the SessionStart kit with them. The write-gate kit is core and
+      // stays.
+      expect(canonical.hooks.PreToolUse).toHaveLength(3);
+      expect(settings.hooks.PreToolUse.map((kit: any) => kit.matcher)).toEqual(['Bash', 'Edit|Write']);
+      expect(commandNames(settings.hooks.PreToolUse[1].hooks)).toEqual(['plan-police.sh']);
       expect(commandNames(settings.hooks.PreToolUse[0].hooks)).toEqual(
         commandNames(canonical.hooks.PreToolUse[0].hooks).filter(
           (name) => name !== 'review-police.sh',

@@ -68,6 +68,7 @@ a unit cannot go missing from this table, but a cell can be incomplete.
 | `kubectl-police` | `kubectl create` or `kubectl apply` against Kargo custom resources, where the GitOps controller owns the state |
 | `mr-police` | opening another GitLab merge request while one you authored is already open on the repository |
 | `pages-police` | a direct write to the Pages API, which would bypass the publish-time figure lint and the canonical git history, and an unapproved `--allow-bare-svg` |
+| `plan-police` | an edit that marks a plan done while its own gaps section still lists work that is neither ticked, struck through, nor carrying an issue reference. It judges the content the edit is about to land, so an edit that closes the last gap in the same breath passes |
 | `pkg-police` | package-management subcommands belonging to a manager the project does not use — inferred from the lockfile, so `bun install` is refused in an `npm` project just as `npm install` is in a bun one. Read-only queries such as `npm ls` pass |
 | `resource-police` | a heavy command not run through the **installed** `bounded-run` — trust is by installed path, not by filename, so a copy in the current directory is still refused — plus delegated workloads, which `bounded-run` cannot contain at all, and commands whose shell nesting it cannot parse (Linux only) |
 | `review-police` | a forge merge unless review evidence passed for the forge-selected source head and the current target |

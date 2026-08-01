@@ -36,3 +36,4 @@ skill; `product-intelligence` needs `--with product`.
 | [Contain a heavy build](/docs/cookbook/contain-a-build/)               | Linux, provisioned work slice |
 | [Declare what your repo ships](/docs/cookbook/declare-your-product/)   | `--with product`              |
 | [Override a guard, once, on purpose](/docs/cookbook/override-a-guard/) | core                          |
+| [Find what is half done](/docs/cookbook/find-what-is-half-done/)       | core                          |

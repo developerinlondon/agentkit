@@ -1,0 +1,655 @@
+#!/usr/bin/env bash
+# wip — what was started and not finished, for one repository or several.
+#
+# Read-only: it blocks nothing and changes nothing. It exists so a human never
+# has to take an agent's summary of its own work on trust.
+#
+# The one thing here worth knowing: whether a branch is finished is answered by
+# the FORGE, never by git topology. See forge_branch_states for the measurement
+# behind that, and for why there is no local rule to fall back to.
+set -euo pipefail
+
+VERSION=1
+LIMIT=20
+FORGE_ENABLED=1
+
+usage() {
+	cat <<'EOF'
+Usage: wip [options] [REPO...]
+
+  REPO           repository path. Default: the current directory's repository.
+
+  --limit N      rows per section before the rest is summarised (default 20; 0 = all)
+  --no-forge     skip merge-request/pull-request and issue lookups
+  --version      print the tool version
+  -h, --help     this text
+
+Exit: 0 always, unless a repository argument is unusable (2).
+EOF
+}
+
+# ── git ─────────────────────────────────────────────────────────────────────
+git_in() { git -C "$REPO" "$@"; }
+
+# origin/HEAD names the default branch when the clone recorded it; the probes
+# after it are for clones that never did.
+default_branch() {
+	local ref candidate
+	ref=$(git_in symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null || true)
+	if [[ -n "$ref" ]]; then
+		printf '%s' "${ref##*/}"
+		return 0
+	fi
+	for candidate in main master trunk develop; do
+		if git_in show-ref --verify --quiet "refs/remotes/origin/$candidate"; then
+			printf '%s' "$candidate"
+			return 0
+		fi
+	done
+	for candidate in main master trunk develop; do
+		if git_in show-ref --verify --quiet "refs/heads/$candidate"; then
+			printf '%s' "$candidate"
+			return 0
+		fi
+	done
+	git_in rev-parse --abbrev-ref HEAD 2>/dev/null || printf '%s' 'main'
+}
+
+base_ref() {
+	if git_in show-ref --verify --quiet "refs/remotes/origin/$1"; then
+		printf 'origin/%s' "$1"
+	else
+		printf '%s' "$1"
+	fi
+}
+
+# A squash merge destroys the topological evidence by design: the squashed
+# commit is not an ancestor of the branch, and the merge base stays before the
+# squash forever. Only the forge records that a change from this branch merged.
+#
+# Measured against nine branches of known outcome, every git-only rule reported
+# all seven merged ones as outstanding: ancestry counts, a two-dot diff, a
+# three-dot diff, and an in-memory merge-tree comparison alike. The last of
+# those passed a two-commit fixture and still failed here, because a fixture
+# whose default branch has not moved cannot distinguish the case it exists to
+# prove. There is no local rule to fall back to, so when the forge cannot
+# answer, this reports that it does not know rather than guessing loudly.
+
+# BRANCH<TAB>STATE<TAB>REF for every change the forge knows of. States are
+# normalised to merged / opened / closed.
+forge_branch_states() {
+	case "$FORGE" in
+	github)
+		(cd "$REPO" && GH_HOST="$GH_HOSTNAME" gh pr list --state all --limit 200 \
+			--json headRefName,number,state 2>/dev/null) |
+			jq -r '.[] | [.headRefName, (.state | ascii_downcase), ("#" + (.number | tostring))] | @tsv' || true
+		;;
+	gitlab)
+		(cd "$REPO" && GITLAB_HOST="$GITLAB_HOSTNAME" \
+			glab api "projects/:fullpath/merge_requests?state=all&per_page=100&order_by=updated_at" 2>/dev/null) |
+			jq -r 'if type == "array" then .[] else empty end
+				| [.source_branch, .state, ("!" + (.iid | tostring))] | @tsv' || true
+		;;
+	esac
+	return 0
+}
+
+# The bulk listing is capped, so a branch older than the window needs asking for
+# by name rather than being silently called untracked.
+forge_branch_state_one() {
+	case "$FORGE" in
+	github)
+		(cd "$REPO" && GH_HOST="$GH_HOSTNAME" gh pr list --head "$1" --state all --limit 10 \
+			--json headRefName,number,state 2>/dev/null) |
+			jq -r '.[] | [.headRefName, (.state | ascii_downcase), ("#" + (.number | tostring))] | @tsv' || true
+		;;
+	gitlab)
+		(cd "$REPO" && GITLAB_HOST="$GITLAB_HOSTNAME" \
+			glab api "projects/:fullpath/merge_requests?source_branch=$1&state=all" 2>/dev/null) |
+			jq -r 'if type == "array" then .[] else empty end
+				| [.source_branch, .state, ("!" + (.iid | tostring))] | @tsv' || true
+		;;
+	esac
+	return 0
+}
+
+# A branch may carry several changes over its life. Merged wins: one merged
+# change means the work landed, whatever was closed alongside it.
+best_state_for() {
+	local branch="$1" rows name state ref
+	local open_ref="" closed_ref=""
+	rows=$(printf '%s\n' "$2" | grep -F "$branch	" || true)
+	if [[ -z "$rows" ]]; then
+		printf ''
+		return 0
+	fi
+	while IFS=$'\t' read -r name state ref; do
+		[[ "$name" == "$branch" ]] || continue
+		case "$state" in
+		merged)
+			printf 'merged\t%s' "$ref"
+			return 0
+			;;
+		# GitHub says OPEN, GitLab says opened; merged and closed coincide.
+		open | opened | locked) [[ -n "$open_ref" ]] || open_ref="$ref" ;;
+		closed) [[ -n "$closed_ref" ]] || closed_ref="$ref" ;;
+		esac
+	done <<<"$rows"
+	if [[ -n "$open_ref" ]]; then
+		printf 'opened\t%s' "$open_ref"
+	elif [[ -n "$closed_ref" ]]; then
+		printf 'closed\t%s' "$closed_ref"
+	fi
+	return 0
+}
+
+age_days() {
+	local when now
+	when=$(git_in log -1 --format=%ct "$1" 2>/dev/null || printf '0')
+	now=$(date +%s)
+	printf '%d' $(((now - when) / 86400))
+}
+
+# ── forge ───────────────────────────────────────────────────────────────────
+# Resolved per repository, never assumed. A repository whose forge cannot be
+# reached reports that fact rather than an empty section, because an empty
+# section reads as "nothing outstanding".
+FORGE=""
+FORGE_NOTE=""
+
+detect_forge() {
+	FORGE=""
+	FORGE_NOTE=""
+	if [[ "$FORGE_ENABLED" != 1 ]]; then
+		FORGE_NOTE="skipped (--no-forge)"
+		return 0
+	fi
+	local url host
+	url=$(git_in remote get-url origin 2>/dev/null || true)
+	if [[ -z "$url" ]]; then
+		FORGE_NOTE="no origin remote — merge requests and issues not checked"
+		return 0
+	fi
+	host=$(printf '%s' "$url" | sed -E 's#^(git\+)?(ssh://)?(git@|https?://)?([^:/]+).*#\4#')
+
+	if [[ "$host" == "github.com" ]] || (command -v gh >/dev/null 2>&1 && gh auth status --hostname "$host" >/dev/null 2>&1); then
+		if command -v gh >/dev/null 2>&1; then
+			FORGE="github"
+			GH_HOSTNAME="$host"
+			return 0
+		fi
+		FORGE_NOTE="github repo but gh is not installed — merge requests and issues not checked"
+		return 0
+	fi
+	if command -v glab >/dev/null 2>&1; then
+		if (cd "$REPO" && GITLAB_HOST="$host" glab api /version >/dev/null 2>&1); then
+			FORGE="gitlab"
+			GITLAB_HOSTNAME="$host"
+			return 0
+		fi
+	fi
+	if [[ "$host" == *gitlab* ]]; then
+		FORGE_NOTE="gitlab repo but glab is unavailable or unauthenticated — merge requests and issues not checked"
+		return 0
+	fi
+	FORGE_NOTE="unrecognised forge host '$host' — merge requests and issues not checked"
+	return 0
+}
+
+# One row per open change authored by the current user:
+# NUMBER<TAB>HEAD_BRANCH<TAB>HOLDS
+open_changes() {
+	case "$FORGE" in
+	github)
+		(cd "$REPO" && GH_HOST="$GH_HOSTNAME" gh pr list --author '@me' --state open --limit 100 \
+			--json number,headRefName,isDraft,mergeable,reviewDecision,statusCheckRollup 2>/dev/null) |
+			jq -r '.[] | [
+				("#" + (.number | tostring)),
+				.headRefName,
+				([ (if .isDraft then "draft" else empty end),
+				   (if .mergeable == "CONFLICTING" then "conflicts" else empty end),
+				   (if ([.statusCheckRollup[]? | select(.conclusion == "FAILURE" or .conclusion == "TIMED_OUT" or .state == "FAILURE")] | length) > 0
+				      then "checks failing" else empty end),
+				   (if .reviewDecision == "CHANGES_REQUESTED" then "changes requested"
+				    elif .reviewDecision == "APPROVED" then empty
+				    else "no approving review" end)
+				 ] | join(", "))
+			] | @tsv' || true
+		;;
+	gitlab)
+		(cd "$REPO" && GITLAB_HOST="$GITLAB_HOSTNAME" glab mr list --author '@me' --output json --per-page 100 2>/dev/null) |
+			jq -r '(if type == "array" then . else (.merge_requests // []) end)[] | [
+				("!" + (.iid | tostring)),
+				.source_branch,
+				([ (if (.draft // .work_in_progress // false) then "draft" else empty end),
+				   (if .has_conflicts then "conflicts" else empty end),
+				   (if (.upvotes // 0) == 0 then "no approving review" else empty end)
+				 ] | join(", "))
+			] | @tsv' || true
+		;;
+	esac
+	return 0
+}
+
+# NUMBER<TAB>FLAG — FLAG marks an issue whose body says it was carved out of
+# other work. Filing one of those is a deferral, and deferrals should be visible.
+SPLIT_HINT='split out of|split from|carved out|carved from|extracted from|broken out of|deferred from|follow-?up (to|from)|descoped from|out of scope for'
+
+open_authored_issues() {
+	case "$FORGE" in
+	github)
+		(cd "$REPO" && GH_HOST="$GH_HOSTNAME" gh issue list --author '@me' --state open --limit 100 \
+			--json number,body,title 2>/dev/null) |
+			jq -r --arg re "$SPLIT_HINT" '.[] |
+				[ ("#" + (.number | tostring)),
+				  (if ((.body // "") + " " + (.title // "") | test($re; "i")) then "split" else "" end)
+				] | @tsv' || true
+		;;
+	gitlab)
+		(cd "$REPO" && GITLAB_HOST="$GITLAB_HOSTNAME" glab issue list --author '@me' --output json --per-page 100 2>/dev/null) |
+			jq -r --arg re "$SPLIT_HINT" '(if type == "array" then . else (.issues // []) end)[] |
+				[ ("#" + (.iid | tostring)),
+				  (if ((.description // "") + " " + (.title // "") | test($re; "i")) then "split" else "" end)
+				] | @tsv' || true
+		;;
+	esac
+	return 0
+}
+
+# ── output ──────────────────────────────────────────────────────────────────
+# Bounded sections say what they dropped. A silent cap reads as "nothing else
+# to see", which is the failure this whole tool exists to prevent.
+emit_bounded() {
+	local label="$1" body="$2" total shown
+	[[ -n "$body" ]] || return 0
+	total=$(grep -c . <<<"$body" || true)
+	if [[ "$LIMIT" -gt 0 && "$total" -gt "$LIMIT" ]]; then
+		shown="$LIMIT"
+	else
+		shown="$total"
+	fi
+	printf '%s' "$(head -n "$shown" <<<"$body")"
+	printf '\n'
+	if [[ "$shown" -lt "$total" ]]; then
+		printf ' %-9s %s\n' "…" "$((total - shown)) more $label not shown (--limit 0 for all)"
+	fi
+	return 0
+}
+
+# An inline list of identifiers, capped the same way and just as loudly.
+bound_list() {
+	local items="${1# }" total kept
+	total=$(wc -w <<<"$items" | tr -d ' ')
+	if [[ "$LIMIT" -le 0 || "$total" -le "$LIMIT" ]]; then
+		printf '%s' "$items"
+		return 0
+	fi
+	kept=$(cut -d' ' -f"1-$LIMIT" <<<"$items")
+	printf '%s +%d more (--limit 0 for all)' "$kept" "$((total - LIMIT))"
+	return 0
+}
+
+# ── sections ────────────────────────────────────────────────────────────────
+CHANGES=""
+CLEANUP=""
+
+# Tab counts as IFS whitespace, so `read` collapses a run of them: an empty
+# field silently shifts every later field one place left, and the reference
+# lands in the variable meant for the upstream marker. A placeholder keeps the
+# columns aligned; consumers turn it back into an empty string.
+emit_class() {
+	printf '%s\t%s\t%s\t%s\n' "$1" "$2" "${3:--}" "${4:--}"
+	return 0
+}
+
+# Branches that have a worktree attached. A branch with nothing committed still
+# holds work if a checkout is sitting on it — that is where uncommitted work
+# lives — so this is what separates "nothing started" from "started, uncommitted".
+worktree_branches() {
+	git_in worktree list --porcelain 2>/dev/null |
+		awk '$1 == "branch" { sub(/^refs\/heads\//, "", $2); print $2 }'
+	return 0
+}
+
+# Nothing committed, nowhere checked out, and no change ever opened: nothing was
+# started. A harness that creates a branch per worktree leaves dozens of these,
+# and they crowd out the rows that matter — being loudly wrong about the size of
+# your backlog trains a reader to skim past it.
+#
+# The test is structural rather than by name deliberately. A name pattern would
+# hide a harness branch that DOES carry commits, which is real unfinished work;
+# this cannot, because having commits disqualifies a branch from being hidden.
+# Only ever asked about a branch the forge has no change for; the call sites are
+# the single place that decides, so there is no state guard duplicated here.
+branch_is_unstarted() {
+	local branch="$1"
+	[[ "$(git_in rev-list --count "$BASE..$branch" 2>/dev/null || printf '1')" == "0" ]] || return 1
+	case "$WORKTREE_BRANCHES" in
+	*"|$branch|"*) return 1 ;;
+	esac
+	return 0
+}
+
+# STATE<TAB>BRANCH<TAB>REF<TAB>TRACK, judged once. A caller that classified
+# inside a command substitution would lose the result to the subshell.
+# STATE is merged / opened / closed / none / unknown, where `none` means the
+# forge answered and has never seen a change from this branch — the genuinely
+# interesting case — and `unknown` means nobody could answer.
+classify_branches() {
+	local branch track answer state ref
+	while IFS=$'\t' read -r branch track; do
+		[[ -n "$branch" ]] || continue
+		[[ "$branch" == "$DEFAULT" ]] && continue
+		if [[ -z "$FORGE" ]]; then
+			if branch_is_unstarted "$branch"; then
+				emit_class 'unstarted' "$branch" '' "$track"
+			else
+				emit_class 'unknown' "$branch" '' "$track"
+			fi
+			continue
+		fi
+		answer=$(best_state_for "$branch" "$FORGE_STATES")
+		if [[ -z "$answer" ]]; then
+			answer=$(best_state_for "$branch" "$(forge_branch_state_one "$branch")")
+		fi
+		if [[ -z "$answer" ]]; then
+			if branch_is_unstarted "$branch"; then
+				emit_class 'unstarted' "$branch" '' "$track"
+			else
+				emit_class 'none' "$branch" '' "$track"
+			fi
+			continue
+		fi
+		IFS=$'\t' read -r state ref <<<"$answer"
+		emit_class "$state" "$branch" "$ref" "$track"
+	done < <(git_in for-each-ref --format='%(refname:short)%09%(upstream:track)' refs/heads 2>/dev/null)
+	return 0
+}
+
+unstarted_count() {
+	local state
+	local n=0
+	while IFS=$'\t' read -r state _ _ _; do
+		[[ "$state" == "unstarted" ]] && n=$((n + 1))
+	done <<<"$BRANCH_CLASS"
+	printf '%d' "$n"
+	return 0
+}
+
+merged_branch_names() {
+	local state branch
+	while IFS=$'\t' read -r state branch _ _; do
+		[[ "$state" == "merged" ]] && printf ' %s' "$branch"
+	done <<<"$BRANCH_CLASS"
+	return 0
+}
+
+branch_is_cleanup() {
+	local state branch
+	while IFS=$'\t' read -r state branch _ _; do
+		if [[ "$branch" == "$1" && "$state" == "merged" ]]; then
+			return 0
+		fi
+	done <<<"$BRANCH_CLASS"
+	return 1
+}
+
+# Merged branches are cleanup, not unfinished work, and leave this section.
+section_branches() {
+	local state branch track ref ahead days body="" note=""
+	while IFS=$'\t' read -r state branch ref track; do
+		[[ "$ref" == "-" ]] && ref=""
+		[[ "$track" == "-" ]] && track=""
+		case "$state" in
+		opened | none | unknown) ;;
+		*) continue ;;
+		esac
+		ahead=$(git_in rev-list --count "$BASE..$branch" 2>/dev/null || printf '0')
+		days=$(age_days "$branch")
+		case "$state" in
+		opened) note="$ref open" ;;
+		none) note="no MR/PR ever opened" ;;
+		unknown) note="state UNKNOWN — forge could not be asked" ;;
+		esac
+		if [[ "$track" == *gone* ]]; then
+			note="$note; upstream branch deleted"
+		fi
+		body="$body$(printf ' %-9s %-34s %3sd  %3s commits  %s' 'BRANCH' "$branch" "$days" "$ahead" "$note")"$'\n'
+	done <<<"$BRANCH_CLASS"
+	printf '%s' "$body"
+	return 0
+}
+
+# A change closed without merging is a decision, not an oversight. It reads
+# differently from work nobody ever opened, so it gets its own row.
+section_abandoned() {
+	local state branch track ref days body=""
+	while IFS=$'\t' read -r state branch ref track; do
+		[[ "$state" == "closed" ]] || continue
+		[[ "$ref" == "-" ]] && ref=""
+		days=$(age_days "$branch")
+		body="$body$(printf ' %-9s %-34s %3sd  %s closed without merging' 'ABANDONED' "$branch" "$days" "$ref")"$'\n'
+	done <<<"$BRANCH_CLASS"
+	printf '%s' "$body"
+	return 0
+}
+
+section_worktrees() {
+	local path branch modified untracked state body=""
+	while IFS= read -r line; do
+		case "$line" in
+		"worktree "*)
+			path="${line#worktree }"
+			branch=""
+			;;
+		"branch "*) branch="${line#branch refs/heads/}" ;;
+		"detached") branch="(detached)" ;;
+		"")
+			[[ -n "${path:-}" ]] || continue
+			[[ "$path" == "$REPO" ]] && {
+				path=""
+				continue
+			}
+			modified=$(git -C "$path" status --porcelain 2>/dev/null | grep -cv '^??' || true)
+			untracked=$(git -C "$path" status --porcelain 2>/dev/null | grep -c '^??' || true)
+			if [[ "$modified" -gt 0 || "$untracked" -gt 0 ]]; then
+				state=$(printf 'DIRTY %s modified, %s untracked — do NOT remove' "$modified" "$untracked")
+			elif [[ -n "$branch" ]] && branch_is_cleanup "$branch"; then
+				state="clean; branch already merged — cleanup"
+			else
+				state="clean"
+			fi
+			body="$body$(printf ' %-9s %-34s %s at %s' 'WORKTREE' "${branch:-(no branch)}" "$state" "${path/#$HOME/\~}")"$'\n'
+				path=""
+			;;
+		esac
+	done < <(
+		git_in worktree list --porcelain 2>/dev/null
+		printf '\n'
+	)
+	printf '%s' "$body"
+	return 0
+}
+
+section_changes() {
+	local number head holds body=""
+	while IFS=$'\t' read -r number head holds; do
+		[[ -n "$number" ]] || continue
+		body="$body$(printf ' %-9s %-34s held: %s' 'MR/PR' "$number ($head)" "${holds:-nothing — ready}")"$'\n'
+	done <<<"$CHANGES"
+	printf '%s' "$body"
+	return 0
+}
+
+section_issues() {
+	local number flag plain="" split="" body=""
+	while IFS=$'\t' read -r number flag; do
+		[[ -n "$number" ]] || continue
+		if [[ "$flag" == "split" ]]; then
+			split="$split $number"
+		else
+			plain="$plain $number"
+		fi
+	done <<<"$ISSUES"
+	if [[ -n "$plain" ]]; then
+		body="$body$(printf ' %-9s %s' 'FILED' "$(bound_list "$plain") — authored, open, unfixed")"$'\n'
+	fi
+	if [[ -n "$split" ]]; then
+		body="$body$(printf ' %-9s %s' 'DEFERRED' "$(bound_list "$split") — carved out of other work")"$'\n'
+	fi
+	printf '%s' "$body"
+	return 0
+}
+
+section_plans() {
+	local plan open name body="" seen=""
+	[[ -n "$PLAN_GATE" ]] || return 0
+	while IFS=$'\t' read -r _ plan _ _; do
+		[[ -n "$plan" ]] || continue
+		case " $seen " in *" $plan "*) continue ;; esac
+		seen="$seen $plan"
+		open=$(grep -cF "	$plan	" <<<"$PLAN_ROWS" || true)
+		name="${plan#"$REPO"/}"
+		body="$body$(printf ' %-9s %-34s %s gap(s) unclosed' 'PLAN' "$name" "$open")"$'\n'
+	done <<<"$PLAN_ROWS"
+	printf '%s' "$body"
+	return 0
+}
+
+# A section builds its rows in a command substitution, so a failure inside one
+# yields an empty string — indistinguishable from "nothing to report" in a tool
+# whose whole purpose is that work does not disappear quietly. Each capture is
+# guarded so a failure is loud and non-zero instead. The calls stay direct:
+# dispatching through a variable would blind shellcheck's dead-code check, which
+# has already caught real dead code in this file.
+fail_section() {
+	printf 'wip: the %s section failed — this report is INCOMPLETE\n' "$1" >&2
+	exit 3
+}
+
+count_lines() {
+	if [[ -z "$1" ]]; then
+		printf '0'
+		return 0
+	fi
+	grep -c . <<<"$1" || true
+}
+
+report_repo() {
+	local branches abandoned worktrees changes issues plans hidden
+
+	DEFAULT="$(default_branch)"
+	BASE="$(base_ref "$DEFAULT")"
+	detect_forge
+	CHANGES="$(open_changes)"
+	ISSUES=""
+	if [[ -n "$FORGE" ]]; then
+		ISSUES="$(open_authored_issues)"
+	fi
+	PLAN_ROWS=""
+	if [[ -n "$PLAN_GATE" ]]; then
+		PLAN_ROWS="$("$PLAN_GATE" --repo "$REPO" --tsv 2>/dev/null | grep '^OPEN	' || true)"
+	fi
+	FORGE_STATES=""
+	if [[ -n "$FORGE" ]]; then
+		FORGE_STATES="$(forge_branch_states)"
+	fi
+	WORKTREE_BRANCHES="|$(worktree_branches | tr '\n' '|')"
+	BRANCH_CLASS="$(classify_branches)"
+	CLEANUP="$(merged_branch_names)"
+
+	branches="$(section_branches)" || fail_section section_branches
+	abandoned="$(section_abandoned)" || fail_section section_abandoned
+	worktrees="$(section_worktrees)" || fail_section section_worktrees
+	changes="$(section_changes)" || fail_section section_changes
+	issues="$(section_issues)" || fail_section section_issues
+	plans="$(section_plans)" || fail_section section_plans
+
+	printf '%s — %d unfinished branch(es)\n' "${REPO##*/}" "$(count_lines "$branches")"
+	emit_bounded 'branch(es)' "$branches"
+	emit_bounded 'abandoned branch(es)' "$abandoned"
+	emit_bounded 'worktree(s)' "$worktrees"
+	emit_bounded 'change(s)' "$changes"
+	emit_bounded 'issue line(s)' "$issues"
+	emit_bounded 'plan(s)' "$plans"
+
+	printf ' %-9s %s abandoned · %s worktree(s) · %s open change(s) · %s filed issue(s) · %s plan(s) with gaps\n' \
+		'COUNTS' "$(count_lines "$abandoned")" "$(count_lines "$worktrees")" \
+		"$(count_lines "$CHANGES")" "$(count_lines "$ISSUES")" "$(count_lines "$plans")"
+	hidden="$(unstarted_count)"
+	if [[ "$hidden" -gt 0 ]]; then
+		printf ' %-9s %s\n' 'NOTE' "$hidden branch(es) hidden: nothing committed, no worktree, no change ever opened"
+	fi
+	if [[ -n "$CLEANUP" ]]; then
+		printf ' %-9s %s\n' 'MERGED' "$(bound_list "$CLEANUP") — merged on the forge; cleanup, not unfinished work"
+	fi
+	if [[ -n "$FORGE_NOTE" ]]; then
+		printf ' %-9s %s\n' 'NOTE' "$FORGE_NOTE"
+		printf ' %-9s %s\n' 'NOTE' 'branch state is DEGRADED: only the forge can tell a squash-merged branch from an unfinished one, so no branch above is known to be outstanding'
+	fi
+	if [[ -z "$PLAN_GATE" ]]; then
+		printf ' %-9s %s\n' 'NOTE' 'plan-gate not found beside this tool — plans not checked'
+	fi
+	return 0
+}
+
+# ── arguments ───────────────────────────────────────────────────────────────
+TARGETS=""
+
+while [[ $# -gt 0 ]]; do
+	case "$1" in
+	--limit)
+		if [[ $# -lt 2 || ! "$2" =~ ^[0-9]+$ ]]; then
+			usage >&2
+			exit 2
+		fi
+		LIMIT="$2"
+		shift 2
+		;;
+	--no-forge)
+		FORGE_ENABLED=0
+		shift
+		;;
+	--version)
+		printf 'wip %s\n' "$VERSION"
+		exit 0
+		;;
+	-h | --help)
+		usage
+		exit 0
+		;;
+	-*)
+		printf 'wip: unknown option %s\n' "$1" >&2
+		usage >&2
+		exit 2
+		;;
+	*)
+		TARGETS="$TARGETS$1"$'\n'
+		shift
+		;;
+	esac
+done
+
+[[ -n "$TARGETS" ]] || TARGETS="$PWD"$'\n'
+
+TOOL_DIR="${BASH_SOURCE[0]%/*}"
+PLAN_GATE=""
+for candidate in "$TOOL_DIR/plan-gate" "$TOOL_DIR/../tools/plan-gate"; do
+	if [[ -x "$candidate" ]]; then
+		PLAN_GATE="$candidate"
+		break
+	fi
+done
+
+FIRST=1
+while IFS= read -r target; do
+	[[ -n "$target" ]] || continue
+	if ! REPO="$(git -C "$target" rev-parse --show-toplevel 2>/dev/null)"; then
+		printf 'wip: not a git repository: %s\n' "$target" >&2
+		exit 2
+	fi
+	[[ "$FIRST" == 1 ]] || printf '\n'
+	FIRST=0
+	report_repo
+done <<<"$TARGETS"
+exit 0

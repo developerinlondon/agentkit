@@ -5,6 +5,42 @@ top and ships with the next tag.
 
 ## [Unreleased]
 
+- feat(wip): `wip` reports what was started and not finished in a repository —
+  branches with age and commit count, worktrees with a loud warning on dirty
+  ones, open merge requests or pull requests and what holds each, open issues
+  you authored (separating those whose text says they were carved out of other
+  work), and plans with unclosed gaps. GitHub and GitLab both resolve from the
+  `origin` host, including self-hosted.
+  Whether a branch is finished is the **forge's** answer, never git topology. A
+  squash merge destroys the topological evidence by design, and measured against
+  nine branches of known outcome every git-only rule called all seven merged ones
+  outstanding: ancestry counts, two-dot and three-dot diffs, and an in-memory
+  `merge-tree` tree comparison alike — the last passing a two-commit fixture and
+  failing on a real repository, because a fixture whose default branch has not
+  moved cannot distinguish the case it exists to prove. States are separated into
+  merged (cleanup), closed-without-merging (a decision), open, and never-opened
+  (the interesting one). With no forge reachable there is no local rule to fall
+  back to, so the branch state is reported as UNKNOWN and marked DEGRADED rather
+  than guessed at in the alarming direction.
+  The headline counts unfinished branches only — branches, worktrees, issues and
+  plan gaps are four different things with four different remedies, and one
+  number covering all of them cannot be acted on; the rest are broken out on a
+  `COUNTS` line. A branch with nothing committed, no worktree checked out on it,
+  and no change ever opened is hidden as never-started, which on one real
+  repository removed 20 of 41 branches (all worktree-harness bookkeeping) and
+  took the headline from 150 to 4. The rule is structural rather than by name:
+  having commits disqualifies a branch from being hidden, so it cannot bury a
+  harness branch that did real work, and a dirty worktree keeps a zero-commit
+  branch visible because that is where uncommitted work lives. What is hidden is
+  counted and named in a NOTE
+- feat(plan-gate): a plan may not be treated as done while its own gaps section
+  lists work that is neither ticked, struck through, nor carrying an issue
+  reference. `tools/plan-gate` is the single parser; `plan-police` is a
+  PreToolUse hook on `Edit|Write` that judges the content an edit is about to
+  land and refuses the edit, with `AGENTKIT_SKIP_HOOKS=plan-police` as the
+  recorded exception. Plan layout is discovered from common conventions and
+  overridable per repository under `wip:` in `.agentkit/config.yaml`
+
 ## v0.6.3 — 2026-07-31
 
 - perf(ci): `agentkit:test-full` runs the slice inventory as concurrent per-file

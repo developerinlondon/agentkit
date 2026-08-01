@@ -227,6 +227,14 @@ fileGroups:
     - "tests/session/**/*"
     - "tools/agent-session"
 
+  wipInputs:
+    - "hooks/claude/lib/hook-input.sh"
+    - "hooks/claude/plan-police.sh"
+    - "skills/wip/**/*"
+    - "tests/wip/**/*"
+    - "tools/plan-gate"
+    - "tools/wip"
+
 tasks:
   preflight:
     command: "scripts/preflight"
@@ -301,6 +309,12 @@ tasks:
     inputs:
       - "group://ciConfig"
       - "group://sessionInputs"
+
+  test-wip:
+    command: "bun run scripts/check-test-slices.ts wip"
+    inputs:
+      - "group://ciConfig"
+      - "group://wipInputs"
 
   test-full:
     command: "bun run scripts/run-test-slices.ts"

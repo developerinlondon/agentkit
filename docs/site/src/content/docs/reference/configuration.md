@@ -33,22 +33,23 @@ note that the tables below mark each case at the point it applies.
 | ------------------------------------------------------------------ | ------------------------------------------ |
 | `comment-police.forbidden-patterns` **replaces** the built-in list | a seeded config matches 6 patterns, not 13 |
 | `comment-police.max-header-lines` + `forbidden-patterns`           | the OpenCode plugin only                   |
-| repo-level `.agentkit/config.yaml`                                 | the `review:` section only                 |
+| repo-level `.agentkit/config.yaml`                                 | the `review:` and `wip:` sections only     |
 
 ## Which implementation reads which section
 
 A police unit is a policy with up to three implementations, and they do not read config equally.
 
-| Section             | Claude/Grok hook              | OpenCode plugin         | Codex policy                      |
-| ------------------- | ----------------------------- | ----------------------- | --------------------------------- |
-| `review`            | — (`review-profile` reads it) | —                       | —                                 |
-| `git-police`        | `allowed-repos`               | `allowed-repos`         | not read                          |
-| `coding-police`     | all keys                      | all keys                | not read                          |
-| `comment-police`    | 3 of 5 keys (below)           | all keys                | not read                          |
-| `pkg-police`        | `manager`                     | `manager`               | installed only for explicit `bun` |
-| `resource-police`   | `enabled`, `bounded`          | `enabled`, `bounded`    | installed only when `enabled`     |
-| `delegation-police` | `enabled`                     | `enabled`               | installed only when `enabled`     |
-| `version-police`    | no such hook                  | `enabled`, `exceptions` | no such policy                    |
+| Section             | Claude/Grok hook                | OpenCode plugin         | Codex policy                      |
+| ------------------- | ------------------------------- | ----------------------- | --------------------------------- |
+| `review`            | — (`review-profile` reads it)   | —                       | —                                 |
+| `git-police`        | `allowed-repos`                 | `allowed-repos`         | not read                          |
+| `coding-police`     | all keys                        | all keys                | not read                          |
+| `comment-police`    | 3 of 5 keys (below)             | all keys                | not read                          |
+| `pkg-police`        | `manager`                       | `manager`               | installed only for explicit `bun` |
+| `resource-police`   | `enabled`, `bounded`            | `enabled`, `bounded`    | installed only when `enabled`     |
+| `delegation-police` | `enabled`                       | `enabled`               | installed only when `enabled`     |
+| `version-police`    | no such hook                    | `enabled`, `exceptions` | no such policy                    |
+| `wip`               | `plan-police` (via `plan-gate`) | —                       | no such policy                    |
 
 `format-police`, `kubectl-police`, `mr-police` and `pages-police` read no config at all; their
 exceptions are per-command environment variables. The Codex `.rules` files contain no config
@@ -270,3 +271,60 @@ which has no comments to carry an inline waiver.
 so this section has no effect on the other three clients. It also honours
 `AGENTKIT_SKIP_HOOKS=version-police`, but not the `all` keyword (see
 [CLI and tools](/docs/reference/cli-and-tools/)).
+
+## `wip`
+
+Read by `tools/wip`, `tools/plan-gate`, and the `plan-police` hook through the gate. Unlike every
+other section here, a repository's own `.agentkit/config.yaml` overrides the user-level file — plan
+layout is a property of the repository, not of the person reading it.
+
+```yaml
+wip:
+  plan-paths: []
+  # gap-headings: 'known gaps|loose ends|snags'
+  # done-markers: '^[[:space:]]*status[[:space:]]*:[[:space:]]*(done|shipped)'
+  # issue-refs: '#[0-9]+|![0-9]+|[A-Z][A-Z0-9]+-[0-9]+'
+```
+
+### `plan-paths`
+
+Where plans live, relative to the repository root. Each entry may be a directory (searched
+recursively for `*.md`) or a single file.
+
+**It replaces the defaults outright — it does not extend them.** Setting one entry means the six
+built-in roots stop being searched:
+
+```
+plans/   docs/plans/   doc/plans/   .omc/plans/   PLAN.md   PLANS.md
+```
+
+So a repository that keeps plans in `plans/` _and_ `design/` must list both, not just the new one.
+Leaving the key empty or absent keeps all six.
+
+### `gap-headings` and `done-markers`
+
+`gap-headings` matches case-insensitively against a whole heading; its list items are the gaps.
+`done-markers` is what it looks like for a plan to claim it is finished — `plan-police` refuses an
+edit that adds one of these while a gap is neither ticked nor tracked.
+
+### `issue-refs`
+
+What counts as a gap being tracked by an issue. The default accepts `#123`, `!123`, `GH-123`, and
+issue/MR/PR URLs.
+
+A Jira-style `PROJ-123` is **deliberately absent by default**, and the reasoning matters more than
+the key. Nothing distinguishes a Jira key from an ordinary token in prose — `UTF-8` and `SHA-256`
+have the same shape — so enabling it makes a gap description like _"the retry path still assumes
+UTF-8"_ read as tracked when nothing tracks it.
+
+Note the direction of that failure. A false _untracked_ is loud and costs an author one edit; a
+false _tracked_ silently closes a real gap and lets the plan be called done with work still in it,
+which is the exact defect this tooling exists to catch. Turn it on where `PROJ-123` genuinely
+appears in your plans, and leave it off where it does not:
+
+```yaml
+wip:
+  issue-refs: "#[0-9]+|![0-9]+|[A-Z][A-Z0-9]+-[0-9]+"
+```
+
+Setting it replaces the default pattern, so keep the forms you still use.

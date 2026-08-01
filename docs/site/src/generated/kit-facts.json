@@ -90,6 +90,15 @@
       ]
     },
     {
+      "name": "plan",
+      "mechanisms": [
+        "hook"
+      ],
+      "claudePlugins": [
+        "agentkit"
+      ]
+    },
+    {
       "name": "resource",
       "mechanisms": [
         "hook",
@@ -172,6 +181,13 @@
       "event": "PreToolUse",
       "matcher": "Bash",
       "timeout": 10,
+      "failClosedBudget": null
+    },
+    {
+      "unit": "plan",
+      "event": "PreToolUse",
+      "matcher": "Edit|Write",
+      "timeout": 15,
       "failClosedBudget": null
     },
     {
@@ -343,13 +359,21 @@
       "kit": "core",
       "explicit": false,
       "description": "Remove AgentKit, or one of its skill kits, without hand-deleting files. Covers `install.sh --uninstall` for a global or project install, what it reverts inside configs the user owns, what it deliberately leaves alone, and how kit removal differs between opt-in and consent-gated kits. Use when asked to uninstall AgentKit, remove a kit, undo the installer, or clean a machine of it."
+    },
+    {
+      "name": "wip",
+      "kit": "core",
+      "explicit": false,
+      "description": "Report what was started and not finished in a repository — unmerged branches, dirty worktrees, open merge requests and what holds them, open issues you filed, and plans whose own gaps section still lists untracked work. Read-only; it changes nothing. Use when asked \"what is half done\", \"what did I leave unfinished\", \"what is still open\", \"status of my work\", \"anything abandoned\", before picking up work after a break, and before calling a plan finished."
     }
   ],
   "tools": [
     "agent-session",
     "bounded-run",
     "fix-ascii-boxes.py",
+    "plan-gate",
     "review-gate",
-    "review-profile"
+    "review-profile",
+    "wip"
   ]
 }
