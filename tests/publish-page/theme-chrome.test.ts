@@ -8,6 +8,17 @@ const deck = readFileSync(join(themes, 'deck.html'), 'utf8');
 
 const SEVERITIES = ['note', 'warn', 'alarm', 'ok'] as const;
 
+// The token pair each rule ACTUALLY sets, read off the CSS. `.callout.note`
+// deliberately reuses the shared --muted/--code-bg, so asserting --note-* there
+// guards a pairing the page never renders.
+const INK_PAIRS: ReadonlyArray<readonly [string, string, string]> = [
+  ['.callout', '--note-ink', '--note-bg'],
+  ['.callout.warn', '--warn-ink', '--warn-bg'],
+  ['.callout.alarm', '--alarm-ink', '--alarm-bg'],
+  ['.callout.ok', '--ok-ink', '--ok-bg'],
+  ['.callout.note', '--muted', '--code-bg'],
+];
+
 function channel(c: number): number {
   const s = c / 255;
   return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
@@ -77,14 +88,14 @@ describe('callout severities', () => {
       }
     });
 
-    test(`${name} label ink clears 4.5:1 on its own ground in both palettes`, () => {
+    test(`${name} label ink clears 4.5:1 on the ground the rule actually sets`, () => {
       // The label sits ON the severity ground, so the shared --gold/--red are
       // not safe there; this is the guard that caught them at 4.33 and 4.07.
       for (const palette of ['dark', 'light'] as const) {
         const t = tokens(css, palette);
-        for (const s of SEVERITIES) {
-          const r = ratio(t[`--${s}-ink`], t[`--${s}-bg`]);
-          expect({ palette, severity: s, pass: r >= 4.5 }).toEqual({ palette, severity: s, pass: true });
+        for (const [rule, ink, bg] of INK_PAIRS) {
+          const r = ratio(t[ink], t[bg]);
+          expect({ palette, rule, pass: r >= 4.5 }).toEqual({ palette, rule, pass: true });
         }
       }
     });
@@ -92,8 +103,8 @@ describe('callout severities', () => {
     test(`${name} body ink stays readable on every severity ground`, () => {
       for (const palette of ['dark', 'light'] as const) {
         const t = tokens(css, palette);
-        for (const s of SEVERITIES) {
-          expect(ratio(t['--ink'], t[`--${s}-bg`])).toBeGreaterThanOrEqual(4.5);
+        for (const [, , bg] of INK_PAIRS) {
+          expect(ratio(t['--ink'], t[bg])).toBeGreaterThanOrEqual(4.5);
         }
       }
     });

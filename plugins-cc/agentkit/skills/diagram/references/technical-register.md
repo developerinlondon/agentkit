@@ -272,7 +272,8 @@ A **monochrome** pack (`simple-icons`) is a different object: it ships one path
 meant to be reproduced in whatever single colour its surround needs, and the
 vendoring step bakes it to `#71717a` only because `currentColor` has nothing to
 inherit from inside a `data:` URI. That one baked grey cannot work — no single
-grey clears 3:1 against both the dark and the light node fill — so the renderer
+grey clears 4.5:1 against both the dark and the light node fill, and the best
+compromise tops out near 3.9:1 on each — so the renderer
 **re-inlines monochrome marks as real `<svg>` elements** and lets the page theme
 drive their ink. This is automatic:
 
@@ -293,8 +294,8 @@ bun skills/diagram/scripts/find-icon.ts traefik
 `find-icon.ts` searches the vendored manifest and reports the set, the licence
 and whether a hit is brand artwork or a single-colour mark. Use it before
 writing `icon:` — a name is not discoverable any other way, and a pack that
-looks obvious may not carry the mark at all (the `logos` pack has 1861 icons and
-no Traefik). When a mark is genuinely absent, say so; do not substitute a
+looks obvious may not carry the mark at all — neither the vendored `logos` set
+nor its ~1.8k-icon upstream package carries a Traefik mark. When a mark is genuinely absent, say so; do not substitute a
 look-alike from another vendor.
 
 ### Regenerating the vendored set

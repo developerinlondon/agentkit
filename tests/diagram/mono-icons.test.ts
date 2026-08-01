@@ -10,6 +10,24 @@ import { monochromeFills, searchIcons } from '../../skills/diagram/scripts/icons
 
 const FILL = '#71717a';
 
+// d2's own container fill (fill-B6) in each palette — what a re-inked mark is
+// actually read against.
+const D2_NODE_LIGHT = '#F7F8FE';
+const D2_NODE_DARK = '#313244';
+
+function contrast(a: string, b: string): number {
+  const lum = (hex: string) => {
+    const h = hex.replace('#', '');
+    const ch = [0, 2, 4].map((i) => {
+      const v = parseInt(h.slice(i, i + 2), 16) / 255;
+      return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+    });
+    return 0.2126 * ch[0] + 0.7152 * ch[1] + 0.0722 * ch[2];
+  };
+  const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x);
+  return (hi + 0.05) / (lo + 0.05);
+}
+
 function image(icon: string, geom = 'x="10" y="20" width="64" height="64"'): string {
   const b64 = btoa(icon);
   return `<svg class="d2"><image href="data:image/svg+xml;base64,${b64}" ${geom} /></svg>`;
@@ -45,6 +63,19 @@ describe('monochrome icon re-inlining', () => {
     expect(out.svg).toContain(`html:not([data-theme="light"]) .d2-mono{color:${MONO_INK_DARK};}`);
   });
 
+  test('each ink clears 4.5:1 on the node fill it is rendered against', () => {
+    // Asserting the constant against itself passes even when both inks are
+    // identical, which collapses one theme to 1.2:1 — the exact failure the
+    // feature exists to prevent. These are d2's own container fills (fill-B6).
+    expect(contrast(MONO_INK_LIGHT, D2_NODE_LIGHT)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(MONO_INK_DARK, D2_NODE_DARK)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  test('the two inks are not interchangeable', () => {
+    expect(contrast(MONO_INK_LIGHT, D2_NODE_DARK)).toBeLessThan(4.5);
+    expect(contrast(MONO_INK_DARK, D2_NODE_LIGHT)).toBeLessThan(4.5);
+  });
+
   test('full-colour brand artwork is left byte-for-byte alone', () => {
     // The trademark rule: only single-colour marks are re-inked.
     const before = image(COLOUR);
@@ -66,6 +97,44 @@ describe('monochrome icon re-inlining', () => {
   test('no fills configured is a no-op rather than a scan', () => {
     const before = image(MONO);
     expect(inlineMonochromeIcons(before, [])).toEqual({ svg: before, converted: 0 });
+  });
+
+  test('a payload with an XML prolog or generator comment is refused, not sliced blind', () => {
+    // Slicing by the matched tag's LENGTH rather than its INDEX left the
+    // preamble inside the element as stray text and nested a second root.
+    const prolog = `<?xml version="1.0"?><!-- Generator: Illustrator -->`
+      + `<svg viewBox="0 0 18 18"><path fill="${FILL}" d="M9 1"/></svg>`;
+    expect(() => inlineMonochromeIcons(image(prolog), [FILL])).toThrow(SvgError);
+  });
+
+  test('a payload with two concatenated roots is refused', () => {
+    const two = `<svg viewBox="0 0 8 8"><path fill="${FILL}" d="M1 1"/></svg>`
+      + `<svg viewBox="0 0 8 8"><path fill="${FILL}" d="M2 2"/></svg>`;
+    expect(() => inlineMonochromeIcons(image(two), [FILL])).toThrow(SvgError);
+  });
+
+  test('the fill is re-inked in colour attributes only, never in ids or text', () => {
+    const tricky = `<svg viewBox="0 0 24 24"><path fill="${FILL}" stroke="${FILL}" d="M1 2"/>`
+      + `<text>${FILL}</text><g id="${FILL}-grp"/></svg>`;
+    const out = inlineMonochromeIcons(image(tricky), [FILL]);
+    expect(out.svg).toContain('fill="currentColor"');
+    expect(out.svg).toContain('stroke="currentColor"');
+    expect(out.svg).toContain(`<text>${FILL}</text>`);
+    expect(out.svg).toContain(`id="${FILL}-grp"`);
+  });
+
+  test('a fill that is a prefix of another does not corrupt the longer one', () => {
+    const doc = '<svg viewBox="0 0 24 24"><path fill="#717171a" d="M1 2"/></svg>';
+    const out = inlineMonochromeIcons(image(doc), ['#717', FILL]);
+    expect(out.svg).not.toContain('currentColor17a');
+  });
+
+  test('only marks from a monochrome pack are re-inked when sources are known', () => {
+    // Brand artwork that merely contains the baked hex is not a monochrome mark.
+    const brandArt = `<svg viewBox="0 0 24 24"><path fill="${FILL}" d="M3 4"/></svg>`;
+    const known = `<svg viewBox="0 0 24 24"><path fill="${FILL}" d="M1 2"/></svg>`;
+    expect(inlineMonochromeIcons(image(brandArt), [FILL], [known]).converted).toBe(0);
+    expect(inlineMonochromeIcons(image(known), [FILL], [known]).converted).toBe(1);
   });
 
   test('a monochrome payload that is not a single viewBoxed svg fails loudly', () => {
@@ -92,8 +161,8 @@ describe('icon discovery', () => {
   });
 
   test('a mark no vendored pack carries returns nothing rather than a near-miss', () => {
-    // logos ships 1861 icons and no traefik; a look-alike would be worse than
-    // an honest miss.
+    // No CC0 pack vendored here carries a traefik mark; a look-alike from
+    // another vendor would be worse than an honest miss.
     expect(searchIcons('zzzznotarealmark')).toEqual([]);
   });
 });

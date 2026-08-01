@@ -13,7 +13,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
-import { expandIconRefs, IconError, monochromeFills } from "./icons.ts";
+import { expandIconRefs, IconError, monochromeFills, monochromeSources } from "./icons.ts";
 import {
   applyHouseAttributes,
   D2_PIN,
@@ -127,7 +127,7 @@ try {
   verifySelfContained(svg, expanded.count);
   // Counted while the marks are still <image> elements, then re-inlined; the
   // second pass re-checks containment on what actually ships.
-  const mono = inlineMonochromeIcons(svg, monochromeFills());
+  const mono = inlineMonochromeIcons(svg, monochromeFills(), monochromeSources(expanded.staged));
   svg = flattenForMarkdown(mono.svg);
   verifySelfContained(svg, 0);
 } catch (e) {

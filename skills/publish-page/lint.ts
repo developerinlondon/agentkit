@@ -30,7 +30,13 @@ function styleBlocks(html: string): string {
 // a d2 selector surviving as text means the markup was escaped into prose.
 const LEAKED_CSS = /\.d2-(?:\d+|mono)\s*(?:\{|\.(?:fill|stroke|background-color))/;
 
+// Two shapes, because stripping <style> spans first can delete the evidence: a
+// leak that lands between a style open and a still-present close is swallowed by
+// the strip, so escaped markup is checked against the raw page as well.
+const ESCAPED_MARKUP = /&lt;\/(?:svg|style)&gt;/;
+
 function leakedStylesheet(html: string): boolean {
+  if (ESCAPED_MARKUP.test(html) && /\.d2-(?:\d+|mono)/.test(html)) return true;
   const stripped = html.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "");
   return LEAKED_CSS.test(stripped);
 }

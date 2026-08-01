@@ -46,6 +46,16 @@ export function searchIcons(query: string, dir = assetsDir): IconHit[] {
     .sort((a, b) => a.key.localeCompare(b.key));
 }
 
+// Which staged assets came from a pack that bakes a single fill. Identity, not
+// a hex sniff: brand artwork that happens to contain the same colour is not a
+// monochrome mark and must not be re-inked.
+export function monochromeSources(staged: StagedIcon[], dir = assetsDir): string[] {
+  const packs = monochromeFillSets(dir);
+  return staged
+    .filter((icon) => packs.some((p) => icon.rel.startsWith(`${STAGE_SUBDIR}/${p}/`)))
+    .map((icon) => readFileSync(icon.src, "utf8"));
+}
+
 function monochromeFillSets(dir = assetsDir): string[] {
   const sel = JSON.parse(readFileSync(join(dir, "icon-selection.json"), "utf8"));
   const packs = (sel.packs ?? {}) as Record<string, { monochromeFill?: string }>;

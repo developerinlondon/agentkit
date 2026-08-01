@@ -86,9 +86,9 @@ export function applyHouseAttributes(svg: string, ariaLabel: string): string {
   return `<!-- ${SOURCE_MARK} -->\n${tag}${svg.slice(open[0].length)}`;
 }
 
-// Ink for a re-inlined monochrome mark. No single grey clears 3:1 against both
-// the dark and the light node fill, which is why one baked colour cannot work
-// and the mark has to follow the theme instead.
+// Ink for a re-inlined monochrome mark. Against the d2 node fills a single grey
+// tops out near 3.9:1 and clears 4.5:1 on neither, so one baked colour cannot
+// serve both themes and the mark has to follow the theme instead.
 export const MONO_INK_LIGHT = "#3f3f46";
 export const MONO_INK_DARK = "#e4e4e7";
 
@@ -96,25 +96,45 @@ const IMAGE_RE = /<image\b[^>]*?\/>/g;
 const ATTR_RE = /\b(x|y|width|height)="([^"]*)"/g;
 const HREF_RE = /\b(?:xlink:)?href="(data:image\/svg\+xml;base64,([^"]+))"/;
 
+// Anchoring on the tag's index, not its length: a payload carrying an XML
+// prolog or a generator comment starts its root later, and slicing by length
+// leaves that preamble inside the element as stray text.
 function innerMarkup(raw: string): { inner: string; viewBox: string } | null {
   const icon = raw.trim();
   const open = icon.match(/<svg\b[^>]*>/);
-  if (!open || !icon.endsWith("</svg>")) return null;
+  if (!open || open.index === undefined || !icon.endsWith("</svg>")) return null;
   const viewBox = open[0].match(/\bviewBox="([^"]*)"/)?.[1];
   if (!viewBox) return null;
-  return { inner: icon.slice(open[0].length, -"</svg>".length), viewBox };
+  const inner = icon.slice(open.index + open[0].length, -"</svg>".length);
+  if (icon.slice(0, open.index).trim() !== "") return null;
+  if (/<svg\b/.test(inner)) return null;
+  return { inner, viewBox };
+}
+
+// Colour lives in a fill or stroke value; the same string elsewhere is an id, a
+// class or label text, and rewriting it there corrupts the mark silently.
+function inkAttributes(markup: string, fill: string): string {
+  const escaped = fill.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return markup.replace(
+    new RegExp(`\\b(fill|stroke|stop-color|flood-color)="${escaped}"`, "gi"),
+    '$1="currentColor"',
+  );
 }
 
 // A monochrome pack is baked to one fill at vendor time because currentColor has
 // nothing to inherit from inside a data: URI. Re-inlining the mark as a real
-// <svg> puts it back under CSS, so the page theme drives its ink — otherwise an
-// author has to paint a plate behind it, and a plate cannot follow the theme.
+// <svg> puts it back under CSS, so the page theme drives its ink.
+// `sources` is the exact text of every staged monochrome asset: identity beats
+// sniffing for the baked fill, which cannot tell a monochrome mark from brand
+// artwork that merely contains the same hex.
 export function inlineMonochromeIcons(
   svg: string,
   fills: string[],
+  sources: string[] = [],
   prefix = 'html:not([data-theme="light"])',
 ): { svg: string; converted: number } {
   if (fills.length === 0) return { svg, converted: 0 };
+  const known = new Set(sources.map((s) => s.trim()));
   let converted = 0;
   const out = svg.replace(IMAGE_RE, (tag) => {
     const href = tag.match(HREF_RE);
@@ -127,12 +147,12 @@ export function inlineMonochromeIcons(
     } catch {
       return tag;
     }
-    const hit = fills.filter((f) => icon.includes(f));
-    if (hit.length === 0) return tag;
+    const isMono = known.size > 0 ? known.has(icon.trim()) : fills.some((f) => icon.includes(f));
+    if (!isMono) return tag;
     const parts = innerMarkup(icon);
     if (!parts) throw new SvgError("monochrome icon is not a single <svg> with a viewBox");
     let inner = parts.inner;
-    for (const f of hit) inner = inner.replaceAll(f, "currentColor");
+    for (const f of fills) inner = inkAttributes(inner, f);
     const geom: Record<string, string> = {};
     for (const m of tag.matchAll(ATTR_RE)) geom[m[1]] = m[2];
     converted += 1;
