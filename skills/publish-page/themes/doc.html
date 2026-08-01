@@ -339,30 +339,42 @@
   html[data-theme="light"] .theme-toggle .moon { display: none; }
   html:not([data-theme="light"]) .theme-toggle .sun { display: none; }
   /* Named sections, not anonymous dots: a reader should see what a page covers
-     without scrolling it. Full-bleed like a browser tab strip rather than inset
-     to the text column, so the bar reads as page chrome. */
+     without scrolling it. The bar is full-bleed but its contents sit in the
+     content column, so the wordmark lines up with the text below it. */
   .secnav {
     position: sticky; top: 0; z-index: 40;
-    margin: -3rem -1.25rem 1.9rem; padding: 0.5rem 4rem 0.5rem 1.25rem;
-    display: flex; gap: 0.1rem; align-items: center;
-    overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none;
+    margin: -3rem -1.25rem 1.9rem; padding: 0 1.25rem;
     background: var(--navy-deep); border-bottom: 1px solid var(--line);
-    /* The theme toggle is fixed over this corner; fading the tail keeps a tab
-       from being half-hidden under it and reads as "there is more to scroll". */
-    -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 4rem), transparent);
-    mask-image: linear-gradient(90deg, #000 calc(100% - 4rem), transparent);
   }
   .secnav[hidden] { display: none; }
-  .secnav::-webkit-scrollbar { display: none; }
-  .secnav a {
-    flex: none; color: var(--muted); text-decoration: none; white-space: nowrap;
-    font-family: ui-monospace, Menlo, monospace; font-size: 0.7rem;
-    letter-spacing: 0.04em; padding: 0.3rem 0.62rem; border-radius: 6px;
-    border: 1px solid transparent;
-    transition: color 0.2s, background 0.2s, border-color 0.2s;
+  .secnav-in {
+    max-width: 64rem; margin: 0 auto; height: 3rem;
+    display: flex; align-items: center; gap: 1.1rem;
   }
-  .secnav a:hover { color: var(--ink); background: var(--card); }
-  .secnav a.on { color: var(--note-ink); background: var(--note-bg); border-color: var(--line); }
+  .secnav-brand {
+    font-family: ui-monospace, Menlo, monospace; font-size: 0.78rem; font-weight: 600;
+    letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink);
+    display: flex; align-items: center; gap: 0.56rem; white-space: nowrap;
+  }
+  .secnav-brand::before {
+    content: ""; width: 13px; height: 13px; border-radius: 3px;
+    background: var(--accent); box-shadow: inset 0 0 0 2.5px var(--navy-deep);
+  }
+  .secnav-links {
+    margin-left: auto; display: flex; gap: 1.15rem; align-items: center;
+    overflow-x: auto; scrollbar-width: none;
+  }
+  .secnav-links::-webkit-scrollbar { display: none; }
+  .secnav-links a {
+    flex: none; color: var(--muted); text-decoration: none; white-space: nowrap;
+    font-family: ui-monospace, Menlo, monospace; font-size: 0.72rem;
+    letter-spacing: 0.05em; text-transform: uppercase;
+    padding: 0.2rem 0; border-bottom: 1.5px solid transparent;
+    transition: color 0.2s, border-color 0.2s;
+  }
+  .secnav-links a:hover { color: var(--ink); border-bottom-color: var(--accent); }
+  .secnav-links a.on { color: var(--accent); border-bottom-color: var(--accent); }
+  .secnav .theme-toggle { position: static; flex: none; width: 1.9rem; height: 1.9rem; }
   main h2 { scroll-margin-top: 3.4rem; }
   @media print { .theme-toggle, .secnav { display: none; } }
 </style>
@@ -372,7 +384,7 @@
   <svg class="moon" viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
   <svg class="sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.6 4.6l1.8 1.8M17.6 17.6l1.8 1.8M19.4 4.6l-1.8 1.8M6.4 17.6l-1.8 1.8"/></svg>
 </button>
-<nav class="secnav" id="secNav" aria-label="Sections" hidden></nav>
+<nav class="secnav" id="secNav" aria-label="Sections" hidden><div class="secnav-in" id="secNavIn"></div></nav>
 <main>
 {{CONTENT}}
 <footer>published with <a href="https://agentkit.sbs">agentkit pages</a></footer>
@@ -411,8 +423,22 @@
 
   const heads = [...document.querySelectorAll("main h2")];
   if (heads.length >= 3) {
-    const rail = document.getElementById("secNav");
-    rail.hidden = false;
+    const bar = document.getElementById("secNav");
+    const inner = document.getElementById("secNavIn");
+    bar.hidden = false;
+    // An author names the product with <div class="brand">; the bar hoists it
+    // so the wordmark sits left of the sections, aligned with the text column.
+    const brand = document.querySelector("main .brand");
+    if (brand) {
+      brand.classList.add("secnav-brand");
+      brand.classList.remove("brand");
+      inner.appendChild(brand);
+    }
+    const rail = document.createElement("div");
+    rail.className = "secnav-links";
+    inner.appendChild(rail);
+    const toggle = document.querySelector(".theme-toggle");
+    if (toggle) inner.appendChild(toggle);
     heads.forEach((h, i) => {
       if (!h.id) h.id = "s" + (i + 1);
       const a = document.createElement("a");

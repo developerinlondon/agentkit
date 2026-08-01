@@ -111,14 +111,25 @@ function innerMarkup(raw: string): { inner: string; viewBox: string } | null {
   return { inner, viewBox };
 }
 
+// The same colour can be written as a hex or as rgb(), and a pack that mixes
+// notations would leave half the mark baked.
+function colourForms(fill: string): string[] {
+  const hex = /^#([0-9a-f]{6})$/i.exec(fill.trim());
+  if (!hex) return [fill];
+  const [r, g, b] = [0, 2, 4].map((i) => parseInt(hex[1].slice(i, i + 2), 16));
+  return [fill, `rgb(${r},${g},${b})`];
+}
+
 // Colour lives in a fill or stroke value; the same string elsewhere is an id, a
 // class or label text, and rewriting it there corrupts the mark silently.
 function inkAttributes(markup: string, fill: string): string {
-  const escaped = fill.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return markup.replace(
-    new RegExp(`\\b(fill|stroke|stop-color|flood-color)="${escaped}"`, "gi"),
-    '$1="currentColor"',
-  );
+  return colourForms(fill).reduce((out, form) => {
+    const escaped = form.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return out.replace(
+      new RegExp(`\\b(fill|stroke|stop-color|flood-color)="\\s*${escaped}\\s*"`, "gi"),
+      '$1="currentColor"',
+    );
+  }, markup);
 }
 
 // Colour set in a style attribute or a CSS block is not reachable by attribute
@@ -126,7 +137,10 @@ function inkAttributes(markup: string, fill: string): string {
 function bakedInStyle(markup: string, fill: string): boolean {
   const styles = [...markup.matchAll(/style="([^"]*)"/gi)].map((m) => m[1]);
   const blocks = [...markup.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi)].map((m) => m[1]);
-  return [...styles, ...blocks].some((css) => css.toLowerCase().includes(fill.toLowerCase()));
+  const forms = colourForms(fill).map((f) => f.toLowerCase());
+  return [...styles, ...blocks]
+    .map((css) => css.toLowerCase().replace(/\s+/g, ""))
+    .some((css) => forms.some((f) => css.includes(f)));
 }
 
 // A monochrome pack is baked to one fill at vendor time because currentColor has

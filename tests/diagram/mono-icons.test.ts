@@ -234,3 +234,26 @@ describe('the post-condition checks colour positions, not the token', () => {
     });
   }
 });
+
+describe('colour notation', () => {
+  const RGB = 'rgb(113,113,122)';
+
+  test('the same colour written as rgb() in an attribute is inked too', () => {
+    const doc = `<svg viewBox="0 0 24 24"><path fill="${FILL}"/><path fill="${RGB}"/></svg>`;
+    const out = inlineMonochromeIcons(image(doc), [FILL], [doc]);
+    expect(out.converted).toBe(1);
+    expect(out.svg).not.toContain(RGB);
+  });
+
+  for (const [how, css] of [['a CSS block', RGB], ['spacing', 'rgb(113, 113, 122)']] as const) {
+    test(`rgb() with ${how} is caught by the post-condition, not shipped baked`, () => {
+      const doc = `<svg viewBox="0 0 24 24"><path fill="${FILL}"/><style>.c{fill:${css}}</style><path class="c"/></svg>`;
+      expect(() => inlineMonochromeIcons(image(doc), [FILL], [doc])).toThrow(SvgError);
+    });
+  }
+
+  test('the hex in a text node is left alone — it renders nothing', () => {
+    const doc = `<svg viewBox="0 0 24 24"><desc>${FILL}</desc><path fill="${FILL}" d="M1 1"/></svg>`;
+    expect(inlineMonochromeIcons(image(doc), [FILL], [doc]).converted).toBe(1);
+  });
+});
