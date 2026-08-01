@@ -135,3 +135,26 @@ describe('diagram stylesheet leakage', () => {
     expect(lintFigures(html).warnings.join(' ')).toContain('white background');
   });
 });
+
+describe('d2 rule stripping is rule-accurate', () => {
+  const fig = '<div class="figure"><!-- svg-source:d2 --><svg class="d2"></svg></div>';
+  const warns = (css: string) => lintFigures(`<style>${css}</style>${fig}`).warnings.length;
+
+  test("a grouped selector keeps the author's half of the rule", () => {
+    // `.figure,.d2-mono{...}` is an author rule too; dropping it whole hid a
+    // white ground the check exists to report.
+    expect(warns('.figure,.d2-mono{background:#ffffff}')).toBe(1);
+  });
+
+  test('a comment naming .d2- does not swallow the rule beneath it', () => {
+    expect(warns('/* d2 marks use .d2-mono */\n.figure{background:#ffffff}')).toBe(1);
+  });
+
+  test("d2's own rules alone still produce no warning", () => {
+    expect(warns('.d2-1846797904 .background-color-N7{background-color:#FFFFFF;}')).toBe(0);
+  });
+
+  test('a class that merely starts like a d2 class is not stripped', () => {
+    expect(warns('.d2wrapper{background:#ffffff}')).toBe(1);
+  });
+});

@@ -18,11 +18,23 @@ const NEARBY = 900;
 // ground. Only those rules are dropped: discarding the whole element would take
 // an author's own declarations with them, and the house theme ships one <style>
 // for the entire page.
-const D2_RULE = /[^{}]*\.d2-(?:\d+|mono)[^{}]*\{[^}]*\}/g;
+const CSS_COMMENT = /\/\*[\s\S]*?\*\//g;
+const CSS_RULE = /([^{}]*)\{([^}]*)\}/g;
+const D2_SELECTOR = /\.d2-(?:\d+|mono)\b/;
+
+// Only rules that are entirely d2's. A comment naming .d2- above an author rule,
+// or a grouped selector like `.figure,.d2-mono{...}`, would otherwise take the
+// author's own declaration with it and hide the white ground being checked for.
+function stripD2Rules(css: string): string {
+  return css.replace(CSS_COMMENT, "").replace(CSS_RULE, (rule, selector: string) => {
+    const parts = selector.split(",").map((s) => s.trim()).filter(Boolean);
+    return parts.length > 0 && parts.every((s) => D2_SELECTOR.test(s)) ? "" : rule;
+  });
+}
 
 function styleBlocks(html: string): string {
   return [...html.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi)]
-    .map((m) => m[1].replace(D2_RULE, ""))
+    .map((m) => stripD2Rules(m[1]))
     .join("\n");
 }
 
