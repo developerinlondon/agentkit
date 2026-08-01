@@ -21,6 +21,13 @@
     /* Ground for baked-palette diagram SVGs (excalidraw); flips with the
        theme — light mode also inverts the SVG art itself. */
     --diagram-bg: #0e0f12;
+    /* Callout severities. Ink and ground are paired per severity because the
+       label sits ON the ground — the shared --gold/--red miss 4.5:1 there in
+       light mode, so these carry their own darker light-mode inks. */
+    --note-ink: #79a8e7; --note-bg: #152438;
+    --warn-ink: #f5a742; --warn-bg: #2a2113;
+    --alarm-ink: #e06c75; --alarm-bg: #2c1a1c;
+    --ok-ink: #74c69d; --ok-bg: #12251c;
   }
   html[data-theme="light"] {
     --navy: #f8f9fb; --navy-deep: #eef0f4; --card: #ffffff; --code-bg: #eef1f5;
@@ -28,6 +35,10 @@
     --accent: #2d64ba; --accent-soft: #e3ecf8; --gold: #8f6c16; --red: #d1383d;
     --diagram-bg: #eef0f4; --fig-glow: #e4e9f1; --node-hi: #ffffff; --node-lo: #f0f3f7; --node-border: #c3cbd6;
     --tile-side: #c9d0da;
+    --note-ink: #2d64ba; --note-bg: #e3ecf8;
+    --warn-ink: #7f5f12; --warn-bg: #fbf1dc;
+    --alarm-ink: #c02a30; --alarm-bg: #fbe7e8;
+    --ok-ink: #1f7a4d; --ok-bg: #e3f3ea;
   }
   * { box-sizing: border-box; }
   html { scroll-behavior: smooth; }
@@ -98,11 +109,22 @@
   .card h3 code { color: var(--accent); background: none; padding: 0; }
   .card p { margin: 0; color: var(--muted); font-size: 0.9rem; max-width: none; }
   .callout {
-    border: 1px solid var(--line); background: var(--accent-soft);
+    border: 1px solid var(--line); border-left: 3px solid var(--note-ink);
+    background: var(--note-bg);
     border-radius: 8px; padding: 0.8rem 1.1rem; font-size: 0.92rem;
     margin: 1rem 0; max-width: none;
   }
-  .callout strong { color: var(--accent); }
+  .callout strong { color: var(--note-ink); }
+  /* Severity is carried by the rail and the label, never by body text: an
+     amber paragraph misses contrast on its own ground in light mode. */
+  .callout.warn { border-left-color: var(--warn-ink); background: var(--warn-bg); }
+  .callout.warn strong { color: var(--warn-ink); }
+  .callout.alarm { border-left-color: var(--alarm-ink); background: var(--alarm-bg); }
+  .callout.alarm strong { color: var(--alarm-ink); }
+  .callout.ok { border-left-color: var(--ok-ink); background: var(--ok-bg); }
+  .callout.ok strong { color: var(--ok-ink); }
+  .callout.note { border-left-color: var(--muted); background: var(--code-bg); }
+  .callout.note strong { color: var(--muted); }
   .flow { display: flex; flex-direction: column; margin: 1.2rem 0; }
   .frow { display: flex; align-items: stretch; gap: 0.6rem; flex-wrap: wrap; }
   .fbox {
@@ -302,24 +324,33 @@
   .theme-toggle svg { width: 1.1rem; height: 1.1rem; stroke: var(--ink); fill: none; stroke-width: 1.6; }
   html[data-theme="light"] .theme-toggle .moon { display: none; }
   html:not([data-theme="light"]) .theme-toggle .sun { display: none; }
-  .toc-rail {
-    position: fixed; right: 1.05rem; top: 50%; transform: translateY(-50%);
-    display: flex; flex-direction: column; gap: 0.55rem; z-index: 40;
+  /* Named sections, not anonymous dots: a reader should see what a page covers
+     without scrolling it. Bleeds past the body padding so the bar spans the
+     viewport while its links stay aligned with the text column. */
+  .secnav {
+    position: sticky; top: 0; z-index: 40;
+    margin: -3rem -1.25rem 1.9rem; padding: 0.5rem 4rem 0.5rem 1.25rem;
+    display: flex; gap: 0.1rem; align-items: center;
+    overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none;
+    background: var(--navy-deep); border-bottom: 1px solid var(--line);
+    /* The theme toggle is fixed over this corner; fading the tail keeps a tab
+       from being half-hidden under it and reads as "there is more to scroll". */
+    -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 4rem), transparent);
+    mask-image: linear-gradient(90deg, #000 calc(100% - 4rem), transparent);
   }
-  @media (max-width: 72rem) { .toc-rail { display: none; } }
-  .toc-rail a {
-    width: 9px; height: 9px; border-radius: 50%; background: var(--line);
-    transition: background 0.2s, transform 0.2s; position: relative;
+  .secnav[hidden] { display: none; }
+  .secnav::-webkit-scrollbar { display: none; }
+  .secnav a {
+    flex: none; color: var(--muted); text-decoration: none; white-space: nowrap;
+    font-family: ui-monospace, Menlo, monospace; font-size: 0.7rem;
+    letter-spacing: 0.04em; padding: 0.3rem 0.62rem; border-radius: 6px;
+    border: 1px solid transparent;
+    transition: color 0.2s, background 0.2s, border-color 0.2s;
   }
-  .toc-rail a:hover, .toc-rail a.on { background: var(--accent); transform: scale(1.25); }
-  .toc-rail a:hover::after {
-    content: attr(data-label); position: absolute; right: 1.3rem; top: 50%;
-    transform: translateY(-50%); white-space: nowrap;
-    background: var(--navy-deep); color: var(--ink); border: 1px solid var(--line);
-    border-radius: 6px; padding: 0.2rem 0.6rem; font-size: 0.72rem;
-    font-family: ui-monospace, Menlo, monospace;
-  }
-  @media print { .theme-toggle, .toc-rail { display: none; } }
+  .secnav a:hover { color: var(--ink); background: var(--card); }
+  .secnav a.on { color: var(--note-ink); background: var(--note-bg); border-color: var(--line); }
+  main h2 { scroll-margin-top: 3.4rem; }
+  @media print { .theme-toggle, .secnav { display: none; } }
 </style>
 </head>
 <body>
@@ -327,7 +358,7 @@
   <svg class="moon" viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
   <svg class="sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.6 4.6l1.8 1.8M17.6 17.6l1.8 1.8M19.4 4.6l-1.8 1.8M6.4 17.6l-1.8 1.8"/></svg>
 </button>
-<nav class="toc-rail" id="tocRail" aria-label="Sections"></nav>
+<nav class="secnav" id="secNav" aria-label="Sections" hidden></nav>
 <main>
 {{CONTENT}}
 <footer>published with <a href="https://agentkit.sbs">agentkit pages</a></footer>
@@ -341,14 +372,33 @@
     dispatchEvent(new CustomEvent("agentkit-theme", { detail: next }));
   });
 
+  // A section title is written to be read in place, so it is usually too long
+  // for a tab. data-nav on the heading is the author's override; otherwise the
+  // title is clipped at a word boundary and the full text stays in the tooltip.
+  function navLabel(h) {
+    const full = h.textContent.trim();
+    if (h.dataset.nav) return h.dataset.nav;
+    if (full.length <= 28) return full;
+    // A title's first clause is usually its subject — "SSH is a day of work,
+    // not a reason to keep Coder" tabs far better as "SSH is a day of work"
+    // than as a blind character clip.
+    const clause = full.split(/\s*[,—:(]\s*/)[0];
+    if (clause.length >= 4 && clause.length <= 28) return clause;
+    const cut = full.slice(0, 28);
+    const at = cut.lastIndexOf(" ");
+    return (at > 12 ? cut.slice(0, at) : cut).replace(/[\s,.;:—-]+$/, "") + "…";
+  }
+
   const heads = [...document.querySelectorAll("main h2")];
   if (heads.length >= 3) {
-    const rail = document.getElementById("tocRail");
+    const rail = document.getElementById("secNav");
+    rail.hidden = false;
     heads.forEach((h, i) => {
       if (!h.id) h.id = "s" + (i + 1);
       const a = document.createElement("a");
       a.href = "#" + h.id;
-      a.setAttribute("data-label", h.textContent.trim());
+      a.textContent = navLabel(h);
+      a.title = h.textContent.trim();
       rail.appendChild(a);
     });
     const links = [...rail.children];
@@ -357,6 +407,13 @@
         if (!e.isIntersecting) return;
         const i = heads.indexOf(e.target);
         links.forEach((l, k) => l.classList.toggle("on", k === i));
+        // On a narrow viewport the bar scrolls; the active tab has to be
+        // brought into it or the highlight is invisible exactly when needed.
+        const on = links[i];
+        if (on && rail.scrollWidth > rail.clientWidth) {
+          const left = on.offsetLeft - rail.clientWidth / 2 + on.offsetWidth / 2;
+          rail.scrollTo({ left: Math.max(0, left), behavior: "smooth" });
+        }
       });
     }, { rootMargin: "-15% 0px -70% 0px" });
     heads.forEach((h) => io.observe(h));

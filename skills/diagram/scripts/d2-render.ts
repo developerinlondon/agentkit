@@ -13,11 +13,12 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
-import { expandIconRefs, IconError } from "./icons.ts";
+import { expandIconRefs, IconError, monochromeFills } from "./icons.ts";
 import {
   applyHouseAttributes,
   D2_PIN,
   dropBackgroundRect,
+  inlineMonochromeIcons,
   retargetDarkTheme,
   SvgError,
   verifySelfContained,
@@ -123,6 +124,11 @@ try {
   }
   svg = applyHouseAttributes(svg, label);
   verifySelfContained(svg, expanded.count);
+  // Counted while the marks are still <image> elements, then re-inlined; the
+  // second pass re-checks containment on what actually ships.
+  const mono = inlineMonochromeIcons(svg, monochromeFills());
+  svg = mono.svg;
+  verifySelfContained(svg, 0);
 } catch (e) {
   if (e instanceof SvgError) fail(e.message);
   throw e;

@@ -9,6 +9,7 @@ export const TEST_SLICES = {
     'tests/diagram/extract-model.test.ts',
     'tests/diagram/extract-sources.test.ts',
     'tests/diagram/icons.test.ts',
+    'tests/diagram/mono-icons.test.ts',
     'tests/diagram/render.test.ts',
     'tests/diagram/vendor-icons.test.ts',
   ],
@@ -66,6 +67,7 @@ export const TEST_SLICES = {
     'tests/publish-page/lint.test.ts',
     'tests/publish-page/mermaid-runtime.test.ts',
     'tests/publish-page/pages-police.test.ts',
+    'tests/publish-page/theme-chrome.test.ts',
     'tests/publish-page/worker.test.ts',
   ],
   resources: [
