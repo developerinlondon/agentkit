@@ -1,17 +1,19 @@
 ---
 title: CLI and tools
-description: The five executables in tools/, their flags and exit codes, and every AGENTKIT_ environment variable with the file that reads it.
+description: The seven executables in tools/, their flags and exit codes, and every AGENTKIT_ environment variable with the file that reads it.
 sidebar:
   order: 3
 ---
 
-Five executables ship in `tools/`. Two of them are Linux-only and the installer omits them
+Seven executables ship in `tools/`. Two of them are Linux-only and the installer omits them
 elsewhere; two of them only arrive with the explicit `adversarial-review` kit.
 
 | Tool                 | Platform   | Ships with                  |
 | -------------------- | ---------- | --------------------------- |
 | `bounded-run`        | Linux only | every install               |
 | `agent-session`      | Linux only | every install               |
+| `wip`                | portable   | every install               |
+| `plan-gate`          | portable   | every install               |
 | `fix-ascii-boxes.py` | portable   | every install               |
 | `review-gate`        | portable   | `--with adversarial-review` |
 | `review-profile`     | portable   | `--with adversarial-review` |
@@ -26,7 +28,8 @@ Project installs expose them at `<project>/.claude/tools/`. `agentkit-run` remai
 `bounded-run` from the tool's previous name.
 
 The Claude plugins carry their own copies, from an explicit allowlist in
-`scripts/sync-cc-plugin.sh`: the core `agentkit` plugin gets `bounded-run` only, and
+`scripts/sync-cc-plugin.sh`: the core `agentkit` plugin gets `bounded-run`, `wip` and
+`plan-gate`, and
 `review-gate`/`review-profile` go to `agentkit-adversarial-review` instead. `resource-police` accepts
 `$CLAUDE_PLUGIN_ROOT/tools/bounded-run` as a trusted runner and names that path when it denies an
 unbounded command — the runner is trusted by installed path, never by filename.
@@ -152,6 +155,126 @@ It is the one tool here with no `--help`. Its first argument is the command to r
 `agent-session --help` tries to resolve `--help` on `PATH` and exits `69` with
 `cannot find '--help' on PATH outside the shim directory`.
 :::
+
+## `wip`
+
+Read-only. Reports what was started and not finished, for one repository or several. It blocks
+nothing, changes nothing, and exits `0` unless an argument is unusable.
+
+```
+wip [--limit N] [--no-forge] [REPO...]
+```
+
+| Row         | Means                                                                        |
+| ----------- | ---------------------------------------------------------------------------- |
+| `BRANCH`    | an open change, or none ever opened, or state unknown                        |
+| `ABANDONED` | a change closed without merging — a decision, not an oversight               |
+| `WORKTREE`  | a checkout that still exists; `DIRTY` ones hold work no branch ref will save |
+| `MR/PR`     | open and authored by you, with what stands between it and merging            |
+| `FILED`     | issues you opened that are still open                                        |
+| `DEFERRED`  | filed issues whose text says they were carved out of other work              |
+| `PLAN`      | a plan whose gaps section lists work neither closed nor tracked              |
+| `MERGED`    | merged on the forge — cleanup, not unfinished work                           |
+| `NOTE`      | something that was **not** checked, and why                                  |
+
+### Branch state comes from the forge
+
+Whether a branch is finished is answered by the forge, never by git topology. A squash merge
+destroys the topological evidence by design: the squashed commit is not an ancestor of the branch,
+and the merge base stays before the squash forever.
+
+Measured against nine branches of known outcome, every git-only rule reported all seven merged ones
+as still outstanding:
+
+| Rule                                    | On a squash-merged branch                                       |
+| --------------------------------------- | --------------------------------------------------------------- |
+| `rev-list --count base..head`           | ahead forever — the squash is not an ancestor                   |
+| `git diff base..head`                   | shows the default branch's own later commits as deletions       |
+| `git diff base...head`                  | shows the branch's changes since the merge base — never empty   |
+| `merge-tree --write-tree`, tree compare | correct on a small fixture, wrong once the default branch moves |
+
+The last of those is the trap worth naming: it passes a two-commit fixture and fails on a real
+repository, because a fixture whose default branch has not moved cannot distinguish the case it
+exists to prove.
+
+`wip` asks the forge for every change whose source branch matches, normalises the state to
+merged / open / closed, and queries by name for any branch older than the bulk listing window.
+One merged change outranks a closed one on the same branch.
+
+### When the forge cannot answer
+
+There is no local rule to fall back to, so `wip` reports that it does not know:
+
+```
+BRANCH    feat/thing    12d   3 commits  state UNKNOWN — forge could not be asked
+NOTE      branch state is DEGRADED: only the forge can tell a squash-merged branch
+          from an unfinished one, so no branch above is known to be outstanding
+```
+
+An absent section means "nothing found"; a `NOTE` means "not looked at". A bounded list always says
+how many entries it dropped. `--limit 0` removes the bound; `--no-forge` skips the network entirely
+and degrades the same way.
+
+### Forges
+
+GitHub and GitLab both work, resolved per repository from its `origin` host — including self-hosted,
+via `gh auth status --hostname` and the GitLab version endpoint. Note that the two disagree on
+spelling: GitHub reports `OPEN`, GitLab reports `opened`; `merged` and `closed` coincide.
+
+### Exit codes
+
+| Code | Meaning                                           |
+| ---- | ------------------------------------------------- |
+| `0`  | reported, whatever it found                       |
+| `2`  | an argument is not a git repository, or bad usage |
+
+## `plan-gate`
+
+Judges whether a plan may be treated as done, by parsing its own gaps section. This is the single
+parser for that section: `wip` calls it to report, and `plan-police` calls it to refuse an edit that
+declares a plan done while a gap stands. A second scanner would eventually disagree with this one.
+
+```
+plan-gate [options] [PLAN...]
+
+  --repo DIR         repository root to discover plans in (default: cwd)
+  --stdin NAME       read one plan's content from stdin; NAME is the path to report
+  --matches PATH     exit 0 if PATH would be judged as a plan, 1 if not
+  --require-done     only report blocking gaps for plans that mark themselves done
+  --all              also list gaps that are closed or tracked
+  --tsv              machine output: STATUS<TAB>PLAN<TAB>LINE<TAB>TEXT
+  --quiet            no output; exit status only
+  --list-plans       print the plan files that would be judged, then exit
+```
+
+A gap is one list item under a gaps heading. It stops blocking when the author does one of two
+things they would do anyway:
+
+- **ticks it** — `- [x] …`, or strikes it through (`- ~~no longer applies~~`)
+- **names the issue that carries it** — `#123`, `!123`, `GH-123`, or an issue/MR/PR URL, on the
+  gap's own line or a sub-bullet under it
+
+The referenced issue's _state_ is deliberately not checked. That keeps the gate offline and
+deterministic; `wip` reports open authored issues separately.
+
+`--matches` is the single source of what counts as a plan. `plan-police` asks rather than matching
+for itself, so the hook and the gate cannot drift apart — and a path is compared physically, since
+a symlink above the repository (macOS reaches every temporary directory through `/var` →
+`/private/var`) would otherwise make a plan stop looking like one, silently.
+
+### Exit codes
+
+Both the hook and CI branch on these, so they are part of the contract.
+
+| Code | Meaning                                                         |
+| ---- | --------------------------------------------------------------- |
+| `0`  | nothing blocking — no open gap, or the plan does not claim done |
+| `1`  | at least one gap is neither closed nor tracked                  |
+| `2`  | usage error                                                     |
+| `3`  | fault — a named plan is missing or unreadable                   |
+
+Discovery and matching are configurable per repository; see
+[Configuration](/docs/reference/configuration/).
 
 ## `review-gate`
 
