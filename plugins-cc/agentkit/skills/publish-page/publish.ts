@@ -1,6 +1,8 @@
 #!/usr/bin/env bun
 import { lintFigures } from "./lint.ts";
 import { bundledThemePath, renderThemed } from "./render-html.ts";
+import { loadOrAuthorize } from "./auth.ts";
+import { shouldCommitCanonical } from "./publish-policy.ts";
 import { createHmac, randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
@@ -26,7 +28,7 @@ const name = arg("name");
 const isDelete = process.argv.includes("--delete");
 const file = arg("file");
 const template = arg("template") ?? "doc";
-let noGit = process.argv.includes("--no-git");
+let noGit = !shouldCommitCanonical(process.argv);
 if (!explicitSlug && !name) fail("--name (cryptic URL, default) or --slug (readable URL) is required");
 if (explicitSlug && !SLUG_RE.test(explicitSlug)) {
   fail(`invalid slug "${explicitSlug}" (lowercase a-z0-9-, max 4 segments)`);
@@ -57,8 +59,12 @@ if (!foundRepo) {
   );
 }
 const tokenPath = join(homedir(), ".config/agentkit/pages-token");
-if (!existsSync(tokenPath)) fail(`publish token missing at ${tokenPath}`);
-const token = (await readFile(tokenPath, "utf8")).trim();
+let token: string;
+try {
+  token = await loadOrAuthorize({ endpoint, tokenPath });
+} catch (error) {
+  fail((error as Error).message);
+}
 
 // Cryptic-but-deterministic slug: HMAC(slug key, name). The slug key is a
 // dedicated secret — NOT the auth token — so rotating credentials never
@@ -217,7 +223,10 @@ if (Buffer.byteLength(html) > 5 * 1024 * 1024) {
 
 const res = await fetch(`${endpoint}/api/pages/${slug}`, {
   method: "PUT",
-  headers: { authorization: `Bearer ${token}` },
+  headers: {
+    authorization: `Bearer ${token}`,
+    'x-page-title': encodeURIComponent(title),
+  },
   body: html,
 });
 if (!res.ok) fail(`publish failed: HTTP ${res.status} ${await res.text()}`);

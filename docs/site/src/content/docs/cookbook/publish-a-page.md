@@ -25,6 +25,12 @@ bun ~/.agentkit/skills/publish-page/publish.ts \
 
 It prints the live URL, `https://pages.agentkit.sbs/<slug>`.
 
+On the first publish, the command opens `pages.agentkit.sbs/device` and prints a short code. Sign in
+with Assay and approve that device. The resulting credential belongs only to that account and device;
+later publishes reuse it. New pages are private and appear at `https://pages.agentkit.sbs/dashboard`,
+where the owner can create a revocable sharing link or invite another verified Assay email.
+The same dashboard lists publishing devices so a lost or retired machine can be revoked.
+
 The slug is `HMAC(key, name)` — cryptic hex nobody can guess, but **deterministic**. The same name
 republished updates the same URL, and `--delete --name <name>` finds it again. There is no mapping
 to store.
@@ -39,6 +45,9 @@ bun ~/.agentkit/skills/publish-page/publish.ts \
 
 # take it down
 … --name auth-flow-design --delete
+
+# explicitly archive the source and rendered page in the canonical clone
+… --name auth-flow-design --file design.md --git
 ```
 
 ## Templates
@@ -87,6 +96,8 @@ pairing the themes actually paint is contrast-checked at 4.5:1.
 - **Self-contained only.** The serving CSP blocks every external request. Inline the CSS and JS,
   embed images as data URIs.
 - **5 MB cap** on the rendered page.
+- **Private by default.** `--git` is separate archival and can expose content according to the
+  canonical repository's own visibility; use it only when that is intended.
 - The `doc` and `deck` themes carry the house style, a persisted dark/light toggle, a labelled
   section nav on docs with three or more `h2` sections, click-to-expand figures, and deck
   navigation. Do not re-implement any of it.

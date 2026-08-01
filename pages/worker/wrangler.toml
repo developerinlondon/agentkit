@@ -9,3 +9,15 @@ compatibility_date = "2026-07-01"
 [[r2_buckets]]
 binding = "PAGES"
 bucket_name = "agentkit-pages"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "agentkit-pages"
+database_id = "4b11c774-698c-4bd8-b31f-77552b5bbab6"
+
+[vars]
+ACCOUNT_MODE = "required"
+PUBLIC_URL = "https://pages.agentkit.sbs"
+OIDC_ISSUER = "https://auth.assay.rs/auth"
+OIDC_CLIENT_ID = "agentkit-pages"
+MAX_PAGES_PER_USER = "100"
