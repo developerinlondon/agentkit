@@ -167,6 +167,20 @@ describe('configuration', () => {
     expect(result.stdout).toContain('repo-level heading won');
   });
 
+  test('a Jira-style key does not track a gap by default', () => {
+    const map = statuses('## Known gaps\n\n- the retry path, tracked in PROJ-123\n');
+    expect(map['the retry path, tracked in PROJ-123']).toBe('OPEN');
+  });
+
+  test('issue-refs makes a Jira-style key track a gap', () => {
+    const result = withConfig(
+      'wip:\n  issue-refs: "#[0-9]+|[A-Z][A-Z0-9]+-[0-9]+"\n',
+      '## Known gaps\n\n- the retry path, tracked in PROJ-123\n',
+    );
+    expect(result.stdout).toContain('TRACKED');
+    expect(result.stdout).toContain('PROJ-123');
+  });
+
   test('plan-paths replaces the discovered layout', () => {
     const repo = join(box.root, 'r2');
     mkdirSync(join(repo, '.agentkit'), { recursive: true });
@@ -191,6 +205,38 @@ describe('configuration', () => {
 });
 
 describe('path matching', () => {
+  // Discovery and --matches are two readers of one plan-path list. The day they
+  // disagree, plan-police silently stops covering a plan that `wip` still
+  // reports, so the invariant is asserted rather than assumed.
+  test('every plan discovery finds is also a plan --matches accepts', () => {
+    const repo = join(box.root, 'agree');
+    mkdirSync(join(repo, 'plans', 'nested', 'deeper'), { recursive: true });
+    mkdirSync(join(repo, 'docs', 'plans'), { recursive: true });
+    mkdirSync(join(repo, '.omc', 'plans'), { recursive: true });
+    writeFileSync(join(repo, 'PLAN.md'), '# root\n');
+    writeFileSync(join(repo, 'plans', 'a.md'), '# a\n');
+    writeFileSync(join(repo, 'plans', 'nested', 'b.md'), '# b\n');
+    writeFileSync(join(repo, 'plans', 'nested', 'deeper', 'c.md'), '# c\n');
+    writeFileSync(join(repo, 'docs', 'plans', 'd.md'), '# d\n');
+    writeFileSync(join(repo, '.omc', 'plans', 'e.md'), '# e\n');
+
+    const listed = spawnSync(planGate, ['--repo', repo, '--list-plans'], {
+      encoding: 'utf8',
+      env: sandboxEnv(box),
+      timeout: toolTimeoutMs,
+    }).stdout.split('\n').filter(Boolean);
+
+    expect(listed.length).toBe(6);
+    for (const path of listed) {
+      const matched = spawnSync(planGate, ['--repo', repo, '--matches', path], {
+        encoding: 'utf8',
+        env: sandboxEnv(box),
+        timeout: toolTimeoutMs,
+      });
+      expect(matched.status, `${path} was discovered but not matched`).toBe(0);
+    }
+  });
+
   test('--matches accepts a plan path that does not exist yet', () => {
     const repo = join(box.root, 'r3');
     mkdirSync(join(repo, 'plans'), { recursive: true });

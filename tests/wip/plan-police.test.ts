@@ -95,6 +95,19 @@ describe('the gate', () => {
     expect(reason).not.toContain('approval timeout');
   });
 
+  test('every reference form the refusal offers actually unblocks the edit', () => {
+    const { reason } = ask(deployedHook(), edit());
+    const offered = [...reason.matchAll(/`([^`]+)`/g)]
+      .map((match) => match[1])
+      .filter((form) => /\d/.test(form) && !form.startsWith('- ['));
+
+    expect(offered.length).toBeGreaterThan(0);
+    for (const form of offered) {
+      writeFileSync(plan, `# P — x\n\n**Status**: In progress\n\n## Known gaps\n\n- a gap, see ${form}\n`);
+      expect(ask(deployedHook(), edit()).verdict, `${form} was offered as a fix`).toBe('allow');
+    }
+  });
+
   test('an edit that does not claim done is left alone', () => {
     const { verdict } = ask(deployedHook(), edit({ old_string: 'device exec', new_string: 'device execution' }));
     expect(verdict).toBe('allow');

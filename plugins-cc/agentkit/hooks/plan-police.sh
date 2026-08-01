@@ -98,7 +98,9 @@ agentkit_deny_json "BLOCKED: this edit marks ${FILE_PATH##*/} done while its own
 
 ${GAPS}
 
-Close each gap one of two ways: tick it (\`- [x] …\`) or strike it through once it no longer applies, or file an issue and name it on the line (\`#123\`, \`!123\`, \`PROJ-123\`, or the issue URL). A gap that survives the plan with no issue behind it is how work disappears.
+Close each gap one of two ways: tick it (\`- [x] …\`) or strike it through once it no longer applies, or file an issue and name it on the line (\`#123\`, \`!123\`, \`GH-123\`, or the issue URL). A gap that survives the plan with no issue behind it is how work disappears.
+
+A Jira-style PROJ-123 is NOT recognised by default — nothing tells it apart from a hex digest or a UTF-8 label, and a wrong \"tracked\" loses the gap silently. Set wip.issue-refs in .agentkit/config.yaml to accept it.
 
 To record a deliberate exception, set AGENTKIT_SKIP_HOOKS=plan-police for the session."
 exit 0
