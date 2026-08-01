@@ -173,8 +173,7 @@ echo "[sync] kit plugins -> .claude-plugin/marketplace.json"
 
 # Portable tools used by bundled hooks. Keep this allowlist explicit: other
 # top-level tools are not necessarily plugin-facing commands.
-# shellcheck disable=SC2043 # One entry today; the allowlist is the point, not the loop.
-for tool in bounded-run; do
+for tool in bounded-run plan-gate wip; do
 	cp "$REPO_DIR/tools/$tool" "$PLUGIN_DIR/tools/$tool"
 	chmod +x "$PLUGIN_DIR/tools/$tool"
 done

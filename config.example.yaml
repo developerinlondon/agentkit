@@ -163,3 +163,27 @@ comment-police:
   #   exclude-patterns:
   #     - vendor/
   #     - generated/
+
+# Read by the `wip` status surface, the `plan-gate` checker, and the
+# plan-police hook. A repository's own .agentkit/config.yaml overrides this.
+wip:
+  # Where plans live. Replaces the defaults outright:
+  # plans/, docs/plans/, doc/plans/, .omc/plans/, PLAN.md, PLANS.md
+  plan-paths: []
+  # Example:
+  #   plan-paths:
+  #     - design/decisions
+  #     - ROADMAP.md
+
+  # Headings whose list items are gaps. Matched case-insensitively against the
+  # whole heading text.
+  # gap-headings: 'known gaps|loose ends|snags'
+
+  # What it looks like for a plan to claim it is finished. plan-police refuses
+  # an edit that adds one of these while a gap is neither ticked nor tracked.
+  # done-markers: '^[[:space:]]*status[[:space:]]*:[[:space:]]*(done|shipped)'
+
+  # What counts as a gap being tracked by an issue. A Jira-style PROJ-123 is
+  # deliberately absent by default: nothing distinguishes it from a hex digest
+  # or a UTF-8 label, and a wrong "tracked" loses the gap silently.
+  # issue-refs: '#[0-9]+|![0-9]+|[A-Z][A-Z0-9]+-[0-9]+'

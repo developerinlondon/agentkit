@@ -32,6 +32,7 @@ Reusable AI agent skills, rules, plugins, hooks, and tools for OpenCode, Claude 
 | **ruminate**                | `--with memory`                  | Mine past Claude Code conversations for corrections, preferences, and knowledge that never reached the brain vault.                                                                                                                               |
 | **test-driven-development** | always                           | Enforces strict Test-Driven Development (TDD) workflow: RED-GREEN-REFACTOR cycle.                                                                                                                                                                 |
 | **uninstall**               | always                           | Remove AgentKit, or one of its skill kits, without hand-deleting files.                                                                                                                                                                           |
+| **wip**                     | always                           | Report what was started and not finished in a repository — unmerged branches, dirty worktrees, open merge requests and what holds them, open issues you filed, and plans whose own gaps section still lists untracked work.                       |
 
 <!-- generated:skills:end -->
 

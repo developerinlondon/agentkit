@@ -33,8 +33,15 @@ With the `adversarial-review` kit selected, `review-police` is appended at 60s a
 registration catches non-`Bash` merge tools by name. Without that kit, the installer strips both
 registrations out of `settings.json` on the way in — so the default chain is six hooks, not seven.
 
-`Edit` and `Write` are followed by three quality hooks: `format-police`, `coding-police`,
-`comment-police`.
+`Edit` and `Write` are intercepted twice. Before the write, `plan-police` (15s) judges the content
+the edit is about to land; after it, three quality hooks run on the result: `format-police`,
+`coding-police`, `comment-police`.
+
+That split is deliberate rather than incidental. A `PostToolUse` hook can only object to a file that
+already exists, which is the right shape for "this file is now too long" and the wrong shape for
+"this edit is about to claim a plan is finished when it is not" — by then the claim is written. So
+`plan-police` reconstructs the post-edit content itself and refuses beforehand, using the
+`PreToolUse` deny contract below rather than the exit-2 convention.
 
 `resource-police` sits in that chain but is configuration-gated: with the default config
 (`resource-police` and `delegation-police` both disabled) it exits without checking anything.

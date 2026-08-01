@@ -86,6 +86,11 @@ export const TEST_SLICES = {
     'tests/review-profile.test.ts',
   ],
   session: ['tests/session/agent-session.test.ts', 'tests/session/install-session-slice.test.ts'],
+  wip: [
+    'tests/wip/plan-gate.test.ts',
+    'tests/wip/plan-police.test.ts',
+    'tests/wip/wip.test.ts',
+  ],
 } as const;
 
 export type TestSlice = keyof typeof TEST_SLICES;
