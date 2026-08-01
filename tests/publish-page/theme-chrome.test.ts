@@ -214,3 +214,20 @@ describe('width tiers', () => {
     }
   });
 });
+
+describe('callout titles are headings', () => {
+  for (const theme of [['doc', doc], ['deck', deck]] as const) {
+    const [name, css] = theme;
+    test(`${name} sets a callout title as a block heading in body ink`, () => {
+      // A coloured inline lead-in reads as an admonition; a block title in body
+      // ink with the rail carrying severity reads as a titled aside.
+      expect(css).toContain('.callout h3, .callout > strong:first-child {');
+      const at = css.indexOf('.callout h3, .callout > strong:first-child {');
+      const body = css.slice(at, css.indexOf('}', at));
+      for (const decl of ['display: block', 'font-size: 1.02rem', 'color: var(--ink)']) {
+        expect({ theme: name, decl, present: body.includes(decl) })
+          .toEqual({ theme: name, decl, present: true });
+      }
+    });
+  }
+});

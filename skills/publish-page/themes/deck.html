@@ -173,6 +173,12 @@
     padding: 0.8rem 1.1rem; margin: 1rem 0; max-width: 68ch;
   }
   .callout strong { color: var(--note-ink); }
+  /* A titled aside, not a paragraph with a coloured lead-in: the title is a
+     block heading in body ink and the rail alone carries severity. */
+  .callout h3, .callout > strong:first-child {
+    display: block; margin: 0 0 0.35rem; max-width: none;
+    font-size: 1.02rem; font-weight: 650; color: var(--ink);
+  }
   /* Severity is carried by the rail and the label, never by body text: an
      amber paragraph misses contrast on its own ground in light mode. */
   .callout.warn { border-left-color: var(--warn-ink); }
