@@ -11,11 +11,15 @@ const SEVERITIES = ['note', 'warn', 'alarm', 'ok'] as const;
 // The token pair each rule ACTUALLY sets, read off the CSS. `.callout.note`
 // deliberately reuses the shared --muted/--code-bg, so asserting --note-* there
 // guards a pairing the page never renders.
+// Only pairs something actually paints. Guarding a token no pixel can take
+// makes the suite loud about the invisible and silent about the visible: three
+// severity grounds went unrendered while .chip.hot, the pair this theme newly
+// introduced, had no ratio assertion at all.
 const INK_PAIRS: ReadonlyArray<readonly [string, string, string]> = [
-  ['.callout', '--note-ink', '--note-bg'],
-  ['.callout.warn', '--warn-ink', '--warn-bg'],
-  ['.callout.alarm', '--alarm-ink', '--alarm-bg'],
-  ['.callout.ok', '--ok-ink', '--ok-bg'],
+  ['.chip.hot', '--accent', '--note-bg'],
+];
+
+const DOC_ONLY_PAIRS: ReadonlyArray<readonly [string, string, string]> = [
   ['.callout.note', '--muted', '--code-bg'],
 ];
 
@@ -78,34 +82,35 @@ describe('labelled section nav', () => {
 describe('callout severities', () => {
   for (const theme of [['doc', doc], ['deck', deck]] as const) {
     const [name, css] = theme;
-    test(`${name} defines every severity in both palettes`, () => {
+    test(`${name} defines an ink for every severity in both palettes`, () => {
+      // Ink is what every severity paints — on the rail and the label. A ground
+      // is only defined where something actually fills with it.
       for (const palette of ['dark', 'light'] as const) {
         const t = tokens(css, palette);
-        for (const s of SEVERITIES) {
-          expect(t[`--${s}-ink`]).toBeDefined();
-          expect(t[`--${s}-bg`]).toBeDefined();
-        }
+        for (const s of SEVERITIES) expect(t[`--${s}-ink`]).toBeDefined();
       }
     });
 
-    test(`${name} label ink clears 4.5:1 on the ground the rule actually sets`, () => {
-      // The label sits ON the severity ground, so the shared --gold/--red are
-      // not safe there; this is the guard that caught them at 4.33 and 4.07.
+    test(`${name} every painted ink/ground pair clears 4.5:1`, () => {
+      const pairs = name === 'doc' ? [...INK_PAIRS, ...DOC_ONLY_PAIRS] : INK_PAIRS;
       for (const palette of ['dark', 'light'] as const) {
         const t = tokens(css, palette);
-        for (const [rule, ink, bg] of INK_PAIRS) {
+        for (const [rule, ink, bg] of pairs) {
+          if (!css.includes(`var(${bg})`)) continue;
           const r = ratio(t[ink], t[bg]);
           expect({ palette, rule, pass: r >= 4.5 }).toEqual({ palette, rule, pass: true });
         }
       }
     });
 
-    test(`${name} body ink stays readable on every severity ground`, () => {
-      for (const palette of ['dark', 'light'] as const) {
-        const t = tokens(css, palette);
-        for (const [, , bg] of INK_PAIRS) {
-          expect(ratio(t['--ink'], t[bg])).toBeGreaterThanOrEqual(4.5);
-        }
+    test(`${name} defines no severity ground it never paints`, () => {
+      // A token nothing renders cannot be verified by looking at the page, so
+      // it must not be carried as if it were covered.
+      for (const s of SEVERITIES) {
+        const declared = css.includes(`--${s}-bg:`);
+        const painted = css.includes(`var(--${s}-bg)`);
+        expect({ token: `--${s}-bg`, deadWeight: declared && !painted })
+          .toEqual({ token: `--${s}-bg`, deadWeight: false });
       }
     });
 
