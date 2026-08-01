@@ -30,8 +30,8 @@
     --ok-ink: #74c69d; --ok-bg: #12251c;
   }
   html[data-theme="light"] {
-    --navy: #f8f9fb; --navy-deep: #eef0f4; --card: #ffffff; --code-bg: #eef1f5;
-    --line: #d5dae2; --ink: #1a1a1a; --muted: #5f6672;
+    --navy: #faf9f5; --navy-deep: #f2f1ea; --card: #ffffff; --code-bg: #f1efe8;
+    --line: #e2ded2; --ink: #141413; --muted: #5b584f;
     --accent: #2d64ba; --accent-soft: #e3ecf8; --gold: #8f6c16; --red: #d1383d;
     --diagram-bg: #eef0f4; --fig-glow: #e4e9f1; --node-hi: #ffffff; --node-lo: #f0f3f7; --node-border: #c3cbd6;
     --tile-side: #c9d0da;
@@ -42,6 +42,7 @@
   }
   * { box-sizing: border-box; }
   html { scroll-behavior: smooth; }
+  :root { --f-serif: ui-serif, Georgia, "Iowan Old Style", "Times New Roman", serif; }
   body {
     background: linear-gradient(180deg, var(--navy-deep) 0%, var(--navy) 220px);
     color: var(--ink); margin: 0;
@@ -50,7 +51,18 @@
     transition: background 0.3s, color 0.3s;
   }
   main { max-width: 46rem; margin: 0 auto; }
-  h1 { font-size: 2rem; line-height: 1.15; letter-spacing: -0.02em; text-wrap: balance; margin: 0 0 0.8rem; }
+  h1 {
+    font-size: clamp(2rem, 4.4vw, 2.9rem); font-weight: 700; line-height: 1.08;
+    letter-spacing: -0.028em; text-wrap: balance; margin: 0 0 0.9rem;
+  }
+  /* The opening paragraph carries the thesis, so it is set apart rather than
+     left as the first of many. Selected structurally: markdown authors write a
+     paragraph after the title, not a class. */
+  main > h1 + p, main > .chips + p {
+    font-family: var(--f-serif); font-size: 1.19rem; line-height: 1.58;
+    max-width: 60ch; margin: 1.4rem 0 0;
+    padding-bottom: 2.6rem; border-bottom: 1px solid var(--line);
+  }
   h2 { font-size: 1.3rem; letter-spacing: -0.01em; margin: 2.4rem 0 0.8rem; padding-top: 1.2rem; border-top: 1px solid var(--line); text-wrap: balance; }
   h3 { font-size: 1.05rem; margin: 1.4rem 0 0.5rem; }
   p, li { max-width: 65ch; }
@@ -98,6 +110,8 @@
     color: var(--muted); background: var(--code-bg);
   }
   .chip strong { color: var(--ink); font-weight: 600; }
+  .chip.hot { border-color: var(--accent); color: var(--accent); background: var(--note-bg); }
+  .chip.hot strong { color: var(--accent); }
   .cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.9rem; margin: 1.2rem 0; }
   @media (max-width: 40rem) { .cards { grid-template-columns: 1fr; } }
   .card {

@@ -128,3 +128,33 @@ describe('d2 figures are exempt from the light-mode inversion', () => {
     });
   }
 });
+
+describe('editorial typography', () => {
+  test('the headline scales fluidly instead of sitting at one timid size', () => {
+    expect(doc).toMatch(/h1 \{[\s\S]*?font-size: clamp\(2rem, 4\.4vw, 2\.9rem\)/);
+  });
+
+  test('the opening paragraph is set apart as a lede', () => {
+    // Selected structurally, because a markdown author writes a paragraph after
+    // the title, not a class.
+    expect(doc).toContain('main > h1 + p, main > .chips + p');
+    expect(doc).toContain('font-family: var(--f-serif)');
+    expect(doc).toContain('border-bottom: 1px solid var(--line)');
+  });
+
+  test('one chip can lead the row', () => {
+    expect(doc).toContain('.chip.hot { border-color: var(--accent);');
+  });
+
+  test('light mode is warm paper, not an inverted dark theme', () => {
+    const light = tokens(doc, 'light');
+    expect(light['--navy']).toBe('#faf9f5');
+    expect(light['--ink']).toBe('#141413');
+    // Every pair the theme renders must still clear its floor on the new ground.
+    for (const [rule, ink, bg] of INK_PAIRS) {
+      expect({ rule, pass: ratio(light[ink], light[bg]) >= 4.5 }).toEqual({ rule, pass: true });
+    }
+    expect(ratio(light['--ink'], light['--navy'])).toBeGreaterThanOrEqual(4.5);
+    expect(ratio(light['--muted'], light['--navy'])).toBeGreaterThanOrEqual(4.5);
+  });
+});
