@@ -40,7 +40,7 @@ describe('monochrome icon re-inlining', () => {
   test('a baked monochrome mark becomes an inline svg driven by currentColor', () => {
     // Baked to one grey at vendor time, it cannot clear contrast on both the
     // dark and the light node fill; only CSS can resolve that per theme.
-    const out = inlineMonochromeIcons(image(MONO), [FILL]);
+    const out = inlineMonochromeIcons(image(MONO), [FILL], [MONO]);
     expect(out.converted).toBe(1);
     expect(out.svg).toContain('<svg class="d2-mono"');
     expect(out.svg).toContain('fill="currentColor"');
@@ -49,7 +49,7 @@ describe('monochrome icon re-inlining', () => {
   });
 
   test('geometry and viewBox survive the swap', () => {
-    const out = inlineMonochromeIcons(image(MONO), [FILL]);
+    const out = inlineMonochromeIcons(image(MONO), [FILL], [MONO]);
     expect(out.svg).toContain('x="10"');
     expect(out.svg).toContain('y="20"');
     expect(out.svg).toContain('width="64"');
@@ -58,7 +58,7 @@ describe('monochrome icon re-inlining', () => {
   });
 
   test('ink is themed, defaulting to the light rendering when no page theme applies', () => {
-    const out = inlineMonochromeIcons(image(MONO), [FILL]);
+    const out = inlineMonochromeIcons(image(MONO), [FILL], [MONO]);
     expect(out.svg).toContain(`.d2-mono{color:${MONO_INK_LIGHT};}`);
     expect(out.svg).toContain(`html:not([data-theme="light"]) .d2-mono{color:${MONO_INK_DARK};}`);
   });
@@ -88,7 +88,7 @@ describe('monochrome icon re-inlining', () => {
     const mixed = `<svg class="d2">${image(MONO).slice('<svg class="d2">'.length, -'</svg>'.length)}${
       image(COLOUR).slice('<svg class="d2">'.length, -'</svg>'.length)
     }</svg>`;
-    const out = inlineMonochromeIcons(mixed, [FILL]);
+    const out = inlineMonochromeIcons(mixed, [FILL], [MONO]);
     expect(out.converted).toBe(1);
     expect(out.svg).toContain('<image');
     expect(out.svg).toContain('class="d2-mono"');
@@ -96,7 +96,7 @@ describe('monochrome icon re-inlining', () => {
 
   test('no fills configured is a no-op rather than a scan', () => {
     const before = image(MONO);
-    expect(inlineMonochromeIcons(before, [])).toEqual({ svg: before, converted: 0 });
+    expect(inlineMonochromeIcons(before, [], [MONO])).toEqual({ svg: before, converted: 0 });
   });
 
   test('a payload with an XML prolog or generator comment is refused, not sliced blind', () => {
@@ -104,19 +104,19 @@ describe('monochrome icon re-inlining', () => {
     // preamble inside the element as stray text and nested a second root.
     const prolog = `<?xml version="1.0"?><!-- Generator: Illustrator -->`
       + `<svg viewBox="0 0 18 18"><path fill="${FILL}" d="M9 1"/></svg>`;
-    expect(() => inlineMonochromeIcons(image(prolog), [FILL])).toThrow(SvgError);
+    expect(() => inlineMonochromeIcons(image(prolog), [FILL], [prolog])).toThrow(SvgError);
   });
 
   test('a payload with two concatenated roots is refused', () => {
     const two = `<svg viewBox="0 0 8 8"><path fill="${FILL}" d="M1 1"/></svg>`
       + `<svg viewBox="0 0 8 8"><path fill="${FILL}" d="M2 2"/></svg>`;
-    expect(() => inlineMonochromeIcons(image(two), [FILL])).toThrow(SvgError);
+    expect(() => inlineMonochromeIcons(image(two), [FILL], [two])).toThrow(SvgError);
   });
 
   test('the fill is re-inked in colour attributes only, never in ids or text', () => {
     const tricky = `<svg viewBox="0 0 24 24"><path fill="${FILL}" stroke="${FILL}" d="M1 2"/>`
       + `<text>${FILL}</text><g id="${FILL}-grp"/></svg>`;
-    const out = inlineMonochromeIcons(image(tricky), [FILL]);
+    const out = inlineMonochromeIcons(image(tricky), [FILL], [tricky]);
     expect(out.svg).toContain('fill="currentColor"');
     expect(out.svg).toContain('stroke="currentColor"');
     expect(out.svg).toContain(`<text>${FILL}</text>`);
@@ -124,9 +124,12 @@ describe('monochrome icon re-inlining', () => {
   });
 
   test('a fill that is a prefix of another does not corrupt the longer one', () => {
-    const doc = '<svg viewBox="0 0 24 24"><path fill="#717171a" d="M1 2"/></svg>';
-    const out = inlineMonochromeIcons(image(doc), ['#717', FILL]);
+    // Anchoring on the whole attribute value makes the prefix class impossible;
+    // a substring replace turned fill="#71717a" into fill="currentColor17a".
+    const doc = `<svg viewBox="0 0 24 24"><path fill="#717" d="M1 2"/><path fill="${FILL}" d="M3 4"/></svg>`;
+    const out = inlineMonochromeIcons(image(doc), ['#717', FILL], [doc]);
     expect(out.svg).not.toContain('currentColor17a');
+    expect(out.svg.match(/currentColor/g)).toHaveLength(2);
   });
 
   test('only marks from a monochrome pack are re-inked when sources are known', () => {
@@ -139,7 +142,7 @@ describe('monochrome icon re-inlining', () => {
 
   test('a monochrome payload that is not a single viewBoxed svg fails loudly', () => {
     const headless = `<g><path fill="${FILL}" d="M1 2"/></g>`;
-    expect(() => inlineMonochromeIcons(image(headless), [FILL])).toThrow(SvgError);
+    expect(() => inlineMonochromeIcons(image(headless), [FILL], [headless])).toThrow(SvgError);
   });
 });
 
@@ -186,5 +189,31 @@ describe('markdown-safe flattening', () => {
   test('an already-flat svg is unchanged', () => {
     const flat = '<svg>\n<g/>\n</svg>';
     expect(flattenForMarkdown(flat)).toBe(flat);
+  });
+});
+
+describe('conversion post-conditions', () => {
+  const shapes: ReadonlyArray<readonly [string, string]> = [
+    ['a style attribute', `<svg viewBox="0 0 24 24"><path style="fill:${FILL}" d="M0 0"/></svg>`],
+    ['a CSS class', `<svg viewBox="0 0 24 24"><style>.c{fill:${FILL}}</style><path class="c"/></svg>`],
+    ['the root tag', `<svg viewBox="0 0 24 24" fill="${FILL}"><path d="M0 0"/></svg>`],
+  ];
+
+  for (const [how, doc] of shapes) {
+    test(`a mark coloured by ${how} fails instead of shipping unthemed`, () => {
+      // Only presentation attributes are inked, so these convert with the baked
+      // colour intact — reporting success while the mark cannot follow the theme.
+      expect(() => inlineMonochromeIcons(image(doc), [FILL], [doc])).toThrow(SvgError);
+    });
+  }
+
+  test('an unstaged icon is treated as full-colour, never sniffed for the baked hex', () => {
+    // A diagram staging no monochrome asset must not fall back to a substring
+    // test over brand artwork that happens to contain the same colour.
+    const brandArt = `<svg viewBox="0 0 24 24"><path fill="#0078D4" d="M1 1"/><path fill="${FILL}" d="M2 2"/></svg>`;
+    const before = image(brandArt);
+    const out = inlineMonochromeIcons(before, [FILL], []);
+    expect(out.converted).toBe(0);
+    expect(out.svg).toBe(before);
   });
 });

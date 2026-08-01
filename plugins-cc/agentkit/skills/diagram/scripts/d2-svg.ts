@@ -133,7 +133,7 @@ export function inlineMonochromeIcons(
   sources: string[] = [],
   prefix = 'html:not([data-theme="light"])',
 ): { svg: string; converted: number } {
-  if (fills.length === 0) return { svg, converted: 0 };
+  if (fills.length === 0 || sources.length === 0) return { svg, converted: 0 };
   const known = new Set(sources.map((s) => s.trim()));
   let converted = 0;
   const out = svg.replace(IMAGE_RE, (tag) => {
@@ -147,12 +147,18 @@ export function inlineMonochromeIcons(
     } catch {
       return tag;
     }
-    const isMono = known.size > 0 ? known.has(icon.trim()) : fills.some((f) => icon.includes(f));
-    if (!isMono) return tag;
+    if (!known.has(icon.trim())) return tag;
     const parts = innerMarkup(icon);
     if (!parts) throw new SvgError("monochrome icon is not a single <svg> with a viewBox");
     let inner = parts.inner;
     for (const f of fills) inner = inkAttributes(inner, f);
+    // Only presentation attributes are inked. A mark coloured through style=,
+    // a CSS class or the root tag would convert with its baked colour intact
+    // and silently stop following the theme, which is the defect this exists to
+    // prevent — so fail rather than report a conversion that did nothing.
+    if (!inner.includes("currentColor")) {
+      throw new SvgError("monochrome icon carries no inkable fill — colour set by style, class or root tag");
+    }
     const geom: Record<string, string> = {};
     for (const m of tag.matchAll(ATTR_RE)) geom[m[1]] = m[2];
     converted += 1;
