@@ -265,16 +265,38 @@ reproduced unmodified for nominative identification only. This is why the
 published SVG is exempt from the page's light-mode inversion filter, and why
 any future palette or theming pass must exempt icon glyphs.
 
-Some brand marks are near-black (Rust, GitHub) and disappear on a dark island.
-The fix is a light plate **behind** the mark, never a recolour of it:
+That applies to **full-colour brand artwork** — the `logos` pack. Nothing in the
+pipeline touches those bytes.
+
+A **monochrome** pack (`simple-icons`) is a different object: it ships one path
+meant to be reproduced in whatever single colour its surround needs, and the
+vendoring step bakes it to `#71717a` only because `currentColor` has nothing to
+inherit from inside a `data:` URI. That one baked grey cannot work — no single
+grey clears 4.5:1 against both the dark and the light node fill, and the best
+compromise tops out near 3.9:1 on each — so the renderer
+**re-inlines monochrome marks as real `<svg>` elements** and lets the page theme
+drive their ink. This is automatic:
 
 ```d2
-renderer: Render worker {
-  icon: @logos:rust
-  style.fill: "#e9e9ec"
-  style.font-color: "#1b1d22"
-}
+edge: Traefik { icon: @traefikproxy }
 ```
+
+**Never paint a plate to make a mark legible.** A plate is a fixed colour, so it
+survives the theme flip and leaves a white box sitting in a dark page — the exact
+defect the automatic path exists to prevent. If a mark looks wrong, check whether
+it is monochrome first:
+
+```bash
+bun skills/diagram/scripts/find-icon.ts traefik
+# @traefikproxy  simple-icons  CC0-1.0  monochrome (theme-inked automatically)
+```
+
+`find-icon.ts` searches the vendored manifest and reports the set, the licence
+and whether a hit is brand artwork or a single-colour mark. Use it before
+writing `icon:` — a name is not discoverable any other way, and a pack that
+looks obvious may not carry the mark at all — neither the vendored `logos` set
+nor its ~1.8k-icon upstream package carries a Traefik mark. When a mark is genuinely absent, say so; do not substitute a
+look-alike from another vendor.
 
 ### Regenerating the vendored set
 
@@ -304,6 +326,12 @@ The published SVG carries `class="d2"`, `role="img"`, an `aria-label`, and a
 
 Publishing outside a `.figure` island (or a container with
 `background: var(--diagram-bg)`) is refused by the publish lint.
+
+The emitted SVG carries no blank lines and no leading indentation, so it can be
+pasted into a markdown page as-is. Both would otherwise end the raw-HTML block —
+CommonMark reads the rest as an indented code block, and the figure renders as a
+wall of literal CSS. The publish lint now fails a page where that has happened
+rather than shipping an intact island around a missing diagram.
 
 **Theme handling differs from the sketch register, deliberately.** A baked
 Excalidraw SVG is authored dark and the page derives light mode by inverting

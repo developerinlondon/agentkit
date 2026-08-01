@@ -44,8 +44,16 @@ blue accent `#79a8e7`, amber `#f5a742`, panels `#1b1d22`, lines `#2a2d34`,
 mono eyebrows; light mode goes white-ground with a deep-blue accent and
 auto-inverts baked diagrams) — never re-explain or re-style these basics. Also automatic, no
 agent action needed: a **dark/light theme toggle** (persisted; mermaid
-re-renders on flip), a **TOC dot rail** with smooth scrolling on docs with ≥3
-`h2` sections, one persistent **deck nav bar** (progress, slide counter,
+re-renders on flip), a **labelled section nav** — a sticky top bar built from the
+page's `h2` titles, with the current section highlighted — on docs with ≥3 `h2`
+sections. **Name every tab yourself whenever a title runs past ~28 characters** —
+write the heading as raw HTML, which markdown passes straight through:
+`<h2 data-nav="Estimate">Two to four weeks, not two months</h2>`. A derived tab
+is a guess and is marked with an ellipsis to say so; a page whose nav reads
+`Estimate · SSH · Language · Architecture` is doing the reader's work, one that
+reads `Two to four weeks… · SSH is a day of work…` is not. Tabs are labels, not
+sentences: one or two words, no trailing punctuation, and the full title stays
+on hover, one persistent **deck nav bar** (progress, slide counter,
 prev/next, toggle) with arrow/space/Home/End keys and swipe (backward swipe
 may be claimed by the browser's history gesture),
 **click-to-expand** on every `.figure`, and **hover lift/glow** on every card
@@ -134,6 +142,12 @@ sequence/state diagram with the `diagram` skill instead.
 - **Enumerable concepts** (features, components, principles): a 2-column grid —
   `<div class="cards"><div class="card"><h3><code>name</code></h3><p>…</p></div>…</div>`
 - **Key decisions / warnings**: `<div class="callout"><strong>Label.</strong> text</div>`
+  — severity variants `.callout.warn` (amber), `.callout.alarm` (red),
+  `.callout.ok` (green), `.callout.note` (muted grey). Pick by consequence, not
+  by mood: `warn` for a cost or a constraint, `alarm` for something that breaks
+  or exposes if ignored, `ok` for a confirmed-good result, plain for a neutral
+  aside. Severity rides the rail and the bold label only — body text stays ink
+  in both themes, and every pairing is contrast-checked at 4.5:1.
 - **Metadata rows**: `<div class="chips"><span class="chip"><strong>Status</strong> live</span>…</div>`
 - **Pipeline/stage boxes** (when mermaid is overkill):
   `<div class="flow"><div class="frow"><div class="fbox gate"><span class="t">stage</span><span class="d">detail</span></div>…</div><div class="arrow">▼</div>…</div>`

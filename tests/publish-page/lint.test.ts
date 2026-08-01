@@ -89,3 +89,72 @@ describe('publish-page figure lint', () => {
     expect(result.warnings).toHaveLength(1);
   });
 });
+
+describe('diagram stylesheet leakage', () => {
+  // Real d2 output salts every selector, verified against a rendered figure:
+  // `.d2-1846797904 .background-color-N7{background-color:#FFFFFF;}`.
+  const d2Style = '<style>.d2-123 .fill-N1{fill:#0A0F25;}'
+    + '.d2-123 .background-color-N7{background-color:#FFFFFF;}</style>';
+
+  test("d2's own stylesheet does not trip the white-ground warning", () => {
+    // It always ships background-color:#FFFFFF, so scanning it as page CSS
+    // fires on every correct figure and trains the author to ignore the check.
+    const html = `<div class="figure"><!-- svg-source:d2 --><svg class="d2">${d2Style}</svg></div>`;
+    expect(lintFigures(html).warnings).toEqual([]);
+  });
+
+  test('a page that really hardcodes a white ground is still warned about', () => {
+    const html = `<style>.mine{background:#ffffff}</style>`
+      + `<div class="figure"><!-- svg-source:d2 --><svg class="d2">${d2Style}</svg></div>`;
+    expect(lintFigures(html).warnings.join(' ')).toContain('white background');
+  });
+
+  test('a stylesheet escaped into page text is reported, not silently passed', () => {
+    // The figure island and caption stay intact; only the diagram is gone, so
+    // every structural check passes while the page shows a wall of CSS.
+    const html = '<div class="figure"><!-- svg-source:d2 -->'
+      + '<pre><code>&lt;style&gt;.d2-mono{color:#3f3f46;}&lt;/style&gt;</code></pre></div>';
+    expect(lintFigures(html).warnings.join(' ')).toContain('appears as page text');
+  });
+
+  test('documenting d2 CSS never blocks a publish', () => {
+    // A fence and a leak are the same input class, and publish.ts hard-fails on
+    // errors — so this must not be one. The repo's own reference documents
+    // `.d2-mono` by name and has to remain publishable beside a figure.
+    const html = `<div class="figure"><!-- svg-source:d2 --><svg class="d2">${d2Style}</svg></div>`
+      + '<pre><code class="language-css">.d2-mono { color: #3f3f46; }</code></pre>';
+    expect(lintFigures(html).errors).toEqual([]);
+  });
+
+  test("an author's own white ground is still caught beside a .d2-mono override", () => {
+    // Dropping the whole <style> element would disable the check for the page:
+    // the house theme ships one stylesheet, and the skill now tells authors
+    // .d2-mono is theirs to restyle.
+    const html = '<style>.figure{background:#ffffff}\n.d2-mono{color:red}</style>'
+      + `<div class="figure"><!-- svg-source:d2 --><svg class="d2">${d2Style}</svg></div>`;
+    expect(lintFigures(html).warnings.join(' ')).toContain('white background');
+  });
+});
+
+describe('d2 rule stripping is rule-accurate', () => {
+  const fig = '<div class="figure"><!-- svg-source:d2 --><svg class="d2"></svg></div>';
+  const warns = (css: string) => lintFigures(`<style>${css}</style>${fig}`).warnings.length;
+
+  test("a grouped selector keeps the author's half of the rule", () => {
+    // `.figure,.d2-mono{...}` is an author rule too; dropping it whole hid a
+    // white ground the check exists to report.
+    expect(warns('.figure,.d2-mono{background:#ffffff}')).toBe(1);
+  });
+
+  test('a comment naming .d2- does not swallow the rule beneath it', () => {
+    expect(warns('/* d2 marks use .d2-mono */\n.figure{background:#ffffff}')).toBe(1);
+  });
+
+  test("d2's own rules alone still produce no warning", () => {
+    expect(warns('.d2-1846797904 .background-color-N7{background-color:#FFFFFF;}')).toBe(0);
+  });
+
+  test('a class that merely starts like a d2 class is not stripped', () => {
+    expect(warns('.d2wrapper{background:#ffffff}')).toBe(1);
+  });
+});

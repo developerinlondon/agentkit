@@ -60,6 +60,18 @@ export function dropBackgroundRect(svg: string): { svg: string; dropped: boolean
   return { svg: svg.replace(re, "$1"), dropped: true };
 }
 
+// CommonMark ends a raw-HTML block at a blank line and reads tab-indented text
+// as a code block, so d2's own stylesheet formatting destroys any figure inlined
+// into markdown. Neither blank lines nor leading indentation mean anything in
+// SVG or CSS, and d2 never wraps text content across lines.
+export function flattenForMarkdown(svg: string): string {
+  return svg
+    .split("\n")
+    .map((line) => line.replace(/^[\t ]+/, ""))
+    .filter((line) => line.trim() !== "")
+    .join("\n");
+}
+
 export function applyHouseAttributes(svg: string, ariaLabel: string): string {
   const open = svg.match(/^<svg\b[^>]*>/);
   if (!open) throw new SvgError("output does not start with an <svg> tag");
@@ -72,6 +84,104 @@ export function applyHouseAttributes(svg: string, ariaLabel: string): string {
     `<svg class="d2" role="img" aria-label="${escaped}" width="100%" style="height:auto"`,
   );
   return `<!-- ${SOURCE_MARK} -->\n${tag}${svg.slice(open[0].length)}`;
+}
+
+// Ink for a re-inlined monochrome mark. Against the d2 node fills a single grey
+// tops out near 3.9:1 and clears 4.5:1 on neither, so one baked colour cannot
+// serve both themes and the mark has to follow the theme instead.
+export const MONO_INK_LIGHT = "#3f3f46";
+export const MONO_INK_DARK = "#e4e4e7";
+
+const IMAGE_RE = /<image\b[^>]*?\/>/g;
+const ATTR_RE = /\b(x|y|width|height)="([^"]*)"/g;
+const HREF_RE = /\b(?:xlink:)?href="(data:image\/svg\+xml;base64,([^"]+))"/;
+
+// Anchoring on the tag's index, not its length: a payload carrying an XML
+// prolog or a generator comment starts its root later, and slicing by length
+// leaves that preamble inside the element as stray text.
+function innerMarkup(raw: string): { inner: string; viewBox: string } | null {
+  const icon = raw.trim();
+  const open = icon.match(/<svg\b[^>]*>/);
+  if (!open || open.index === undefined || !icon.endsWith("</svg>")) return null;
+  const viewBox = open[0].match(/\bviewBox="([^"]*)"/)?.[1];
+  if (!viewBox) return null;
+  const inner = icon.slice(open.index + open[0].length, -"</svg>".length);
+  if (icon.slice(0, open.index).trim() !== "") return null;
+  if (/<svg\b/.test(inner)) return null;
+  return { inner, viewBox };
+}
+
+// Colour lives in a fill or stroke value; the same string elsewhere is an id, a
+// class or label text, and rewriting it there corrupts the mark silently.
+function inkAttributes(markup: string, fill: string): string {
+  const escaped = fill.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return markup.replace(
+    new RegExp(`\\b(fill|stroke|stop-color|flood-color)="${escaped}"`, "gi"),
+    '$1="currentColor"',
+  );
+}
+
+// Colour set in a style attribute or a CSS block is not reachable by attribute
+// inking, so a mark using either keeps its baked value and cannot follow a theme.
+function bakedInStyle(markup: string, fill: string): boolean {
+  const styles = [...markup.matchAll(/style="([^"]*)"/gi)].map((m) => m[1]);
+  const blocks = [...markup.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi)].map((m) => m[1]);
+  return [...styles, ...blocks].some((css) => css.toLowerCase().includes(fill.toLowerCase()));
+}
+
+// A monochrome pack is baked to one fill at vendor time because currentColor has
+// nothing to inherit from inside a data: URI. Re-inlining the mark as a real
+// <svg> puts it back under CSS, so the page theme drives its ink.
+// `sources` is the exact text of every staged monochrome asset: identity beats
+// sniffing for the baked fill, which cannot tell a monochrome mark from brand
+// artwork that merely contains the same hex.
+export function inlineMonochromeIcons(
+  svg: string,
+  fills: string[],
+  sources: string[] = [],
+  prefix = 'html:not([data-theme="light"])',
+): { svg: string; converted: number } {
+  if (fills.length === 0 || sources.length === 0) return { svg, converted: 0 };
+  const known = new Set(sources.map((s) => s.trim()));
+  let converted = 0;
+  const out = svg.replace(IMAGE_RE, (tag) => {
+    const href = tag.match(HREF_RE);
+    if (!href) return tag;
+    let icon: string;
+    try {
+      const raw = atob(href[2]);
+      const bytes = Uint8Array.from(raw, (c) => c.charCodeAt(0));
+      icon = new TextDecoder().decode(bytes);
+    } catch {
+      return tag;
+    }
+    if (!known.has(icon.trim())) return tag;
+    const parts = innerMarkup(icon);
+    if (!parts) throw new SvgError("monochrome icon is not a single <svg> with a viewBox");
+    let inner = parts.inner;
+    for (const f of fills) inner = inkAttributes(inner, f);
+    // currentColor alone proves nothing — it also appears in a <desc> or an id.
+    if (fills.some((f) => bakedInStyle(inner, f))) {
+      throw new SvgError("monochrome icon inks through style= or a CSS block, which cannot follow the theme");
+    }
+    if (!inner.includes("currentColor")) {
+      throw new SvgError("monochrome icon carries no inkable fill — colour set by style, class or root tag");
+    }
+    const geom: Record<string, string> = {};
+    for (const m of tag.matchAll(ATTR_RE)) geom[m[1]] = m[2];
+    converted += 1;
+    const attrs = ["x", "y", "width", "height"]
+      .filter((k) => geom[k] !== undefined)
+      .map((k) => `${k}="${geom[k]}"`)
+      .join(" ");
+    return `<svg class="d2-mono" ${attrs} viewBox="${parts.viewBox}" overflow="visible">${inner}</svg>`;
+  });
+  if (converted === 0) return { svg, converted };
+  const rules = `.d2-mono{color:${MONO_INK_LIGHT};}${prefix} .d2-mono{color:${MONO_INK_DARK};}`;
+  const root = out.match(/<svg\b[^>]*>/);
+  if (!root) throw new SvgError("cannot attach monochrome ink rules — no <svg> root");
+  const at = out.indexOf(root[0]) + root[0].length;
+  return { svg: `${out.slice(0, at)}<style>${rules}</style>${out.slice(at)}`, converted };
 }
 
 export interface Containment {

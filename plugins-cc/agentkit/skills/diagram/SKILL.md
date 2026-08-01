@@ -71,9 +71,22 @@ these tools genuinely cannot know.
 Renderer is pinned to **d2 v0.7.1**; the wrapper refuses any other version,
 inlines vendored CC0 icons (`icon: @postgres`), and fails the render if the
 output is not self-contained. The render-LOOK-fix discipline of step 5 applies
-unchanged — read the PNG, never the SVG. Vendor logos are never recoloured or
-theme-filtered; that is why D2 output is exempt from the page's light-mode
-inversion.
+unchanged — read the PNG, never the SVG. Full-colour vendor logos are never
+recoloured or theme-filtered; that is why D2 output is exempt from the page's
+light-mode inversion.
+
+**Never guess an icon name, and never paint a plate behind a mark.** Search the
+manifest — it reports the licence and whether a hit is brand artwork or a
+single-colour mark, and monochrome marks are re-inked to follow the page theme
+automatically:
+
+```bash
+bun <skill-dir>/scripts/find-icon.ts traefik
+```
+
+A hardcoded `style.fill` behind an icon cannot follow the theme, so it leaves a
+white box in dark mode. If the search finds nothing, the mark is not vendored —
+say so rather than substituting another vendor's look-alike.
 
 Azure and GCP icons are vendor-licensed, so none are committed. Fetch a pack
 once, on the machine that needs it, then use `@azure:…` / `@gcp:…` like any

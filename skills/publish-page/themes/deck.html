@@ -21,6 +21,13 @@
     /* Ground for baked-palette diagram SVGs (excalidraw); flips with the
        theme — light mode also inverts the SVG art itself. */
     --diagram-bg: #0e0f12;
+    /* Callout severities. Ink and ground are paired per severity because the
+       label sits ON the ground — the shared --gold/--red miss 4.5:1 there in
+       light mode, so these carry their own darker light-mode inks. */
+    --note-ink: #79a8e7; --note-bg: #152438;
+    --warn-ink: #f5a742; --warn-bg: #2a2113;
+    --alarm-ink: #e06c75; --alarm-bg: #2c1a1c;
+    --ok-ink: #74c69d; --ok-bg: #12251c;
   }
   html[data-theme="light"] {
     --navy: #f8f9fb; --navy-deep: #eef0f4; --card: #ffffff; --code-bg: #eef1f5;
@@ -28,6 +35,10 @@
     --accent: #2d64ba; --accent-soft: #e3ecf8; --gold: #8f6c16; --red: #d1383d;
     --diagram-bg: #eef0f4; --fig-glow: #e4e9f1; --node-hi: #ffffff; --node-lo: #f0f3f7; --node-border: #c3cbd6;
     --tile-side: #c9d0da;
+    --note-ink: #2d64ba; --note-bg: #e3ecf8;
+    --warn-ink: #7f5f12; --warn-bg: #fbf1dc;
+    --alarm-ink: #c02a30; --alarm-bg: #fbe7e8;
+    --ok-ink: #1f7a4d; --ok-bg: #e3f3ea;
   }
   * { box-sizing: border-box; }
   html, body { height: 100%; }
@@ -157,10 +168,21 @@
   .rail.red { border-left-color: var(--red); }
 
   .callout {
-    border: 1px solid var(--line); background: var(--accent-soft); border-radius: 8px;
+    border: 1px solid var(--line); border-left: 3px solid var(--note-ink);
+    background: var(--note-bg); border-radius: 8px;
     padding: 0.8rem 1.1rem; margin: 1rem 0; max-width: 68ch;
   }
-  .callout strong { color: var(--accent); }
+  .callout strong { color: var(--note-ink); }
+  /* Severity is carried by the rail and the label, never by body text: an
+     amber paragraph misses contrast on its own ground in light mode. */
+  .callout.warn { border-left-color: var(--warn-ink); background: var(--warn-bg); }
+  .callout.warn strong { color: var(--warn-ink); }
+  .callout.alarm { border-left-color: var(--alarm-ink); background: var(--alarm-bg); }
+  .callout.alarm strong { color: var(--alarm-ink); }
+  .callout.ok { border-left-color: var(--ok-ink); background: var(--ok-bg); }
+  .callout.ok strong { color: var(--ok-ink); }
+  .callout.note { border-left-color: var(--muted); background: var(--code-bg); }
+  .callout.note strong { color: var(--muted); }
   .figure {
     background: radial-gradient(ellipse at 30% 0%, var(--fig-glow) 0%, var(--navy-deep) 70%);
     border: 1px solid var(--line); border-radius: 14px; padding: 1.6rem 1.4rem 1rem;
@@ -177,7 +199,7 @@
 
   /* Baked-palette diagram SVGs are authored navy-only; light mode derives a
      light rendering with a double flip — see the doc theme for rationale. */
-  html[data-theme="light"] svg[role="img"]:not(.edges) {
+  html[data-theme="light"] svg[role="img"]:not(.edges):not(.d2) {
     filter: invert(0.93) hue-rotate(180deg);
   }
   @media print {

@@ -17,9 +17,61 @@ export function manifest(dir = assetsDir): Record<string, IconRecord> {
   return loaded;
 }
 
+// The fill a monochrome pack was baked to. d2-svg re-inlines marks carrying it
+// so the page theme can drive their ink; reading it from the selection keeps the
+// two in step when a pack is re-vendored.
+export function monochromeFills(dir = assetsDir): string[] {
+  const sel = JSON.parse(readFileSync(join(dir, "icon-selection.json"), "utf8"));
+  const packs = (sel.packs ?? {}) as Record<string, { monochromeFill?: string }>;
+  return [...new Set(Object.values(packs).map((p) => p.monochromeFill).filter((f): f is string => !!f))];
+}
+
+export interface IconHit {
+  key: string;
+  set: string;
+  monochrome: boolean;
+  license: string;
+}
+
+// Icon names are only discoverable by reading the manifest, so a name that is
+// absent reads the same as a name that was never vendored. Searching reports
+// both, and whether a hit is brand artwork or a single-colour mark.
+export function searchIcons(query: string, dir = assetsDir): IconHit[] {
+  const m = manifest(dir);
+  const mono = new Set(monochromeFillSets(dir));
+  const q = query.trim().toLowerCase();
+  return Object.entries(m)
+    .filter(([key]) => key.includes(":") === false && (q === "" || key.includes(q)))
+    .map(([key, r]) => ({ key, set: r.set, monochrome: mono.has(r.set), license: r.license }))
+    .sort((a, b) => a.key.localeCompare(b.key));
+}
+
+// Which staged assets came from a pack that bakes a single fill. Identity, not
+// a hex sniff: brand artwork that happens to contain the same colour is not a
+// monochrome mark and must not be re-inked.
+export function monochromeSources(staged: StagedIcon[], dir = assetsDir): string[] {
+  const packs = monochromeFillSets(dir);
+  return staged
+    .filter((icon) => packs.some((p) => icon.rel.startsWith(`${STAGE_SUBDIR}/${p}/`)))
+    .map((icon) => readFileSync(icon.src, "utf8"));
+}
+
+function monochromeFillSets(dir = assetsDir): string[] {
+  const sel = JSON.parse(readFileSync(join(dir, "icon-selection.json"), "utf8"));
+  const packs = (sel.packs ?? {}) as Record<string, { monochromeFill?: string }>;
+  return Object.entries(packs).filter(([, p]) => !!p.monochromeFill).map(([name]) => name);
+}
+
 function suggest(key: string, keys: string[]): string {
-  const near = keys.filter((k) => k.includes(key) || key.includes(k.split(":").pop() ?? k)).slice(0, 5);
-  return near.length ? ` — did you mean ${near.join(", ")}?` : "";
+  const bare = key.split(":").pop() ?? key;
+  const near = keys.filter((k) => {
+    const kb = k.split(":").pop() ?? k;
+    return k.includes(key) || kb.includes(bare) || bare.includes(kb);
+  });
+  const uniq = [...new Set(near)].slice(0, 5);
+  return uniq.length
+    ? ` — did you mean ${uniq.join(", ")}?`
+    : " — no vendored icon matches; run `bun scripts/find-icon.ts <term>` to search";
 }
 
 export function lookupIcon(key: string, dir = assetsDir): { file: string; path: string } {

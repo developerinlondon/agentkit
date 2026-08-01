@@ -13,8 +13,46 @@ const CONTAINER_RE = /<(?:div|section|figure)\b[^>]*class\s*=\s*["']([^"']*)["']
 const TAG_RE = /<(\/?)(?:div|section|figure)\b/gi;
 const NEARBY = 900;
 
+// d2 salts its own classes as .d2-<digits> and always ships
+// .background-color-N7{background-color:#FFFFFF}, which reads as a white page
+// ground. Only those rules are dropped: discarding the whole element would take
+// an author's own declarations with them, and the house theme ships one <style>
+// for the entire page.
+const CSS_COMMENT = /\/\*[\s\S]*?\*\//g;
+const CSS_RULE = /([^{}]*)\{([^}]*)\}/g;
+const D2_SELECTOR = /\.d2-(?:\d+|mono)\b/;
+
+// Only rules that are entirely d2's. A comment naming .d2- above an author rule,
+// or a grouped selector like `.figure,.d2-mono{...}`, would otherwise take the
+// author's own declaration with it and hide the white ground being checked for.
+function stripD2Rules(css: string): string {
+  return css.replace(CSS_COMMENT, "").replace(CSS_RULE, (rule, selector: string) => {
+    const parts = selector.split(",").map((s) => s.trim()).filter(Boolean);
+    return parts.length > 0 && parts.every((s) => D2_SELECTOR.test(s)) ? "" : rule;
+  });
+}
+
 function styleBlocks(html: string): string {
-  return [...html.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi)].map((m) => m[1]).join("\n");
+  return [...html.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi)]
+    .map((m) => stripD2Rules(m[1]))
+    .join("\n");
+}
+
+// A mangled inline SVG still looks like a figure to every structural check —
+// the island is there, the caption is there, and the diagram is a wall of text.
+// Real rules live inside a <style> element, which is stripped before this runs;
+// a d2 selector surviving as text means the markup was escaped into prose.
+const LEAKED_CSS = /\.d2-(?:\d+|mono)\s*(?:\{|\.(?:fill|stroke|background-color))/;
+
+// Two shapes, because stripping <style> spans first can delete the evidence: a
+// leak that lands between a style open and a still-present close is swallowed by
+// the strip, so escaped markup is checked against the raw page as well.
+const ESCAPED_MARKUP = /&lt;\/(?:svg|style)&gt;/;
+
+function leakedStylesheet(html: string): boolean {
+  if (ESCAPED_MARKUP.test(html) && /\.d2-(?:\d+|mono)/.test(html)) return true;
+  const stripped = html.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "");
+  return LEAKED_CSS.test(stripped);
 }
 
 function classHasDiagramBg(cls: string, css: string): boolean {
@@ -59,6 +97,17 @@ export function lintFigures(html: string, allowBareSvg = false): LintResult {
   const result: LintResult = { errors: [], warnings: [] };
   const marks = [...html.matchAll(SOURCE_MARK)].map((m) => m.index ?? 0);
   if (marks.length === 0) return result;
+
+  // A warning, not an error: the same shape is produced by a page that documents
+  // d2 CSS in a fence, and blocking that publish is worse than the leak it
+  // guards — which the renderer no longer emits in the first place.
+  if (leakedStylesheet(html)) {
+    result.warnings.push(
+      "a d2 selector appears as page text — if a figure renders as raw CSS, the inlined "
+        + "SVG carries a blank or indented line and needs re-rendering; if you are "
+        + "documenting d2 CSS deliberately, ignore this",
+    );
+  }
 
   const css = styleBlocks(html);
   if (/background(?:-color)?:\s*(white\b|#fff\b|#ffffff\b|rgb\(\s*255\s*,\s*255\s*,\s*255)/i.test(css)) {
