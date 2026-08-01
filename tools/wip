@@ -302,6 +302,34 @@ emit_class() {
 	return 0
 }
 
+# Branches that have a worktree attached. A branch with nothing committed still
+# holds work if a checkout is sitting on it — that is where uncommitted work
+# lives — so this is what separates "nothing started" from "started, uncommitted".
+worktree_branches() {
+	git_in worktree list --porcelain 2>/dev/null |
+		awk '$1 == "branch" { sub(/^refs\/heads\//, "", $2); print $2 }'
+	return 0
+}
+
+# Nothing committed, nowhere checked out, and no change ever opened: nothing was
+# started. A harness that creates a branch per worktree leaves dozens of these,
+# and they crowd out the rows that matter — being loudly wrong about the size of
+# your backlog trains a reader to skim past it.
+#
+# The test is structural rather than by name deliberately. A name pattern would
+# hide a harness branch that DOES carry commits, which is real unfinished work;
+# this cannot, because having commits disqualifies a branch from being hidden.
+# Only ever asked about a branch the forge has no change for; the call sites are
+# the single place that decides, so there is no state guard duplicated here.
+branch_is_unstarted() {
+	local branch="$1"
+	[[ "$(git_in rev-list --count "$BASE..$branch" 2>/dev/null || printf '1')" == "0" ]] || return 1
+	case "$WORKTREE_BRANCHES" in
+	*"|$branch|"*) return 1 ;;
+	esac
+	return 0
+}
+
 # STATE<TAB>BRANCH<TAB>REF<TAB>TRACK, judged once. A caller that classified
 # inside a command substitution would lose the result to the subshell.
 # STATE is merged / opened / closed / none / unknown, where `none` means the
@@ -313,7 +341,11 @@ classify_branches() {
 		[[ -n "$branch" ]] || continue
 		[[ "$branch" == "$DEFAULT" ]] && continue
 		if [[ -z "$FORGE" ]]; then
-			emit_class 'unknown' "$branch" '' "$track"
+			if branch_is_unstarted "$branch"; then
+				emit_class 'unstarted' "$branch" '' "$track"
+			else
+				emit_class 'unknown' "$branch" '' "$track"
+			fi
 			continue
 		fi
 		answer=$(best_state_for "$branch" "$FORGE_STATES")
@@ -321,12 +353,26 @@ classify_branches() {
 			answer=$(best_state_for "$branch" "$(forge_branch_state_one "$branch")")
 		fi
 		if [[ -z "$answer" ]]; then
-			emit_class 'none' "$branch" '' "$track"
+			if branch_is_unstarted "$branch"; then
+				emit_class 'unstarted' "$branch" '' "$track"
+			else
+				emit_class 'none' "$branch" '' "$track"
+			fi
 			continue
 		fi
 		IFS=$'\t' read -r state ref <<<"$answer"
 		emit_class "$state" "$branch" "$ref" "$track"
 	done < <(git_in for-each-ref --format='%(refname:short)%09%(upstream:track)' refs/heads 2>/dev/null)
+	return 0
+}
+
+unstarted_count() {
+	local state
+	local n=0
+	while IFS=$'\t' read -r state _ _ _; do
+		[[ "$state" == "unstarted" ]] && n=$((n + 1))
+	done <<<"$BRANCH_CLASS"
+	printf '%d' "$n"
 	return 0
 }
 
@@ -490,7 +536,7 @@ count_lines() {
 }
 
 report_repo() {
-	local branches abandoned worktrees changes issues plans total
+	local branches abandoned worktrees changes issues plans hidden
 
 	DEFAULT="$(default_branch)"
 	BASE="$(base_ref "$DEFAULT")"
@@ -508,6 +554,7 @@ report_repo() {
 	if [[ -n "$FORGE" ]]; then
 		FORGE_STATES="$(forge_branch_states)"
 	fi
+	WORKTREE_BRANCHES="|$(worktree_branches | tr '\n' '|')"
 	BRANCH_CLASS="$(classify_branches)"
 	CLEANUP="$(merged_branch_names)"
 
@@ -518,10 +565,7 @@ report_repo() {
 	issues="$(section_issues)" || fail_section section_issues
 	plans="$(section_plans)" || fail_section section_plans
 
-	total=$(($(count_lines "$branches") + $(count_lines "$abandoned") + $(count_lines "$worktrees") +
-		$(count_lines "$CHANGES") + $(count_lines "$ISSUES") + $(count_lines "$plans")))
-
-	printf '%s — %d half-done\n' "${REPO##*/}" "$total"
+	printf '%s — %d unfinished branch(es)\n' "${REPO##*/}" "$(count_lines "$branches")"
 	emit_bounded 'branch(es)' "$branches"
 	emit_bounded 'abandoned branch(es)' "$abandoned"
 	emit_bounded 'worktree(s)' "$worktrees"
@@ -529,6 +573,13 @@ report_repo() {
 	emit_bounded 'issue line(s)' "$issues"
 	emit_bounded 'plan(s)' "$plans"
 
+	printf ' %-9s %s abandoned · %s worktree(s) · %s open change(s) · %s filed issue(s) · %s plan(s) with gaps\n' \
+		'COUNTS' "$(count_lines "$abandoned")" "$(count_lines "$worktrees")" \
+		"$(count_lines "$CHANGES")" "$(count_lines "$ISSUES")" "$(count_lines "$plans")"
+	hidden="$(unstarted_count)"
+	if [[ "$hidden" -gt 0 ]]; then
+		printf ' %-9s %s\n' 'NOTE' "$hidden branch(es) hidden: nothing committed, no worktree, no change ever opened"
+	fi
 	if [[ -n "$CLEANUP" ]]; then
 		printf ' %-9s %s\n' 'MERGED' "$(bound_list "$CLEANUP") — merged on the forge; cleanup, not unfinished work"
 	fi

@@ -148,6 +148,59 @@ describe('branch state comes from the forge, not from git topology', () => {
   });
 });
 
+describe('branches that were never started', () => {
+  // A harness that makes a branch per worktree leaves dozens of empty ones.
+  // They crowd out the rows that matter, and a count that is loudly wrong in
+  // the alarming direction trains a reader to skim past the whole report.
+  test('nothing committed, no worktree and no change ever opened is hidden and counted', () => {
+    for (let i = 0; i < 3; i += 1) git(repo, box, 'branch', `worktree-agent-${i}`, 'main');
+    const out = withForge([]);
+    for (let i = 0; i < 3; i += 1) {
+      expect(lineFor(out, 'BRANCH', `worktree-agent-${i}`)).toBeUndefined();
+    }
+    expect(out).toContain('3 branch(es) hidden');
+    expect(out).toContain('nothing committed, no worktree, no change ever opened');
+  });
+
+  test('a branch with no commits but a worktree is NOT hidden — uncommitted work lives there', () => {
+    git(repo, box, 'branch', 'fix/uncommitted', 'main');
+    git(repo, box, 'worktree', 'add', '-q', join(box.root, 'wt-unc'), 'fix/uncommitted');
+    const out = withForge([]);
+    expect(lineFor(out, 'BRANCH', 'fix/uncommitted')).toBeDefined();
+    expect(out).not.toContain('branch(es) hidden');
+  });
+
+  test('a branch with commits is never hidden, whatever it is called', () => {
+    git(repo, box, 'checkout', '-q', '-b', 'worktree-agent-busy', 'main');
+    commitFile(repo, box, 'agent.txt', 'work\n', 'agent did something');
+    git(repo, box, 'checkout', '-q', 'main');
+    expect(lineFor(withForge([]), 'BRANCH', 'worktree-agent-busy')).toBeDefined();
+  });
+
+  test('a branch with an open change is never hidden, even with no commits', () => {
+    git(repo, box, 'branch', 'feat/empty-but-open', 'main');
+    const out = withForge([PR(5, 'feat/empty-but-open', 'OPEN')]);
+    expect(lineFor(out, 'BRANCH', 'feat/empty-but-open')).toContain('#5 open');
+  });
+
+  test('hiding still happens when the forge cannot be asked', () => {
+    for (let i = 0; i < 2; i += 1) git(repo, box, 'branch', `worktree-agent-${i}`, 'main');
+    const out = report([], { PATH: restrictedPath(box, BARE_TOOLS) });
+    expect(out).toContain('2 branch(es) hidden');
+    expect(lineFor(out, 'BRANCH', 'worktree-agent-0')).toBeUndefined();
+  });
+});
+
+describe('the headline says what it counts', () => {
+  test('it counts unfinished branches, and breaks the rest out separately', () => {
+    const out = withForge([PR(1, 'feat/squashed', 'MERGED'), PR(2, 'feat/unmerged', 'CLOSED')]);
+    // One branch row would be left; merged is cleanup and closed is abandoned.
+    expect(out).toMatch(/^repo — \d+ unfinished branch\(es\)/m);
+    expect(out).toContain('COUNTS');
+    expect(out).toMatch(/1 abandoned · \d+ worktree\(s\)/);
+  });
+});
+
 describe('worktrees', () => {
   test('a dirty worktree is flagged and warned against removing', () => {
     const wt = join(box.root, 'wt-dirty');
@@ -321,6 +374,6 @@ describe('several repositories', () => {
     const result = run([wip, '--no-forge', repo, second], box, box.root);
     expect(result.status).toBe(0);
     expect(result.stdout).toContain('repo — ');
-    expect(result.stdout).toContain('second — 0 half-done');
+    expect(result.stdout).toContain('second — 0 unfinished branch(es)');
   });
 });

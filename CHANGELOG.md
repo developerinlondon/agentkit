@@ -21,7 +21,18 @@ top and ships with the next tag.
   merged (cleanup), closed-without-merging (a decision), open, and never-opened
   (the interesting one). With no forge reachable there is no local rule to fall
   back to, so the branch state is reported as UNKNOWN and marked DEGRADED rather
-  than guessed at in the alarming direction
+  than guessed at in the alarming direction.
+  The headline counts unfinished branches only — branches, worktrees, issues and
+  plan gaps are four different things with four different remedies, and one
+  number covering all of them cannot be acted on; the rest are broken out on a
+  `COUNTS` line. A branch with nothing committed, no worktree checked out on it,
+  and no change ever opened is hidden as never-started, which on one real
+  repository removed 20 of 41 branches (all worktree-harness bookkeeping) and
+  took the headline from 150 to 4. The rule is structural rather than by name:
+  having commits disqualifies a branch from being hidden, so it cannot bury a
+  harness branch that did real work, and a dirty worktree keeps a zero-commit
+  branch visible because that is where uncommitted work lives. What is hidden is
+  counted and named in a NOTE
 - feat(plan-gate): a plan may not be treated as done while its own gaps section
   lists work that is neither ticked, struck through, nor carrying an issue
   reference. `tools/plan-gate` is the single parser; `plan-police` is a

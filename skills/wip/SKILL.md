@@ -24,17 +24,18 @@ wip --no-forge            # git and plans only, no network
 ## Reading the output
 
 ```
-neutron — 9 half-done
- BRANCH    feat/incidents-ui           0d    1 commits  !633 open
- BRANCH    fix/core-name-everywhere    7d    0 commits  no MR/PR ever opened
- ABANDONED feat/model-catalog-auto     5d   !492 closed without merging
+neutron — 4 unfinished branch(es)
+ BRANCH    feat/incidents-ui           0d   1 commits  !633 open
+ BRANCH    fix/core-name-everywhere    7d   0 commits  no MR/PR ever opened
+ ABANDONED feat/model-catalog-auto     5d  !492 closed without merging
  WORKTREE  wt/corename2                DIRTY 11 modified, 2 untracked — do NOT remove at ~/wt/corename2
- MR/PR     !628 (fix/voice)            held: no approving review
+ MR/PR     !633 (feat/incidents-ui)    held: no approving review
  FILED     #311 #312 — authored, open, unfixed
  DEFERRED  #313 — carved out of other work
  PLAN      plans/057.md                2 gap(s) unclosed
+ COUNTS    1 abandoned · 20 worktree(s) · 2 open change(s) · 100 filed issue(s) · 1 plan(s) with gaps
+ NOTE      20 branch(es) hidden: nothing committed, no worktree, no change ever opened
  MERGED    fix/old — merged on the forge; cleanup, not unfinished work
- NOTE      unrecognised forge host 'git.example.com' — merge requests and issues not checked
 ```
 
 | Row         | Means                                                                        |
@@ -47,11 +48,31 @@ neutron — 9 half-done
 | `DEFERRED`  | filed issues whose text says they were carved out of other work              |
 | `PLAN`      | a plan whose gaps section lists work neither closed nor tracked              |
 | `MERGED`    | merged on the forge — cleanup, not unfinished work                           |
-| `NOTE`      | something that was **not** checked, and why                                  |
+| `COUNTS`    | the other kinds of outstanding thing, broken out rather than summed          |
+| `NOTE`      | something that was **not** checked or was hidden, and why                    |
 
 A `NOTE` row is the important one. An absent section means "nothing found";
 a `NOTE` means "not looked at". They are never conflated, and a bounded list
 always says how many entries it dropped.
+
+## What the headline counts, and what is hidden
+
+The headline is **unfinished branches only**. Branches, worktrees, issues and plan gaps are four
+different kinds of thing with four different remedies, so summing them into one number gives a
+figure nobody can act on. The rest are broken out on the `COUNTS` line.
+
+A branch is hidden when **nothing was committed, no worktree is checked out on it, and no change
+was ever opened**. Nothing was started, so there is nothing to finish. On one real repository that
+removed 20 of 41 branches — all created by a worktree harness — and took the headline from a
+meaningless 150 to an actionable 4.
+
+The test is structural, never by name. A `worktree-agent-*` pattern would look tidier and is worse:
+it would hide such a branch that _does_ carry commits, which is real unfinished work. Having commits
+disqualifies a branch from being hidden, so this rule cannot make that mistake. Nor can it hide the
+case that matters most — a branch with no commits but a **dirty worktree**, where uncommitted work
+actually lives; the worktree keeps it visible.
+
+Whatever is hidden is counted and stated in a `NOTE`. Silent omission reads as "nothing else to see".
 
 ## Never remove a DIRTY worktree
 

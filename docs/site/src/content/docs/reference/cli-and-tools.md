@@ -175,7 +175,27 @@ wip [--limit N] [--no-forge] [REPO...]
 | `DEFERRED`  | filed issues whose text says they were carved out of other work              |
 | `PLAN`      | a plan whose gaps section lists work neither closed nor tracked              |
 | `MERGED`    | merged on the forge — cleanup, not unfinished work                           |
-| `NOTE`      | something that was **not** checked, and why                                  |
+| `COUNTS`    | the other kinds of outstanding thing, broken out rather than summed          |
+| `NOTE`      | something that was **not** checked or was hidden, and why                    |
+
+### What the headline counts, and what is hidden
+
+The headline is **unfinished branches only**. Branches, worktrees, issues and plan gaps are four
+different kinds of thing with four different remedies, so summing them into one number gives a
+figure nobody can act on. The rest are broken out on the `COUNTS` line.
+
+A branch is hidden when **nothing was committed, no worktree is checked out on it, and no change
+was ever opened**. Nothing was started, so there is nothing to finish. On one real repository that
+removed 20 of 41 branches — all created by a worktree harness — and took the headline from a
+meaningless 150 to an actionable 4.
+
+The test is structural, never by name. A `worktree-agent-*` pattern would look tidier and is worse:
+it would hide such a branch that _does_ carry commits, which is real unfinished work. Having commits
+disqualifies a branch from being hidden, so this rule cannot make that mistake. Nor can it hide the
+case that matters most — a branch with no commits but a **dirty worktree**, where uncommitted work
+actually lives; the worktree keeps it visible.
+
+Whatever is hidden is counted and stated in a `NOTE`. Silent omission reads as "nothing else to see".
 
 ### Branch state comes from the forge
 
