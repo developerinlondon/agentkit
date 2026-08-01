@@ -46,8 +46,14 @@ auto-inverts baked diagrams) — never re-explain or re-style these basics. Also
 agent action needed: a **dark/light theme toggle** (persisted; mermaid
 re-renders on flip), a **labelled section nav** — a sticky top bar built from the
 page's `h2` titles, with the current section highlighted — on docs with ≥3 `h2`
-sections (a long title is clipped for the tab and kept in full on hover; set
-`data-nav="Short"` on the heading to name the tab yourself), one persistent **deck nav bar** (progress, slide counter,
+sections. **Name every tab yourself whenever a title runs past ~28 characters** —
+write the heading as raw HTML, which markdown passes straight through:
+`<h2 data-nav="Estimate">Two to four weeks, not two months</h2>`. A derived tab
+is a guess and is marked with an ellipsis to say so; a page whose nav reads
+`Estimate · SSH · Language · Architecture` is doing the reader's work, one that
+reads `Two to four weeks… · SSH is a day of work…` is not. Tabs are labels, not
+sentences: one or two words, no trailing punctuation, and the full title stays
+on hover, one persistent **deck nav bar** (progress, slide counter,
 prev/next, toggle) with arrow/space/Home/End keys and swipe (backward swipe
 may be claimed by the browser's history gesture),
 **click-to-expand** on every `.figure`, and **hover lift/glow** on every card

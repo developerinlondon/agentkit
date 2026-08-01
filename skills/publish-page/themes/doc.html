@@ -375,18 +375,24 @@
   // A section title is written to be read in place, so it is usually too long
   // for a tab. data-nav on the heading is the author's override; otherwise the
   // title is clipped at a word boundary and the full text stays in the tooltip.
+  // A derived tab is always a guess: "One service, one database, no agent, no
+  // operator" shortens to "One service", which reads as a complete thought and
+  // is not one. Every derived label therefore ends in an ellipsis, so a reader
+  // can tell a name the author chose from one the page invented. Name the tab
+  // with data-nav and it is used verbatim.
   function navLabel(h) {
     const full = h.textContent.trim();
-    if (h.dataset.nav) return h.dataset.nav;
+    if (h.dataset.nav) return h.dataset.nav.trim();
     if (full.length <= 28) return full;
-    // A title's first clause is usually its subject — "SSH is a day of work,
-    // not a reason to keep Coder" tabs far better as "SSH is a day of work"
-    // than as a blind character clip.
     const clause = full.split(/\s*[,—:(]\s*/)[0];
-    if (clause.length >= 4 && clause.length <= 28) return clause;
-    const cut = full.slice(0, 28);
-    const at = cut.lastIndexOf(" ");
-    return (at > 12 ? cut.slice(0, at) : cut).replace(/[\s,.;:—-]+$/, "") + "…";
+    const stem = clause.length >= 4 && clause.length <= 28
+      ? clause
+      : (() => {
+        const cut = full.slice(0, 28);
+        const at = cut.lastIndexOf(" ");
+        return at > 12 ? cut.slice(0, at) : cut;
+      })();
+    return stem.replace(/[\s,.;:—-]+$/, "") + "…";
   }
 
   const heads = [...document.querySelectorAll("main h2")];

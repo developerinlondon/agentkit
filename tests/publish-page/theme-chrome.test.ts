@@ -48,7 +48,14 @@ describe('labelled section nav', () => {
   });
 
   test('an author can override a long title with data-nav', () => {
-    expect(doc).toContain('if (h.dataset.nav) return h.dataset.nav');
+    expect(doc).toContain('if (h.dataset.nav) return h.dataset.nav.trim();');
+  });
+
+  test('a derived label is always marked as an abbreviation', () => {
+    // "One service, one database, no agent, no operator" shortens to "One
+    // service", which reads as a complete thought and is not one. The ellipsis
+    // is what separates a name the author chose from one the page invented.
+    expect(doc).toContain('+ "…";');
   });
 
   test('the sticky bar leaves room for anchors and hides itself in print', () => {
