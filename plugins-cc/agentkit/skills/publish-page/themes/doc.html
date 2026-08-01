@@ -333,6 +333,10 @@
     display: flex; gap: 0.1rem; align-items: center;
     overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none;
     background: var(--navy-deep); border-bottom: 1px solid var(--line);
+    /* The theme toggle is fixed over this corner; fading the tail keeps a tab
+       from being half-hidden under it and reads as "there is more to scroll". */
+    -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 4rem), transparent);
+    mask-image: linear-gradient(90deg, #000 calc(100% - 4rem), transparent);
   }
   .secnav[hidden] { display: none; }
   .secnav::-webkit-scrollbar { display: none; }
@@ -374,8 +378,13 @@
   function navLabel(h) {
     const full = h.textContent.trim();
     if (h.dataset.nav) return h.dataset.nav;
-    if (full.length <= 26) return full;
-    const cut = full.slice(0, 26);
+    if (full.length <= 28) return full;
+    // A title's first clause is usually its subject — "SSH is a day of work,
+    // not a reason to keep Coder" tabs far better as "SSH is a day of work"
+    // than as a blind character clip.
+    const clause = full.split(/\s*[,—:(]\s*/)[0];
+    if (clause.length >= 4 && clause.length <= 28) return clause;
+    const cut = full.slice(0, 28);
     const at = cut.lastIndexOf(" ");
     return (at > 12 ? cut.slice(0, at) : cut).replace(/[\s,.;:—-]+$/, "") + "…";
   }
