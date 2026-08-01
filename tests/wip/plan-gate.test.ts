@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { makeSandbox, repoRoot, sandboxEnv, type Sandbox, toolTimeoutMs } from './fixture';
@@ -235,6 +235,21 @@ describe('path matching', () => {
       });
       expect(matched.status, `${path} was discovered but not matched`).toBe(0);
     }
+  });
+
+  test('a symlinked --repo still matches its own plans', () => {
+    const repo = join(box.root, 'r4');
+    mkdirSync(join(repo, 'plans'), { recursive: true });
+    writeFileSync(join(repo, 'plans', 'p.md'), '# p\n');
+    const link = join(box.root, 'r4-link');
+    symlinkSync(repo, link);
+
+    const viaLink = spawnSync(planGate, ['--repo', link, '--matches', join(link, 'plans', 'p.md')], {
+      encoding: 'utf8',
+      env: sandboxEnv(box),
+      timeout: toolTimeoutMs,
+    });
+    expect(viaLink.status, 'a symlinked --repo stopped recognising its own plan').toBe(0);
   });
 
   test('--matches accepts a plan path that does not exist yet', () => {

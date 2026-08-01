@@ -132,16 +132,32 @@ discover_plans() {
 	return 0
 }
 
+# The physical path of a file that need not exist yet: its directory is resolved
+# through symlinks, its name kept. Both sides of the comparison below must be
+# physical or the match fails wherever a symlink sits above the repository —
+# macOS reaches every temporary directory through /var -> /private/var, and git
+# reports the resolved form while the harness passes the unresolved one. The
+# failure is silent and open: the path stops looking like a plan, and the gate
+# waves the edit through.
+physical_path() {
+	local path="$1" dir base
+	base="${path##*/}"
+	dir="${path%/*}"
+	[[ "$dir" == "$path" ]] && dir="."
+	if dir="$(cd "$dir" 2>/dev/null && pwd -P)"; then
+		printf '%s/%s' "$dir" "$base"
+		return 0
+	fi
+	printf '%s' "$path"
+	return 0
+}
+
 # Whether a path would be judged as a plan. plan-police asks rather than
 # matching for itself, so the hook and the gate cannot disagree.
 path_is_plan() {
-	local path="$1" repo="$2" entry candidate dir
+	local path="$1" repo="$2" entry candidate
 	[[ "$path" == *.md ]] || return 1
-	if [[ "$path" != /* ]]; then
-		dir="${path%/*}"
-		[[ "$dir" == "$path" ]] && dir="."
-		path="$(cd "$dir" 2>/dev/null && pwd)/${path##*/}" || return 1
-	fi
+	path="$(physical_path "$path")"
 	while IFS= read -r entry; do
 		[[ -n "$entry" ]] || continue
 		candidate="$repo/$entry"
@@ -355,7 +371,7 @@ if [[ -n "$MATCH_PATH" && "$REPO_GIVEN" == 0 ]]; then
 	[[ "$MATCH_DIR" == "$MATCH_PATH" ]] && MATCH_DIR="."
 	REPO="$(git -C "$MATCH_DIR" rev-parse --show-toplevel 2>/dev/null || printf '%s' "$PWD")"
 fi
-if ! REPO="$(cd "$REPO" 2>/dev/null && pwd)"; then
+if ! REPO="$(cd "$REPO" 2>/dev/null && pwd -P)"; then
 	printf 'plan-gate: unreadable repo\n' >&2
 	exit 3
 fi

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { copyFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { git, makeSandbox, repoRoot, sandboxEnv, type Sandbox, toolTimeoutMs, writeExecutable } from './fixture';
@@ -156,6 +156,29 @@ describe('the gate', () => {
       tool_input: { file_path: plan, old_string: 'state [x] (a|b) *: pending', new_string: 'Status: Done' },
     };
     expect(ask(deployedHook(), payload).verdict).toBe('deny');
+  });
+});
+
+describe('paths reached through a symlink', () => {
+  // macOS reaches every temporary directory via /var -> /private/var, so git
+  // reports one form and the harness passes the other. A path that stops
+  // looking like a plan fails OPEN and in silence, which is the one direction
+  // this gate must never fail in. Reproduced here on every platform.
+  test('a plan under a symlinked repository path is still gated', () => {
+    const link = join(box.root, 'link-to-repo');
+    symlinkSync(repo, link);
+    const through = join(link, 'plans', '057.md');
+
+    const matched = spawnSync(join(repoRoot, 'tools', 'plan-gate'), ['--matches', through], {
+      encoding: 'utf8',
+      cwd: repo,
+      env: sandboxEnv(box),
+      timeout: toolTimeoutMs,
+    });
+    expect(matched.status, 'the symlinked path was not recognised as a plan').toBe(0);
+
+    const { verdict } = ask(deployedHook(), edit({ file_path: through }));
+    expect(verdict).toBe('deny');
   });
 });
 

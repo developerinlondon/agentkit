@@ -1,4 +1,4 @@
-import { chmodSync, mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -12,9 +12,14 @@ export interface Sandbox {
   binDir: string;
 }
 
-/** A temporary HOME, so no tool under test reads the developer's real config. */
+/**
+ * A temporary HOME, so no tool under test reads the developer's real config.
+ * The root is resolved through symlinks: macOS reaches every temporary
+ * directory via /var -> /private/var, and git reports the resolved form, so an
+ * unresolved fixture path compares unequal to everything the tools produce.
+ */
 export function makeSandbox(prefix: string): Sandbox {
-  const root = mkdtempSync(join(tmpdir(), prefix));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), prefix)));
   const home = join(root, 'home');
   const binDir = join(root, 'bin');
   mkdirSync(home, { recursive: true });
