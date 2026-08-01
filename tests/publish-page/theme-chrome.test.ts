@@ -111,8 +111,31 @@ describe('callout severities', () => {
 
     test(`${name} carries severity on the rail and label, never on body text`, () => {
       for (const s of SEVERITIES.filter((x) => x !== 'note')) {
-        expect(css).toContain(`.callout.${s} { border-left-color: var(--${s}-ink); background: var(--${s}-bg); }`);
+        expect(css).toContain(`.callout.${s} { border-left-color: var(--${s}-ink); }`);
         expect(css).toContain(`.callout.${s} strong { color: var(--${s}-ink); }`);
+      }
+    });
+
+    test(`${name} callouts sit on --card so they lift off the page`, () => {
+      // A severity-tinted ground presses the callout INTO the paper; the rail
+      // carries the colour and the card carries the lift.
+      expect(css).toMatch(/\.callout \{[\s\S]*?background: var\(--card\);/);
+      for (const s of SEVERITIES.filter((x) => x !== 'note')) {
+        expect(css).not.toContain(`.callout.${s} { border-left-color: var(--${s}-ink); background:`);
+      }
+    });
+
+    test(`${name} label ink clears 4.5:1 on --card, the ground callouts render on`, () => {
+      // The guard above checks the tokens as an offered pair; this checks the
+      // pair the theme itself puts on screen. Both are real, and only this one
+      // changes when the callout ground changes.
+      for (const palette of ['dark', 'light'] as const) {
+        const t = tokens(css, palette);
+        for (const ink of ['--note-ink', '--warn-ink', '--alarm-ink', '--ok-ink', '--muted']) {
+          expect({ palette, ink, pass: ratio(t[ink], t['--card']) >= 4.5 })
+            .toEqual({ palette, ink, pass: true });
+        }
+        expect(ratio(t['--ink'], t['--card'])).toBeGreaterThanOrEqual(4.5);
       }
     });
   }

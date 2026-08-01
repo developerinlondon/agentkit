@@ -169,19 +169,19 @@
 
   .callout {
     border: 1px solid var(--line); border-left: 3px solid var(--note-ink);
-    background: var(--note-bg); border-radius: 8px;
+    background: var(--card); border-radius: 8px;
     padding: 0.8rem 1.1rem; margin: 1rem 0; max-width: 68ch;
   }
   .callout strong { color: var(--note-ink); }
   /* Severity is carried by the rail and the label, never by body text: an
      amber paragraph misses contrast on its own ground in light mode. */
-  .callout.warn { border-left-color: var(--warn-ink); background: var(--warn-bg); }
+  .callout.warn { border-left-color: var(--warn-ink); }
   .callout.warn strong { color: var(--warn-ink); }
-  .callout.alarm { border-left-color: var(--alarm-ink); background: var(--alarm-bg); }
+  .callout.alarm { border-left-color: var(--alarm-ink); }
   .callout.alarm strong { color: var(--alarm-ink); }
-  .callout.ok { border-left-color: var(--ok-ink); background: var(--ok-bg); }
+  .callout.ok { border-left-color: var(--ok-ink); }
   .callout.ok strong { color: var(--ok-ink); }
-  .callout.note { border-left-color: var(--muted); background: var(--code-bg); }
+  .callout.note { border-left-color: var(--muted); }
   .callout.note strong { color: var(--muted); }
   .figure {
     background: radial-gradient(ellipse at 30% 0%, var(--fig-glow) 0%, var(--navy-deep) 70%);
