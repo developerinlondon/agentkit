@@ -75,7 +75,11 @@ function installFakeGh(
 
 function withForge(prs: unknown[], byHead: Record<string, unknown[]> = {}) {
   installFakeGh(prs, [], byHead);
-  return run([wip, '--limit', '0', repo], box, box.root).stdout;
+  const result = run([wip, '--limit', '0', repo], box, box.root);
+  // A crashed run prints fewer rows, which reads exactly like a clean report.
+  // Assert the status, or every absence-assertion below can pass vacuously.
+  expect(result.status, result.stderr).toBe(0);
+  return result.stdout;
 }
 
 describe('branch state comes from the forge, not from git topology', () => {

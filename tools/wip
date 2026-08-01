@@ -350,7 +350,7 @@ branch_is_cleanup() {
 
 # Merged branches are cleanup, not unfinished work, and leave this section.
 section_branches() {
-	local state branch track ref ahead days note body=""
+	local state branch track ref ahead days body="" note=""
 	while IFS=$'\t' read -r state branch ref track; do
 		[[ "$ref" == "-" ]] && ref=""
 		[[ "$track" == "-" ]] && track=""
@@ -470,6 +470,17 @@ section_plans() {
 	return 0
 }
 
+# A section builds its rows in a command substitution, so a failure inside one
+# yields an empty string — indistinguishable from "nothing to report" in a tool
+# whose whole purpose is that work does not disappear quietly. Each capture is
+# guarded so a failure is loud and non-zero instead. The calls stay direct:
+# dispatching through a variable would blind shellcheck's dead-code check, which
+# has already caught real dead code in this file.
+fail_section() {
+	printf 'wip: the %s section failed — this report is INCOMPLETE\n' "$1" >&2
+	exit 3
+}
+
 count_lines() {
 	if [[ -z "$1" ]]; then
 		printf '0'
@@ -500,12 +511,12 @@ report_repo() {
 	BRANCH_CLASS="$(classify_branches)"
 	CLEANUP="$(merged_branch_names)"
 
-	branches="$(section_branches)"
-	abandoned="$(section_abandoned)"
-	worktrees="$(section_worktrees)"
-	changes="$(section_changes)"
-	issues="$(section_issues)"
-	plans="$(section_plans)"
+	branches="$(section_branches)" || fail_section section_branches
+	abandoned="$(section_abandoned)" || fail_section section_abandoned
+	worktrees="$(section_worktrees)" || fail_section section_worktrees
+	changes="$(section_changes)" || fail_section section_changes
+	issues="$(section_issues)" || fail_section section_issues
+	plans="$(section_plans)" || fail_section section_plans
 
 	total=$(($(count_lines "$branches") + $(count_lines "$abandoned") + $(count_lines "$worktrees") +
 		$(count_lines "$CHANGES") + $(count_lines "$ISSUES") + $(count_lines "$plans")))
