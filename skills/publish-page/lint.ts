@@ -14,13 +14,15 @@ const TAG_RE = /<(\/?)(?:div|section|figure)\b/gi;
 const NEARBY = 900;
 
 // d2 salts its own classes as .d2-<digits> and always ships
-// .background-color-N7{background-color:#FFFFFF}. Scanning that as page CSS
-// fires the white-ground warning on every correct d2 figure, which teaches the
-// author to ignore the one case it exists to catch.
+// .background-color-N7{background-color:#FFFFFF}, which reads as a white page
+// ground. Only those rules are dropped: discarding the whole element would take
+// an author's own declarations with them, and the house theme ships one <style>
+// for the entire page.
+const D2_RULE = /[^{}]*\.d2-(?:\d+|mono)[^{}]*\{[^}]*\}/g;
+
 function styleBlocks(html: string): string {
   return [...html.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi)]
-    .map((m) => m[1])
-    .filter((css) => !/\.d2-(?:\d|mono)/.test(css))
+    .map((m) => m[1].replace(D2_RULE, ""))
     .join("\n");
 }
 
@@ -84,11 +86,14 @@ export function lintFigures(html: string, allowBareSvg = false): LintResult {
   const marks = [...html.matchAll(SOURCE_MARK)].map((m) => m.index ?? 0);
   if (marks.length === 0) return result;
 
+  // A warning, not an error: the same shape is produced by a page that documents
+  // d2 CSS in a fence, and blocking that publish is worse than the leak it
+  // guards — which the renderer no longer emits in the first place.
   if (leakedStylesheet(html)) {
-    result.errors.push(
-      "a diagram's stylesheet leaked into the page as text — the figure will render as "
-        + "raw CSS. A blank line or tab-indented line inside an inlined SVG ends the "
-        + "markdown HTML block; re-render the SVG so it carries neither",
+    result.warnings.push(
+      "a d2 selector appears as page text — if a figure renders as raw CSS, the inlined "
+        + "SVG carries a blank or indented line and needs re-rendering; if you are "
+        + "documenting d2 CSS deliberately, ignore this",
     );
   }
 
