@@ -5,6 +5,24 @@ top and ships with the next tag.
 
 ## [Unreleased]
 
+- feat(wip): `wip` reports what was started and not finished in a repository —
+  unmerged branches with age and commit count, worktrees with a loud warning on
+  dirty ones, open merge requests or pull requests and what holds each, open
+  issues you authored (separating those whose text says they were carved out of
+  other work), and plans with unclosed gaps. GitHub and GitLab both resolve from
+  the `origin` host, including self-hosted; a repository with neither CLI still
+  reports the git-only sections and names in a `NOTE` what went unchecked.
+  Merged-ness is decided by merging into the default branch in memory and
+  comparing trees: an ancestry count calls a squash-merged branch outstanding
+  forever, and neither a two-dot nor a three-dot diff answers the question
+- feat(plan-gate): a plan may not be treated as done while its own gaps section
+  lists work that is neither ticked, struck through, nor carrying an issue
+  reference. `tools/plan-gate` is the single parser; `plan-police` is a
+  PreToolUse hook on `Edit|Write` that judges the content an edit is about to
+  land and refuses the edit, with `AGENTKIT_SKIP_HOOKS=plan-police` as the
+  recorded exception. Plan layout is discovered from common conventions and
+  overridable per repository under `wip:` in `.agentkit/config.yaml`
+
 ## v0.6.3 — 2026-07-31
 
 - perf(ci): `agentkit:test-full` runs the slice inventory as concurrent per-file

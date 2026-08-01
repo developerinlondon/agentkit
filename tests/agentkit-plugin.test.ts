@@ -101,8 +101,10 @@ const PRE_TOOL_USE_HOOKS = [
   'mr-police.sh',
   'resource-police.sh',
 ];
+// Not a Bash gate: it judges the content an Edit or Write is about to land.
+const PRE_TOOL_USE_WRITE_HOOKS = ['plan-police.sh'];
 const POST_TOOL_USE_HOOKS = ['format-police.sh', 'coding-police.sh', 'comment-police.sh'];
-const ALL_POLICE_HOOKS = [...PRE_TOOL_USE_HOOKS, ...POST_TOOL_USE_HOOKS];
+const ALL_POLICE_HOOKS = [...PRE_TOOL_USE_HOOKS, ...PRE_TOOL_USE_WRITE_HOOKS, ...POST_TOOL_USE_HOOKS];
 // The merge gate is consent-gated: it ships in agentkit-adversarial-review, never in core.
 const REVIEW_HOOKS = ['fail-closed-hook.sh', 'review-police.sh'];
 const MEMORY_HOOKS = ['brain-index.sh', 'brain-inject.sh'];
@@ -163,18 +165,21 @@ describe('agentkit plugin hooks', () => {
   test('hooks.json wires exactly the police hooks under ${CLAUDE_PLUGIN_ROOT}', () => {
     const hooks = readJson('hooks', 'hooks.json').hooks;
 
-    // One Bash block: the merge-shaped matcher exists only to reach
-    // review-police, so it leaves with it.
-    expect(hooks.PreToolUse).toHaveLength(1);
+    // Two blocks: the Bash gates, and the write gates that judge file content.
+    // The merge-shaped matcher exists only to reach review-police, so it leaves
+    // with it.
+    expect(hooks.PreToolUse).toHaveLength(2);
     expect(hooks.PreToolUse[0].matcher).toBe('Bash');
     expect(commandBasenames(hooks.PreToolUse[0].hooks).sort()).toEqual([...PRE_TOOL_USE_HOOKS].sort());
+    expect(hooks.PreToolUse[1].matcher).toBe('Edit|Write');
+    expect(commandBasenames(hooks.PreToolUse[1].hooks).sort()).toEqual([...PRE_TOOL_USE_WRITE_HOOKS].sort());
 
     expect(hooks.PostToolUse).toHaveLength(1);
     expect(hooks.PostToolUse[0].matcher).toBe('Edit|Write');
     expect(commandBasenames(hooks.PostToolUse[0].hooks).sort()).toEqual([...POST_TOOL_USE_HOOKS].sort());
 
     // Every command must resolve inside the plugin, never a ~/.claude path.
-    const allEntries = [...hooks.PreToolUse[0].hooks, ...hooks.PostToolUse[0].hooks];
+    const allEntries = [...hooks.PreToolUse.flatMap((group: any) => group.hooks), ...hooks.PostToolUse[0].hooks];
     for (const entry of allEntries) {
       expect(entry.command).toStartWith('${CLAUDE_PLUGIN_ROOT}/hooks/');
       expect(entry.command).not.toContain('.claude/hooks');
@@ -198,7 +203,8 @@ describe('agentkit plugin hooks', () => {
   test('every referenced police script exists and is executable', () => {
     // hooks.json must reference these and they must be present + runnable.
     const referenced = new Set(
-      readJson('hooks', 'hooks.json').hooks.PreToolUse[0].hooks
+      readJson('hooks', 'hooks.json').hooks.PreToolUse
+        .flatMap((group: { hooks: { command: string }[] }) => group.hooks)
         .concat(readJson('hooks', 'hooks.json').hooks.PostToolUse[0].hooks)
         .map((entry: { command: string }) => basename(entry.command)),
     );

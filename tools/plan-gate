@@ -1,0 +1,420 @@
+#!/usr/bin/env bash
+# plan-gate — judge whether a plan may be treated as done.
+#
+# A plan's own gaps section is the most honest record of what is outstanding,
+# and nothing reads it. This is the single parser for that section: `wip` calls
+# it to report, plan-police calls it to refuse an edit that declares a plan done
+# while a gap stands. A second scanner would eventually disagree with this one.
+#
+# A gap stops blocking when the author ticks it or names the issue that now
+# carries it — nothing bespoke to remember.
+#
+# Exit: 0 nothing blocking, 1 blocking gaps, 2 usage, 3 fault (unreadable input).
+set -euo pipefail
+
+VERSION=1
+
+usage() {
+	cat <<'EOF'
+Usage: plan-gate [options] [PLAN...]
+
+  PLAN               plan file or directory. Default: plans discovered under --repo.
+
+  --repo DIR         repository root to discover plans in (default: cwd)
+  --stdin NAME       read one plan's content from stdin; NAME is the path to report
+  --matches PATH     exit 0 if PATH would be judged as a plan, 1 if not
+  --require-done     only report blocking gaps for plans that mark themselves done
+  --all              also list gaps that are closed or tracked
+  --tsv              machine output: STATUS<TAB>PLAN<TAB>LINE<TAB>TEXT
+  --quiet            no output; exit status only
+  --list-plans       print the plan files that would be judged, then exit
+  --version          print the tool version
+  -h, --help         this text
+
+Exit: 0 nothing blocking, 1 blocking gaps, 2 usage, 3 fault.
+EOF
+}
+
+# Defaults, each overridable from the `wip:` section of the agentkit config.
+GAP_HEADINGS='(known|open|remaining|outstanding|unresolved|deferred) *(gaps?|work|items?)?|gaps?|not done|follow.?ups?|todo'
+DONE_MARKERS='^[[:space:]]*(#+[[:space:]]*)?(\*\*|__)?status(\*\*|__)?[[:space:]]*[:=][[:space:]]*[^[:alnum:]]*(done|complete|completed|shipped|delivered|finished|closed)\b'
+PLAN_PATHS=""
+
+# A forge issue reference: GitHub/GitLab number, GitLab MR, or an issue/MR/PR
+# URL. A Jira-style KEY-123 is deliberately absent — nothing tells it apart from
+# UTF-8 or SHA-256, and a false "tracked" is the direction that loses a gap.
+# Jira shops add the pattern back through the `issue-refs` config key.
+ISSUE_REFS='(^|[^[:alnum:]_/])(#[0-9]+|![0-9]+|[Gg][Hh]-[0-9]+)([^[:alnum:]]|$)|https?://[^[:space:]]*(/issues/|/-/issues/|/merge_requests/|/pull/|/browse/)'
+
+# Emits the `wip:` section as key=value lines, so no caller re-parses YAML.
+read_wip_section() {
+	local file="$1"
+	[[ -f "$file" ]] || return 0
+	awk '
+		/^[^[:space:]#]/ { in_section = ($0 ~ /^wip:/); in_paths = 0; next }
+		!in_section { next }
+		{
+			line = $0
+			sub(/^[[:space:]]+/, "", line)
+			if (line ~ /^#/ || line == "") next
+			if (in_paths) {
+				if (line ~ /^-[[:space:]]*./) {
+					value = line
+					sub(/^-[[:space:]]*/, "", value)
+					gsub(/["'\'']/, "", value)
+					sub(/[[:space:]]+#.*$/, "", value)
+					print "plan-path=" value
+					next
+				}
+				in_paths = 0
+			}
+			if (line ~ /^plan-paths:[[:space:]]*$/) { in_paths = 1; next }
+			if (line !~ /^(gap-headings|done-markers|issue-refs):[[:space:]]*./) next
+			key = line
+			sub(/:.*/, "", key)
+			sub(/^[^:]*:[[:space:]]*/, "", line)
+			gsub(/^["'\'']|["'\'']$/, "", line)
+			if (line == "") next
+			print key "=" line
+		}
+	' "$file"
+	return 0
+}
+
+# Global config first, then the repository's, so a repository setting wins.
+load_config() {
+	local repo="$1" file key value
+	local global="${AGENTKIT_CONFIG:-${XDG_CONFIG_HOME:-$HOME/.config}/agentkit/config.yaml}"
+	for file in "$global" "$repo/.agentkit/config.yaml"; do
+		while IFS='=' read -r key value; do
+			case "$key" in
+			gap-headings) GAP_HEADINGS="$value" ;;
+			done-markers) DONE_MARKERS="$value" ;;
+			issue-refs) ISSUE_REFS="$value" ;;
+			plan-path) PLAN_PATHS="$PLAN_PATHS$value"$'\n' ;;
+			esac
+		done < <(read_wip_section "$file")
+	done
+	return 0
+}
+
+# Conventions vary, so the default is a list of candidate roots rather than one
+# layout, and `wip.plan-paths` replaces the list outright.
+default_plan_paths() {
+	printf '%s\n' plans docs/plans doc/plans .omc/plans PLAN.md PLANS.md
+}
+
+configured_plan_paths() {
+	if [[ -n "$PLAN_PATHS" ]]; then
+		printf '%s' "$PLAN_PATHS"
+	else
+		default_plan_paths
+	fi
+	return 0
+}
+
+find_plan_files() {
+	find "$1" -type f -name '*.md' \
+		-not -path '*/node_modules/*' -not -path '*/.git/*' 2>/dev/null | sort
+}
+
+discover_plans() {
+	local repo="$1" entry candidate
+	while IFS= read -r entry; do
+		[[ -n "$entry" ]] || continue
+		candidate="$repo/$entry"
+		if [[ -d "$candidate" ]]; then
+			find_plan_files "$candidate"
+		elif [[ -f "$candidate" ]]; then
+			printf '%s\n' "$candidate"
+		fi
+	done < <(configured_plan_paths)
+	return 0
+}
+
+# Whether a path would be judged as a plan. plan-police asks rather than
+# matching for itself, so the hook and the gate cannot disagree.
+path_is_plan() {
+	local path="$1" repo="$2" entry candidate dir
+	[[ "$path" == *.md ]] || return 1
+	if [[ "$path" != /* ]]; then
+		dir="${path%/*}"
+		[[ "$dir" == "$path" ]] && dir="."
+		path="$(cd "$dir" 2>/dev/null && pwd)/${path##*/}" || return 1
+	fi
+	while IFS= read -r entry; do
+		[[ -n "$entry" ]] || continue
+		candidate="$repo/$entry"
+		if [[ "$path" == "$candidate" || "$path" == "$candidate"/* ]]; then
+			return 0
+		fi
+	done < <(configured_plan_paths)
+	return 1
+}
+
+# Emits STATUS<TAB>LINE<TAB>TEXT for every gap entry in the content on stdin.
+parse_gaps() {
+	awk -v gapre="$GAP_HEADINGS" -v refre="$ISSUE_REFS" '
+		BEGIN { fence = 0; insec = 0; seclvl = 0; baseind = -1; n = 0 }
+		{
+			raw = $0
+			sub(/\r$/, "", raw)
+			trimmed = raw
+			sub(/^[[:space:]]+/, "", trimmed)
+
+			# A heading inside a fenced block is sample text, not structure.
+			if (trimmed ~ /^(```|~~~)/) { fence = 1 - fence; next }
+			if (fence) next
+
+			if (trimmed ~ /^#+[[:space:]]/) {
+				lvl = 0
+				while (substr(trimmed, lvl + 1, 1) == "#") lvl++
+				htext = substr(trimmed, lvl + 1)
+				sub(/^[[:space:]]+/, "", htext)
+				sub(/[[:space:]]*#+[[:space:]]*$/, "", htext)
+				if (insec && lvl <= seclvl) insec = 0
+				if (!insec && tolower(htext) ~ ("^(" gapre ")$")) {
+					insec = 1; seclvl = lvl; baseind = -1
+				}
+				next
+			}
+			if (!insec) next
+
+			i = 1; ind = 0
+			while (1) {
+				c = substr(raw, i, 1)
+				if (c == " ") { ind++; i++ }
+				else if (c == "\t") { ind += 4; i++ }
+				else break
+			}
+			rest = substr(raw, i)
+
+			if (rest ~ /^([-*+]|[0-9]+[.)])[[:space:]]/) {
+				if (baseind < 0) baseind = ind
+				if (ind <= baseind) {
+					n++
+					body = rest
+					sub(/^([-*+]|[0-9]+[.)])[[:space:]]+/, "", body)
+					ln[n] = FNR; first[n] = body; full[n] = body
+				} else if (n > 0) {
+					full[n] = full[n] " " rest
+				}
+				next
+			}
+			if (rest == "") next
+			# Indented prose belongs to the entry above it; unindented prose is
+			# section commentary and belongs to none.
+			if (ind > 0 && n > 0) full[n] = full[n] " " rest
+			next
+		}
+		END {
+			for (k = 1; k <= n; k++) {
+				text = first[k]
+				closed = 0
+				if (text ~ /^\[[xX]\][[:space:]]/) closed = 1
+				sub(/^\[[ xX]\][[:space:]]+/, "", text)
+				if (text ~ /^~~.*~~[[:space:]]*$/) closed = 1
+				status = "OPEN"
+				if (closed) status = "CLOSED"
+				else if (full[k] ~ refre) status = "TRACKED"
+				printf "%s\t%d\t%s\n", status, ln[k], text
+			}
+		}
+	'
+}
+
+marks_done() {
+	grep -qiE "$DONE_MARKERS" <<<"$1"
+}
+
+TRUNCATE_AT=110
+
+report_plan() {
+	local plan="$1" content="$2"
+	local gaps blocking status line text shown
+	gaps="$(printf '%s\n' "$content" | parse_gaps)"
+	blocking=0
+	if [[ -n "$gaps" ]]; then
+		blocking=$(grep -c '^OPEN	' <<<"$gaps" || true)
+	fi
+
+	if [[ "$REQUIRE_DONE" == 1 ]] && ! marks_done "$content"; then
+		return 0
+	fi
+	if [[ "$blocking" -gt 0 ]]; then
+		FOUND_BLOCKING=$((FOUND_BLOCKING + blocking))
+	fi
+	if [[ "$QUIET" == 1 || -z "$gaps" ]]; then
+		return 0
+	fi
+
+	shown=0
+	while IFS=$'\t' read -r status line text; do
+		[[ -n "$status" ]] || continue
+		if [[ "$SHOW_ALL" != 1 && "$status" != "OPEN" ]]; then
+			continue
+		fi
+		if [[ "$TSV" == 1 ]]; then
+			printf '%s\t%s\t%s\t%s\n' "$status" "$plan" "$line" "$text"
+			shown=$((shown + 1))
+			continue
+		fi
+		if [[ "$shown" == 0 ]]; then
+			printf '%s — %d gap(s) unclosed\n' "$plan" "$blocking"
+		fi
+		if [[ "${#text}" -gt "$TRUNCATE_AT" ]]; then
+			text="${text:0:$TRUNCATE_AT}… [truncated for display; full text in the plan]"
+		fi
+		printf '  %-8s L%-5s %s\n' "$status" "$line" "$text"
+		shown=$((shown + 1))
+	done <<<"$gaps"
+	return 0
+}
+
+REPO="$PWD"
+REPO_GIVEN=0
+STDIN_NAME=""
+MATCH_PATH=""
+REQUIRE_DONE=0
+SHOW_ALL=0
+TSV=0
+QUIET=0
+LIST_ONLY=0
+TARGETS=""
+
+need_value() {
+	if [[ "$1" -lt 2 ]]; then
+		usage >&2
+		exit 2
+	fi
+	return 0
+}
+
+while [[ $# -gt 0 ]]; do
+	case "$1" in
+	--repo)
+		need_value $#
+		REPO="$2"
+		REPO_GIVEN=1
+		shift 2
+		;;
+	--stdin)
+		need_value $#
+		STDIN_NAME="$2"
+		shift 2
+		;;
+	--matches)
+		need_value $#
+		MATCH_PATH="$2"
+		shift 2
+		;;
+	--require-done)
+		REQUIRE_DONE=1
+		shift
+		;;
+	--all)
+		SHOW_ALL=1
+		shift
+		;;
+	--tsv)
+		TSV=1
+		shift
+		;;
+	--quiet)
+		QUIET=1
+		shift
+		;;
+	--list-plans)
+		LIST_ONLY=1
+		shift
+		;;
+	--version)
+		printf 'plan-gate %s\n' "$VERSION"
+		exit 0
+		;;
+	-h | --help)
+		usage
+		exit 0
+		;;
+	-*)
+		printf 'plan-gate: unknown option %s\n' "$1" >&2
+		usage >&2
+		exit 2
+		;;
+	*)
+		TARGETS="$TARGETS$1"$'\n'
+		shift
+		;;
+	esac
+done
+
+# A bare --matches is asked from wherever the harness happens to be, so the
+# repository comes from the path under judgement rather than from the cwd.
+if [[ -n "$MATCH_PATH" && "$REPO_GIVEN" == 0 ]]; then
+	MATCH_DIR="${MATCH_PATH%/*}"
+	[[ "$MATCH_DIR" == "$MATCH_PATH" ]] && MATCH_DIR="."
+	REPO="$(git -C "$MATCH_DIR" rev-parse --show-toplevel 2>/dev/null || printf '%s' "$PWD")"
+fi
+if ! REPO="$(cd "$REPO" 2>/dev/null && pwd)"; then
+	printf 'plan-gate: unreadable repo\n' >&2
+	exit 3
+fi
+
+load_config "$REPO"
+
+if [[ -n "$MATCH_PATH" ]]; then
+	if path_is_plan "$MATCH_PATH" "$REPO"; then
+		exit 0
+	fi
+	exit 1
+fi
+
+FOUND_BLOCKING=0
+
+collect_targets() {
+	local target
+	while IFS= read -r target; do
+		[[ -n "$target" ]] || continue
+		if [[ -d "$target" ]]; then
+			find_plan_files "$target"
+		elif [[ -f "$target" ]]; then
+			printf '%s\n' "$target"
+		else
+			printf 'plan-gate: no such plan: %s\n' "$target" >&2
+			return 3
+		fi
+	done <<<"$TARGETS"
+	return 0
+}
+
+if [[ -n "$STDIN_NAME" ]]; then
+	CONTENT="$(cat)"
+	report_plan "$STDIN_NAME" "$CONTENT"
+else
+	if [[ -n "$TARGETS" ]]; then
+		PLAN_LIST="$(collect_targets)" || exit 3
+	else
+		PLAN_LIST="$(discover_plans "$REPO")"
+	fi
+
+	if [[ "$LIST_ONLY" == 1 ]]; then
+		if [[ -n "$PLAN_LIST" ]]; then
+			printf '%s\n' "$PLAN_LIST"
+		fi
+		exit 0
+	fi
+
+	while IFS= read -r plan; do
+		[[ -n "$plan" ]] || continue
+		if [[ ! -r "$plan" ]]; then
+			printf 'plan-gate: unreadable: %s\n' "$plan" >&2
+			exit 3
+		fi
+		report_plan "$plan" "$(cat "$plan")"
+	done <<<"$PLAN_LIST"
+fi
+
+if [[ "$FOUND_BLOCKING" -gt 0 ]]; then
+	exit 1
+fi
+exit 0

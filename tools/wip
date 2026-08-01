@@ -1,0 +1,510 @@
+#!/usr/bin/env bash
+# wip — what was started and not finished, for one repository or several.
+#
+# Read-only: it blocks nothing and changes nothing. It exists so a human never
+# has to take an agent's summary of its own work on trust.
+#
+# The one thing here worth knowing: merged-ness is decided by CONTENT, never by
+# ancestry. See branch_is_merged for why every cheaper rule gets it wrong.
+set -euo pipefail
+
+VERSION=1
+LIMIT=20
+FORGE_ENABLED=1
+
+usage() {
+	cat <<'EOF'
+Usage: wip [options] [REPO...]
+
+  REPO           repository path. Default: the current directory's repository.
+
+  --limit N      rows per section before the rest is summarised (default 20; 0 = all)
+  --no-forge     skip merge-request/pull-request and issue lookups
+  --version      print the tool version
+  -h, --help     this text
+
+Exit: 0 always, unless a repository argument is unusable (2).
+EOF
+}
+
+# ── git ─────────────────────────────────────────────────────────────────────
+git_in() { git -C "$REPO" "$@"; }
+
+# origin/HEAD names the default branch when the clone recorded it; the probes
+# after it are for clones that never did.
+default_branch() {
+	local ref candidate
+	ref=$(git_in symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null || true)
+	if [[ -n "$ref" ]]; then
+		printf '%s' "${ref##*/}"
+		return 0
+	fi
+	for candidate in main master trunk develop; do
+		if git_in show-ref --verify --quiet "refs/remotes/origin/$candidate"; then
+			printf '%s' "$candidate"
+			return 0
+		fi
+	done
+	for candidate in main master trunk develop; do
+		if git_in show-ref --verify --quiet "refs/heads/$candidate"; then
+			printf '%s' "$candidate"
+			return 0
+		fi
+	done
+	git_in rev-parse --abbrev-ref HEAD 2>/dev/null || printf '%s' 'main'
+}
+
+base_ref() {
+	if git_in show-ref --verify --quiet "refs/remotes/origin/$1"; then
+		printf 'origin/%s' "$1"
+	else
+		printf '%s' "$1"
+	fi
+}
+
+# Merging the branch into the default branch and getting the default branch's
+# own tree back means its content is already there — however it arrived, and
+# whatever the default branch has done since.
+#
+# Every cheaper rule was tried against a squash-merge fixture and fails:
+# `rev-list --count base..branch` counts a squashed branch as ahead forever,
+# because the squashed commit is not an ancestor of anything. A two-dot diff
+# reports the default branch's own later commits as deletions on the branch. A
+# three-dot diff answers a different question entirely — the branch's changes
+# since the merge base — which is non-empty for every branch that did anything.
+branch_is_merged() {
+	local merged_tree base_tree merge_base files
+	local -a paths=()
+
+	if ! base_tree=$(git_in rev-parse "$BASE^{tree}" 2>/dev/null); then
+		return 1
+	fi
+	if merged_tree=$(git_in merge-tree --write-tree "$BASE" "$1" 2>/dev/null); then
+		if [[ "$merged_tree" == "$base_tree" ]]; then
+			return 0
+		fi
+		return 1
+	fi
+
+	# Older git has no --write-tree. Comparing only the files the branch touched
+	# keeps the default branch's unrelated progress out of the answer.
+	if ! merge_base=$(git_in merge-base "$BASE" "$1" 2>/dev/null); then
+		return 1
+	fi
+	files=$(git_in diff --name-only "$merge_base" "$1" 2>/dev/null || true)
+	if [[ -z "$files" ]]; then
+		return 0
+	fi
+	while IFS= read -r line; do
+		[[ -n "$line" ]] && paths+=("$line")
+	done <<<"$files"
+	if git_in diff --quiet "$BASE" "$1" -- "${paths[@]}" 2>/dev/null; then
+		return 0
+	fi
+	return 1
+}
+
+age_days() {
+	local when now
+	when=$(git_in log -1 --format=%ct "$1" 2>/dev/null || printf '0')
+	now=$(date +%s)
+	printf '%d' $(((now - when) / 86400))
+}
+
+# ── forge ───────────────────────────────────────────────────────────────────
+# Resolved per repository, never assumed. A repository whose forge cannot be
+# reached reports that fact rather than an empty section, because an empty
+# section reads as "nothing outstanding".
+FORGE=""
+FORGE_NOTE=""
+
+detect_forge() {
+	FORGE=""
+	FORGE_NOTE=""
+	if [[ "$FORGE_ENABLED" != 1 ]]; then
+		FORGE_NOTE="skipped (--no-forge)"
+		return 0
+	fi
+	local url host
+	url=$(git_in remote get-url origin 2>/dev/null || true)
+	if [[ -z "$url" ]]; then
+		FORGE_NOTE="no origin remote — merge requests and issues not checked"
+		return 0
+	fi
+	host=$(printf '%s' "$url" | sed -E 's#^(git\+)?(ssh://)?(git@|https?://)?([^:/]+).*#\4#')
+
+	if [[ "$host" == "github.com" ]] || (command -v gh >/dev/null 2>&1 && gh auth status --hostname "$host" >/dev/null 2>&1); then
+		if command -v gh >/dev/null 2>&1; then
+			FORGE="github"
+			GH_HOSTNAME="$host"
+			return 0
+		fi
+		FORGE_NOTE="github repo but gh is not installed — merge requests and issues not checked"
+		return 0
+	fi
+	if command -v glab >/dev/null 2>&1; then
+		if (cd "$REPO" && GITLAB_HOST="$host" glab api /version >/dev/null 2>&1); then
+			FORGE="gitlab"
+			GITLAB_HOSTNAME="$host"
+			return 0
+		fi
+	fi
+	if [[ "$host" == *gitlab* ]]; then
+		FORGE_NOTE="gitlab repo but glab is unavailable or unauthenticated — merge requests and issues not checked"
+		return 0
+	fi
+	FORGE_NOTE="unrecognised forge host '$host' — merge requests and issues not checked"
+	return 0
+}
+
+# One row per open change authored by the current user:
+# NUMBER<TAB>HEAD_BRANCH<TAB>HOLDS
+open_changes() {
+	case "$FORGE" in
+	github)
+		(cd "$REPO" && GH_HOST="$GH_HOSTNAME" gh pr list --author '@me' --state open --limit 100 \
+			--json number,headRefName,isDraft,mergeable,reviewDecision,statusCheckRollup 2>/dev/null) |
+			jq -r '.[] | [
+				("#" + (.number | tostring)),
+				.headRefName,
+				([ (if .isDraft then "draft" else empty end),
+				   (if .mergeable == "CONFLICTING" then "conflicts" else empty end),
+				   (if ([.statusCheckRollup[]? | select(.conclusion == "FAILURE" or .conclusion == "TIMED_OUT" or .state == "FAILURE")] | length) > 0
+				      then "checks failing" else empty end),
+				   (if .reviewDecision == "CHANGES_REQUESTED" then "changes requested"
+				    elif .reviewDecision == "APPROVED" then empty
+				    else "no approving review" end)
+				 ] | join(", "))
+			] | @tsv' || true
+		;;
+	gitlab)
+		(cd "$REPO" && GITLAB_HOST="$GITLAB_HOSTNAME" glab mr list --author '@me' --output json --per-page 100 2>/dev/null) |
+			jq -r '(if type == "array" then . else (.merge_requests // []) end)[] | [
+				("!" + (.iid | tostring)),
+				.source_branch,
+				([ (if (.draft // .work_in_progress // false) then "draft" else empty end),
+				   (if .has_conflicts then "conflicts" else empty end),
+				   (if (.upvotes // 0) == 0 then "no approving review" else empty end)
+				 ] | join(", "))
+			] | @tsv' || true
+		;;
+	esac
+	return 0
+}
+
+# NUMBER<TAB>FLAG — FLAG marks an issue whose body says it was carved out of
+# other work. Filing one of those is a deferral, and deferrals should be visible.
+SPLIT_HINT='split out of|split from|carved out|carved from|extracted from|broken out of|deferred from|follow-?up (to|from)|descoped from|out of scope for'
+
+open_authored_issues() {
+	case "$FORGE" in
+	github)
+		(cd "$REPO" && GH_HOST="$GH_HOSTNAME" gh issue list --author '@me' --state open --limit 100 \
+			--json number,body,title 2>/dev/null) |
+			jq -r --arg re "$SPLIT_HINT" '.[] |
+				[ ("#" + (.number | tostring)),
+				  (if ((.body // "") + " " + (.title // "") | test($re; "i")) then "split" else "" end)
+				] | @tsv' || true
+		;;
+	gitlab)
+		(cd "$REPO" && GITLAB_HOST="$GITLAB_HOSTNAME" glab issue list --author '@me' --output json --per-page 100 2>/dev/null) |
+			jq -r --arg re "$SPLIT_HINT" '(if type == "array" then . else (.issues // []) end)[] |
+				[ ("#" + (.iid | tostring)),
+				  (if ((.description // "") + " " + (.title // "") | test($re; "i")) then "split" else "" end)
+				] | @tsv' || true
+		;;
+	esac
+	return 0
+}
+
+# ── output ──────────────────────────────────────────────────────────────────
+# Bounded sections say what they dropped. A silent cap reads as "nothing else
+# to see", which is the failure this whole tool exists to prevent.
+emit_bounded() {
+	local label="$1" body="$2" total shown
+	[[ -n "$body" ]] || return 0
+	total=$(grep -c . <<<"$body" || true)
+	if [[ "$LIMIT" -gt 0 && "$total" -gt "$LIMIT" ]]; then
+		shown="$LIMIT"
+	else
+		shown="$total"
+	fi
+	printf '%s' "$(head -n "$shown" <<<"$body")"
+	printf '\n'
+	if [[ "$shown" -lt "$total" ]]; then
+		printf ' %-9s %s\n' "…" "$((total - shown)) more $label not shown (--limit 0 for all)"
+	fi
+	return 0
+}
+
+# An inline list of identifiers, capped the same way and just as loudly.
+bound_list() {
+	local items="${1# }" total kept
+	total=$(wc -w <<<"$items" | tr -d ' ')
+	if [[ "$LIMIT" -le 0 || "$total" -le "$LIMIT" ]]; then
+		printf '%s' "$items"
+		return 0
+	fi
+	kept=$(cut -d' ' -f"1-$LIMIT" <<<"$items")
+	printf '%s +%d more (--limit 0 for all)' "$kept" "$((total - LIMIT))"
+	return 0
+}
+
+# ── sections ────────────────────────────────────────────────────────────────
+CHANGES=""
+CLEANUP=""
+
+change_for_branch() {
+	local head number
+	while IFS=$'\t' read -r number head _; do
+		if [[ -n "$head" && "$head" == "$1" ]]; then
+			printf '%s' "$number"
+			return 0
+		fi
+	done <<<"$CHANGES"
+	return 0
+}
+
+# STATUS<TAB>BRANCH<TAB>UPSTREAM_TRACK, judged once. A caller that classified
+# inside a command substitution would lose the merged list to the subshell.
+classify_branches() {
+	local branch track
+	while IFS=$'\t' read -r branch track; do
+		[[ -n "$branch" ]] || continue
+		[[ "$branch" == "$DEFAULT" ]] && continue
+		if branch_is_merged "$branch"; then
+			printf 'MERGED\t%s\t%s\n' "$branch" "$track"
+		else
+			printf 'OPEN\t%s\t%s\n' "$branch" "$track"
+		fi
+	done < <(git_in for-each-ref --format='%(refname:short)%09%(upstream:track)' refs/heads 2>/dev/null)
+	return 0
+}
+
+merged_branch_names() {
+	local status branch
+	while IFS=$'\t' read -r status branch _; do
+		[[ "$status" == "MERGED" ]] && printf ' %s' "$branch"
+	done <<<"$BRANCH_CLASS"
+	return 0
+}
+
+section_branches() {
+	local status branch track ahead days change note body=""
+	while IFS=$'\t' read -r status branch track; do
+		[[ "$status" == "OPEN" ]] || continue
+		ahead=$(git_in rev-list --count "$BASE..$branch" 2>/dev/null || printf '0')
+		days=$(age_days "$branch")
+		change=$(change_for_branch "$branch")
+		if [[ -n "$change" ]]; then
+			note="$change"
+		elif [[ -n "$FORGE" ]]; then
+			note="no MR/PR"
+		else
+			note="MR/PR unknown"
+		fi
+		if [[ "$track" == *gone* ]]; then
+			note="$note; upstream gone but content NOT merged"
+		fi
+		body="$body$(printf ' %-9s %-34s %3sd  %3s commits  %s' 'BRANCH' "$branch" "$days" "$ahead" "$note")"$'\n'
+	done <<<"$BRANCH_CLASS"
+	printf '%s' "$body"
+	return 0
+}
+
+# A dirty worktree is called out because removing one destroys the uncommitted
+# and untracked files in it; the branch ref does not carry them.
+section_worktrees() {
+	local path branch modified untracked state body=""
+	while IFS= read -r line; do
+		case "$line" in
+		"worktree "*)
+			path="${line#worktree }"
+			branch=""
+			;;
+		"branch "*) branch="${line#branch refs/heads/}" ;;
+		"detached") branch="(detached)" ;;
+		"")
+			[[ -n "${path:-}" ]] || continue
+			[[ "$path" == "$REPO" ]] && {
+				path=""
+				continue
+			}
+			modified=$(git -C "$path" status --porcelain 2>/dev/null | grep -cv '^??' || true)
+			untracked=$(git -C "$path" status --porcelain 2>/dev/null | grep -c '^??' || true)
+			if [[ "$modified" -gt 0 || "$untracked" -gt 0 ]]; then
+				state=$(printf 'DIRTY %s modified, %s untracked — do NOT remove' "$modified" "$untracked")
+			else
+				state="clean"
+			fi
+			body="$body$(printf ' %-9s %-34s %s at %s' 'WORKTREE' "${branch:-(no branch)}" "$state" "${path/#$HOME/\~}")"$'\n'
+				path=""
+			;;
+		esac
+	done < <(
+		git_in worktree list --porcelain 2>/dev/null
+		printf '\n'
+	)
+	printf '%s' "$body"
+	return 0
+}
+
+section_changes() {
+	local number head holds body=""
+	while IFS=$'\t' read -r number head holds; do
+		[[ -n "$number" ]] || continue
+		body="$body$(printf ' %-9s %-34s held: %s' 'MR/PR' "$number ($head)" "${holds:-nothing — ready}")"$'\n'
+	done <<<"$CHANGES"
+	printf '%s' "$body"
+	return 0
+}
+
+section_issues() {
+	local number flag plain="" split="" body=""
+	while IFS=$'\t' read -r number flag; do
+		[[ -n "$number" ]] || continue
+		if [[ "$flag" == "split" ]]; then
+			split="$split $number"
+		else
+			plain="$plain $number"
+		fi
+	done <<<"$ISSUES"
+	if [[ -n "$plain" ]]; then
+		body="$body$(printf ' %-9s %s' 'FILED' "$(bound_list "$plain") — authored, open, unfixed")"$'\n'
+	fi
+	if [[ -n "$split" ]]; then
+		body="$body$(printf ' %-9s %s' 'DEFERRED' "$(bound_list "$split") — carved out of other work")"$'\n'
+	fi
+	printf '%s' "$body"
+	return 0
+}
+
+section_plans() {
+	local plan open name body="" seen=""
+	[[ -n "$PLAN_GATE" ]] || return 0
+	while IFS=$'\t' read -r _ plan _ _; do
+		[[ -n "$plan" ]] || continue
+		case " $seen " in *" $plan "*) continue ;; esac
+		seen="$seen $plan"
+		open=$(grep -cF "	$plan	" <<<"$PLAN_ROWS" || true)
+		name="${plan#"$REPO"/}"
+		body="$body$(printf ' %-9s %-34s %s gap(s) unclosed' 'PLAN' "$name" "$open")"$'\n'
+	done <<<"$PLAN_ROWS"
+	printf '%s' "$body"
+	return 0
+}
+
+count_lines() {
+	if [[ -z "$1" ]]; then
+		printf '0'
+		return 0
+	fi
+	grep -c . <<<"$1" || true
+}
+
+report_repo() {
+	local branches worktrees changes issues plans total
+
+	DEFAULT="$(default_branch)"
+	BASE="$(base_ref "$DEFAULT")"
+	detect_forge
+	CHANGES="$(open_changes)"
+	ISSUES=""
+	if [[ -n "$FORGE" ]]; then
+		ISSUES="$(open_authored_issues)"
+	fi
+	PLAN_ROWS=""
+	if [[ -n "$PLAN_GATE" ]]; then
+		PLAN_ROWS="$("$PLAN_GATE" --repo "$REPO" --tsv 2>/dev/null | grep '^OPEN	' || true)"
+	fi
+	BRANCH_CLASS="$(classify_branches)"
+	CLEANUP="$(merged_branch_names)"
+
+	branches="$(section_branches)"
+	worktrees="$(section_worktrees)"
+	changes="$(section_changes)"
+	issues="$(section_issues)"
+	plans="$(section_plans)"
+
+	total=$(($(count_lines "$branches") + $(count_lines "$worktrees") +
+		$(count_lines "$CHANGES") + $(count_lines "$ISSUES") + $(count_lines "$plans")))
+
+	printf '%s — %d half-done\n' "${REPO##*/}" "$total"
+	emit_bounded 'branch(es)' "$branches"
+	emit_bounded 'worktree(s)' "$worktrees"
+	emit_bounded 'change(s)' "$changes"
+	emit_bounded 'issue line(s)' "$issues"
+	emit_bounded 'plan(s)' "$plans"
+
+	if [[ -n "$CLEANUP" ]]; then
+		printf ' %-9s %s\n' 'MERGED' "$(bound_list "$CLEANUP") — content already on $DEFAULT; safe to delete"
+	fi
+	if [[ -n "$FORGE_NOTE" ]]; then
+		printf ' %-9s %s\n' 'NOTE' "$FORGE_NOTE"
+	fi
+	if [[ -z "$PLAN_GATE" ]]; then
+		printf ' %-9s %s\n' 'NOTE' 'plan-gate not found beside this tool — plans not checked'
+	fi
+	return 0
+}
+
+# ── arguments ───────────────────────────────────────────────────────────────
+TARGETS=""
+
+while [[ $# -gt 0 ]]; do
+	case "$1" in
+	--limit)
+		if [[ $# -lt 2 || ! "$2" =~ ^[0-9]+$ ]]; then
+			usage >&2
+			exit 2
+		fi
+		LIMIT="$2"
+		shift 2
+		;;
+	--no-forge)
+		FORGE_ENABLED=0
+		shift
+		;;
+	--version)
+		printf 'wip %s\n' "$VERSION"
+		exit 0
+		;;
+	-h | --help)
+		usage
+		exit 0
+		;;
+	-*)
+		printf 'wip: unknown option %s\n' "$1" >&2
+		usage >&2
+		exit 2
+		;;
+	*)
+		TARGETS="$TARGETS$1"$'\n'
+		shift
+		;;
+	esac
+done
+
+[[ -n "$TARGETS" ]] || TARGETS="$PWD"$'\n'
+
+TOOL_DIR="${BASH_SOURCE[0]%/*}"
+PLAN_GATE=""
+for candidate in "$TOOL_DIR/plan-gate" "$TOOL_DIR/../tools/plan-gate"; do
+	if [[ -x "$candidate" ]]; then
+		PLAN_GATE="$candidate"
+		break
+	fi
+done
+
+FIRST=1
+while IFS= read -r target; do
+	[[ -n "$target" ]] || continue
+	if ! REPO="$(git -C "$target" rev-parse --show-toplevel 2>/dev/null)"; then
+		printf 'wip: not a git repository: %s\n' "$target" >&2
+		exit 2
+	fi
+	[[ "$FIRST" == 1 ]] || printf '\n'
+	FIRST=0
+	report_repo
+done <<<"$TARGETS"
+exit 0

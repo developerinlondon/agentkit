@@ -41,6 +41,17 @@
             "statusMessage": "mr-police: checking for unmerged MRs..."
           }
         ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/plan-police.sh",
+            "timeout": 15,
+            "statusMessage": "plan-police: checking the plan's gaps..."
+          }
+        ]
       }
     ],
     "PostToolUse": [
