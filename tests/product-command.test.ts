@@ -109,4 +109,23 @@ describe('portable product command', () => {
     expect(requirements).toContain('Claude Code must be installed to exercise the `plugin` surface');
     expect(requirements).toContain('OpenCode must be installed to exercise the `opencode-plugin` surface');
   });
+
+  test('product review declares the Pages account and publishing surface', () => {
+    const product = Bun.YAML.parse(
+      readFileSync(join(repoRoot, '.agentkit', 'product.yaml'), 'utf-8'),
+    ) as {
+      surfaces: Array<{ name: string; build?: string; verify?: string; run?: string; expect: string }>;
+    };
+    const surface = product.surfaces.find(({ name }) => name === 'pages-worker');
+
+    expect(surface).toBeDefined();
+    expect(surface?.build).toContain('bun install --frozen-lockfile --cwd pages/worker');
+    expect(surface?.verify).toContain('tests/publish-page/accounts.test.ts');
+    expect(surface?.run).toContain('CI=1 scripts/product-command');
+    expect(surface?.run).toContain('d1 migrations apply agentkit-pages --local');
+    expect(surface?.run).toContain('wrangler.js dev --local');
+    expect(surface?.expect).toContain('Assay');
+    expect(surface?.expect).toContain('private');
+    expect(surface?.expect).toContain('sharing');
+  });
 });

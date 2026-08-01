@@ -242,17 +242,17 @@ slide with nothing but a kicker and an `h2` above them.
 
 ## Requirements and behavior
 
-- Publish token: `~/.config/agentkit/pages-token` (mint at agentkit.sbs).
+- Device token: `~/.config/agentkit/pages-token`. First use starts the bounded device flow at
+  `pages.agentkit.sbs/device`, signs in through Assay, and stores the token with mode `0600`.
 - Themes are bundled with the skill; if a clone of `gitlab.com/agentkit/agentkit-pages`
   exists at `~/code/agentkit-pages` (override: `AGENTKIT_PAGES_REPO`), the publish
-  also commits `src/` + `dist/` there for canonical history — otherwise it
-  serves-only and says so. Endpoint override: `AGENTKIT_PAGES_ENDPOINT`.
-- Pages are **public by slug** (unguessable is NOT private) — never publish
-  secrets, tokens, or personal data. Accounts/private pages are a coming phase.
-  "Without asking" covers slug/template/mechanics only: when the user asked to
-  publish, publish. When YOU are proposing the page and its content derives from
-  private material (client data, internal repos, credentials-adjacent config),
-  confirm with the user before publishing.
+  archives `src/` + `dist/` there only with explicit `--git` — otherwise it
+  serves only. Repository archival has its own visibility and is never implied
+  by a private page. Endpoint override: `AGENTKIT_PAGES_ENDPOINT`.
+- New pages are **private by default**. Owners manage revocable sharing links and
+  verified-email invites, and revoke publishing devices at
+  `https://pages.agentkit.sbs/dashboard`. Pages from
+  before the accounts migration remain public until claimed or removed.
 - Same name (or slug) republished overwrites silently, and on machines without
   the pages repo clone there is no git history to recover from — pick
   distinctive names, reuse one only when deliberately updating that page.

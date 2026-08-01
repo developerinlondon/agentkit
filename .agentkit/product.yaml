@@ -24,6 +24,26 @@ surfaces:
       that every police hook parses under `bash -n`, and that `skills/` stays
       byte-identical to the plugin mirror.
 
+  - name: pages-worker
+    kind: api
+    build: scripts/product-command default -- bun install --frozen-lockfile --cwd pages/worker
+    verify: >-
+      scripts/product-command default -- bun test
+      tests/publish-page/accounts.test.ts
+      tests/publish-page/device-login.test.ts
+      tests/publish-page/worker.test.ts
+    run: |
+      set -eu
+      CI=1 scripts/product-command default -- node pages/worker/node_modules/wrangler/bin/wrangler.js d1 migrations apply agentkit-pages --local --config pages/worker/wrangler.toml
+      scripts/product-command default -- node pages/worker/node_modules/wrangler/bin/wrangler.js dev --local --config pages/worker/wrangler.toml
+    expect: |
+      The Worker starts with local R2 and D1 bindings. Site-token routes remain
+      isolated from account publishing. Page publishing requires a per-device
+      credential owned by an Assay user, creates private pages, and records the
+      page in that user's dashboard. Owner sessions, one-time sharing links,
+      verified-email invites, and device revocation enforce their D1 records;
+      missing account storage fails closed when account mode is required.
+
   - name: plugin
     kind: desktop
     # There is no build step — the plugin IS the repo contents, installed by

@@ -1,3 +1,22 @@
+import {
+  canReadPage,
+  claimPage,
+  deletePageRecord,
+  deviceUser,
+  endSession,
+  inviteEmail,
+  ownerPage,
+  pageRecord,
+  removeInvite,
+  revokeDeviceToken,
+  sessionUser,
+  setShareLink,
+} from "./accounts.js";
+import { dashboard } from "./dashboard.js";
+import { approveDevice, devicePage, pollDevice, startDevice } from "./devices.js";
+import { completeLogin, startLogin } from "./oidc.js";
+import { escapeHtml, UI_HEADERS } from "./ui.js";
+
 const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,63}(\/[a-z0-9][a-z0-9-]{0,63}){0,3}$/;
 const MAX_PAGE_BYTES = 5 * 1024 * 1024;
 
@@ -158,10 +177,19 @@ function bearerToken(request) {
   return (request.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
 }
 
-function authorizeWrite(request, env, slug) {
+async function authorizeWrite(request, env, slug) {
   const token = bearerToken(request);
   const site = siteKey(slug);
   const isSite = site !== null;
+  if (!isSite && env.ACCOUNT_MODE === "required" && !env.DB) {
+    return new Response("account storage unavailable\n", { status: 503 });
+  }
+  if (!isSite && (env.ACCOUNT_MODE === "required" || env.DB)) {
+    if (!SLUG_RE.test(slug)) return new Response("invalid slug\n", { status: 400 });
+    const user = await deviceUser(env, token);
+    if (!user) return new Response("unauthorized\n", { status: 401 });
+    return { isSite: false, key: `pages/${slug}/index.html`, user };
+  }
   const expected = isSite ? env.SITE_TOKEN : env.PUBLISH_TOKEN;
   if (!expected || token !== expected) {
     return new Response("unauthorized\n", { status: 401 });
@@ -180,7 +208,7 @@ function publishedUrl(slug, isSite) {
 }
 
 async function handlePublish(request, env, slug) {
-  const gate = authorizeWrite(request, env, slug);
+  const gate = await authorizeWrite(request, env, slug);
   if (gate instanceof Response) return gate;
   const declared = Number(request.headers.get("content-length") ?? "0");
   if (declared > MAX_PAGE_BYTES) {
@@ -189,6 +217,11 @@ async function handlePublish(request, env, slug) {
   const body = await request.arrayBuffer();
   if (body.byteLength === 0 || body.byteLength > MAX_PAGE_BYTES) {
     return new Response("page must be 1 byte to 5 MB\n", { status: 413 });
+  }
+  if (gate.user) {
+    const claim = await claimPage(env, slug, gate.user.id, requestedTitle(request));
+    if (claim === "forbidden") return new Response("forbidden\n", { status: 403 });
+    if (claim === "quota") return new Response("page quota exceeded\n", { status: 429 });
   }
   await env.PAGES.put(gate.key, body, {
     httpMetadata: { contentType: "text/html; charset=utf-8" },
@@ -249,12 +282,108 @@ async function handleAssetDelete(request, env, path) {
 }
 
 async function handleDelete(request, env, slug) {
-  const gate = authorizeWrite(request, env, slug);
+  const gate = await authorizeWrite(request, env, slug);
   if (gate instanceof Response) return gate;
+  if (gate.user) {
+    const page = await pageRecord(env, slug);
+    if (!page) return new Response("not found\n", { status: 404 });
+    if (page.owner_id !== gate.user.id) return new Response("forbidden\n", { status: 403 });
+  }
   const existing = await env.PAGES.head(gate.key);
   if (!existing) return new Response("not found\n", { status: 404 });
   await env.PAGES.delete(gate.key);
+  if (gate.user) await deletePageRecord(env, slug, gate.user.id);
   return Response.json({ ok: true, deleted: slug });
+}
+
+function sameOrigin(request) {
+  return request.headers.get("origin") === new URL(request.url).origin;
+}
+
+async function requestBody(request) {
+  if (request.headers.get("content-type")?.startsWith("application/json")) return request.json();
+  return Object.fromEntries(await request.formData());
+}
+
+async function handleShare(request, env, slug) {
+  if (!sameOrigin(request)) return new Response("forbidden\n", { status: 403 });
+  if (!(await ownerPage(request, env, slug))) return new Response("not found\n", { status: 404 });
+  const body = await requestBody(request);
+  const enabled = body.enabled === true || body.enabled === "true";
+  const token = await setShareLink(env, slug, enabled);
+  if (!request.headers.get("content-type")?.startsWith("application/json")) {
+    if (token) {
+      const url = `${env.PUBLIC_URL}/${slug}?share=${token}`;
+      return html(200, `<!doctype html><meta charset="utf-8"><title>Sharing link</title>
+<body style="font:16px system-ui;max-width:42rem;margin:4rem auto;padding:1rem"><h1>Sharing is on</h1>
+<p>This link is shown once. Anyone who has it can read this page until you turn sharing off.</p>
+<p><a href="${escapeHtml(url)}">${escapeHtml(url)}</a></p><p><a href="/dashboard">Back to dashboard</a></p></body>`, UI_HEADERS);
+    }
+    return new Response(null, { status: 303, headers: { location: "/dashboard" } });
+  }
+  const url = token ? `${env.PUBLIC_URL}/${slug}?share=${token}` : null;
+  return Response.json({ ok: true, enabled, url });
+}
+
+async function handleInvite(request, env, slug) {
+  if (!sameOrigin(request)) return new Response("forbidden\n", { status: 403 });
+  if (!(await ownerPage(request, env, slug))) return new Response("not found\n", { status: 404 });
+  const body = await requestBody(request);
+  if (!(await inviteEmail(env, slug, String(body.email || "")))) {
+    return new Response("invalid email\n", { status: 400 });
+  }
+  if (!request.headers.get("content-type")?.startsWith("application/json")) {
+    return new Response(null, { status: 303, headers: { location: "/dashboard" } });
+  }
+  return Response.json({ ok: true, email: String(body.email).trim().toLowerCase() });
+}
+
+async function handleInviteRemove(request, env, slug) {
+  if (!sameOrigin(request)) return new Response("forbidden\n", { status: 403 });
+  if (!(await ownerPage(request, env, slug))) return new Response("not found\n", { status: 404 });
+  const body = await requestBody(request);
+  await removeInvite(env, slug, body.email);
+  if (!request.headers.get("content-type")?.startsWith("application/json")) {
+    return new Response(null, { status: 303, headers: { location: "/dashboard" } });
+  }
+  return Response.json({ ok: true });
+}
+
+async function handleDeviceApprove(request, env) {
+  if (!sameOrigin(request)) return new Response("forbidden\n", { status: 403 });
+  const user = await sessionUser(request, env);
+  if (!user) return new Response("unauthorized\n", { status: 401 });
+  const body = await requestBody(request);
+  if (!(await approveDevice(env, body.user_code, user.id))) {
+    return new Response("invalid or expired code\n", { status: 400 });
+  }
+  if (!request.headers.get("content-type")?.startsWith("application/json")) {
+    return html(200, "<!doctype html><meta charset=utf-8><h1>Device connected</h1><p>You can close this window.</p>");
+  }
+  return Response.json({ ok: true });
+}
+
+async function handleDeviceRevoke(request, env, tokenHash) {
+  if (!sameOrigin(request)) return new Response("forbidden\n", { status: 403 });
+  const user = await sessionUser(request, env);
+  if (!user) return new Response("unauthorized\n", { status: 401 });
+  if (!(await revokeDeviceToken(env, tokenHash, user.id))) {
+    return new Response("not found\n", { status: 404 });
+  }
+  if (!request.headers.get("content-type")?.startsWith("application/json")) {
+    return new Response(null, { status: 303, headers: { location: "/dashboard" } });
+  }
+  return Response.json({ ok: true });
+}
+
+function requestedTitle(request) {
+  const encoded = request.headers.get("x-page-title");
+  if (!encoded) return null;
+  try {
+    return decodeURIComponent(encoded).trim().slice(0, 200) || null;
+  } catch {
+    return null;
+  }
 }
 
 export default {
@@ -262,6 +391,10 @@ export default {
     const url = new URL(request.url);
     const host = url.hostname;
     const path = url.pathname.replace(/\/+$/, "").replace(/^\/+/, "");
+
+    if (host === "pages.agentkit.sbs" && env.ACCOUNT_MODE === "required" && !env.DB) {
+      return new Response("account storage unavailable\n", { status: 503 });
+    }
 
     if (request.method === "GET" && path.startsWith("api/site-list/")) {
       return handleAssetList(request, env, path.slice("api/site-list/".length));
@@ -277,6 +410,50 @@ export default {
     }
     if (request.method === "DELETE" && path.startsWith("api/pages/")) {
       return handleDelete(request, env, path.slice("api/pages/".length));
+    }
+    const shareMatch = /^api\/pages\/(.+)\/share$/.exec(path);
+    if (request.method === "POST" && shareMatch) return handleShare(request, env, shareMatch[1]);
+    const inviteRemoveMatch = /^api\/pages\/(.+)\/invites\/remove$/.exec(path);
+    if (request.method === "POST" && inviteRemoveMatch) {
+      return handleInviteRemove(request, env, inviteRemoveMatch[1]);
+    }
+    const inviteMatch = /^api\/pages\/(.+)\/invites$/.exec(path);
+    if (request.method === "POST" && inviteMatch) return handleInvite(request, env, inviteMatch[1]);
+    if (request.method === "POST" && path === "api/device/authorize" && env.DB) {
+      const body = await requestBody(request);
+      return Response.json(await startDevice(env, body.device_name));
+    }
+    if (request.method === "POST" && path === "api/device/approve" && env.DB) {
+      return handleDeviceApprove(request, env);
+    }
+    if (request.method === "POST" && path === "api/device/token" && env.DB) {
+      const body = await requestBody(request);
+      return pollDevice(env, body.device_code);
+    }
+    const deviceRevokeMatch = /^api\/devices\/([a-f0-9]{64})\/revoke$/.exec(path);
+    if (request.method === "POST" && deviceRevokeMatch && env.DB) {
+      return handleDeviceRevoke(request, env, deviceRevokeMatch[1]);
+    }
+    if (request.method === "GET" && path === "device" && env.DB) return devicePage(request, env);
+    if (request.method === "GET" && path === "login" && env.DB) return startLogin(request, env);
+    if (request.method === "GET" && path === "auth/callback" && env.DB) {
+      return completeLogin(request, env);
+    }
+    if (request.method === "POST" && path === "logout" && env.DB) {
+      if (!sameOrigin(request)) return new Response("forbidden\n", { status: 403 });
+      await endSession(request, env);
+      return new Response(null, {
+        status: 303,
+        headers: {
+          location: "/",
+          "set-cookie": "agentkit_session=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0",
+        },
+      });
+    }
+    if (request.method === "GET" && path === "dashboard" && env.DB) {
+      const user = await sessionUser(request, env);
+      if (!user) return new Response(null, { status: 302, headers: { location: "/login?return_to=%2Fdashboard" } });
+      return html(200, await dashboard(env, user), UI_HEADERS);
     }
     if (request.method !== "GET" && request.method !== "HEAD") {
       return new Response("method not allowed\n", { status: 405 });
@@ -297,6 +474,13 @@ export default {
       return servePage(env, "_site/pages-index.html", PAGE_HEADERS);
     }
     if (!SLUG_RE.test(path)) return html(404, NOT_FOUND, PAGE_HEADERS);
+    const page = await pageRecord(env, path);
+    if (!(await canReadPage(request, env, page))) {
+      return new Response(null, {
+        status: 302,
+        headers: { location: `/login?return_to=${encodeURIComponent(`/${path}`)}` },
+      });
+    }
     return servePage(env, `pages/${path}/index.html`, PAGE_HEADERS);
   },
 };

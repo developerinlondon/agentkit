@@ -285,10 +285,10 @@ jobs:
     if: >-
       startsWith(github.ref, 'refs/tags/v')
       || (github.event_name == 'workflow_dispatch' && inputs.publish)
-    # Deployed on every push to main rather than only when pages/worker changes:
-    # this is the job that guarantees the live worker matches main. A drifted
-    # worker is invisible until a deploy fails against it, which is exactly how
-    # the docs publish path broke the first time.
+    # Run for releases and explicit publishes rather than only when
+    # pages/worker changes. A drifted worker is invisible until a deploy fails
+    # against it, which is exactly how the docs publish path broke the first
+    # time.
     needs:
       - full
     runs-on: ubuntu-24.04
@@ -309,6 +309,18 @@ jobs:
 
       - name: Install worker dependencies from the lockfile
         run: bun install --frozen-lockfile --cwd pages/worker
+
+      - name: Apply Pages D1 migrations
+        working-directory: pages/worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_D1_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo 'worker: Cloudflare D1 credentials are not configured' >&2
+            exit 1
+          fi
+          node node_modules/wrangler/bin/wrangler.js d1 migrations apply agentkit-pages --remote
 
       - name: Deploy the worker
         working-directory: pages/worker
