@@ -181,3 +181,31 @@ describe('editorial typography', () => {
     expect(ratio(light['--muted'], light['--navy'])).toBeGreaterThanOrEqual(4.5);
   });
 });
+
+describe('width tiers', () => {
+  // Reads the rule body rather than building a regex: an over-escaped pattern
+  // silently matches nothing and the guard passes on a theme that has no caps.
+  function ruleBody(css: string, selector: string): string {
+    const at = css.indexOf(`\n  ${selector} {`);
+    if (at === -1) return '';
+    return css.slice(at, css.indexOf('\n  }', at) + 4);
+  }
+
+  test('anything read as prose is capped at the measure, not the column', () => {
+    expect(doc).toContain('--measure: 43rem;');
+    for (const sel of ['h2', 'h3', '.callout', 'pre', '.kicker']) {
+      const body = ruleBody(doc, sel);
+      expect({ sel, found: body.length > 0 }).toEqual({ sel, found: true });
+      expect({ sel, capped: body.includes('max-width: var(--measure)') })
+        .toEqual({ sel, capped: true });
+    }
+  });
+
+  test('only h1, tables and figures take the full column', () => {
+    expect(doc).toContain('main { max-width: 64rem;');
+    for (const sel of ['h1', '.figure']) {
+      expect({ sel, capped: ruleBody(doc, sel).includes('var(--measure)') })
+        .toEqual({ sel, capped: false });
+    }
+  });
+});
