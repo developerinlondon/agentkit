@@ -188,19 +188,30 @@ describe('editorial typography', () => {
 });
 
 describe('width tiers', () => {
-  // Reads the rule body rather than building a regex: an over-escaped pattern
-  // silently matches nothing and the guard passes on a theme that has no caps.
+  // Brace-depth scan, not a delimiter guess. Terminating on `\n  }` only ever
+  // matched multi-line rules, so a single-line rule's slice ran on into its
+  // neighbours and picked up their declarations — h2 read as capped because h3
+  // was. A missing selector throws rather than returning a value the assertion
+  // is happy with either way.
   function ruleBody(css: string, selector: string): string {
     const at = css.indexOf(`\n  ${selector} {`);
-    if (at === -1) return '';
-    return css.slice(at, css.indexOf('\n  }', at) + 4);
+    if (at === -1) throw new Error(`selector not found in theme: ${selector}`);
+    const open = css.indexOf('{', at);
+    let depth = 0;
+    for (let i = open; i < css.length; i += 1) {
+      if (css[i] === '{') depth += 1;
+      else if (css[i] === '}') {
+        depth -= 1;
+        if (depth === 0) return css.slice(at, i + 1);
+      }
+    }
+    throw new Error(`unbalanced braces after ${selector}`);
   }
 
   test('anything read as prose is capped at the measure, not the column', () => {
     expect(doc).toContain('--measure: 43rem;');
     for (const sel of ['h2', 'h3', '.callout', 'pre', '.kicker']) {
       const body = ruleBody(doc, sel);
-      expect({ sel, found: body.length > 0 }).toEqual({ sel, found: true });
       expect({ sel, capped: body.includes('max-width: var(--measure)') })
         .toEqual({ sel, capped: true });
     }
