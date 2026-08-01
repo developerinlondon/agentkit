@@ -121,6 +121,14 @@ function inkAttributes(markup: string, fill: string): string {
   );
 }
 
+// Colour set in a style attribute or a CSS block is not reachable by attribute
+// inking, so a mark using either keeps its baked value and cannot follow a theme.
+function bakedInStyle(markup: string, fill: string): boolean {
+  const styles = [...markup.matchAll(/style="([^"]*)"/gi)].map((m) => m[1]);
+  const blocks = [...markup.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi)].map((m) => m[1]);
+  return [...styles, ...blocks].some((css) => css.toLowerCase().includes(fill.toLowerCase()));
+}
+
 // A monochrome pack is baked to one fill at vendor time because currentColor has
 // nothing to inherit from inside a data: URI. Re-inlining the mark as a real
 // <svg> puts it back under CSS, so the page theme drives its ink.
@@ -152,10 +160,10 @@ export function inlineMonochromeIcons(
     if (!parts) throw new SvgError("monochrome icon is not a single <svg> with a viewBox");
     let inner = parts.inner;
     for (const f of fills) inner = inkAttributes(inner, f);
-    // Only presentation attributes are inked. A mark coloured through style=,
-    // a CSS class or the root tag would convert with its baked colour intact
-    // and silently stop following the theme, which is the defect this exists to
-    // prevent — so fail rather than report a conversion that did nothing.
+    // currentColor alone proves nothing — it also appears in a <desc> or an id.
+    if (fills.some((f) => bakedInStyle(inner, f))) {
+      throw new SvgError("monochrome icon inks through style= or a CSS block, which cannot follow the theme");
+    }
     if (!inner.includes("currentColor")) {
       throw new SvgError("monochrome icon carries no inkable fill — colour set by style, class or root tag");
     }

@@ -217,3 +217,20 @@ describe('conversion post-conditions', () => {
     expect(out.svg).toBe(before);
   });
 });
+
+describe('the post-condition checks colour positions, not the token', () => {
+  const mixed: ReadonlyArray<readonly [string, string]> = [
+    ['a style= sibling', `<svg viewBox="0 0 24 24"><path fill="${FILL}"/><path style="fill:${FILL}"/></svg>`],
+    ['a CSS-class sibling', `<svg viewBox="0 0 24 24"><style>.c{fill:${FILL}}</style><path fill="${FILL}"/><path class="c"/></svg>`],
+    ['currentColor only in a desc', `<svg viewBox="0 0 24 24"><desc>uses currentColor</desc><path style="fill:${FILL}"/></svg>`],
+    ['currentColor only as an id', `<svg viewBox="0 0 24 24"><style>.c{fill:${FILL}}</style><g id="currentColor"/><path class="c"/></svg>`],
+  ];
+
+  for (const [how, doc] of mixed) {
+    test(`a mark inking one element and baking another via ${how} fails`, () => {
+      // `includes("currentColor")` asks whether anything was inked, not whether
+      // everything was — and the token appears in prose and in ids too.
+      expect(() => inlineMonochromeIcons(image(doc), [FILL], [doc])).toThrow(SvgError);
+    });
+  }
+});
