@@ -71,6 +71,7 @@ export const TEST_SLICES = {
     'tests/publish-page/device-login.test.ts',
     'tests/publish-page/lint.test.ts',
     'tests/publish-page/mermaid-runtime.test.ts',
+    'tests/publish-page/migrations.test.ts',
     'tests/publish-page/pages-police.test.ts',
     'tests/publish-page/publish-freshness.test.ts',
     'tests/publish-page/theme-chrome.test.ts',
