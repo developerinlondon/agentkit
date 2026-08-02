@@ -49,14 +49,52 @@ bun ~/.agentkit/skills/publish-page/publish.ts \
 | `deck`   | slides — markdown split on `---` lines        |
 | `raw`    | complete self-contained HTML, published as-is |
 
+## Callouts
+
+A callout is an aside with a coloured rail and a label. Pick the severity by consequence, not by
+mood: `warn` for a cost or a constraint, `alarm` for something that breaks or exposes if ignored,
+`ok` for a confirmed-good result, `note` for a quiet aside, and no class at all for a neutral one.
+
+```html
+<div class="callout warn"><strong>Heads up.</strong> body text</div>
+```
+
+The label is whatever **opens** the callout, and four spellings mean the same thing — they render
+identically, at the same height, with the label taking the colour of its own rail:
+
+| Spelling   | What you write                                                                           |
+| ---------- | ---------------------------------------------------------------------------------------- |
+| Inline     | `<div class="callout"><strong>Label.</strong> body</div>`                                |
+| Blank line | a blank line inside the div, then `**Label.** body` — markdown wraps the body in a `<p>` |
+| Wrapped    | you supply the `<p>` yourself                                                            |
+| Heading    | a leading `<h3>`                                                                         |
+
+Bold that does **not** open the callout stays body text: a phrase mid-sentence, a phrase after a
+plain opening, a second `<h3>` further down. That distinction is made when the page is rendered,
+not by a CSS selector — `:first-child` counts element children, so it cannot see the text sitting
+in front of a bold phrase and would promote it to a title.
+
+:::note[The corollary]
+Whatever opens a callout becomes its label. Do not open one with emphasis you did not intend as a
+title — put the plain words first instead.
+:::
+
+Severity rides the rail and the label only. Body text stays in ink in both palettes, and every
+pairing the themes actually paint is contrast-checked at 4.5:1.
+
 ## Constraints worth knowing before you write
 
 - **Self-contained only.** The serving CSP blocks every external request. Inline the CSS and JS,
   embed images as data URIs.
 - **5 MB cap** on the rendered page.
-- The `doc` and `deck` themes carry the house style, a persisted dark/light toggle, a TOC dot rail
-  on docs with three or more `h2` sections, click-to-expand figures, and deck navigation. Do not
-  re-implement any of it.
+- The `doc` and `deck` themes carry the house style, a persisted dark/light toggle, a labelled
+  section nav on docs with three or more `h2` sections, click-to-expand figures, and deck
+  navigation. Do not re-implement any of it.
+- The section nav names each tab from its `h2`. A title longer than about 28 characters is
+  shortened and marked with an ellipsis to say the label was derived rather than chosen — write
+  `<h2 data-nav="Estimate">Two to four weeks, not two months</h2>` to name it yourself.
+- The nav's left slot is opt-in: a `<div class="brand">Name</div>` anywhere in your content is hoisted
+  into the bar, with its accent mark drawn for you. Without one the slot stays empty.
 
 :::tip[Verify before you report the URL]
 The skill's own instruction is to load the printed URL in headless Chromium at ~1280 px, screenshot
