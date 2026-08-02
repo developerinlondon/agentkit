@@ -79,6 +79,102 @@ describe('labelled section nav', () => {
   });
 });
 
+// Presence of a selector answers "is this rule here", not "does it win".
+// `.callout.warn strong` and `.callout > strong:first-child` tie, so order
+// silently decided the label colour. This resolves the cascade instead. The
+// grammar is narrow and throws on what it cannot represent, so an unrecognised
+// selector fails the suite rather than being skipped.
+type El = { tag: string; classes: string[]; first: boolean; parent?: El };
+
+function styleBlocks(html: string): string {
+  return [...html.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g)]
+    .map((m) => m[1])
+    .join('\n')
+    .replace(/\/\*[\s\S]*?\*\//g, '');
+}
+
+function compound(text: string) {
+  const m = text.match(/^([a-z0-9]*)((?:\.[a-z-]+)*)(:first-child)?$/i);
+  if (!m) throw new Error(`unsupported selector compound: ${text}`);
+  const classes = m[2] ? m[2].slice(1).split('.') : [];
+  return {
+    tag: m[1] ?? '',
+    classes,
+    first: Boolean(m[3]),
+    weight: (classes.length + (m[3] ? 1 : 0)) * 1000 + (m[1] ? 1 : 0),
+  };
+}
+
+function sequence(selector: string) {
+  const parts = selector.trim().split(/\s+/);
+  for (const p of parts) {
+    if (p !== '>' && /[>+~]/.test(p)) throw new Error(`unsupported combinator syntax: ${selector}`);
+  }
+  const seq: Array<{ c: ReturnType<typeof compound>; child: boolean }> = [];
+  let child = false;
+  for (const p of parts) {
+    if (p === '>') {
+      child = true;
+      continue;
+    }
+    seq.push({ c: compound(p), child });
+    child = false;
+  }
+  return seq;
+}
+
+function hits(c: ReturnType<typeof compound>, el: El): boolean {
+  if (c.tag && c.tag !== el.tag) return false;
+  if (c.first && !el.first) return false;
+  return c.classes.every((k) => el.classes.includes(k));
+}
+
+function matches(selector: string, el: El): boolean {
+  const seq = sequence(selector);
+  let cur: El | undefined = el;
+  if (!hits(seq[seq.length - 1].c, cur)) return false;
+  for (let i = seq.length - 2; i >= 0; i -= 1) {
+    if (seq[i + 1].child) {
+      cur = cur?.parent;
+      if (!cur || !hits(seq[i].c, cur)) return false;
+    } else {
+      let up = cur?.parent;
+      while (up && !hits(seq[i].c, up)) up = up.parent;
+      if (!up) return false;
+      cur = up;
+    }
+  }
+  return true;
+}
+
+// `reversed` re-runs the resolution with document order inverted: a winner that
+// only holds one way round won on order, not on specificity.
+function colorOf(css: string, el: El, reversed = false): string | null {
+  const rules = [...styleBlocks(css).matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+    .map((m) => ({ selectors: m[1].split(','), body: m[2] }))
+    .filter((r) => r.selectors.some((s) => s.includes('.callout')));
+  if (reversed) rules.reverse();
+  let best: { spec: number; order: number; value: string } | null = null;
+  rules.forEach((rule, order) => {
+    const decl = rule.body.match(/(?:^|;)\s*color:\s*([^;]+)/);
+    if (!decl) return;
+    for (const raw of rule.selectors) {
+      const sel = raw.trim();
+      if (!sel || !matches(sel, el)) continue;
+      const spec = sequence(sel).reduce((n, part) => n + part.c.weight, 0);
+      if (!best || spec > best.spec || (spec === best.spec && order > best.order)) {
+        best = { spec, order, value: decl[1].trim() };
+      }
+    }
+  });
+  return best === null ? null : (best as { value: string }).value;
+}
+
+function label(severity: string | null, tag: 'strong' | 'h3'): El {
+  const parent: El = { tag: 'div', classes: severity ? ['callout', severity] : ['callout'], first: true };
+  return { tag, classes: [], first: true, parent };
+}
+
 describe('callout severities', () => {
   for (const theme of [['doc', doc], ['deck', deck]] as const) {
     const [name, css] = theme;
@@ -117,8 +213,39 @@ describe('callout severities', () => {
     test(`${name} carries severity on the rail and label, never on body text`, () => {
       for (const s of SEVERITIES.filter((x) => x !== 'note')) {
         expect(css).toContain(`.callout.${s} { border-left-color: var(--${s}-ink); }`);
-        expect(css).toContain(`.callout.${s} strong { color: var(--${s}-ink); }`);
       }
+      const expected: Record<string, string> = {
+        plain: 'var(--note-ink)',
+        note: 'var(--muted)',
+        warn: 'var(--warn-ink)',
+        alarm: 'var(--alarm-ink)',
+        ok: 'var(--ok-ink)',
+      };
+      for (const [variant, ink] of Object.entries(expected)) {
+        const severity = variant === 'plain' ? null : variant;
+        for (const tag of ['strong', 'h3'] as const) {
+          expect({ variant, tag, color: colorOf(css, label(severity, tag)) })
+            .toEqual({ variant, tag, color: ink });
+        }
+      }
+    });
+
+    test(`${name} label colour is won by specificity, not by rule order`, () => {
+      for (const variant of [null, ...SEVERITIES]) {
+        for (const tag of ['strong', 'h3'] as const) {
+          const el = label(variant, tag);
+          expect({ variant, tag, color: colorOf(css, el, true) })
+            .toEqual({ variant, tag, color: colorOf(css, el) });
+        }
+      }
+    });
+
+    test(`${name} leaves emphasis inside callout body text in ink`, () => {
+      // Only the leading label carries severity; a bold phrase mid-sentence is
+      // body text and must take no colour rule at all.
+      const parent: El = { tag: 'div', classes: ['callout', 'warn'], first: true };
+      const inline: El = { tag: 'strong', classes: [], first: false, parent };
+      expect({ theme: name, color: colorOf(css, inline) }).toEqual({ theme: name, color: null });
     });
 
     test(`${name} callouts sit on --card so they lift off the page`, () => {
@@ -229,13 +356,13 @@ describe('width tiers', () => {
 describe('callout titles are headings', () => {
   for (const theme of [['doc', doc], ['deck', deck]] as const) {
     const [name, css] = theme;
-    test(`${name} sets a callout title as a block heading in body ink`, () => {
-      // A coloured inline lead-in reads as an admonition; a block title in body
-      // ink with the rail carrying severity reads as a titled aside.
+    test(`${name} sets a callout title as a block heading`, () => {
+      // A titled aside, not a paragraph with a bold lead-in: the label breaks
+      // to its own line and sizes above the body it introduces.
       expect(css).toContain('.callout h3, .callout > strong:first-child {');
       const at = css.indexOf('.callout h3, .callout > strong:first-child {');
       const body = css.slice(at, css.indexOf('}', at));
-      for (const decl of ['display: block', 'font-size: 1.02rem', 'color: var(--ink)']) {
+      for (const decl of ['display: block', 'font-size: 1.02rem', 'font-weight: 650']) {
         expect({ theme: name, decl, present: body.includes(decl) })
           .toEqual({ theme: name, decl, present: true });
       }

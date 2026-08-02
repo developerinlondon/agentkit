@@ -172,23 +172,22 @@
     background: var(--card); border-radius: 8px;
     padding: 0.8rem 1.1rem; margin: 1rem 0; max-width: 68ch;
   }
-  .callout strong { color: var(--note-ink); }
-  /* A titled aside, not a paragraph with a coloured lead-in: the title is a
-     block heading in body ink and the rail alone carries severity. */
+  /* The rail and the label always take one colour, and that colour is the
+     severity. Body strongs stay in ink: an amber sentence misses contrast on
+     its own ground in light mode. Each severity restates the label selector so
+     it outranks the base one by specificity rather than by declaration order. */
   .callout h3, .callout > strong:first-child {
     display: block; margin: 0 0 0.35rem; max-width: none;
-    font-size: 1.02rem; font-weight: 650; color: var(--ink);
+    font-size: 1.02rem; font-weight: 650; color: var(--note-ink);
   }
-  /* Severity is carried by the rail and the label, never by body text: an
-     amber paragraph misses contrast on its own ground in light mode. */
   .callout.warn { border-left-color: var(--warn-ink); }
-  .callout.warn strong { color: var(--warn-ink); }
+  .callout.warn h3, .callout.warn > strong:first-child { color: var(--warn-ink); }
   .callout.alarm { border-left-color: var(--alarm-ink); }
-  .callout.alarm strong { color: var(--alarm-ink); }
+  .callout.alarm h3, .callout.alarm > strong:first-child { color: var(--alarm-ink); }
   .callout.ok { border-left-color: var(--ok-ink); }
-  .callout.ok strong { color: var(--ok-ink); }
+  .callout.ok h3, .callout.ok > strong:first-child { color: var(--ok-ink); }
   .callout.note { border-left-color: var(--muted); }
-  .callout.note strong { color: var(--muted); }
+  .callout.note h3, .callout.note > strong:first-child { color: var(--muted); }
   .figure {
     background: radial-gradient(ellipse at 30% 0%, var(--fig-glow) 0%, var(--navy-deep) 70%);
     border: 1px solid var(--line); border-radius: 14px; padding: 1.6rem 1.4rem 1rem;
