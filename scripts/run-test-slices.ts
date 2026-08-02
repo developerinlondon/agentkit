@@ -2,6 +2,7 @@ import { statSync } from 'node:fs';
 import { cpus } from 'node:os';
 import { join } from 'node:path';
 import {
+  DEFAULT_TEST_TIMEOUT_MS,
   TEST_SLICES,
   type TestSlice,
   discoverTestFiles,
@@ -26,8 +27,6 @@ export const soloFiles = new Set([
 // bun caps a test declaring no timeout at 5s; several that shell out to an
 // external binary sit close enough that contention pushes them over. A test
 // wanting a real bound declares one, and that still wins.
-const DEFAULT_TEST_TIMEOUT_MS = 60_000;
-
 interface Unit {
   slice: TestSlice;
   file: string;

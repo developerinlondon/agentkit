@@ -102,6 +102,16 @@ export const TEST_SLICES = {
 } as const;
 
 export type TestSlice = keyof typeof TEST_SLICES;
+export const DEFAULT_TEST_TIMEOUT_MS = 60_000;
+
+export function sliceCommand(slice: TestSlice): string[] {
+  return [
+    process.execPath,
+    'test',
+    `--timeout=${DEFAULT_TEST_TIMEOUT_MS}`,
+    ...TEST_SLICES[slice],
+  ];
+}
 
 const repoRoot = join(import.meta.dir, '..');
 const bunTestFilename = /(?:\.test|_test|\.spec|_spec)\.(?:js|jsx|ts|tsx)$/;
@@ -284,7 +294,7 @@ function failForCoverage(errors: readonly string[]): never {
 
 function runSlice(slice: TestSlice): never {
   const result = Bun.spawnSync({
-    cmd: [process.execPath, 'test', ...TEST_SLICES[slice]],
+    cmd: sliceCommand(slice),
     cwd: repoRoot,
     env: process.env,
     stdout: 'inherit',
