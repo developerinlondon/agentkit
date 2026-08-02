@@ -65,9 +65,11 @@ keys, space and swipe move between slides; the toggle in the nav bar flips the t
 source is
 [`docs/site/examples/publish-freshness-deck.md`](https://github.com/developerinlondon/agentkit/blob/main/docs/site/examples/publish-freshness-deck.md).
 Rendering it through the `deck` template with `--title "The Publish Freshness Architecture"`
-reproduces the published file byte for byte — the title has to be given, because a deck's cover
-headline is HTML rather than a markdown `#` heading, so there is nothing for the title to be
-derived from.
+reproduces the published file byte for byte. The title has to be given: a deck's cover headline is
+HTML rather than a markdown `#` heading, so there is nothing to derive one from. The bytes come from
+`renderThemed` in `skills/publish-page/render-html.ts` against this repo's copy of the theme —
+`publish.ts` prefers a pages clone's theme when you have one, and a different theme renders
+different bytes.
 
 ## Callouts
 

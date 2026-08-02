@@ -8,18 +8,26 @@ const source = join(repo, 'docs/site/examples/publish-freshness-deck.md');
 const published = join(repo, 'docs/site/public/examples/publish-freshness-deck.html');
 const cookbook = join(repo, 'docs/site/src/content/docs/cookbook/publish-a-page.md');
 
-// Taken from the sentence a reader follows, not hardcoded: a deck's cover
-// headline is HTML, so publish.ts can derive no title from the source and the
-// render only reproduces when the documented --title is the one given.
-function documentedTitle(): string {
-  // Anchored on the deck's own paragraph: the page documents other --title
-  // examples earlier, and the first match in the file is one of those.
+const SOURCE_PATH = 'docs/site/examples/publish-freshness-deck.md';
+
+// Read from the paragraph a reader follows rather than hardcoded, because
+// anything the sentence states and the guard assumes can drift apart silently:
+// the title did exactly that, and the template and the link can too.
+function documented(): { title: string; template: string; link: string } {
   const prose = readFileSync(cookbook, 'utf8');
-  const at = prose.indexOf('publish-freshness-deck.md');
-  if (at < 0) throw new Error('the cookbook no longer points at the example deck source');
-  const found = prose.slice(at).match(/--title "([^"]+)"/);
-  if (!found) throw new Error('the cookbook no longer documents a --title for the example deck');
-  return found[1] as string;
+  // Scoped to the deck's own paragraph — the page documents other templates and
+  // other --title examples, and an unanchored match binds to one of those.
+  const from = prose.indexOf('A rendered deck is worth more');
+  const to = prose.indexOf('## Callouts', from);
+  if (from < 0 || to < 0) throw new Error('the cookbook no longer carries the example deck paragraph');
+  const para = prose.slice(from, to);
+  const title = para.match(/--title "([^"]+)"/);
+  const template = para.match(/through the `([a-z]+)` template/);
+  const link = para.match(/\]\((https?:\/\/[^)]+)\)/);
+  if (!title) throw new Error('the cookbook no longer documents a --title for the example deck');
+  if (!template) throw new Error('the cookbook no longer documents which template the example uses');
+  if (!link) throw new Error('the cookbook no longer links the example deck source');
+  return { title: title[1] as string, template: template[1] as string, link: link[1] as string };
 }
 
 describe('the published example deck', () => {
@@ -28,15 +36,24 @@ describe('the published example deck', () => {
   // about, reintroduced as a build artifact. The cookbook promises the
   // re-render reproduces it; this is what makes that a fact.
   test('re-renders byte-for-byte by following the cookbook', async () => {
+    const { title, template } = documented();
     const rendered = await renderThemed({
       source: readFileSync(source, 'utf8'),
       isMd: true,
-      template: 'deck',
-      title: documentedTitle(),
+      template,
+      title,
       themePath: join(repo, 'skills/publish-page/themes/deck.html'),
     });
     const then = 'stale example: re-render it through skills/publish-page/render-html.ts and commit the result';
     expect({ matches: rendered === readFileSync(published, 'utf8'), then })
       .toEqual({ matches: true, then });
+  });
+
+  test('the source the cookbook links is the source it was rendered from', () => {
+    // The render above proves the title and the template; the link is the one
+    // documented thing a reader can follow away from the file under test.
+    const then = `point the link at ${SOURCE_PATH}, which is the file this guard renders`;
+    expect({ linksTheSource: documented().link.endsWith(SOURCE_PATH), then })
+      .toEqual({ linksTheSource: true, then });
   });
 });
