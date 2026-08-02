@@ -6,19 +6,47 @@ export async function sha256(value) {
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-export async function deviceUser(env, token) {
+export async function deviceCredential(env, token) {
   if (!env.DB || !token) return null;
   const tokenHash = await sha256(token);
-  const user = await env.DB.prepare(
-    `SELECT users.id, users.email, users.display_name
+  const credential = await env.DB.prepare(
+    `SELECT users.id, users.email, users.display_name, device_tokens.scopes
        FROM device_tokens
        JOIN users ON users.id = device_tokens.user_id
-      WHERE device_tokens.token_hash = ? AND device_tokens.revoked_at IS NULL`,
-  ).bind(tokenHash).first();
-  if (!user) return null;
+      WHERE device_tokens.token_hash = ?
+        AND device_tokens.revoked_at IS NULL
+        AND COALESCE(device_tokens.expires_at, device_tokens.created_at + 7776000) > ?`,
+  ).bind(tokenHash, Math.floor(Date.now() / 1000)).first();
+  if (!credential) return null;
   await env.DB.prepare("UPDATE device_tokens SET last_used_at = ? WHERE token_hash = ?")
     .bind(Math.floor(Date.now() / 1000), tokenHash).run();
-  return user;
+  return {
+    tokenHash,
+    scopes: String(credential.scopes).split(/\s+/).filter(Boolean),
+    user: { id: credential.id, email: credential.email, display_name: credential.display_name },
+  };
+}
+
+export async function consumeDeviceWrite(env, tokenHash) {
+  const configured = Number(env.WRITE_RATE_LIMIT_PER_MINUTE || 60);
+  const limit = Number.isSafeInteger(configured) && configured > 0 ? configured : 60;
+  const result = await env.DB.prepare(
+    `INSERT INTO device_write_limits (token_hash, window_start, request_count)
+     VALUES (?, unixepoch() - (unixepoch() % 60), 1)
+     ON CONFLICT(token_hash) DO UPDATE SET
+       request_count = CASE
+         WHEN device_write_limits.window_start = excluded.window_start
+         THEN device_write_limits.request_count + 1
+         ELSE 1
+       END,
+       window_start = excluded.window_start
+     RETURNING request_count,
+               MAX(1, window_start + 60 - unixepoch()) AS retry_after`,
+  ).bind(tokenHash).first();
+  return {
+    allowed: result.request_count <= limit,
+    retryAfter: result.retry_after,
+  };
 }
 
 export async function pageRecord(env, slug) {
@@ -184,7 +212,9 @@ export async function invitesForUserPages(env, userId) {
 
 export async function deviceTokensForUser(env, userId) {
   return (await env.DB.prepare(
-    `SELECT token_hash, name, created_at, last_used_at
+    `SELECT token_hash, name, scopes,
+            COALESCE(expires_at, created_at + 7776000) AS expires_at,
+            created_at, last_used_at
        FROM device_tokens
       WHERE user_id = ? AND revoked_at IS NULL ORDER BY created_at DESC`,
   ).bind(userId).all()).results;

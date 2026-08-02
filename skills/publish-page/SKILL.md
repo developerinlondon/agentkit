@@ -247,6 +247,8 @@ slide with nothing but a kicker and an `h2` above them.
 
 - Device token: `~/.config/agentkit/pages-token`. First use starts the bounded device flow at
   `account.agentkit.sbs/device`, signs in through Assay, and stores the token with mode `0600`.
+  The credential grants `pages:write` and `pages:delete`, expires after 90 days,
+  and is replaced through the same device flow when the service rejects it.
 - Themes are bundled with the skill; if a clone of `gitlab.com/agentkit/agentkit-pages`
   exists at `~/code/agentkit-pages` (override: `AGENTKIT_PAGES_REPO`), the publish
   archives `src/` + `dist/` there only with explicit `--git` — otherwise it
@@ -257,6 +259,9 @@ slide with nothing but a kicker and an `h2` above them.
   `https://account.agentkit.sbs/dashboard`. Rendered pages stay on the separate
   `pages.agentkit.sbs` origin so their inline JavaScript cannot read the account dashboard. Pages from
   before the accounts migration remain public until claimed or removed.
+- A device can perform at most 60 publish/delete operations per minute. A
+  `429` includes `Retry-After`; wait for that interval instead of retrying in a
+  loop. Each page remains capped at 5 MB and each account at 100 pages.
 - Same name (or slug) republished overwrites silently, and on machines without
   the pages repo clone there is no git history to recover from — pick
   distinctive names, reuse one only when deliberately updating that page.

@@ -5,6 +5,18 @@ top and ships with the next tag.
 
 ## [Unreleased]
 
+## v0.7.2 — 2026-08-02
+
+- feat(pages): issue 90-day device credentials with explicit `pages:write`
+  and `pages:delete` scopes, enforce the scope required by each operation, and
+  backfill existing devices through an immutable D1 migration. The account
+  dashboard shows each device's grants and expiry, while a rejected stored
+  credential starts device authorization again instead of leaving the
+  publisher at an unactionable `401`.
+- feat(pages): bound each device to 60 publish/delete operations per minute in
+  D1, with a configurable ceiling and `Retry-After` on `429`. This complements
+  the existing 5 MB page limit and 100-page per-account quota.
+
 ## v0.7.1 — 2026-08-02
 
 - fix(pages): add a forward D1 migration for `page_access_tokens`. The accounts

@@ -2,8 +2,23 @@ import { randomToken, sessionUser, sha256 } from "./accounts.js";
 import { escapeHtml, UI_HEADERS } from "./ui.js";
 
 const DEVICE_TTL_SECONDS = 600;
+const DEFAULT_TOKEN_TTL_SECONDS = 90 * 24 * 60 * 60;
 const POLL_INTERVAL_SECONDS = 5;
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+const ALLOWED_SCOPES = ["pages:write", "pages:delete"];
+
+function requestedScopes(value) {
+  if (value === undefined || value === null) return ALLOWED_SCOPES;
+  const requested = Array.isArray(value) ? value.map(String) : String(value).split(/\s+/);
+  const unique = [...new Set(requested.filter(Boolean))];
+  if (unique.length === 0 || unique.some((scope) => !ALLOWED_SCOPES.includes(scope))) return null;
+  return ALLOWED_SCOPES.filter((scope) => unique.includes(scope));
+}
+
+function tokenTtl(env) {
+  const configured = Number(env.DEVICE_TOKEN_TTL_SECONDS || DEFAULT_TOKEN_TTL_SECONDS);
+  return Number.isSafeInteger(configured) && configured > 0 ? configured : DEFAULT_TOKEN_TTL_SECONDS;
+}
 
 function userCode() {
   const bytes = new Uint8Array(8);
@@ -12,7 +27,9 @@ function userCode() {
   return `${code.slice(0, 4)}-${code.slice(4)}`;
 }
 
-export async function startDevice(env, deviceName) {
+export async function startDevice(env, deviceName, requested) {
+  const scopes = requestedScopes(requested);
+  if (!scopes) return null;
   const name = String(deviceName || "AgentKit device").trim().slice(0, 80);
   const deviceCode = randomToken();
   const code = userCode();
@@ -22,14 +39,15 @@ export async function startDevice(env, deviceName) {
   ).bind(now).run();
   await env.DB.prepare(
     `INSERT INTO device_authorizations
-       (device_hash, user_code_hash, device_name, status, expires_at, interval_seconds)
-     VALUES (?, ?, ?, 'pending', ?, ?)`,
+       (device_hash, user_code_hash, device_name, status, expires_at, interval_seconds, scopes)
+     VALUES (?, ?, ?, 'pending', ?, ?, ?)`,
   ).bind(
     await sha256(deviceCode),
     await sha256(code),
     name || "AgentKit device",
     now + DEVICE_TTL_SECONDS,
     POLL_INTERVAL_SECONDS,
+    scopes.join(" "),
   ).run();
   const verificationUri = `${env.ACCOUNT_URL}/device`;
   return {
@@ -72,14 +90,28 @@ export async function pollDevice(env, deviceCode) {
   const approved = await env.DB.prepare(
     `UPDATE device_authorizations SET status = 'consumed'
       WHERE device_hash = ? AND status = 'approved'
-      RETURNING user_id, device_name`,
+      RETURNING user_id, device_name, scopes`,
   ).bind(deviceHash).first();
   if (!approved) return deviceError("expired_token");
   const token = randomToken();
+  const ttl = tokenTtl(env);
   await env.DB.prepare(
-    "INSERT INTO device_tokens (token_hash, user_id, name, created_at) VALUES (?, ?, ?, ?)",
-  ).bind(await sha256(token), approved.user_id, approved.device_name, now).run();
-  return Response.json({ access_token: token, token_type: "Bearer" });
+    `INSERT INTO device_tokens (token_hash, user_id, name, scopes, expires_at, created_at)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+  ).bind(
+    await sha256(token),
+    approved.user_id,
+    approved.device_name,
+    approved.scopes,
+    now + ttl,
+    now,
+  ).run();
+  return Response.json({
+    access_token: token,
+    token_type: "Bearer",
+    scope: approved.scopes,
+    expires_in: ttl,
+  });
 }
 
 export async function devicePage(request, env) {

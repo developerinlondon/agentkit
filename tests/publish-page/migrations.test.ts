@@ -44,3 +44,29 @@ test('forward migrations repair an already-recorded squashed accounts migration'
     sqlite.close();
   }
 });
+
+test('forward migrations backfill scoped expiring device credentials and rate limits', () => {
+  const sqlite = new Database(':memory:');
+  try {
+    sqlite.run(readFileSync(new URL('0001_accounts.sql', migrationsUrl), 'utf8'));
+    sqlite.run(
+      "INSERT INTO users (id, email, display_name, created_at) VALUES ('user-a', 'owner@example.com', 'Owner', 1)",
+    );
+    sqlite.run(
+      "INSERT INTO device_tokens (token_hash, user_id, name, created_at) VALUES ('legacy-token', 'user-a', 'Old Mac', 1)",
+    );
+
+    for (const migration of readdirSync(migrationsUrl).filter((name) => name > '0001_accounts.sql').sort()) {
+      sqlite.run(readFileSync(new URL(migration, migrationsUrl), 'utf8'));
+    }
+
+    expect(sqlite.query(
+      "SELECT scopes, expires_at > unixepoch() AS active FROM device_tokens WHERE token_hash = 'legacy-token'",
+    ).get()).toEqual({ scopes: 'pages:write pages:delete', active: 1 });
+    expect(sqlite.query(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'device_write_limits'",
+    ).get()).toEqual({ name: 'device_write_limits' });
+  } finally {
+    sqlite.close();
+  }
+});
