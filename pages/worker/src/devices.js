@@ -31,7 +31,7 @@ export async function startDevice(env, deviceName) {
     now + DEVICE_TTL_SECONDS,
     POLL_INTERVAL_SECONDS,
   ).run();
-  const verificationUri = `${env.PUBLIC_URL}/device`;
+  const verificationUri = `${env.ACCOUNT_URL}/device`;
   return {
     device_code: deviceCode,
     user_code: code,

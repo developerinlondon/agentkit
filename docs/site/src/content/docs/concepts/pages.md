@@ -12,7 +12,7 @@ theme and returns a live URL.
 :::note[New pages are private]
 Publishing requires an Assay account and creates a page visible only to its owner. The owner can
 create a revocable sharing link or grant access to another verified Assay email from
-`https://pages.agentkit.sbs/dashboard`. Pages created before accounts remain public during the
+`https://account.agentkit.sbs/dashboard`. Pages created before accounts remain public during the
 migration; an old unguessable slug is still not access control.
 :::
 
@@ -22,10 +22,15 @@ migration; an old unguessable slug is still not access control.
 flowchart LR
   agent["agent output<br/>markdown or HTML"] --> pub["publish.ts<br/>theme · figure lint · 5 MB gate"]
   pub -- "device authorization" --> assay["Assay Auth<br/>identity"]
-  pub -- "PUT /api/pages/&lt;slug&gt;<br/>device credential" --> worker["Cloudflare Worker"]
+  pub -- "PUT /api/pages/&lt;slug&gt;<br/>device credential" --> account["account.agentkit.sbs<br/>trusted control plane"]
+  browser["browser"] -- "host-only session" --> account
+  account -- "10 minute page capability" --> pages["pages.agentkit.sbs<br/>untrusted content"]
+  browser -- "capability or share link" --> pages
+  account --> worker["Cloudflare Worker"]
+  pages --> worker
   worker --> r2["R2 bucket<br/>the served copy"]
   worker --> d1["D1<br/>owners · sessions · sharing"]
-  worker -. "OIDC code + PKCE" .-> assay
+  account -. "OIDC code + PKCE" .-> assay
   pub -. "with --git" .-> repo["git clone<br/>explicit archival"]
 ```
 
@@ -34,20 +39,21 @@ store that holds the rendered HTML — plus an optional canonical clone.
 
 ### The Worker contract
 
-| Method        | Path                       | Behaviour                                                                                     |
-| ------------- | -------------------------- | --------------------------------------------------------------------------------------------- |
-| `PUT`         | `/api/pages/<slug>`        | Device bearer required · owner-only updates · new pages private · 5 MB and per-account quotas |
-| `DELETE`      | `/api/pages/<slug>`        | Device bearer required · owner-only · 404 when absent                                         |
-| `PUT`         | `/api/site/<path>`         | site-token only · the docs-asset keyspace, real filenames and extensions · same 5 MB rule     |
-| `DELETE`      | `/api/site/<path>`         | site-token only · 400 on a path outside the docs subtree · 404 when absent                    |
-| `GET`, `HEAD` | apex (and `www`) `/<path>` | the site keyspace; the root is the site index                                                 |
-| `GET`, `HEAD` | pages host `/<slug>`       | Owner session, invite, or active sharing link; legacy pages remain readable during migration  |
-| `GET`         | `/dashboard`               | Owner's pages, active invites, sharing controls, and publishing devices                       |
-| `POST`        | `/api/device/*`            | Bounded device authorization for the publish skill                                            |
-| anything else | —                          | 405                                                                                           |
+| Origin                      | Method        | Path                | Behaviour                                                                                     |
+| --------------------------- | ------------- | ------------------- | --------------------------------------------------------------------------------------------- |
+| `account.agentkit.sbs`      | `PUT`         | `/api/pages/<slug>` | Device bearer required · owner-only updates · new pages private · 5 MB and per-account quotas |
+| `account.agentkit.sbs`      | `DELETE`      | `/api/pages/<slug>` | Device bearer required · owner-only · 404 when absent                                         |
+| `account.agentkit.sbs`      | `GET`         | `/dashboard`        | Owner pages, invites, sharing controls, and publishing devices                                |
+| `account.agentkit.sbs`      | `POST`        | `/api/device/*`     | Bounded device authorization for the publish skill                                            |
+| `pages.agentkit.sbs`        | `GET`, `HEAD` | `/<slug>`           | Public/legacy page, share token, or account-issued page capability; every other method is 404 |
+| apex (and `www`)            | `PUT`         | `/api/site/<path>`  | Site-token only · docs assets with real filenames and extensions · same 5 MB rule             |
+| apex (and `www`)            | `GET`, `HEAD` | `/<path>`           | Marketing and documentation keyspace; the root is the site index                              |
+| an unconfigured Worker host | any           | any                 | 404                                                                                           |
 
-Reads split on host. Writes split on keyspace. Auth is checked **before** the slug or path is
-validated, so an unauthenticated caller learns nothing from a 400.
+Routing and credentials both split by host. The host-only account session is never sent with
+rendered content. A private-page request visits the account origin to prove ownership or an invite,
+then returns with a random capability scoped to that one page for ten minutes. This keeps arbitrary
+inline JavaScript on a published page outside the dashboard's same-origin boundary.
 
 :::note[The docs subtree is a deliberate relaxation]
 This documentation is served from the site keyspace under a `docs/` prefix, and that subtree is the
@@ -60,13 +66,14 @@ Every one of those relaxations is confined to that prefix. Outside it the apex s
 
 ## Credentials have separate jobs
 
-| Credential      | Grants                                                    | Storage                                         |
-| --------------- | --------------------------------------------------------- | ----------------------------------------------- |
-| slug key        | Derives a URL from a name; no network access              | Local file, mode `0600`                         |
-| device token    | Writes only pages owned by one Assay user until revoked   | Local file, mode `0600`; SHA-256 hash in D1     |
-| browser session | Dashboard and private-page access                         | Secure, HTTP-only cookie; SHA-256 hash in D1    |
-| sharing token   | Read access to one page until its owner disables the link | URL shown once; SHA-256 hash in D1              |
-| site token      | Writes the marketing and documentation `_site/` keyspace  | Worker secret, isolated from account publishing |
+| Credential      | Grants                                                    | Storage                                               |
+| --------------- | --------------------------------------------------------- | ----------------------------------------------------- |
+| slug key        | Derives a URL from a name; no network access              | Local file, mode `0600`                               |
+| device token    | Writes only pages owned by one Assay user until revoked   | Local file, mode `0600`; SHA-256 hash in D1           |
+| browser session | Account dashboard and access-broker requests              | Host-only secure HTTP-only cookie; SHA-256 hash in D1 |
+| page capability | Read access to one page for ten minutes                   | URL parameter; SHA-256 hash and expiry in D1          |
+| sharing token   | Read access to one page until its owner disables the link | URL shown once; SHA-256 hash in D1                    |
+| site token      | Writes the marketing and documentation `_site/` keyspace  | Worker secret, isolated from account publishing       |
 
 The site-token separation remains mechanical: every site key is rooted at `_site/`, and the
 published-page slug alphabet cannot express a leading underscore. A device-token holder cannot

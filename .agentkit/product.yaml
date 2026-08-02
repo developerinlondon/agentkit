@@ -43,9 +43,12 @@ surfaces:
       The Worker starts with local R2 and D1 bindings. Site-token routes remain
       isolated from account publishing. Page publishing requires a per-device
       credential owned by an Assay user, creates private pages, and records the
-      page in that user's dashboard. Owner sessions, one-time sharing links,
-      verified-email invites, and device revocation enforce their D1 records;
-      missing account storage fails closed when account mode is required.
+      page in that user's dashboard. The account origin alone receives host-only
+      sessions and control requests; the rendered-content origin accepts only
+      reads through a public page, sharing token, or short-lived page-scoped
+      capability. Verified-email invites, immediate invite revocation, and device
+      revocation enforce their D1 records; missing account storage fails closed
+      when account mode is required.
 
   - name: plugin
     kind: desktop

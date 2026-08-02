@@ -15,6 +15,7 @@ function runHook(command: string, env: Record<string, string> = {}): string {
 
 describe('pages-police: direct API writes', () => {
   const denied = [
+    'curl -X PUT https://account.agentkit.sbs/api/pages/abc --data @page.html',
     'curl -X PUT https://pages.agentkit.sbs/api/pages/abc --data @page.html',
     'curl --upload-file page.html https://pages.agentkit.sbs/api/pages/abc',
     'curl -T page.html https://pages.agentkit.sbs/api/pages/abc',

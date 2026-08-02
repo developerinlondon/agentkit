@@ -40,7 +40,7 @@ if (!["doc", "deck", "raw"].includes(template)) fail(`unknown template "${templa
 if (!isDelete && !file) fail("--file is required");
 if (!isDelete && !existsSync(file!)) fail(`no such file: ${file}`);
 
-const endpoint = process.env.AGENTKIT_PAGES_ENDPOINT ?? "https://pages.agentkit.sbs";
+const endpoint = process.env.AGENTKIT_PAGES_ENDPOINT ?? "https://account.agentkit.sbs";
 const endpointHost = new URL(endpoint).hostname;
 if (!endpoint.startsWith("https://") && !["127.0.0.1", "localhost"].includes(endpointHost)) {
   fail(`endpoint must be https (got ${endpoint}) — the bearer token would travel in cleartext`);

@@ -1,13 +1,20 @@
 # AgentKit Pages Worker
 
-The Worker serves the AgentKit site and authenticated Pages from one deployment. Assay is the
-identity provider; AgentKit-specific ownership and sharing remain in D1.
+The Worker serves three isolated origins from one deployment. Assay is the identity provider;
+AgentKit-specific ownership and sharing remain in D1. User-authored HTML is confined to the Pages
+origin and never shares an origin or session cookie with the account dashboard.
 
 ```mermaid
 flowchart LR
   browser[Browser] -- OIDC code + PKCE --> assay[auth.assay.rs]
-  browser -- session or share link --> worker[Pages Worker]
-  cli[Publish skill] -- device token --> worker
+  browser -- host-only session --> account[account.agentkit.sbs]
+  account -- page-scoped 10 minute capability --> pages[pages.agentkit.sbs]
+  browser -- capability or share link --> pages
+  cli[Publish skill] -- device token --> account
+  site[Site deploy] -- site token --> apex[agentkit.sbs]
+  account --> worker[Pages Worker]
+  pages --> worker
+  apex --> worker
   worker --> d1[D1 metadata and ACLs]
   worker --> r2[R2 rendered HTML]
 ```
@@ -21,13 +28,18 @@ flowchart LR
 | `SITE_TOKEN`         | Secret   | Marketing and documentation deployment only |
 | `OIDC_CLIENT_SECRET` | Secret   | Confidential Assay client                   |
 | `ACCOUNT_MODE`       | Variable | `required` fails closed without D1          |
-| `PUBLIC_URL`         | Variable | Canonical Pages origin                      |
+| `ACCOUNT_URL`        | Variable | Trusted dashboard and account API origin    |
+| `PAGES_URL`          | Variable | Untrusted rendered-page origin              |
 | `OIDC_ISSUER`        | Variable | Assay issuer                                |
 | `OIDC_CLIENT_ID`     | Variable | Registered Assay client ID                  |
 | `MAX_PAGES_PER_USER` | Variable | New-page quota; defaults to 100             |
 
 `PUBLISH_TOKEN` may remain bound during migration, but account mode ignores it for page writes.
 `SITE_TOKEN` remains independent and cannot address the page keyspace.
+
+Private reads redirect through `ACCOUNT_URL/access`, which validates the signed-in owner or invite
+and returns a random capability scoped to one page for ten minutes. The account cookie is host-only;
+it is never sent to `PAGES_URL`. Removing an invite deletes that user's active capabilities.
 
 ## Deployment
 

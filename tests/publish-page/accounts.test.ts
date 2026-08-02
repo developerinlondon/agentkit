@@ -4,6 +4,8 @@ import { readFileSync } from 'node:fs';
 import worker from '../../pages/worker/src/worker.js';
 
 const openDatabases: Database[] = [];
+const ACCOUNT_URL = 'https://account.agentkit.sbs';
+const PAGES_URL = 'https://pages.agentkit.sbs';
 
 function d1() {
   const sqlite = new Database(':memory:');
@@ -105,7 +107,8 @@ async function accountEnv() {
       SITE_TOKEN: 'site-secret',
       PUBLISH_TOKEN: 'legacy-shared-secret',
       ACCOUNT_MODE: 'required',
-      PUBLIC_URL: 'https://pages.agentkit.sbs',
+      ACCOUNT_URL,
+      PAGES_URL,
       OIDC_ISSUER: 'https://auth.assay.rs/auth',
       OIDC_CLIENT_ID: 'agentkit-pages',
       OIDC_CLIENT_SECRET: 'oidc-secret',
@@ -124,14 +127,14 @@ function accountPost(url: string, body: unknown, session = 'session-a') {
     headers: {
       cookie: `agentkit_session=${session}`,
       'content-type': 'application/json',
-      origin: 'https://pages.agentkit.sbs',
+      origin: ACCOUNT_URL,
     },
     body: JSON.stringify(body),
   });
 }
 
 function publish(token: string, body = '<h1>private</h1>', slug = 'private-page', title?: string) {
-  return new Request(`https://pages.agentkit.sbs/api/pages/${slug}`, {
+  return new Request(`${ACCOUNT_URL}/api/pages/${slug}`, {
     method: 'PUT',
     headers: {
       authorization: `Bearer ${token}`,
@@ -141,8 +144,61 @@ function publish(token: string, body = '<h1>private</h1>', slug = 'private-page'
   });
 }
 
+async function pageAccessUrl(
+  setup: Awaited<ReturnType<typeof accountEnv>>,
+  slug = 'private-page',
+  session = 'session-a',
+) {
+  const response = await worker.fetch(
+    signedIn(`${ACCOUNT_URL}/access?return_to=${encodeURIComponent(`${PAGES_URL}/${slug}`)}`, session),
+    setup.env,
+  );
+  return { response, location: response.headers.get('location') };
+}
+
 afterEach(() => {
   for (const database of openDatabases.splice(0)) database.close();
+});
+
+describe('account and content origin isolation', () => {
+  test('account controls are reachable only on the account origin', async () => {
+    const setup = await accountEnv();
+
+    expect((await worker.fetch(signedIn(`${ACCOUNT_URL}/dashboard`), setup.env)).status).toBe(200);
+    expect((await worker.fetch(signedIn(`${PAGES_URL}/dashboard`), setup.env)).status).toBe(404);
+    expect((await worker.fetch(
+      new Request(`${PAGES_URL}/api/device/authorize`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ device_name: 'Hostile page origin' }),
+      }),
+      setup.env,
+    )).status).toBe(404);
+  });
+
+  test('rendered pages are reachable only on the untrusted content origin', async () => {
+    const setup = await accountEnv();
+    expect((await worker.fetch(publish('device-a'), setup.env)).status).toBe(200);
+
+    expect((await worker.fetch(signedIn(`${ACCOUNT_URL}/private-page`), setup.env)).status).toBe(404);
+    const privatePage = await worker.fetch(new Request(`${PAGES_URL}/private-page`), setup.env);
+    expect(privatePage.status).toBe(302);
+    expect(privatePage.headers.get('location')).toBe(
+      `${ACCOUNT_URL}/access?return_to=${encodeURIComponent(`${PAGES_URL}/private-page`)}`,
+    );
+  });
+
+  test('Assay redirects back to the account origin, never the content origin', async () => {
+    const setup = await accountEnv();
+    const response = await worker.fetch(
+      new Request(`${ACCOUNT_URL}/login?return_to=%2Fdashboard`),
+      setup.env,
+    );
+
+    expect(response.status).toBe(302);
+    const target = new URL(response.headers.get('location')!);
+    expect(target.searchParams.get('redirect_uri')).toBe(`${ACCOUNT_URL}/auth/callback`);
+  });
 });
 
 describe('account publishing', () => {
@@ -192,7 +248,7 @@ describe('account publishing', () => {
 
     expect(setup.database.sqlite.query('SELECT title FROM pages WHERE slug = ?').get('private-page'))
       .toEqual({ title: 'Quarterly Plan 🚀' });
-    const response = await worker.fetch(signedIn('https://pages.agentkit.sbs/dashboard'), setup.env);
+    const response = await worker.fetch(signedIn(`${ACCOUNT_URL}/dashboard`), setup.env);
     expect(await response.text()).toContain('Quarterly Plan 🚀');
   });
 
@@ -216,7 +272,9 @@ describe('account publishing', () => {
     );
 
     expect(response.status).toBe(302);
-    expect(response.headers.get('location')).toBe('/login?return_to=%2Fprivate-page');
+    expect(response.headers.get('location')).toBe(
+      `${ACCOUNT_URL}/access?return_to=${encodeURIComponent(`${PAGES_URL}/private-page`)}`,
+    );
   });
 
   test('new page creation stops at the configured per-user quota', async () => {
@@ -234,7 +292,7 @@ describe('account publishing', () => {
     const setup = await accountEnv();
     expect((await worker.fetch(publish('device-a'), setup.env)).status).toBe(200);
     const other = await worker.fetch(
-      new Request('https://pages.agentkit.sbs/api/pages/private-page', {
+      new Request(`${ACCOUNT_URL}/api/pages/private-page`, {
         method: 'DELETE',
         headers: { authorization: 'Bearer device-b' },
       }),
@@ -244,7 +302,7 @@ describe('account publishing', () => {
     expect(setup.pages.writes.has('pages/private-page/index.html')).toBe(true);
 
     const owner = await worker.fetch(
-      new Request('https://pages.agentkit.sbs/api/pages/private-page', {
+      new Request(`${ACCOUNT_URL}/api/pages/private-page`, {
         method: 'DELETE',
         headers: { authorization: 'Bearer device-a' },
       }),
@@ -265,7 +323,7 @@ describe('account publishing', () => {
     );
 
     const response = await worker.fetch(
-      new Request('https://pages.agentkit.sbs/api/pages/missing-body', {
+      new Request(`${ACCOUNT_URL}/api/pages/missing-body`, {
         method: 'DELETE',
         headers: { authorization: 'Bearer device-a' },
       }),
@@ -279,14 +337,67 @@ describe('account publishing', () => {
 });
 
 describe('private access and sharing', () => {
-  test('the owner session can read its private page', async () => {
+  test('the account origin mints a short-lived page-scoped access URL for an owner', async () => {
+    const setup = await accountEnv();
+    expect((await worker.fetch(publish('device-a'), setup.env)).status).toBe(200);
+    expect((await worker.fetch(
+      publish('device-a', '<h1>another private page</h1>', 'another-page'),
+      setup.env,
+    )).status).toBe(200);
+
+    const access = await worker.fetch(
+      signedIn(
+        `${ACCOUNT_URL}/access?return_to=${encodeURIComponent(`${PAGES_URL}/private-page`)}`,
+      ),
+      setup.env,
+    );
+
+    expect(access.status).toBe(302);
+    const location = access.headers.get('location')!;
+    expect(location).toStartWith(`${PAGES_URL}/private-page?access=`);
+    const page = await worker.fetch(new Request(location), setup.env);
+    expect(page.status).toBe(200);
+    expect(await page.text()).toBe('<h1>private</h1>');
+
+    expect((await worker.fetch(
+      new Request(location.replace('/private-page?', '/another-page?')),
+      setup.env,
+    )).status).toBe(302);
+  });
+
+  test('an expired account-issued capability cannot read its page', async () => {
+    const setup = await accountEnv();
+    expect((await worker.fetch(publish('device-a'), setup.env)).status).toBe(200);
+    const { location } = await pageAccessUrl(setup);
+    setup.database.sqlite.run('UPDATE page_access_tokens SET expires_at = 0');
+
+    expect((await worker.fetch(new Request(location!), setup.env)).status).toBe(302);
+  });
+
+  test('page access is denied to another account until its verified email is invited', async () => {
+    const setup = await accountEnv();
+    expect((await worker.fetch(publish('device-a'), setup.env)).status).toBe(200);
+    const target = `${ACCOUNT_URL}/access?return_to=${encodeURIComponent(`${PAGES_URL}/private-page`)}`;
+
+    expect((await worker.fetch(signedIn(target, 'session-b'), setup.env)).status).toBe(404);
+
+    expect((await worker.fetch(
+      accountPost(`${ACCOUNT_URL}/api/pages/private-page/invites`, { email: 'other@example.com' }),
+      setup.env,
+    )).status).toBe(200);
+    const invited = await worker.fetch(signedIn(target, 'session-b'), setup.env);
+    expect(invited.status).toBe(302);
+    expect((await worker.fetch(new Request(invited.headers.get('location')!), setup.env)).status)
+      .toBe(200);
+  });
+
+  test('the owner can read its private page through an account-issued access URL', async () => {
     const setup = await accountEnv();
     expect((await worker.fetch(publish('device-a'), setup.env)).status).toBe(200);
 
-    const response = await worker.fetch(
-      signedIn('https://pages.agentkit.sbs/private-page'),
-      setup.env,
-    );
+    const access = await pageAccessUrl(setup);
+    expect(access.response.status).toBe(302);
+    const response = await worker.fetch(new Request(access.location!), setup.env);
 
     expect(response.status).toBe(200);
     expect(await response.text()).toBe('<h1>private</h1>');
@@ -296,7 +407,7 @@ describe('private access and sharing', () => {
     const setup = await accountEnv();
     expect((await worker.fetch(publish('device-a'), setup.env)).status).toBe(200);
     const enabled = await worker.fetch(
-      accountPost('https://pages.agentkit.sbs/api/pages/private-page/share', { enabled: true }),
+      accountPost(`${ACCOUNT_URL}/api/pages/private-page/share`, { enabled: true }),
       setup.env,
     );
     expect(enabled.status).toBe(200);
@@ -305,28 +416,27 @@ describe('private access and sharing', () => {
     expect((await worker.fetch(new Request(url), setup.env)).status).toBe(200);
 
     const disabled = await worker.fetch(
-      accountPost('https://pages.agentkit.sbs/api/pages/private-page/share', { enabled: false }),
+      accountPost(`${ACCOUNT_URL}/api/pages/private-page/share`, { enabled: false }),
       setup.env,
     );
     expect(disabled.status).toBe(200);
     expect((await worker.fetch(new Request(url), setup.env)).status).toBe(302);
   });
 
-  test('an invited Assay email can read after signing in', async () => {
+  test('an invited Assay email can obtain page-scoped access after signing in', async () => {
     const setup = await accountEnv();
     expect((await worker.fetch(publish('device-a'), setup.env)).status).toBe(200);
     const invited = await worker.fetch(
-      accountPost('https://pages.agentkit.sbs/api/pages/private-page/invites', {
+      accountPost(`${ACCOUNT_URL}/api/pages/private-page/invites`, {
         email: 'OTHER@example.com',
       }),
       setup.env,
     );
     expect(invited.status).toBe(200);
 
-    const response = await worker.fetch(
-      signedIn('https://pages.agentkit.sbs/private-page', 'session-b'),
-      setup.env,
-    );
+    const access = await pageAccessUrl(setup, 'private-page', 'session-b');
+    expect(access.response.status).toBe(302);
+    const response = await worker.fetch(new Request(access.location!), setup.env);
     expect(response.status).toBe(200);
   });
 
@@ -334,37 +444,47 @@ describe('private access and sharing', () => {
     const setup = await accountEnv();
     expect((await worker.fetch(publish('device-a'), setup.env)).status).toBe(200);
     expect((await worker.fetch(
-      accountPost('https://pages.agentkit.sbs/api/pages/private-page/invites', {
+      accountPost(`${ACCOUNT_URL}/api/pages/private-page/invites`, {
         email: 'other@example.com',
       }),
       setup.env,
     )).status).toBe(200);
+    const access = await pageAccessUrl(setup, 'private-page', 'session-b');
+    expect((await worker.fetch(new Request(access.location!), setup.env)).status).toBe(200);
 
     const removed = await worker.fetch(
-      accountPost('https://pages.agentkit.sbs/api/pages/private-page/invites/remove', {
+      accountPost(`${ACCOUNT_URL}/api/pages/private-page/invites/remove`, {
         email: 'other@example.com',
       }),
       setup.env,
     );
 
     expect(removed.status).toBe(200);
+    expect((await pageAccessUrl(setup, 'private-page', 'session-b')).response.status).toBe(404);
+    expect((await worker.fetch(new Request(access.location!), setup.env)).status).toBe(302);
+  });
+
+  test('the access broker rejects targets outside the configured content origin', async () => {
+    const setup = await accountEnv();
+    const malicious = encodeURIComponent('https://attacker.example/private-page');
+
     expect((await worker.fetch(
-      signedIn('https://pages.agentkit.sbs/private-page', 'session-b'),
+      signedIn(`${ACCOUNT_URL}/access?return_to=${malicious}`),
       setup.env,
-    )).status).toBe(302);
+    )).status).toBe(400);
   });
 
   test('the dashboard shows the email addresses that currently have access', async () => {
     const setup = await accountEnv();
     expect((await worker.fetch(publish('device-a'), setup.env)).status).toBe(200);
     expect((await worker.fetch(
-      accountPost('https://pages.agentkit.sbs/api/pages/private-page/invites', {
+      accountPost(`${ACCOUNT_URL}/api/pages/private-page/invites`, {
         email: 'other@example.com',
       }),
       setup.env,
     )).status).toBe(200);
 
-    const response = await worker.fetch(signedIn('https://pages.agentkit.sbs/dashboard'), setup.env);
+    const response = await worker.fetch(signedIn(`${ACCOUNT_URL}/dashboard`), setup.env);
     expect(await response.text()).toContain('Access: other@example.com');
   });
 
@@ -372,12 +492,12 @@ describe('private access and sharing', () => {
     const setup = await accountEnv();
     expect((await worker.fetch(publish('device-a'), setup.env)).status).toBe(200);
 
-    const owner = await worker.fetch(signedIn('https://pages.agentkit.sbs/dashboard'), setup.env);
+    const owner = await worker.fetch(signedIn(`${ACCOUNT_URL}/dashboard`), setup.env);
     expect(owner.status).toBe(200);
     expect(await owner.text()).toContain('private-page');
 
     const other = await worker.fetch(
-      signedIn('https://pages.agentkit.sbs/dashboard', 'session-b'),
+      signedIn(`${ACCOUNT_URL}/dashboard`, 'session-b'),
       setup.env,
     );
     expect(other.status).toBe(200);
@@ -387,7 +507,7 @@ describe('private access and sharing', () => {
   test('dashboard controls can submit only to the same origin', async () => {
     const setup = await accountEnv();
     expect((await worker.fetch(publish('device-a'), setup.env)).status).toBe(200);
-    const response = await worker.fetch(signedIn('https://pages.agentkit.sbs/dashboard'), setup.env);
+    const response = await worker.fetch(signedIn(`${ACCOUNT_URL}/dashboard`), setup.env);
 
     expect(response.headers.get('content-security-policy')).toContain("form-action 'self'");
     expect(await response.text()).toContain('/api/pages/private-page/invites/remove');
@@ -397,11 +517,11 @@ describe('private access and sharing', () => {
     const setup = await accountEnv();
     expect((await worker.fetch(publish('device-a'), setup.env)).status).toBe(200);
     const response = await worker.fetch(
-      new Request('https://pages.agentkit.sbs/api/pages/private-page/share', {
+      new Request(`${ACCOUNT_URL}/api/pages/private-page/share`, {
         method: 'POST',
         headers: {
           cookie: 'agentkit_session=session-a',
-          origin: 'https://pages.agentkit.sbs',
+          origin: ACCOUNT_URL,
           'content-type': 'application/x-www-form-urlencoded',
         },
         body: new URLSearchParams({ enabled: 'true' }),
@@ -417,7 +537,7 @@ describe('private access and sharing', () => {
     const setup = await accountEnv();
     expect((await worker.fetch(publish('device-a'), setup.env)).status).toBe(200);
     const response = await worker.fetch(
-      new Request('https://pages.agentkit.sbs/api/pages/private-page/share', {
+      new Request(`${ACCOUNT_URL}/api/pages/private-page/share`, {
         method: 'POST',
         headers: {
           cookie: 'agentkit_session=session-a',
@@ -444,7 +564,7 @@ describe('device authorization', () => {
       [await digest('unsafe-device'), 'user-a', '<script>alert(1)</script>', 1],
     );
     const dashboardResponse = await worker.fetch(
-      signedIn('https://pages.agentkit.sbs/dashboard'),
+      signedIn(`${ACCOUNT_URL}/dashboard`),
       setup.env,
     );
     const dashboardBody = await dashboardResponse.text();
@@ -454,13 +574,13 @@ describe('device authorization', () => {
     expect(dashboardBody).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
 
     const wrongUser = await worker.fetch(
-      accountPost(`https://pages.agentkit.sbs/api/devices/${tokenHash}/revoke`, {}, 'session-b'),
+      accountPost(`${ACCOUNT_URL}/api/devices/${tokenHash}/revoke`, {}, 'session-b'),
       setup.env,
     );
     expect(wrongUser.status).toBe(404);
 
     const crossOrigin = await worker.fetch(
-      new Request(`https://pages.agentkit.sbs/api/devices/${tokenHash}/revoke`, {
+      new Request(`${ACCOUNT_URL}/api/devices/${tokenHash}/revoke`, {
         method: 'POST',
         headers: {
           cookie: 'agentkit_session=session-a',
@@ -474,7 +594,7 @@ describe('device authorization', () => {
     expect(crossOrigin.status).toBe(403);
 
     const revoked = await worker.fetch(
-      accountPost(`https://pages.agentkit.sbs/api/devices/${tokenHash}/revoke`, {}),
+      accountPost(`${ACCOUNT_URL}/api/devices/${tokenHash}/revoke`, {}),
       setup.env,
     );
     expect(revoked.status).toBe(200);
@@ -491,7 +611,7 @@ describe('device authorization', () => {
     );
 
     const response = await worker.fetch(
-      new Request('https://pages.agentkit.sbs/api/device/authorize', {
+      new Request(`${ACCOUNT_URL}/api/device/authorize`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ device_name: 'New Mac' }),
@@ -508,7 +628,7 @@ describe('device authorization', () => {
   test('a signed-in user approves a short code and the CLI receives one device token', async () => {
     const setup = await accountEnv();
     const started = await worker.fetch(
-      new Request('https://pages.agentkit.sbs/api/device/authorize', {
+      new Request(`${ACCOUNT_URL}/api/device/authorize`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ device_name: 'New Mac' }),
@@ -527,7 +647,7 @@ describe('device authorization', () => {
     expect(authorization.interval).toBeGreaterThanOrEqual(5);
 
     const approved = await worker.fetch(
-      accountPost('https://pages.agentkit.sbs/api/device/approve', {
+      accountPost(`${ACCOUNT_URL}/api/device/approve`, {
         user_code: authorization.user_code,
       }),
       setup.env,
@@ -535,7 +655,7 @@ describe('device authorization', () => {
     expect(approved.status).toBe(200);
 
     const tokenResponse = await worker.fetch(
-      new Request('https://pages.agentkit.sbs/api/device/token', {
+      new Request(`${ACCOUNT_URL}/api/device/token`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ device_code: authorization.device_code }),
@@ -551,7 +671,7 @@ describe('device authorization', () => {
     expect(publishResponse.status).toBe(200);
 
     const replay = await worker.fetch(
-      new Request('https://pages.agentkit.sbs/api/device/token', {
+      new Request(`${ACCOUNT_URL}/api/device/token`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ device_code: authorization.device_code }),
@@ -564,7 +684,7 @@ describe('device authorization', () => {
   test('pending polls are bounded by the advertised interval', async () => {
     const setup = await accountEnv();
     const started = await worker.fetch(
-      new Request('https://pages.agentkit.sbs/api/device/authorize', {
+      new Request(`${ACCOUNT_URL}/api/device/authorize`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ device_name: 'New Mac' }),
@@ -573,7 +693,7 @@ describe('device authorization', () => {
     );
     const { device_code } = await started.json() as { device_code: string };
     const poll = () => worker.fetch(
-      new Request('https://pages.agentkit.sbs/api/device/token', {
+      new Request(`${ACCOUNT_URL}/api/device/token`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ device_code }),
@@ -592,7 +712,7 @@ describe('device authorization', () => {
   test('the verification page requires an Assay session', async () => {
     const setup = await accountEnv();
     const response = await worker.fetch(
-      new Request('https://pages.agentkit.sbs/device?user_code=ABCD-2345'),
+      new Request(`${ACCOUNT_URL}/device?user_code=ABCD-2345`),
       setup.env,
     );
 
@@ -603,7 +723,7 @@ describe('device authorization', () => {
   test('the verification page escapes a code before rendering it', async () => {
     const setup = await accountEnv();
     const response = await worker.fetch(
-      signedIn('https://pages.agentkit.sbs/device?user_code=%22%3E%3Cscript%3Ealert(1)%3C%2Fscript%3E'),
+      signedIn(`${ACCOUNT_URL}/device?user_code=%22%3E%3Cscript%3Ealert(1)%3C%2Fscript%3E`),
       setup.env,
     );
     const body = await response.text();
@@ -621,7 +741,7 @@ describe('Assay OIDC sessions', () => {
       "INSERT INTO oauth_states (state_hash, verifier, return_to, expires_at) VALUES ('old', 'old', '/', 1)",
     );
 
-    const response = await worker.fetch(new Request('https://pages.agentkit.sbs/login'), setup.env);
+    const response = await worker.fetch(new Request(`${ACCOUNT_URL}/login`), setup.env);
 
     expect(response.status).toBe(302);
     expect(setup.database.sqlite.query('SELECT COUNT(*) AS count FROM oauth_states WHERE expires_at <= ?')
@@ -632,7 +752,7 @@ describe('Assay OIDC sessions', () => {
     const setup = await accountEnv();
     setup.env.OIDC_CLIENT_SECRET = '';
 
-    const response = await worker.fetch(new Request('https://pages.agentkit.sbs/login'), setup.env);
+    const response = await worker.fetch(new Request(`${ACCOUNT_URL}/login`), setup.env);
 
     expect(response.status).toBe(503);
   });
@@ -640,7 +760,7 @@ describe('Assay OIDC sessions', () => {
   test('login starts an authorization-code flow with PKCE and a one-time state', async () => {
     const setup = await accountEnv();
     const response = await worker.fetch(
-      new Request('https://pages.agentkit.sbs/login?return_to=%2Fdashboard'),
+      new Request(`${ACCOUNT_URL}/login?return_to=%2Fdashboard`),
       setup.env,
     );
 
@@ -649,7 +769,7 @@ describe('Assay OIDC sessions', () => {
     expect(`${target.origin}${target.pathname}`).toBe('https://auth.assay.rs/auth/authorize');
     expect(target.searchParams.get('response_type')).toBe('code');
     expect(target.searchParams.get('client_id')).toBe('agentkit-pages');
-    expect(target.searchParams.get('redirect_uri')).toBe('https://pages.agentkit.sbs/auth/callback');
+    expect(target.searchParams.get('redirect_uri')).toBe(`${ACCOUNT_URL}/auth/callback`);
     expect(target.searchParams.get('code_challenge_method')).toBe('S256');
     expect(target.searchParams.get('code_challenge')?.length).toBeGreaterThan(30);
     const state = target.searchParams.get('state')!;
@@ -663,7 +783,7 @@ describe('Assay OIDC sessions', () => {
   test('login rejects a protocol-relative return target', async () => {
     const setup = await accountEnv();
     const response = await worker.fetch(
-      new Request('https://pages.agentkit.sbs/login?return_to=%2F%2Fattacker.example'),
+      new Request(`${ACCOUNT_URL}/login?return_to=%2F%2Fattacker.example`),
       setup.env,
     );
     const state = new URL(response.headers.get('location')!).searchParams.get('state')!;
@@ -675,7 +795,7 @@ describe('Assay OIDC sessions', () => {
   test('callback verifies userinfo and creates an opaque local session', async () => {
     const setup = await accountEnv();
     const login = await worker.fetch(
-      new Request('https://pages.agentkit.sbs/login?return_to=%2Fdashboard'),
+      new Request(`${ACCOUNT_URL}/login?return_to=%2Fdashboard`),
       setup.env,
     );
     const state = new URL(login.headers.get('location')!).searchParams.get('state')!;
@@ -697,7 +817,7 @@ describe('Assay OIDC sessions', () => {
     };
 
     const callback = await worker.fetch(
-      new Request(`https://pages.agentkit.sbs/auth/callback?code=oidc-code&state=${state}`),
+      new Request(`${ACCOUNT_URL}/auth/callback?code=oidc-code&state=${state}`),
       setup.env,
     );
 
@@ -712,6 +832,7 @@ describe('Assay OIDC sessions', () => {
     expect(cookie).toContain('HttpOnly');
     expect(cookie).toContain('Secure');
     expect(cookie).toContain('SameSite=Lax');
+    expect(cookie).not.toContain('Domain=');
     expect(setup.database.sqlite.query('SELECT email FROM users WHERE id = ?').get('assay-user-1'))
       .toEqual({ email: 'new@example.com' });
     expect(setup.database.sqlite.query('SELECT COUNT(*) AS count FROM oauth_states').get())
@@ -720,7 +841,7 @@ describe('Assay OIDC sessions', () => {
 
   test('callback rejects an unverified Assay email', async () => {
     const setup = await accountEnv();
-    const login = await worker.fetch(new Request('https://pages.agentkit.sbs/login'), setup.env);
+    const login = await worker.fetch(new Request(`${ACCOUNT_URL}/login`), setup.env);
     const state = new URL(login.headers.get('location')!).searchParams.get('state')!;
     setup.env.OIDC_FETCH = async (request: RequestInfo | URL) => {
       if (String(request).endsWith('/token')) return Response.json({ access_token: 'access' });
@@ -728,7 +849,7 @@ describe('Assay OIDC sessions', () => {
     };
 
     const callback = await worker.fetch(
-      new Request(`https://pages.agentkit.sbs/auth/callback?code=code&state=${state}`),
+      new Request(`${ACCOUNT_URL}/auth/callback?code=code&state=${state}`),
       setup.env,
     );
 
@@ -739,11 +860,11 @@ describe('Assay OIDC sessions', () => {
   test('logout revokes the local session and clears its cookie', async () => {
     const setup = await accountEnv();
     const response = await worker.fetch(
-      new Request('https://pages.agentkit.sbs/logout', {
+      new Request(`${ACCOUNT_URL}/logout`, {
         method: 'POST',
         headers: {
           cookie: 'agentkit_session=session-a',
-          origin: 'https://pages.agentkit.sbs',
+          origin: ACCOUNT_URL,
         },
       }),
       setup.env,

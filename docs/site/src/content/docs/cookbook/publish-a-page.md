@@ -25,9 +25,9 @@ bun ~/.agentkit/skills/publish-page/publish.ts \
 
 It prints the live URL, `https://pages.agentkit.sbs/<slug>`.
 
-On the first publish, the command opens `pages.agentkit.sbs/device` and prints a short code. Sign in
+On the first publish, the command opens `account.agentkit.sbs/device` and prints a short code. Sign in
 with Assay and approve that device. The resulting credential belongs only to that account and device;
-later publishes reuse it. New pages are private and appear at `https://pages.agentkit.sbs/dashboard`,
+later publishes reuse it. New pages are private and appear at `https://account.agentkit.sbs/dashboard`,
 where the owner can create a revocable sharing link or invite another verified Assay email.
 The same dashboard lists publishing devices so a lost or retired machine can be revoked.
 

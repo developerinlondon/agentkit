@@ -5,6 +5,7 @@ import {
   deviceUser,
   endSession,
   inviteEmail,
+  issuePageAccess,
   ownerPage,
   pageRecord,
   removeInvite,
@@ -200,8 +201,8 @@ async function authorizeWrite(request, env, slug) {
   return { isSite, key: isSite ? site : `pages/${slug}/index.html` };
 }
 
-function publishedUrl(slug, isSite) {
-  if (!isSite) return `https://pages.agentkit.sbs/${slug}`;
+function publishedUrl(env, slug, isSite) {
+  if (!isSite) return `${env.PAGES_URL || "https://pages.agentkit.sbs"}/${slug}`;
   if (slug === "_pages-index") return "https://pages.agentkit.sbs/";
   if (slug === "_site") return "https://agentkit.sbs/";
   return `https://agentkit.sbs/${slug.slice(SITE_PREFIX.length)}`;
@@ -226,7 +227,7 @@ async function handlePublish(request, env, slug) {
   await env.PAGES.put(gate.key, body, {
     httpMetadata: { contentType: "text/html; charset=utf-8" },
   });
-  return Response.json({ ok: true, slug, url: publishedUrl(slug, gate.isSite) });
+  return Response.json({ ok: true, slug, url: publishedUrl(env, slug, gate.isSite) });
 }
 
 async function handleAssetWrite(request, env, path) {
@@ -313,7 +314,7 @@ async function handleShare(request, env, slug) {
   const token = await setShareLink(env, slug, enabled);
   if (!request.headers.get("content-type")?.startsWith("application/json")) {
     if (token) {
-      const url = `${env.PUBLIC_URL}/${slug}?share=${token}`;
+      const url = `${env.PAGES_URL}/${slug}?share=${token}`;
       return html(200, `<!doctype html><meta charset="utf-8"><title>Sharing link</title>
 <body style="font:16px system-ui;max-width:42rem;margin:4rem auto;padding:1rem"><h1>Sharing is on</h1>
 <p>This link is shown once. Anyone who has it can read this page until you turn sharing off.</p>
@@ -321,7 +322,7 @@ async function handleShare(request, env, slug) {
     }
     return new Response(null, { status: 303, headers: { location: "/dashboard" } });
   }
-  const url = token ? `${env.PUBLIC_URL}/${slug}?share=${token}` : null;
+  const url = token ? `${env.PAGES_URL}/${slug}?share=${token}` : null;
   return Response.json({ ok: true, enabled, url });
 }
 
@@ -376,6 +377,48 @@ async function handleDeviceRevoke(request, env, tokenHash) {
   return Response.json({ ok: true });
 }
 
+function configuredHost(value) {
+  try {
+    return new URL(value).hostname;
+  } catch {
+    return null;
+  }
+}
+
+function requestedPageTarget(request, env) {
+  const raw = new URL(request.url).searchParams.get("return_to");
+  if (!raw) return null;
+  try {
+    const target = new URL(raw);
+    const pagesOrigin = new URL(env.PAGES_URL).origin;
+    const slug = target.pathname.replace(/^\/+|\/+$/g, "");
+    if (target.origin !== pagesOrigin || target.search || target.hash || !SLUG_RE.test(slug)) {
+      return null;
+    }
+    return { target, slug };
+  } catch {
+    return null;
+  }
+}
+
+async function handlePageAccess(request, env) {
+  const requested = requestedPageTarget(request, env);
+  if (!requested) return new Response("invalid page target\n", { status: 400 });
+  const user = await sessionUser(request, env);
+  if (!user) {
+    const current = new URL(request.url);
+    const returnTo = `${current.pathname}${current.search}`;
+    return new Response(null, {
+      status: 302,
+      headers: { location: `/login?return_to=${encodeURIComponent(returnTo)}` },
+    });
+  }
+  const token = await issuePageAccess(env, requested.slug, user);
+  if (!token) return new Response("not found\n", { status: 404 });
+  requested.target.searchParams.set("access", token);
+  return new Response(null, { status: 302, headers: { location: requested.target.toString() } });
+}
+
 function requestedTitle(request) {
   const encoded = request.headers.get("x-page-title");
   if (!encoded) return null;
@@ -386,101 +429,154 @@ function requestedTitle(request) {
   }
 }
 
+async function handleSiteRequest(request, env, path) {
+  if (
+    (request.method === "PUT" || request.method === "DELETE")
+    && path.startsWith("api/pages/")
+  ) {
+    const slug = path.slice("api/pages/".length);
+    if (siteKey(slug) === null) return html(404, NOT_FOUND);
+    return request.method === "PUT"
+      ? handlePublish(request, env, slug)
+      : handleDelete(request, env, slug);
+  }
+  if (request.method === "GET" && path.startsWith("api/site-list/")) {
+    return handleAssetList(request, env, path.slice("api/site-list/".length));
+  }
+  if (request.method === "PUT" && path.startsWith("api/site/")) {
+    return handleAssetWrite(request, env, path.slice("api/site/".length));
+  }
+  if (request.method === "DELETE" && path.startsWith("api/site/")) {
+    return handleAssetDelete(request, env, path.slice("api/site/".length));
+  }
+  if (request.method !== "GET" && request.method !== "HEAD") {
+    return new Response("method not allowed\n", { status: 405 });
+  }
+  if (path === "") return servePage(env, "_site/index.html", BASE_HEADERS);
+  if (isDocsPath(path)) {
+    const assetKey = docsAssetKey(path);
+    if (assetKey) return serveAsset(env, assetKey, path);
+    if (!SITE_PAGE_RE.test(path)) return html(404, NOT_FOUND, DOCS_HEADERS);
+    return servePage(env, `_site/${path}/index.html`, DOCS_HEADERS);
+  }
+  if (!SLUG_RE.test(path)) return html(404, NOT_FOUND);
+  return servePage(env, `_site/${path}/index.html`, BASE_HEADERS);
+}
+
+async function handleAccountRequest(request, env, path) {
+  if (request.method === "PUT" && path.startsWith("api/pages/")) {
+    return handlePublish(request, env, path.slice("api/pages/".length));
+  }
+  if (request.method === "DELETE" && path.startsWith("api/pages/")) {
+    return handleDelete(request, env, path.slice("api/pages/".length));
+  }
+  const shareMatch = /^api\/pages\/(.+)\/share$/.exec(path);
+  if (request.method === "POST" && shareMatch) return handleShare(request, env, shareMatch[1]);
+  const inviteRemoveMatch = /^api\/pages\/(.+)\/invites\/remove$/.exec(path);
+  if (request.method === "POST" && inviteRemoveMatch) {
+    return handleInviteRemove(request, env, inviteRemoveMatch[1]);
+  }
+  const inviteMatch = /^api\/pages\/(.+)\/invites$/.exec(path);
+  if (request.method === "POST" && inviteMatch) return handleInvite(request, env, inviteMatch[1]);
+  if (request.method === "POST" && path === "api/device/authorize") {
+    const body = await requestBody(request);
+    return Response.json(await startDevice(env, body.device_name));
+  }
+  if (request.method === "POST" && path === "api/device/approve") {
+    return handleDeviceApprove(request, env);
+  }
+  if (request.method === "POST" && path === "api/device/token") {
+    const body = await requestBody(request);
+    return pollDevice(env, body.device_code);
+  }
+  const deviceRevokeMatch = /^api\/devices\/([a-f0-9]{64})\/revoke$/.exec(path);
+  if (request.method === "POST" && deviceRevokeMatch) {
+    return handleDeviceRevoke(request, env, deviceRevokeMatch[1]);
+  }
+  if (request.method === "GET" && path === "device") return devicePage(request, env);
+  if (request.method === "GET" && path === "login") return startLogin(request, env);
+  if (request.method === "GET" && path === "auth/callback") return completeLogin(request, env);
+  if (request.method === "GET" && path === "access") return handlePageAccess(request, env);
+  if (request.method === "POST" && path === "logout") {
+    if (!sameOrigin(request)) return new Response("forbidden\n", { status: 403 });
+    await endSession(request, env);
+    return new Response(null, {
+      status: 303,
+      headers: {
+        location: "/",
+        "set-cookie": "agentkit_session=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0",
+      },
+    });
+  }
+  if (request.method === "GET" && (path === "" || path === "dashboard")) {
+    const user = await sessionUser(request, env);
+    if (!user) {
+      return new Response(null, {
+        status: 302,
+        headers: { location: "/login?return_to=%2Fdashboard" },
+      });
+    }
+    return html(200, await dashboard(env, user), UI_HEADERS);
+  }
+  if (request.method !== "GET" && request.method !== "HEAD") {
+    return new Response("method not allowed\n", { status: 405 });
+  }
+  return html(404, NOT_FOUND, UI_HEADERS);
+}
+
+async function handlePagesRequest(request, env, path) {
+  if (request.method !== "GET" && request.method !== "HEAD") {
+    return html(404, NOT_FOUND, PAGE_HEADERS);
+  }
+  if (path === "") return servePage(env, "_site/pages-index.html", PAGE_HEADERS);
+  if (!SLUG_RE.test(path)) return html(404, NOT_FOUND, PAGE_HEADERS);
+  const page = await pageRecord(env, path);
+  if (!(await canReadPage(request, env, page))) {
+    const target = new URL(request.url);
+    target.search = "";
+    return new Response(null, {
+      status: 302,
+      headers: {
+        location: `${env.ACCOUNT_URL}/access?return_to=${encodeURIComponent(target.toString())}`,
+      },
+    });
+  }
+  return servePage(env, `pages/${path}/index.html`, PAGE_HEADERS);
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     const host = url.hostname;
     const path = url.pathname.replace(/\/+$/, "").replace(/^\/+/, "");
+    const siteRequest = host === "agentkit.sbs" || host === "www.agentkit.sbs";
+    const accountHost = configuredHost(env.ACCOUNT_URL);
+    const pagesHost = configuredHost(env.PAGES_URL) || "pages.agentkit.sbs";
+    const accountRequest = accountHost !== null && host === accountHost;
+    const pagesRequest = pagesHost !== null && host === pagesHost;
 
-    if (host === "pages.agentkit.sbs" && env.ACCOUNT_MODE === "required" && !env.DB) {
+    if (
+      !siteRequest
+      && env.ACCOUNT_MODE === "required"
+      && (!env.DB || accountHost === null)
+    ) {
       return new Response("account storage unavailable\n", { status: 503 });
     }
 
-    if (request.method === "GET" && path.startsWith("api/site-list/")) {
-      return handleAssetList(request, env, path.slice("api/site-list/".length));
-    }
-    if (request.method === "PUT" && path.startsWith("api/site/")) {
-      return handleAssetWrite(request, env, path.slice("api/site/".length));
-    }
-    if (request.method === "DELETE" && path.startsWith("api/site/")) {
-      return handleAssetDelete(request, env, path.slice("api/site/".length));
-    }
-    if (request.method === "PUT" && path.startsWith("api/pages/")) {
-      return handlePublish(request, env, path.slice("api/pages/".length));
-    }
-    if (request.method === "DELETE" && path.startsWith("api/pages/")) {
-      return handleDelete(request, env, path.slice("api/pages/".length));
-    }
-    const shareMatch = /^api\/pages\/(.+)\/share$/.exec(path);
-    if (request.method === "POST" && shareMatch) return handleShare(request, env, shareMatch[1]);
-    const inviteRemoveMatch = /^api\/pages\/(.+)\/invites\/remove$/.exec(path);
-    if (request.method === "POST" && inviteRemoveMatch) {
-      return handleInviteRemove(request, env, inviteRemoveMatch[1]);
-    }
-    const inviteMatch = /^api\/pages\/(.+)\/invites$/.exec(path);
-    if (request.method === "POST" && inviteMatch) return handleInvite(request, env, inviteMatch[1]);
-    if (request.method === "POST" && path === "api/device/authorize" && env.DB) {
-      const body = await requestBody(request);
-      return Response.json(await startDevice(env, body.device_name));
-    }
-    if (request.method === "POST" && path === "api/device/approve" && env.DB) {
-      return handleDeviceApprove(request, env);
-    }
-    if (request.method === "POST" && path === "api/device/token" && env.DB) {
-      const body = await requestBody(request);
-      return pollDevice(env, body.device_code);
-    }
-    const deviceRevokeMatch = /^api\/devices\/([a-f0-9]{64})\/revoke$/.exec(path);
-    if (request.method === "POST" && deviceRevokeMatch && env.DB) {
-      return handleDeviceRevoke(request, env, deviceRevokeMatch[1]);
-    }
-    if (request.method === "GET" && path === "device" && env.DB) return devicePage(request, env);
-    if (request.method === "GET" && path === "login" && env.DB) return startLogin(request, env);
-    if (request.method === "GET" && path === "auth/callback" && env.DB) {
-      return completeLogin(request, env);
-    }
-    if (request.method === "POST" && path === "logout" && env.DB) {
-      if (!sameOrigin(request)) return new Response("forbidden\n", { status: 403 });
-      await endSession(request, env);
-      return new Response(null, {
-        status: 303,
-        headers: {
-          location: "/",
-          "set-cookie": "agentkit_session=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0",
-        },
-      });
-    }
-    if (request.method === "GET" && path === "dashboard" && env.DB) {
-      const user = await sessionUser(request, env);
-      if (!user) return new Response(null, { status: 302, headers: { location: "/login?return_to=%2Fdashboard" } });
-      return html(200, await dashboard(env, user), UI_HEADERS);
-    }
-    if (request.method !== "GET" && request.method !== "HEAD") {
-      return new Response("method not allowed\n", { status: 405 });
+    if (siteRequest) return handleSiteRequest(request, env, path);
+
+    if (accountHost === null && pagesRequest) {
+      if (request.method === "PUT" && path.startsWith("api/pages/")) {
+        return handlePublish(request, env, path.slice("api/pages/".length));
+      }
+      if (request.method === "DELETE" && path.startsWith("api/pages/")) {
+        return handleDelete(request, env, path.slice("api/pages/".length));
+      }
     }
 
-    if (host === "agentkit.sbs" || host === "www.agentkit.sbs") {
-      if (path === "") return servePage(env, "_site/index.html", BASE_HEADERS);
-      if (isDocsPath(path)) {
-        const assetKey = docsAssetKey(path);
-        if (assetKey) return serveAsset(env, assetKey, path);
-        if (!SITE_PAGE_RE.test(path)) return html(404, NOT_FOUND, DOCS_HEADERS);
-        return servePage(env, `_site/${path}/index.html`, DOCS_HEADERS);
-      }
-      if (!SLUG_RE.test(path)) return html(404, NOT_FOUND);
-      return servePage(env, `_site/${path}/index.html`, BASE_HEADERS);
-    }
-    if (path === "") {
-      return servePage(env, "_site/pages-index.html", PAGE_HEADERS);
-    }
-    if (!SLUG_RE.test(path)) return html(404, NOT_FOUND, PAGE_HEADERS);
-    const page = await pageRecord(env, path);
-    if (!(await canReadPage(request, env, page))) {
-      return new Response(null, {
-        status: 302,
-        headers: { location: `/login?return_to=${encodeURIComponent(`/${path}`)}` },
-      });
-    }
-    return servePage(env, `pages/${path}/index.html`, PAGE_HEADERS);
+    if (accountRequest) return handleAccountRequest(request, env, path);
+
+    if (!pagesRequest) return html(404, NOT_FOUND);
+    return handlePagesRequest(request, env, path);
   },
 };

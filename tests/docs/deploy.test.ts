@@ -133,7 +133,7 @@ function deploy(env: Record<string, string> = {}): ReturnType<typeof spawnSync> 
       PATH: `${bin}:${process.env.PATH ?? ''}`,
       HOME: root,
       AGENTKIT_SITE_TOKEN_FILE: join(root, 'token'),
-      AGENTKIT_PAGES_ENDPOINT: 'https://pages.example.test',
+      AGENTKIT_SITE_ENDPOINT: 'https://site-api.example.test',
       AGENTKIT_SITE_URL: 'https://site.example.test',
       ...env,
     },

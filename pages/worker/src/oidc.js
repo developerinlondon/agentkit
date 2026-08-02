@@ -16,7 +16,7 @@ async function pkceChallenge(verifier) {
 }
 
 function configured(env) {
-  return Boolean(env.DB && env.PUBLIC_URL && env.OIDC_ISSUER && env.OIDC_CLIENT_ID && env.OIDC_CLIENT_SECRET);
+  return Boolean(env.DB && env.ACCOUNT_URL && env.OIDC_ISSUER && env.OIDC_CLIENT_ID && env.OIDC_CLIENT_SECRET);
 }
 
 export async function startLogin(request, env) {
@@ -32,7 +32,7 @@ export async function startLogin(request, env) {
   const target = new URL(`${env.OIDC_ISSUER}/authorize`);
   target.searchParams.set("response_type", "code");
   target.searchParams.set("client_id", env.OIDC_CLIENT_ID);
-  target.searchParams.set("redirect_uri", `${env.PUBLIC_URL}/auth/callback`);
+  target.searchParams.set("redirect_uri", `${env.ACCOUNT_URL}/auth/callback`);
   target.searchParams.set("scope", "openid email profile");
   target.searchParams.set("state", state);
   target.searchParams.set("code_challenge", await pkceChallenge(verifier));
@@ -44,7 +44,7 @@ async function exchangeCode(env, code, verifier) {
   const body = new URLSearchParams({
     grant_type: "authorization_code",
     code,
-    redirect_uri: `${env.PUBLIC_URL}/auth/callback`,
+    redirect_uri: `${env.ACCOUNT_URL}/auth/callback`,
     code_verifier: verifier,
   });
   const headers = { "content-type": "application/x-www-form-urlencoded" };

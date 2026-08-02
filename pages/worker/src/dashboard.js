@@ -10,7 +10,7 @@ export async function dashboard(env, user) {
   const invitesByPage = Map.groupBy(invites, (invite) => invite.page_slug);
   const cards = pages.map((page) => `
     <article>
-      <h2><a href="/${escapeHtml(page.slug)}">${escapeHtml(page.title || page.slug)}</a></h2>
+      <h2><a href="/access?return_to=${encodeURIComponent(`${env.PAGES_URL}/${page.slug}`)}">${escapeHtml(page.title || page.slug)}</a></h2>
       <p><code>${escapeHtml(page.slug)}</code> · private${page.share_token_hash ? " · sharing on" : ""}</p>
       ${(invitesByPage.get(page.slug) || []).map((invite) =>
         `<p>Access: ${escapeHtml(invite.email)}</p>`).join("")}

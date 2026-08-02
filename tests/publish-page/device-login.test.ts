@@ -33,7 +33,7 @@ describe('publish-page device login', () => {
     await Bun.write(path, 'existing-token\n');
 
     const token = await loadOrAuthorize({
-      endpoint: 'https://pages.agentkit.sbs',
+      endpoint: 'https://account.agentkit.sbs',
       tokenPath: path,
       fetcher: async () => { throw new Error('network must not be called'); },
     });
@@ -51,7 +51,7 @@ describe('publish-page device login', () => {
       Response.json({
         device_code: 'device-code',
         user_code: 'ABCD-2345',
-        verification_uri_complete: 'https://pages.agentkit.sbs/device?user_code=ABCD-2345',
+        verification_uri_complete: 'https://account.agentkit.sbs/device?user_code=ABCD-2345',
         expires_in: 600,
         interval: 5,
       }),
@@ -60,7 +60,7 @@ describe('publish-page device login', () => {
     ];
 
     const token = await loadOrAuthorize({
-      endpoint: 'https://pages.agentkit.sbs',
+      endpoint: 'https://account.agentkit.sbs',
       tokenPath: path,
       deviceName: 'Test Mac',
       fetcher: async () => responses.shift()!,
@@ -70,7 +70,7 @@ describe('publish-page device login', () => {
     });
 
     expect(token).toBe('new-device-token');
-    expect(opened).toEqual(['https://pages.agentkit.sbs/device?user_code=ABCD-2345']);
+    expect(opened).toEqual(['https://account.agentkit.sbs/device?user_code=ABCD-2345']);
     expect(messages.join('\n')).toContain('ABCD-2345');
     expect(await readFile(path, 'utf8')).toBe('new-device-token\n');
     expect((await stat(path)).mode & 0o777).toBe(0o600);

@@ -246,7 +246,7 @@ slide with nothing but a kicker and an `h2` above them.
 ## Requirements and behavior
 
 - Device token: `~/.config/agentkit/pages-token`. First use starts the bounded device flow at
-  `pages.agentkit.sbs/device`, signs in through Assay, and stores the token with mode `0600`.
+  `account.agentkit.sbs/device`, signs in through Assay, and stores the token with mode `0600`.
 - Themes are bundled with the skill; if a clone of `gitlab.com/agentkit/agentkit-pages`
   exists at `~/code/agentkit-pages` (override: `AGENTKIT_PAGES_REPO`), the publish
   archives `src/` + `dist/` there only with explicit `--git` — otherwise it
@@ -254,7 +254,8 @@ slide with nothing but a kicker and an `h2` above them.
   by a private page. Endpoint override: `AGENTKIT_PAGES_ENDPOINT`.
 - New pages are **private by default**. Owners manage revocable sharing links and
   verified-email invites, and revoke publishing devices at
-  `https://pages.agentkit.sbs/dashboard`. Pages from
+  `https://account.agentkit.sbs/dashboard`. Rendered pages stay on the separate
+  `pages.agentkit.sbs` origin so their inline JavaScript cannot read the account dashboard. Pages from
   before the accounts migration remain public until claimed or removed.
 - Same name (or slug) republished overwrites silently, and on machines without
   the pages repo clone there is no git history to recover from — pick

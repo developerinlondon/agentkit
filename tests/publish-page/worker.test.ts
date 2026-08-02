@@ -68,6 +68,15 @@ function write(url: string, token: string | null, body = '<!doctype html>hi', he
   });
 }
 
+function legacyApiUrl(slug: string) {
+  const target = new URL(`https://pages.agentkit.sbs/api/pages/${slug}`);
+  const normalized = target.pathname.slice('/api/pages/'.length).replace(/\/$/, '');
+  if (normalized === '_site' || normalized === '_pages-index' || normalized.startsWith('_site/')) {
+    target.hostname = 'agentkit.sbs';
+  }
+  return target.toString();
+}
+
 describe('apex site routing', () => {
   test('root serves the site index, indexable', async () => {
     const store = bucket({ '_site/index.html': '<h1>home</h1>' });
@@ -243,7 +252,7 @@ describe('site writes', () => {
 async function expectWriteRejected(slug: string, token: string | null, overrides = {}) {
   const store = bucket();
   const res = await worker.fetch(
-    write(`https://agentkit.sbs/api/pages/${slug}`, token, '<h1>defaced</h1>'),
+    write(legacyApiUrl(slug), token, '<h1>defaced</h1>'),
     env(store, overrides),
   );
 
@@ -286,7 +295,7 @@ describe('token separation', () => {
   test('PUBLISH_TOKEN still writes a page slug', async () => {
     const store = bucket();
     const res = await worker.fetch(
-      write('https://agentkit.sbs/api/pages/deadbeef', PUBLISH_TOKEN, '<h1>page</h1>'),
+      write(legacyApiUrl('deadbeef'), PUBLISH_TOKEN, '<h1>page</h1>'),
       env(store),
     );
 
@@ -308,7 +317,7 @@ describe('token separation', () => {
   test('a page slug named after an Object.prototype member is publishable', async () => {
     const store = bucket();
     const res = await worker.fetch(
-      write('https://agentkit.sbs/api/pages/constructor', PUBLISH_TOKEN, '<h1>ctor</h1>'),
+      write(legacyApiUrl('constructor'), PUBLISH_TOKEN, '<h1>ctor</h1>'),
       env(store),
     );
 
@@ -353,7 +362,7 @@ describe('writes fail closed when the secret is missing', () => {
     async (_label, method, slug, key, secret, value) => {
       const store = bucket(SEEDED);
       const res = await worker.fetch(
-        new Request(`https://agentkit.sbs/api/pages/${slug}`, {
+        new Request(legacyApiUrl(slug), {
           method,
           ...(method === 'PUT' ? { body: '<h1>anonymous</h1>' } : {}),
         }),
@@ -372,7 +381,6 @@ describe('method allowlist', () => {
     ['POST', 'https://agentkit.sbs/docs'],
     ['PATCH', 'https://agentkit.sbs/docs'],
     ['OPTIONS', 'https://agentkit.sbs/docs'],
-    ['POST', 'https://pages.agentkit.sbs/deadbeef'],
     ['PATCH', 'https://agentkit.sbs/api/pages/_site/docs'],
     ['POST', 'https://agentkit.sbs/api/pages/deadbeef'],
   ])('%s %s is refused without touching R2', async (method, url) => {
@@ -382,6 +390,17 @@ describe('method allowlist', () => {
     expect(res.status).toBe(405);
     expect(store.reads).toEqual([]);
     expect([...store.writes.keys()].sort()).toEqual(Object.keys(SEEDED).sort());
+  });
+
+  test('the content origin hides every non-read route', async () => {
+    const store = bucket(SEEDED);
+    const res = await worker.fetch(
+      new Request('https://pages.agentkit.sbs/deadbeef', { method: 'POST' }),
+      env(store),
+    );
+
+    expect(res.status).toBe(404);
+    expect(store.reads).toEqual([]);
   });
 });
 

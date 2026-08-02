@@ -1,4 +1,5 @@
 const encoder = new TextEncoder();
+const PAGE_ACCESS_TTL_SECONDS = 10 * 60;
 
 export async function sha256(value) {
   const digest = await crypto.subtle.digest("SHA-256", encoder.encode(value));
@@ -87,13 +88,39 @@ export async function canReadPage(request, env, page) {
   if (!page || page.visibility === "public") return true;
   const share = new URL(request.url).searchParams.get("share");
   if (share && page.share_token_hash === await sha256(share)) return true;
-  const user = await sessionUser(request, env);
-  if (!user) return false;
+  const access = new URL(request.url).searchParams.get("access");
+  if (!access) return false;
+  const grant = await env.DB.prepare(
+    `SELECT 1 AS allowed FROM page_access_tokens
+      WHERE token_hash = ? AND page_slug = ? AND expires_at > ?`,
+  ).bind(await sha256(access), page.slug, Math.floor(Date.now() / 1000)).first();
+  return Boolean(grant);
+}
+
+async function userCanReadPage(env, user, page) {
+  if (!user || !page) return false;
   if (user.id === page.owner_id) return true;
   const invite = await env.DB.prepare(
     "SELECT 1 AS allowed FROM page_invites WHERE page_slug = ? AND email = ?",
   ).bind(page.slug, user.email.toLowerCase()).first();
   return Boolean(invite);
+}
+
+export async function issuePageAccess(env, slug, user) {
+  const page = await pageRecord(env, slug);
+  if (!(await userCanReadPage(env, user, page))) return null;
+  const now = Math.floor(Date.now() / 1000);
+  await env.DB.prepare("DELETE FROM page_access_tokens WHERE expires_at <= ?").bind(now).run();
+  const token = randomToken();
+  await env.DB.prepare(
+    `INSERT INTO page_access_tokens (token_hash, page_slug, user_id, expires_at, created_at)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(page_slug, user_id) DO UPDATE SET
+       token_hash = excluded.token_hash,
+       expires_at = excluded.expires_at,
+       created_at = excluded.created_at`,
+  ).bind(await sha256(token), slug, user.id, now + PAGE_ACCESS_TTL_SECONDS, now).run();
+  return token;
 }
 
 export async function ownerPage(request, env, slug) {
@@ -129,8 +156,14 @@ export async function inviteEmail(env, slug, email) {
 }
 
 export async function removeInvite(env, slug, email) {
+  const normalized = String(email || "").trim().toLowerCase();
   await env.DB.prepare("DELETE FROM page_invites WHERE page_slug = ? AND email = ?")
-    .bind(slug, String(email || "").trim().toLowerCase()).run();
+    .bind(slug, normalized).run();
+  await env.DB.prepare(
+    `DELETE FROM page_access_tokens
+      WHERE page_slug = ?
+        AND user_id IN (SELECT id FROM users WHERE email = ?)`,
+  ).bind(slug, normalized).run();
 }
 
 export async function pagesForUser(env, userId) {
