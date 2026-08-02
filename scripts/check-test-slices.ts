@@ -19,6 +19,7 @@ export const TEST_SLICES = {
     'tests/docs/asset-types.test.ts',
     'tests/docs/deploy.test.ts',
     'tests/docs/docs-tone.test.ts',
+    'tests/docs/example-deck.test.ts',
     'tests/docs/facts.test.ts',
     'tests/docs/release-label.test.ts',
   ],
