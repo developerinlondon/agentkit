@@ -26,9 +26,9 @@ const promptedKitCount = readSkillKits(repoRoot).kits
 // greps the whole transcript for it, so it has to be the literal the installer
 // prints rather than a paraphrase of it.
 const promptMarker = '? [y/N]';
-// A blocked wizard is not slow, it is stopped. A bare install takes about a
-// second, so a run still alive after this was waiting for a keystroke.
-const hangTimeoutMs = 20_000;
+// A blocked wizard is stopped, while an isolated install can take nearly 20
+// seconds under contention. Keep this well below the test's outer deadline.
+const hangTimeoutMs = 30_000;
 
 // The gate names the environment that suppresses the wizard, and this reads
 // that same declaration rather than keeping a second copy: the two drifting
