@@ -58,6 +58,12 @@ bun ~/.agentkit/skills/publish-page/publish.ts \
 | `deck`   | slides — markdown split on `---` lines        |
 | `raw`    | complete self-contained HTML, published as-is |
 
+A rendered deck is worth more than a description of one:
+[the publish-freshness deck](/docs/examples/publish-freshness-deck.html) is six slides built from
+[its markdown source](/docs/examples/publish-freshness-deck.md) through the `deck` template — cover
+with a stat row, a severity callout, a stage flow, legend rails, and column cards. Arrow keys, space
+and swipe move between slides; the toggle in the nav bar flips the theme.
+
 ## Callouts
 
 A callout is an aside with a coloured rail and a label. Pick the severity by consequence, not by
