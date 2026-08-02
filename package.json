@@ -3,7 +3,7 @@
   "private": true,
   "license": "Apache-2.0",
   "scripts": {
-    "postinstall": "bun install --frozen-lockfile --cwd skills/publish-page",
+    "postinstall": "bun install --frozen-lockfile --cwd skills/publish-page || { echo 'agentkit: skills/publish-page/bun.lock is out of date \u2014 run: bun install --cwd skills/publish-page, then commit that lockfile' >&2; exit 1; }",
     "test": "bun test",
     "test:full": "bun run scripts/run-test-slices.ts",
     "test:slices": "bun run scripts/check-test-slices.ts --check"
