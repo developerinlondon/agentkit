@@ -20,7 +20,7 @@ top and ships with the next tag.
   `<h3>`, a paragraph the author wrapped themselves — renders identically, at
   one height, with the label taking its own rail's colour. Bold anywhere else
   stays body text. Every ink and ground pair the themes actually paint was
-  recomputed on the new ground before shipping; the worst measures 5.28:1
+  recomputed on the new ground before shipping; the worst measures 4.84:1
 - fix(diagram): one colour normalisation, applied to both the registered fill
   and the painted value and shared by the attribute and CSS-block paths.
   `rgb(1 2 3)`, `rgb(1,2,3)`, 3-digit, 6-digit and 8-digit hex are the same
@@ -33,7 +33,9 @@ top and ships with the next tag.
   `find-icon` searches the manifest and reports set, licence and colour class,
   and an unknown icon suggests real candidates. The doc theme gains a sticky
   labelled section nav in place of the unlabelled dot rail, and both themes gain
-  `.callout` severities contrast-checked at 4.5:1
+  `.callout` severities contrast-checked at 4.5:1. The hand-written light plate
+  is gone — it stayed white in dark mode — so a page following the old plate
+  recipe should drop it
 - feat(wip): `wip` reports what was started and not finished in a repository —
   branches with age and commit count, worktrees with a loud warning on dirty
   ones, open merge requests or pull requests and what holds each, open issues
