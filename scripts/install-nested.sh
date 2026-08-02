@@ -8,6 +8,6 @@ if bun install --frozen-lockfile --cwd skills/publish-page; then
 	exit 0
 fi
 
-echo "agentkit: skills/publish-page/bun.lock is out of date." >&2
-echo "          run: bun install --cwd skills/publish-page, then commit that lockfile" >&2
+echo "agentkit: installing skills/publish-page failed — see the error above." >&2
+echo "          if its lockfile drifted: bun install --cwd skills/publish-page, then commit it" >&2
 exit 1

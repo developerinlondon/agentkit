@@ -24,7 +24,7 @@ function nestedPackages(): string[] {
     .sort();
 }
 
-const RELATIVE_IMPORT = /from\s+['"](\.[^'"]+)['"]/g;
+const RELATIVE_IMPORT = /(?:from|import)\s+['"](\.[^'"]+)['"]/g;
 
 function reachable(entries: string[]): string[] {
   const seen = new Set<string>();
@@ -90,7 +90,11 @@ describe('nested skill packages are installed by a root install', () => {
     // --frozen-lockfile, which fails identically because the flag lives in this
     // script — so it prints the remedy that works.
     expect(installCommands.join('\n')).toContain('--frozen-lockfile');
-    expect(script).toContain('bun install --cwd skills/publish-page, then commit that lockfile');
+    expect(script).toContain('bun install --cwd skills/publish-page, then commit it');
+    // Naming drift as THE cause was wrong for every other failure — a wrong
+    // directory, an unwritable one, bun absent from PATH — and this assertion
+    // pinned the wrong sentence in place.
+    expect(script).not.toContain('bun.lock is out of date');
   });
 
   test('a pinned nested install only means anything where a lockfile exists', () => {
@@ -115,7 +119,8 @@ describe('nested skill packages are installed by a root install', () => {
       ...JSON.parse(read('skills/diagram/package.json')).dependencies,
       ...JSON.parse(read('skills/diagram/package.json')).devDependencies,
     }).filter((d) => !d.startsWith('@types/'));
-    const pattern = new RegExp(`from\\s+['"](${deps.map((d) => d.replace('/', '\\/')).join('|')})['"]`);
+    const alt = deps.map((d) => d.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')).join('|');
+    const pattern = new RegExp(`(?:from|import)\\s+['"](?:${alt})(?:/[^'"]*)?['"]`);
     const offenders = reachable(entries).filter((f) => pattern.test(read(f)));
     expect({ offenders, then: 'either install diagram in the postinstall, or move that import' })
       .toEqual({ offenders: [], then: 'either install diagram in the postinstall, or move that import' });
