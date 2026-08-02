@@ -83,17 +83,40 @@ const repoAvailable = () => existsSync(join(repo, ".git"));
 
 function commitScoped(message: string, paths: string[]) {
   const staged = git("diff", "--cached", "--quiet", "--", ...paths);
-  if (staged.exitCode === 0) return;
-  // Pathspec-scoped commit: the clone is long-lived and shared — a bare
-  // commit would sweep anything else staged into this publish.
-  const commit = git("commit", "-m", message, "--", ...paths);
-  if (commit.exitCode === 0) {
-    const push = git("push");
-    if (push.exitCode !== 0) {
-      console.error(`warning: git push failed — commit is local only:\n${push.stderr.toString()}`);
+  if (staged.exitCode !== 0) {
+    // Pathspec-scoped commit: the clone is long-lived and shared — a bare
+    // commit would sweep anything else staged into this publish.
+    const commit = git("commit", "-m", message, "--", ...paths);
+    if (commit.exitCode !== 0) {
+      console.error(`warning: git commit failed:\n${commit.stderr.toString()}`);
+      return;
     }
   } else {
-    console.error(`warning: git commit failed:\n${commit.stderr.toString()}`);
+    // Nothing newly staged — but a previously rejected push leaves committed
+    // work stranded, and a re-run of the same command must still push it or
+    // the printed remedy records nothing while exiting 0.
+    const ahead = git("rev-list", "--count", "@{u}..HEAD");
+    if (ahead.exitCode !== 0 || ahead.stdout.toString().trim() === "0") return;
+  }
+  // Bounded like the fetch: this is the other network operation, and it runs
+  // after the page is already live — a prompting remote must not stall it.
+  const push = Bun.spawnSync(["git", "-C", repo, "push"], {
+    stdout: "pipe",
+    stderr: "pipe",
+    timeout: 30_000,
+    env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+  });
+  if (push.exitCode !== 0) {
+    // The push can fail without any rejection (offline, no upstream), so the
+    // message reports the failure and leaves the cause to git's own error.
+    const done = isDelete ? "the page was deleted from the server" : "the page itself is live";
+    console.error(
+      `publish-page: the canonical push failed:\n`
+        + push.stderr.toString()
+        + `agentkit-pages history does NOT carry this ${isDelete ? "deletion" : "publish"}; ${done}.\n`
+        + `if the push was rejected because the clone is behind: git -C ${repo} pull --rebase, then re-run the same command`,
+    );
+    process.exitCode = 1;
   }
 }
 
@@ -102,16 +125,28 @@ if (isDelete) {
     method: "DELETE",
     headers: { authorization: `Bearer ${token}` },
   });
-  if (res.status === 404) fail(`no page at ${slug} — nothing deleted`);
-  if (!res.ok) fail(`delete failed: HTTP ${res.status} ${await res.text()}`);
+  const gone = res.status === 404;
+  if (!res.ok && !gone) fail(`delete failed: HTTP ${res.status} ${await res.text()}`);
   if (!noGit && repoAvailable()) {
+    // A 404 is not always a dead end: a successful delete whose canonical push
+    // was rejected leaves the server page gone and the deletion commit
+    // stranded, and the advised re-run must still push that commit.
+    const hadLocal = existsSync(join(repo, "src", slug)) || existsSync(join(repo, "dist", slug));
+    // Scoped to THIS slug's history: a clone ahead on unrelated work must not
+    // turn a mistyped delete into a reported success.
+    const ahead = git("rev-list", "--count", "@{u}..HEAD", "--", `src/${slug}`, `dist/${slug}`);
+    const stranded = ahead.exitCode === 0 && ahead.stdout.toString().trim() !== "0";
+    if (gone && !hadLocal && !stranded) fail(`no page at ${slug} — nothing deleted`);
     await rm(join(repo, "src", slug), { recursive: true, force: true });
     await rm(join(repo, "dist", slug), { recursive: true, force: true });
     git("add", "-A", "--", `src/${slug}`, `dist/${slug}`);
     commitScoped(`pages: delete ${pageLabel}`, [`src/${slug}`, `dist/${slug}`]);
+  } else if (gone) {
+    fail(`no page at ${slug} — nothing deleted`);
   }
-  console.log(`deleted: ${endpoint}/${slug}`);
-  process.exit(0);
+  console.log(gone ? `no page on the server at ${slug} — canonical record updated` : `deleted: ${endpoint}/${slug}`);
+  // Bare exit() honors the exitCode a rejected canonical push set; exit(0) discards it.
+  process.exit();
 }
 
 const source = await readFile(file!, "utf8");
@@ -129,10 +164,37 @@ async function render(): Promise<string> {
   const bundledTheme = bundledThemePath(template);
   const themePath = existsSync(repoTheme) ? repoTheme : bundledTheme;
   if (!existsSync(themePath)) fail(`theme not found: ${repoTheme} or ${bundledTheme}`);
-  if (themePath === repoTheme && existsSync(bundledTheme)) {
-    const [canonical, bundled] = await Promise.all([readFile(repoTheme, "utf8"), readFile(bundledTheme, "utf8")]);
-    if (bundled !== canonical) {
-      console.error(`warning: bundled theme drifted from canonical ${repoTheme} — re-sync skills/publish-page/themes/`);
+  if (themePath === repoTheme) {
+    // A behind clone serves CSS upstream already replaced, and nothing fails:
+    // the page publishes with current markup and stale rules. Refuse only when
+    // upstream actually changed themes/ — merge-base..upstream, so a clone
+    // that is merely ahead or behind on other paths still publishes.
+    // Bounded and prompt-free: an unreachable remote or a credential helper
+    // wanting input must degrade to the warning, not stall the publish.
+    const fetched = Bun.spawnSync(["git", "-C", repo, "fetch", "--quiet"], {
+      stdout: "pipe",
+      stderr: "pipe",
+      timeout: 15_000,
+      env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+    });
+    if (fetched.exitCode !== 0) {
+      console.error(`warning: could not verify the pages clone is current (git fetch failed) — publishing with its themes as-is`);
+    } else {
+      const upstream = git("diff", "--quiet", "HEAD...@{u}", "--", "themes/");
+      if (upstream.exitCode === 1) {
+        const behind = git("rev-list", "--count", "HEAD..@{u}").stdout.toString().trim();
+        // Remedy last and nothing after it: this text gets pasted by agents,
+        // and --rebase because a stranded local commit makes a plain pull abort.
+        fail(`pages clone is ${behind} commit(s) behind and themes/ changed upstream — publishing now would serve stale CSS. run: git -C ${repo} pull --rebase`);
+      } else if (upstream.exitCode !== 0) {
+        console.error(`warning: could not compare the pages clone against an upstream — publishing with its themes as-is`);
+      }
+    }
+    if (existsSync(bundledTheme)) {
+      const [canonical, bundled] = await Promise.all([readFile(repoTheme, "utf8"), readFile(bundledTheme, "utf8")]);
+      if (bundled !== canonical) {
+        console.error(`warning: bundled theme lags canonical ${repoTheme} — re-sync skills/publish-page/themes/`);
+      }
     }
   }
   try {
