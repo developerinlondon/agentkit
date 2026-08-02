@@ -3,7 +3,7 @@
 <h1>The page you publish. <span class="hi">The CSS you meant.</span></h1>
 <p class="thesis">publish.ts now refuses to render with a theme upstream has replaced, and every remedy it prints has been executed and proven to work.</p>
 <div class="stats">
-  <div class="stat hot"><div class="num">2</div><div class="lbl">remedies that failed when run</div></div>
+  <div class="stat hot"><div class="num">3</div><div class="lbl">printed remedies that failed when run</div></div>
   <div class="stat"><div class="num">13</div><div class="lbl">review findings, all closed</div></div>
   <div class="stat"><div class="num">45s</div><div class="lbl">worst case vs an infinite hang</div></div>
   <div class="stat"><div class="num">0</div><div class="lbl">silent history loss paths left</div></div>
