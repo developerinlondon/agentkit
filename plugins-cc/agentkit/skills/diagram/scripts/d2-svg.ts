@@ -111,13 +111,60 @@ function innerMarkup(raw: string): { inner: string; viewBox: string } | null {
   return { inner, viewBox };
 }
 
+// The same colour can be written as a hex or as rgb(), and a pack that mixes
+// notations would leave half the mark baked.
+// #abc and #aabbccff are the same colour as #aabbcc; #aabbcc80 is not, and an
+// alpha channel is carried through so it can be refused rather than flattened.
+function hexKey(value: string): string | null {
+  const m = /^#([0-9a-f]{3,8})$/i.exec(value);
+  if (!m) return null;
+  let h = m[1].toLowerCase();
+  if (h.length === 3 || h.length === 4) h = [...h].map((c) => c + c).join("");
+  if (h.length === 6) return `#${h}`;
+  if (h.length !== 8) return null;
+  return h.slice(6) === "ff" ? `#${h.slice(0, 6)}` : `#${h.slice(0, 6)}/${h.slice(6)}`;
+}
+
+// Normalised on both sides or not at all: expanding the painted value but not
+// the registered fill stops a shorthand hex from matching itself.
+function colourKeys(fill: string): string[] {
+  const key = hexKey(fill.trim());
+  if (key === null) return [fill.trim().toLowerCase()];
+  const six = /^#([0-9a-f]{6})$/.exec(key);
+  if (!six) return [key];
+  const [r, g, b] = [0, 2, 4].map((i) => parseInt(six[1].slice(i, i + 2), 16));
+  return [key, `${r},${g},${b}`];
+}
+
+// One colour has several spellings: CSS Color 4 writes `rgb(1 2 3)` beside
+// `rgb(1,2,3)`. Comparing parsed channels rather than stripped text matches
+// every spelling without letting two different colours collapse into one.
+function valueKey(value: string): string {
+  const v = value.trim().toLowerCase();
+  const hex = hexKey(v);
+  if (hex) return hex;
+  const call = /^rgba?\(([^)]*)\)$/.exec(v);
+  if (!call) return v.replace(/\s+/g, "");
+  const parts = call[1].split(/[\s,/]+/).filter(Boolean);
+  const channels = parts.slice(0, 3).join(",");
+  const alpha = parts[3];
+  if (!alpha || /^(?:1(?:\.0+)?|100(?:\.0+)?%)$/.test(alpha)) return channels;
+  return `${channels}/${parts.slice(3).join(",")}`;
+}
+
 // Colour lives in a fill or stroke value; the same string elsewhere is an id, a
 // class or label text, and rewriting it there corrupts the mark silently.
 function inkAttributes(markup: string, fill: string): string {
-  const escaped = fill.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const keys = colourKeys(fill);
   return markup.replace(
-    new RegExp(`\\b(fill|stroke|stop-color|flood-color)="${escaped}"`, "gi"),
-    '$1="currentColor"',
+    /\b(fill|stroke|stop-color|flood-color)="([^"]*)"/gi,
+    (attribute, name: string, value: string) => {
+      const key = valueKey(value);
+      if (keys.some((opaque) => key.startsWith(`${opaque}/`))) {
+        throw new SvgError("monochrome icon carries alpha-bearing ink, which cannot become opaque currentColor");
+      }
+      return keys.includes(key) ? `${name}="currentColor"` : attribute;
+    },
   );
 }
 
@@ -126,7 +173,19 @@ function inkAttributes(markup: string, fill: string): string {
 function bakedInStyle(markup: string, fill: string): boolean {
   const styles = [...markup.matchAll(/style="([^"]*)"/gi)].map((m) => m[1]);
   const blocks = [...markup.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi)].map((m) => m[1]);
-  return [...styles, ...blocks].some((css) => css.toLowerCase().includes(fill.toLowerCase()));
+  const keys = colourKeys(fill);
+  return [...styles, ...blocks].some((css) => {
+    const text = css.toLowerCase();
+    // A substring scan read #71717a inside #71717a80, so the two paths
+    // disagreed on the one notation each handled differently.
+    const found = [
+      ...[...text.matchAll(/#[0-9a-f]{3,8}\b/g)].map((m) => hexKey(m[0])),
+      ...[...text.matchAll(/rgba?\([^)]*\)/g)].map((m) => valueKey(m[0])),
+    ];
+    return found.some((key) =>
+      key !== null && keys.some((opaque) => key === opaque || key.startsWith(`${opaque}/`))
+    );
+  });
 }
 
 // A monochrome pack is baked to one fill at vendor time because currentColor has

@@ -158,3 +158,25 @@ describe('d2 rule stripping is rule-accurate', () => {
     expect(warns('.d2wrapper{background:#ffffff}')).toBe(1);
   });
 });
+
+describe('only d2 rules are stripped, by subject', () => {
+  const fig = '<div class="figure"><!-- svg-source:d2 --><svg class="d2"></svg></div>';
+  const warns = (css: string) => lintFigures(`<style>${css}</style>${fig}`).warnings.length;
+
+  for (const [how, css] of [
+    ['a :not() qualifier', '.figure:not(.d2-mono){background:#ffffff}'],
+    ['a :has() qualifier', '.figure:has(.d2-mono){background:#ffffff}'],
+    ['a sibling combinator', '.d2-mono ~ .figure{background:#ffffff}'],
+  ] as const) {
+    test(`an author rule using ${how} keeps its white ground reported`, () => {
+      // The d2 class is a qualifier; the subject is the author's element.
+      expect(warns(css)).toBe(1);
+    });
+  }
+
+  test('a d2 rule nested in @media is still recognised as d2 own', () => {
+    // The flat matcher used to read the selector as `@media screen`, so the
+    // wrapped rule survived and its white ground raised a spurious warning.
+    expect(warns('@media screen{.d2-1846797904 .background-color-N7{background-color:#FFFFFF;}}')).toBe(0);
+  });
+});

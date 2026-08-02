@@ -147,7 +147,10 @@ sequence/state diagram with the `diagram` skill instead.
   by mood: `warn` for a cost or a constraint, `alarm` for something that breaks
   or exposes if ignored, `ok` for a confirmed-good result, plain for a neutral
   aside. Severity rides the rail and the bold label only — body text stays ink
-  in both themes, and every pairing is contrast-checked at 4.5:1.
+  in both themes, and every pairing is contrast-checked at 4.5:1. A leading
+  `<h3>` is an equivalent spelling of the label, and a blank line inside the div
+  works too. Whatever opens the callout BECOMES the label, so do not open one
+  with emphasis you do not want as a title; bold anywhere else stays body text.
 - **Metadata rows**: `<div class="chips"><span class="chip"><strong>Status</strong> live</span>…</div>`
 - **Pipeline/stage boxes** (when mermaid is overkill):
   `<div class="flow"><div class="frow"><div class="fbox gate"><span class="t">stage</span><span class="d">detail</span></div>…</div><div class="arrow">▼</div>…</div>`

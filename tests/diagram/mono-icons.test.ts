@@ -234,3 +234,90 @@ describe('the post-condition checks colour positions, not the token', () => {
     });
   }
 });
+
+describe('colour notation', () => {
+  const RGB = 'rgb(113,113,122)';
+
+  test('the same colour written as rgb() in an attribute is inked too', () => {
+    const doc = `<svg viewBox="0 0 24 24"><path fill="${FILL}"/><path fill="${RGB}"/></svg>`;
+    const out = inlineMonochromeIcons(image(doc), [FILL], [doc]);
+    expect(out.converted).toBe(1);
+    expect(out.svg).not.toContain(RGB);
+  });
+
+  test('whitespace inside an rgb() attribute does not leave part of the mark baked', () => {
+    const spaced = 'rgb(113, 113, 122)';
+    const doc = `<svg viewBox="0 0 24 24"><path fill="${FILL}"/><path fill="${spaced}"/></svg>`;
+    const out = inlineMonochromeIcons(image(doc), [FILL], [doc]);
+    expect(out.converted).toBe(1);
+    expect(out.svg).not.toContain(spaced);
+  });
+
+  // CSS Color 4 separates channels with spaces. Stripping whitespace before a
+  // substring search turned that spelling into rgb(113113122), which matches no
+  // generated form, so the mark shipped half baked with nothing raised.
+  const SPACED = 'rgb(113 113 122)';
+
+  test('a space-separated rgb() attribute is inked too', () => {
+    const doc = `<svg viewBox="0 0 24 24"><path fill="${FILL}"/><path fill="${SPACED}"/></svg>`;
+    const out = inlineMonochromeIcons(image(doc), [FILL], [doc]);
+    expect(out.converted).toBe(1);
+    expect(out.svg).not.toContain(SPACED);
+  });
+
+  // The attribute path and the CSS-block path disagreed on 8-digit hex: the
+  // block scanned for the 6-digit form as a substring and so matched inside the
+  // 8-digit one, while the attribute path compared whole values and matched
+  // neither. A mark shipped half baked at 50% alpha with nothing raised.
+  for (
+    const [what, registered, painted, outcome] of [
+      ['a shorthand hex', '#777777', '#777', 'ink'],
+      ['an opaque 8-digit hex', FILL, '#71717aff', 'ink'],
+      ['an uppercase 8-digit hex', FILL, '#71717A80', 'refuse'],
+      ['an alpha-bearing 8-digit hex', FILL, '#71717a80', 'refuse'],
+    ] as const
+  ) {
+    test(`${what} in an attribute is ${outcome === 'ink' ? 'inked' : 'refused'}`, () => {
+      const doc = `<svg viewBox="0 0 24 24"><path fill="${registered}"/><path fill="${painted}"/></svg>`;
+      if (outcome === 'refuse') {
+        expect(() => inlineMonochromeIcons(image(doc), [registered], [doc])).toThrow(SvgError);
+        return;
+      }
+      const out = inlineMonochromeIcons(image(doc), [registered], [doc]);
+      expect(out.svg).not.toContain(painted);
+    });
+  }
+
+  test('alpha-bearing rgba is refused rather than silently made opaque', () => {
+    const translucent = 'rgba(113,113,122,0.5)';
+    const doc = `<svg viewBox="0 0 24 24"><path fill="${FILL}"/><path fill="${translucent}"/></svg>`;
+    expect(() => inlineMonochromeIcons(image(doc), [FILL], [doc])).toThrow(SvgError);
+  });
+
+  for (
+    const [how, css] of [
+      ['a CSS block', RGB],
+      ['spacing', 'rgb(113, 113, 122)'],
+      ['CSS Color 4 spacing', SPACED],
+    ] as const
+  ) {
+    test(`rgb() with ${how} is caught by the post-condition, not shipped baked`, () => {
+      const doc = `<svg viewBox="0 0 24 24"><path fill="${FILL}"/><style>.c{fill:${css}}</style><path class="c"/></svg>`;
+      expect(() => inlineMonochromeIcons(image(doc), [FILL], [doc])).toThrow(SvgError);
+    });
+  }
+
+  test('two different colours are not collapsed into one by normalisation', () => {
+    // Deleting separators to compare spellings would read rgb(1,131,13122) and
+    // rgb(113,113,122) as the same colour and ink artwork that must stay.
+    const other = 'rgb(1,131,13122)';
+    const doc = `<svg viewBox="0 0 24 24"><path fill="${FILL}"/><path fill="${other}"/></svg>`;
+    const out = inlineMonochromeIcons(image(doc), [FILL], [doc]);
+    expect(out.svg).toContain(other);
+  });
+
+  test('the hex in a text node is left alone — it renders nothing', () => {
+    const doc = `<svg viewBox="0 0 24 24"><desc>${FILL}</desc><path fill="${FILL}" d="M1 1"/></svg>`;
+    expect(inlineMonochromeIcons(image(doc), [FILL], [doc]).converted).toBe(1);
+  });
+});

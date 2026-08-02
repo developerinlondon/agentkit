@@ -25,23 +25,29 @@
        label sits ON the ground — the shared --gold/--red miss 4.5:1 there in
        light mode, so these carry their own darker light-mode inks. */
     --note-ink: #79a8e7; --note-bg: #152438;
-    --warn-ink: #f5a742; --warn-bg: #2a2113;
-    --alarm-ink: #e06c75; --alarm-bg: #2c1a1c;
-    --ok-ink: #74c69d; --ok-bg: #12251c;
+    --warn-ink: #f5a742;
+    --alarm-ink: #e06c75;
+    --ok-ink: #74c69d;
   }
   html[data-theme="light"] {
-    --navy: #f8f9fb; --navy-deep: #eef0f4; --card: #ffffff; --code-bg: #eef1f5;
-    --line: #d5dae2; --ink: #1a1a1a; --muted: #5f6672;
+    --navy: #faf9f5; --navy-deep: #f2f1ea; --card: #ffffff; --code-bg: #f1efe8;
+    --line: #e2ded2; --ink: #141413; --muted: #5b584f;
     --accent: #2d64ba; --accent-soft: #e3ecf8; --gold: #8f6c16; --red: #d1383d;
     --diagram-bg: #eef0f4; --fig-glow: #e4e9f1; --node-hi: #ffffff; --node-lo: #f0f3f7; --node-border: #c3cbd6;
     --tile-side: #c9d0da;
     --note-ink: #2d64ba; --note-bg: #e3ecf8;
-    --warn-ink: #7f5f12; --warn-bg: #fbf1dc;
-    --alarm-ink: #c02a30; --alarm-bg: #fbe7e8;
-    --ok-ink: #1f7a4d; --ok-bg: #e3f3ea;
+    --warn-ink: #7f5f12;
+    --alarm-ink: #c02a30;
+    --ok-ink: #1f7a4d;
   }
   * { box-sizing: border-box; }
   html { scroll-behavior: smooth; }
+  :root {
+    --f-serif: ui-serif, Georgia, "Iowan Old Style", "Times New Roman", serif;
+    /* Anything read as prose stays at the measure; only h1, tables and figures
+       take the full column, or a heading overhangs its own paragraph. */
+    --measure: 43rem;
+  }
   body {
     background: linear-gradient(180deg, var(--navy-deep) 0%, var(--navy) 220px);
     color: var(--ink); margin: 0;
@@ -49,10 +55,21 @@
     line-height: 1.65; padding: 3rem 1.25rem 5rem; min-height: 100vh;
     transition: background 0.3s, color 0.3s;
   }
-  main { max-width: 46rem; margin: 0 auto; }
-  h1 { font-size: 2rem; line-height: 1.15; letter-spacing: -0.02em; text-wrap: balance; margin: 0 0 0.8rem; }
-  h2 { font-size: 1.3rem; letter-spacing: -0.01em; margin: 2.4rem 0 0.8rem; padding-top: 1.2rem; border-top: 1px solid var(--line); text-wrap: balance; }
-  h3 { font-size: 1.05rem; margin: 1.4rem 0 0.5rem; }
+  main { max-width: 64rem; margin: 0 auto; }
+  h1 {
+    font-size: clamp(2rem, 4.4vw, 2.9rem); font-weight: 700; line-height: 1.08;
+    letter-spacing: -0.028em; text-wrap: balance; margin: 0 0 0.9rem;
+  }
+  /* The opening paragraph carries the thesis, so it is set apart rather than
+     left as the first of many. Selected structurally: markdown authors write a
+     paragraph after the title, not a class. */
+  main > h1 + p, main > .chips + p {
+    font-family: var(--f-serif); font-size: 1.19rem; line-height: 1.58;
+    max-width: 60ch; margin: 1.4rem 0 0;
+    padding-bottom: 2.6rem; border-bottom: 1px solid var(--line);
+  }
+  h2 { max-width: var(--measure); font-size: 1.6rem; font-weight: 650; letter-spacing: -0.015em; margin: 2.4rem 0 0.8rem; padding-top: 1.2rem; border-top: 1px solid var(--line); text-wrap: balance; }
+  h3 { max-width: var(--measure); font-size: 1.05rem; margin: 1.4rem 0 0.5rem; }
   p, li { max-width: 65ch; }
   li { margin-bottom: 0.3rem; }
   a { color: var(--accent); }
@@ -63,6 +80,7 @@
   pre {
     background: var(--navy-deep); border: 1px solid var(--line); border-radius: 8px;
     padding: 1rem 1.2rem; overflow-x: auto; font-size: 0.82rem; line-height: 1.5;
+    max-width: var(--measure);
   }
   pre code { background: none; padding: 0; }
   blockquote { border-left: 3px solid var(--accent); margin: 1rem 0; padding: 0.2rem 0 0.2rem 1rem; color: var(--muted); }
@@ -88,7 +106,7 @@
   .kicker {
     font-family: ui-monospace, Menlo, monospace; font-size: 0.72rem;
     letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent);
-    margin: 2.2rem 0 0.3rem;
+    margin: 2.2rem 0 0.3rem; max-width: var(--measure);
   }
   .kicker + h2 { margin-top: 0; border-top: none; padding-top: 0; }
   .chips { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0.8rem 0; }
@@ -98,6 +116,8 @@
     color: var(--muted); background: var(--code-bg);
   }
   .chip strong { color: var(--ink); font-weight: 600; }
+  .chip.hot { border-color: var(--accent); color: var(--accent); background: var(--note-bg); }
+  .chip.hot strong { color: var(--accent); }
   .cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.9rem; margin: 1.2rem 0; }
   @media (max-width: 40rem) { .cards { grid-template-columns: 1fr; } }
   .card {
@@ -110,21 +130,31 @@
   .card p { margin: 0; color: var(--muted); font-size: 0.9rem; max-width: none; }
   .callout {
     border: 1px solid var(--line); border-left: 3px solid var(--note-ink);
-    background: var(--note-bg);
+    background: var(--card);
     border-radius: 8px; padding: 0.8rem 1.1rem; font-size: 0.92rem;
-    margin: 1rem 0; max-width: none;
+    margin: 1rem 0; max-width: var(--measure);
   }
-  .callout strong { color: var(--note-ink); }
-  /* Severity is carried by the rail and the label, never by body text: an
-     amber paragraph misses contrast on its own ground in light mode. */
-  .callout.warn { border-left-color: var(--warn-ink); background: var(--warn-bg); }
-  .callout.warn strong { color: var(--warn-ink); }
-  .callout.alarm { border-left-color: var(--alarm-ink); background: var(--alarm-bg); }
-  .callout.alarm strong { color: var(--alarm-ink); }
-  .callout.ok { border-left-color: var(--ok-ink); background: var(--ok-bg); }
-  .callout.ok strong { color: var(--ok-ink); }
+  /* The body only sometimes arrives in a <p>, depending on which spelling the
+     author used, and a UA margin there makes the same callout two heights.
+     Padding does not collapse a margin, so the reset has to be explicit. */
+  .callout p { margin: 0 0 0.5rem; max-width: none; }
+  .callout p:last-child { margin-bottom: 0; }
+  /* The rail and the label always take one colour, and that colour is the
+     severity; body text stays in ink. Position cannot pick the label out —
+     `:first-child` counts elements, so bold after leading text is also "first"
+     — so the renderer marks the real one and this styles the mark. */
+  .callout .callout-label {
+    display: block; margin: 0 0 0.35rem; max-width: none;
+    font-size: 1.02rem; font-weight: 650; color: var(--note-ink);
+  }
+  .callout.warn { border-left-color: var(--warn-ink); }
+  .callout.warn .callout-label { color: var(--warn-ink); }
+  .callout.alarm { border-left-color: var(--alarm-ink); }
+  .callout.alarm .callout-label { color: var(--alarm-ink); }
+  .callout.ok { border-left-color: var(--ok-ink); }
+  .callout.ok .callout-label { color: var(--ok-ink); }
   .callout.note { border-left-color: var(--muted); background: var(--code-bg); }
-  .callout.note strong { color: var(--muted); }
+  .callout.note .callout-label { color: var(--muted); }
   .flow { display: flex; flex-direction: column; margin: 1.2rem 0; }
   .frow { display: flex; align-items: stretch; gap: 0.6rem; flex-wrap: wrap; }
   .fbox {
@@ -206,7 +236,6 @@
     display: block; width: 100%; height: auto; margin-inline: auto;
   }
   .figure p { max-width: none; }
-  @media (min-width: 72rem) { .figure { margin-inline: -9rem; } }
 
   /* Click-to-expand lightbox — every .figure expands to natural size. */
   .figure.fig-expandable { cursor: zoom-in; }
@@ -325,30 +354,42 @@
   html[data-theme="light"] .theme-toggle .moon { display: none; }
   html:not([data-theme="light"]) .theme-toggle .sun { display: none; }
   /* Named sections, not anonymous dots: a reader should see what a page covers
-     without scrolling it. Full-bleed like a browser tab strip rather than inset
-     to the text column, so the bar reads as page chrome. */
+     without scrolling it. The bar is full-bleed but its contents sit in the
+     content column, so the wordmark lines up with the text below it. */
   .secnav {
     position: sticky; top: 0; z-index: 40;
-    margin: -3rem -1.25rem 1.9rem; padding: 0.5rem 4rem 0.5rem 1.25rem;
-    display: flex; gap: 0.1rem; align-items: center;
-    overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none;
+    margin: -3rem -1.25rem 1.9rem; padding: 0 1.25rem;
     background: var(--navy-deep); border-bottom: 1px solid var(--line);
-    /* The theme toggle is fixed over this corner; fading the tail keeps a tab
-       from being half-hidden under it and reads as "there is more to scroll". */
-    -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 4rem), transparent);
-    mask-image: linear-gradient(90deg, #000 calc(100% - 4rem), transparent);
   }
   .secnav[hidden] { display: none; }
-  .secnav::-webkit-scrollbar { display: none; }
-  .secnav a {
-    flex: none; color: var(--muted); text-decoration: none; white-space: nowrap;
-    font-family: ui-monospace, Menlo, monospace; font-size: 0.7rem;
-    letter-spacing: 0.04em; padding: 0.3rem 0.62rem; border-radius: 6px;
-    border: 1px solid transparent;
-    transition: color 0.2s, background 0.2s, border-color 0.2s;
+  .secnav-in {
+    max-width: 64rem; margin: 0 auto; height: 3rem;
+    display: flex; align-items: center; gap: 1.1rem;
   }
-  .secnav a:hover { color: var(--ink); background: var(--card); }
-  .secnav a.on { color: var(--note-ink); background: var(--note-bg); border-color: var(--line); }
+  .secnav-brand {
+    font-family: ui-monospace, Menlo, monospace; font-size: 0.78rem; font-weight: 600;
+    letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink);
+    display: flex; align-items: center; gap: 0.56rem; white-space: nowrap;
+  }
+  .secnav-brand::before {
+    content: ""; width: 13px; height: 13px; border-radius: 3px;
+    background: var(--accent); box-shadow: inset 0 0 0 2.5px var(--navy-deep);
+  }
+  .secnav-links {
+    margin-left: auto; display: flex; gap: 1.15rem; align-items: center;
+    overflow-x: auto; scrollbar-width: none;
+  }
+  .secnav-links::-webkit-scrollbar { display: none; }
+  .secnav-links a {
+    flex: none; color: var(--muted); text-decoration: none; white-space: nowrap;
+    font-family: ui-monospace, Menlo, monospace; font-size: 0.72rem;
+    letter-spacing: 0.05em; text-transform: uppercase;
+    padding: 0.2rem 0; border-bottom: 1.5px solid transparent;
+    transition: color 0.2s, border-color 0.2s;
+  }
+  .secnav-links a:hover { color: var(--ink); border-bottom-color: var(--accent); }
+  .secnav-links a.on { color: var(--accent); border-bottom-color: var(--accent); }
+  .secnav .theme-toggle { position: static; flex: none; width: 1.9rem; height: 1.9rem; }
   main h2 { scroll-margin-top: 3.4rem; }
   @media print { .theme-toggle, .secnav { display: none; } }
 </style>
@@ -358,7 +399,7 @@
   <svg class="moon" viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
   <svg class="sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.6 4.6l1.8 1.8M17.6 17.6l1.8 1.8M19.4 4.6l-1.8 1.8M6.4 17.6l-1.8 1.8"/></svg>
 </button>
-<nav class="secnav" id="secNav" aria-label="Sections" hidden></nav>
+<nav class="secnav" id="secNav" aria-label="Sections" hidden><div class="secnav-in" id="secNavIn"></div></nav>
 <main>
 {{CONTENT}}
 <footer>published with <a href="https://agentkit.sbs">agentkit pages</a></footer>
@@ -397,8 +438,22 @@
 
   const heads = [...document.querySelectorAll("main h2")];
   if (heads.length >= 3) {
-    const rail = document.getElementById("secNav");
-    rail.hidden = false;
+    const bar = document.getElementById("secNav");
+    const inner = document.getElementById("secNavIn");
+    bar.hidden = false;
+    // An author names the product with <div class="brand">; the bar hoists it
+    // so the wordmark sits left of the sections, aligned with the text column.
+    const brand = document.querySelector("main .brand");
+    if (brand) {
+      brand.classList.add("secnav-brand");
+      brand.classList.remove("brand");
+      inner.appendChild(brand);
+    }
+    const rail = document.createElement("div");
+    rail.className = "secnav-links";
+    inner.appendChild(rail);
+    const toggle = document.querySelector(".theme-toggle");
+    if (toggle) inner.appendChild(toggle);
     heads.forEach((h, i) => {
       if (!h.id) h.id = "s" + (i + 1);
       const a = document.createElement("a");
