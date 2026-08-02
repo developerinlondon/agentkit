@@ -519,6 +519,32 @@ describe('callout labels are marked by document order, not element position', ()
     });
   }
 
+  // `\b` sits between the hyphen and the c, so a bare \bclass matches
+  // data-class too. The marker landed inside the data attribute, which reads as
+  // marked while the element carries no real class and renders unstyled.
+  test('a data-class attribute is not mistaken for class', () => {
+    const out = markedCallouts('<div class="callout"><h3 data-class="k">L</h3></div>');
+    expect(out).toContain('data-class="k"');
+    expect(out).toContain('class="callout-label"');
+  });
+
+  test('a div carrying only data-class="callout" is not a callout', () => {
+    expect(markedCalloutCount('<div data-class="callout"><strong>x</strong></div>')).toBe(0);
+  });
+
+  test('two spaces after the tag name still parse', () => {
+    expect(markedCalloutCount('<div  class="callout"><strong>L.</strong></div>')).toBe(1);
+  });
+
+  test('a class that merely starts with callout is not a callout', () => {
+    expect(markedCalloutCount('<div class="callout-ish"><strong>x</strong></div>')).toBe(0);
+  });
+
+  test('marking twice does not stack the class', () => {
+    const once = markedCallouts('<div class="callout"><strong>L.</strong></div>');
+    expect(markCalloutLabels(once)).toBe(once);
+  });
+
   test('a label that already carries a class keeps it', () => {
     const html = '<div class="callout"><h3 class="tight">Label</h3></div>';
     expect(markedCallouts(html)).toContain('class="callout-label tight"');
