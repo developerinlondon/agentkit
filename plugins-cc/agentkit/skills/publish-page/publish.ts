@@ -132,7 +132,9 @@ if (isDelete) {
     // was rejected leaves the server page gone and the deletion commit
     // stranded, and the advised re-run must still push that commit.
     const hadLocal = existsSync(join(repo, "src", slug)) || existsSync(join(repo, "dist", slug));
-    const ahead = git("rev-list", "--count", "@{u}..HEAD");
+    // Scoped to THIS slug's history: a clone ahead on unrelated work must not
+    // turn a mistyped delete into a reported success.
+    const ahead = git("rev-list", "--count", "@{u}..HEAD", "--", `src/${slug}`, `dist/${slug}`);
     const stranded = ahead.exitCode === 0 && ahead.stdout.toString().trim() !== "0";
     if (gone && !hadLocal && !stranded) fail(`no page at ${slug} — nothing deleted`);
     await rm(join(repo, "src", slug), { recursive: true, force: true });

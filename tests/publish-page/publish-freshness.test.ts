@@ -246,11 +246,19 @@ describe("a rejected canonical push fails loud", () => {
     expect(retry.stdout).toContain("canonical record updated");
   }, 20000);
 
-  test("deleting a page that never existed still fails loud", async () => {
+  test("deleting a page that never existed fails loud, even from a clone with unrelated stranded work", async () => {
     const w = makeWorld();
-    const r = await publish(w, "--name", "never-published", "--delete");
-    expect(r.status).toBe(1);
-    expect(r.stderr).toMatch(/nothing deleted/);
-    expect(ahead(w.mine)).toBe("0");
+    const clean = await publish(w, "--name", "never-published", "--delete");
+    expect(clean.status).toBe(1);
+    expect(clean.stderr).toMatch(/nothing deleted/);
+    // Strand an unrelated publish commit, then mistype the delete again: the
+    // 404 tolerance is scoped to the deleted slug's own history, so this must
+    // stay an error and must not push the unrelated commit as a side effect.
+    advanceOrigin(w.theirs, "README.md", "make the publish push fail\n");
+    const strand = await publish(w);
+    expect(strand.status).toBe(1);
+    const typo = await publish(w, "--name", "never-published", "--delete");
+    expect({ status: typo.status, stillStranded: ahead(w.mine) }).toEqual({ status: 1, stillStranded: "1" });
+    expect(typo.stderr).toMatch(/nothing deleted/);
   }, 20000);
 });
