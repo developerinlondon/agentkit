@@ -93,7 +93,7 @@ pairing the themes actually paint is contrast-checked at 4.5:1.
 - The section nav names each tab from its `h2`. A title longer than about 28 characters is
   shortened and marked with an ellipsis to say the label was derived rather than chosen — write
   `<h2 data-nav="Estimate">Two to four weeks, not two months</h2>` to name it yourself.
-- The nav's left slot is opt-in: a `<div class="brand">Name</div>` anywhere in the page is hoisted
+- The nav's left slot is opt-in: a `<div class="brand">Name</div>` anywhere in your content is hoisted
   into the bar, with its accent mark drawn for you. Without one the slot stays empty.
 
 :::tip[Verify before you report the URL]
