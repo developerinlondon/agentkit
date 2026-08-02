@@ -61,6 +61,9 @@ describe('cross-theme ground coherence', () => {
       const d = tokens(doc, palette);
       const k = tokens(deck, palette);
       for (const t of GROUND_FAMILY) {
+        // A rename in both themes would make both sides undefined and the
+        // comparison vacuously green — the doc side must actually resolve.
+        expect({ token: t, doc: d[t] }).toEqual({ token: t, doc: expect.stringMatching(/^#[0-9a-f]{6}$/) });
         expect({ token: t, deck: k[t] }).toEqual({ token: t, deck: d[t] });
       }
     });
