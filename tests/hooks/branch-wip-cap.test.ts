@@ -90,6 +90,7 @@ beforeAll(() => {
 case "$1 $2" in
   "auth status") exit \${GH_AUTH_EXIT:-0} ;;
   "pr list")
+    if [[ -n "\${GH_LIST_EXIT_AFTER:-}" ]]; then cat "\${FORGE_JSON}"; exit "\${GH_LIST_EXIT_AFTER}"; fi
     if [[ "\${GH_LIST_EXIT:-0}" != 0 ]]; then exit "\${GH_LIST_EXIT}"; fi
     if [[ -n "\${GH_LIST_GARBAGE:-}" ]]; then printf '%s\\n' "\${GH_LIST_GARBAGE}"; exit 0; fi
     cat "\${FORGE_JSON}"
@@ -242,6 +243,20 @@ describe('branch WIP cap: a failed forge call is not an empty backlog', () => {
     startedBranch(clone, 'feat/orphan');
     const out = runHook(clone, 'git checkout -b feat/second', {
       env: { GH_LIST_GARBAGE: 'gh: could not determine repository' },
+    });
+    expect(out).not.toContain('"deny"');
+    expect(out).toContain('UNCHECKED');
+  });
+
+  // The exit status has to be judged on its own. A CLI that hits a partial API
+  // failure can print a well-formed but incomplete array and still exit
+  // non-zero, and trusting that reads a truncated listing as the whole backlog.
+  test('a well-formed array from a call that still failed is not trusted', () => {
+    const clone = freshClone();
+    startedBranch(clone, 'feat/orphan');
+    const out = runHook(clone, 'git checkout -b feat/second', {
+      prs: [],
+      env: { GH_LIST_EXIT_AFTER: '1' },
     });
     expect(out).not.toContain('"deny"');
     expect(out).toContain('UNCHECKED');
