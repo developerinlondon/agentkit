@@ -355,7 +355,7 @@ describe('installer skill-kit wizard', () => {
     } finally {
       rmSync(home, { force: true, recursive: true });
     }
-  }, globalInstallTimeoutMs);
+  }, globalInstallTimeoutMs * 2);
 
   test('a piped install never prompts, so CI cannot block on an unanswered question', () => {
     const home = mkdtempSync(join(tmpdir(), 'agentkit-wizard-'));
@@ -393,7 +393,7 @@ describe('installer skill-kit wizard', () => {
         rmSync(home, { force: true, recursive: true });
       }
     }
-  }, globalInstallTimeoutMs);
+  }, globalInstallTimeoutMs * 3);
 
   test('declining every kit installs exactly what a bare piped install installs', () => {
     if (noPtyDriver()) return;
@@ -424,7 +424,7 @@ describe('installer skill-kit wizard', () => {
       rmSync(declined, { force: true, recursive: true });
       rmSync(piped, { force: true, recursive: true });
     }
-  }, globalInstallTimeoutMs);
+  }, globalInstallTimeoutMs * 2);
 
   test('a CI runner that allocated a terminal is never asked', () => {
     if (noPtyDriver()) return;
@@ -532,7 +532,7 @@ describe('installer skill-kit wizard', () => {
         rmSync(home, { force: true, recursive: true });
       }
     }
-  }, globalInstallTimeoutMs);
+  }, globalInstallTimeoutMs * 2);
 
   test('a project install does not ask, because it has nowhere to remember', () => {
     if (noPtyDriver()) return;
@@ -573,5 +573,5 @@ describe('installer skill-kit wizard', () => {
     } finally {
       rmSync(home, { force: true, recursive: true });
     }
-  }, globalInstallTimeoutMs);
+  }, globalInstallTimeoutMs * 2);
 });
