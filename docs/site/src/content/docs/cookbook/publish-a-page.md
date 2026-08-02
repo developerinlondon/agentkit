@@ -63,8 +63,13 @@ A rendered deck is worth more than a description of one:
 `deck` template — a cover with a stat row, a severity callout, legend rails, and column cards. Arrow
 keys, space and swipe move between slides; the toggle in the nav bar flips the theme. Its markdown
 source is
-[`docs/site/examples/publish-freshness-deck.md`](https://github.com/developerinlondon/agentkit/blob/main/docs/site/examples/publish-freshness-deck.md),
-and re-rendering it reproduces the published file byte for byte.
+[`docs/site/examples/publish-freshness-deck.md`](https://github.com/developerinlondon/agentkit/blob/main/docs/site/examples/publish-freshness-deck.md).
+Rendering it through the `deck` template with `--title "The Publish Freshness Architecture"`
+reproduces the published file byte for byte. The title has to be given: a deck's cover headline is
+HTML rather than a markdown `#` heading, so there is nothing to derive one from. The bytes come from
+`renderThemed` in `skills/publish-page/render-html.ts` against this repo's copy of the theme —
+`publish.ts` prefers a pages clone's theme when you have one, and a different theme renders
+different bytes.
 
 ## Callouts
 
