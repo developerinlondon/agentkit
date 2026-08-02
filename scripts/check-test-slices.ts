@@ -33,6 +33,8 @@ export const TEST_SLICES = {
     'tests/git-police.test.ts',
     'tests/hook-payload-compat.test.ts',
     'tests/hook-supervisor.test.ts',
+    'tests/hooks/branch-wip-cap.test.ts',
+    'tests/hooks/issue-police.test.ts',
     'tests/kubectl-police.test.ts',
     'tests/mr-police.test.ts',
     'tests/pkg-police.test.ts',

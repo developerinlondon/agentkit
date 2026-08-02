@@ -302,6 +302,89 @@ if echo "$STRIPPED" | grep -qiE '\bgit\b.*(checkout\s+-b|switch\s+-c)\b'; then
 	done
 fi
 
+# 10. Branch WIP cap. mr-police caps open merge requests at one, but an agent
+#     that simply never opens an MR never meets that gate — measured on one
+#     repository, eleven unmerged branches against a single MR. Branch creation
+#     is the chokepoint that catches it. "Unmerged" is a forge question, never
+#     a topology one (see lib/forge-branches.sh); a forge that cannot answer
+#     allows, because blocking on a network hiccup is worse than the sprawl.
+BRANCH_WIP_MAX="${AGENTKIT_BRANCH_WIP_MAX:-1}"
+INLINE_WIP_MAX=$(echo "$COMMAND" | grep -oE '(^|[[:space:];&|])AGENTKIT_BRANCH_WIP_MAX=[A-Za-z0-9]+' | head -1 | sed -E 's/.*=//' || true)
+[[ -n "$INLINE_WIP_MAX" ]] && BRANCH_WIP_MAX="$INLINE_WIP_MAX"
+
+# Rule 7 ran `fetch -p` on this same trigger, so a gone upstream below is fresh.
+wip_branch_started() {
+	local ahead
+	ahead=$(tgit rev-list --count "$WIP_BASE..$1" 2>/dev/null || echo 0)
+	if [[ "${ahead:-0}" -gt 0 ]]; then
+		return 0
+	fi
+	case "$WIP_TREES" in
+	*"|$1|"*) return 0 ;;
+	esac
+	return 1
+}
+
+WIP_LIB="${BASH_SOURCE[0]%/*}/lib/forge-branches.sh"
+if [[ "$BRANCH_WIP_MAX" =~ ^[1-9][0-9]*$ ]] && [[ -r "$WIP_LIB" ]] \
+	&& echo "$STRIPPED" | grep -qiE '\bgit\b.*(checkout\s+-b|switch\s+-c)\b'; then
+	# shellcheck source=lib/forge-branches.sh
+	source "$WIP_LIB"
+	WIP_DEFAULT=$(tgit symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's|^origin/||' || true)
+	[[ -n "$WIP_DEFAULT" ]] || WIP_DEFAULT="main"
+	WIP_BASE="$WIP_DEFAULT"
+	if tgit show-ref --verify --quiet "refs/remotes/origin/$WIP_DEFAULT"; then
+		WIP_BASE="origin/$WIP_DEFAULT"
+	fi
+	WIP_TREES="|$(tgit worktree list --porcelain 2>/dev/null | awk '$1 == "branch" { sub(/^refs\/heads\//, "", $2); print $2 }' | tr '\n' '|')"
+
+	# Candidates by the network-free signals alone: something was started on
+	# them, and their upstream is not gone (that is rule 7's business, and a
+	# deleted upstream is the one local sign that a squash merge landed).
+	WIP_CANDIDATES=""
+	while IFS=$'\t' read -r wip_branch wip_track; do
+		[[ -n "$wip_branch" && "$wip_branch" != "$WIP_DEFAULT" ]] || continue
+		[[ "$wip_track" == *gone* ]] && continue
+		if wip_branch_started "$wip_branch"; then
+			WIP_CANDIDATES="$WIP_CANDIDATES $wip_branch"
+		fi
+	done < <(tgit for-each-ref --format='%(refname:short)%09%(upstream:track)' refs/heads 2>/dev/null)
+
+	WIP_REPO=$(tgit rev-parse --show-toplevel 2>/dev/null || echo "")
+	WIP_STATES=""
+	WIP_ASKED=false
+	if [[ -n "$WIP_REPO" ]] && agentkit_detect_forge "$WIP_REPO"; then
+		if WIP_STATES=$(agentkit_forge_branch_states "$WIP_REPO"); then
+			WIP_ASKED=true
+		fi
+	fi
+
+	WIP_LIST=""
+	WIP_COUNT=0
+	for wip_branch in $WIP_CANDIDATES; do
+		if [[ "$WIP_ASKED" == true ]]; then
+			case "$(agentkit_branch_state "$wip_branch" "$WIP_STATES")" in
+			merged | closed) continue ;;
+			esac
+		fi
+		WIP_COUNT=$((WIP_COUNT + 1))
+		WIP_LIST="$WIP_LIST $wip_branch"
+	done
+
+	if [[ "$WIP_COUNT" -ge "$BRANCH_WIP_MAX" ]]; then
+		if [[ "$WIP_ASKED" == true ]]; then
+			deny "BLOCKED: ${WIP_COUNT} branch(es) in this repo are unfinished —${WIP_LIST}. The forge says each is either open or has never had a change raised from it. Finish one before starting another: open its MR/PR and get it merged, or delete the branch if the work is dead. Genuinely concurrent work: prefix the command with AGENTKIT_BRANCH_WIP_MAX=<n>, or AGENTKIT_BRANCH_WIP_MAX=off to switch the cap off."
+		fi
+		# Silence here would read exactly like a clean repository, and only the
+		# forge can tell a squash-merged branch from an unfinished one. A repo
+		# with no remote at all has no forge to be unreachable, so it says
+		# nothing rather than nagging about a check that never applied to it.
+		if tgit remote get-url origin >/dev/null 2>&1; then
+			advise "UNCHECKED: the branch WIP cap could not be applied — no reachable forge (gh/glab) for this repo. ${WIP_COUNT} branch(es) carry commits or a worktree and may be unfinished:${WIP_LIST}. Nothing local can tell a squash-merged branch from an abandoned one, so this is a reminder, not a verdict."
+		fi
+	fi
+fi
+
 # 9. Merge-return branch hygiene (advisory — nudges, never blocks). Rule 7's
 #    hard-deny only fires when NEW work starts (checkout -b / switch -c), so
 #    stale merged branches linger unnoticed between a merge and the next

@@ -5,6 +5,37 @@ top and ships with the next tag.
 
 ## [Unreleased]
 
+- feat(git-police): a branch WIP cap refuses creating a branch while unfinished
+  ones are already open on the repository. `mr-police` has capped open merge
+  requests at one for a while, but an agent that never opens an MR never meets
+  that gate — measured on one repository, eleven unmerged branches against a
+  single MR. Branch creation is the chokepoint that catches it.
+  Finished is the forge's answer, never git topology, for the reason `wip`
+  records: a squash-merged branch stays a non-ancestor of the default branch
+  forever, and every git-only rule reports it as outstanding. Branches the forge
+  says merged or closed drop out; so do branches with nothing committed, no
+  worktree, and no change ever raised, which is what a worktree-per-branch
+  harness leaves behind. A gone upstream is left to the existing stale-branch
+  rule. `AGENTKIT_BRANCH_WIP_MAX=<n>` raises the ceiling and `=off` disables it,
+  inline or from the environment.
+  Three outcomes stay distinguishable: silence when the repository is clean, a
+  refusal naming the branches when it is not, and an `UNCHECKED` reminder — never
+  a refusal — when no forge could be reached, because blocking a developer on a
+  network hiccup is worse than the sprawl. A forge call that fails or answers
+  with something other than a JSON array is that third case, not an empty
+  backlog.
+- feat(issue-police): a new hook refuses `gh issue create` / `glab issue create`
+  unless the issue body carries a `Disposition:` line. Presence only — the hook
+  forms no opinion on the answer, and the issue-lifecycle skills teach what to
+  write. Instructions alone are demonstrably routed around: a working one-MR cap
+  was bypassed eleven times by simply never opening an MR.
+- docs(issue-lifecycle): both lifecycle skills now separate three things that
+  look identical at the moment you type `issue create`. New work is filed and
+  branched. Scope carved out of the issue you are working on right now is a
+  **deferral** needing the operator's sign-off, not a silent file. A review
+  finding defaults to being fixed in the change that caused it; filing is the
+  exception and has to be justified. Auto-filing every finding is what ran one
+  repository's backlog to 34 issues in three days with 21 still open.
 - feat(wip): `wip` reports what was started and not finished in a repository —
   branches with age and commit count, worktrees with a loud warning on dirty
   ones, open merge requests or pull requests and what holds each, open issues

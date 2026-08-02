@@ -95,6 +95,7 @@ describe('OpenCode policy plugin modules', () => {
 // so it is intentionally absent from both settings.json and this plugin.
 const PRE_TOOL_USE_HOOKS = [
   'git-police.sh',
+  'issue-police.sh',
   'kubectl-police.sh',
   'pkg-police.sh',
   'pages-police.sh',

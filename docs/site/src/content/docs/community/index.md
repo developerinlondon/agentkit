@@ -92,8 +92,8 @@ hold it, and being explicit about where it cannot reach:
 | OpenCode plugin                 | `plugins/<name>.ts`           | OpenCode              |
 | Codex argv-prefix policy        | `policies/codex/<name>.rules` | Codex CLI             |
 
-Partial coverage is acceptable and normal — `version-police` is OpenCode-only, `mr-police` and
-`pages-police` are hook-only, `delegation-police` is Codex-only. What is not acceptable is implying
+Partial coverage is acceptable and normal — `version-police` is OpenCode-only, `mr-police`,
+`pages-police` and `issue-police` are hook-only, `delegation-police` is Codex-only. What is not acceptable is implying
 parity that does not exist.
 
 Points where a new unit usually goes wrong:

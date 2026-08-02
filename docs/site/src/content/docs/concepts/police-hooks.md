@@ -27,11 +27,12 @@ flowchart TD
   post -- "exit 0" --> done["accepted"]
 ```
 
-The `PreToolUse` chain on `Bash` runs in a fixed order, each with its own timeout: `git-police`,
-`kubectl-police`, `pkg-police`, `pages-police`, `resource-police` (10s each), `mr-police` (15s).
-With the `adversarial-review` kit selected, `review-police` is appended at 60s and a second
-registration catches non-`Bash` merge tools by name. Without that kit, the installer strips both
-registrations out of `settings.json` on the way in — so the default chain is six hooks, not seven.
+The `PreToolUse` chain on `Bash` runs in a fixed order, each with its own timeout: `git-police`
+(20s — its branch WIP cap asks the forge), then `issue-police`, `kubectl-police`, `pkg-police`,
+`pages-police`, `resource-police` (10s each) and `mr-police` (15s). With the `adversarial-review`
+kit selected, `review-police` is appended at 60s and a second registration catches non-`Bash` merge
+tools by name. Without that kit, the installer strips both registrations out of `settings.json` on
+the way in — so the default chain is seven hooks, not eight.
 
 `Edit` and `Write` are intercepted twice. Before the write, `plan-police` (15s) judges the content
 the edit is about to land; after it, three quality hooks run on the result: `format-police`,

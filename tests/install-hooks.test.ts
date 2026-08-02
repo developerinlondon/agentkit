@@ -337,6 +337,61 @@ describe('Claude Code and Codex hook wiring', () => {
     }
   }, globalInstallTimeoutMs);
 
+  // The installed layout is a flat hooks dir one level shallower than the source
+  // tree, so a hook that resolves a helper beside itself is only proven here.
+  test('the installed hooks run from the layout install.sh actually writes', () => {
+    const home = mkdtempSync(join(tmpdir(), 'agentkit-hooks-'));
+    try {
+      const install = runGlobalInstall(home);
+      expect(install.status, install.stderr.toString()).toBe(0);
+      const settings = installedSettings(join(home, '.claude'));
+      const bashHooks = settings.hooks.PreToolUse[0].hooks as { command: string }[];
+
+      const issueHook = bashHooks.find((entry) => entry.command.includes('issue-police.sh'));
+      expect(issueHook).toBeDefined();
+      const refused = spawnSync('bash', ['-c', issueHook!.command], {
+        cwd: home,
+        encoding: 'utf-8',
+        env: { ...process.env, HOME: home },
+        input: JSON.stringify({ tool_input: { command: 'gh issue create --title x --body y' } }),
+        timeout: 10_000,
+      });
+      expect(refused.stdout).toContain('"deny"');
+
+      // git-police's WIP cap sources lib/forge-branches.sh from beside itself.
+      // The origin is a local path no forge CLI can serve, so the unreachable
+      // reminder is what proves the helper loaded at all.
+      const repo = join(home, 'repo');
+      mkdirSync(repo);
+      for (
+        const cmd of [
+          'git init -q -b main',
+          `git remote add origin ${join(home, 'nowhere.git')}`,
+          'git config user.email t@e.com',
+          'git config user.name t',
+          'git commit -q --allow-empty -m init',
+          'git checkout -q -b feat/started',
+          'git commit -q --allow-empty -m work',
+          'git checkout -q main',
+        ]
+      ) {
+        spawnSync('bash', ['-c', cmd], { cwd: repo, encoding: 'utf-8' });
+      }
+      const gitHook = bashHooks.find((entry) => entry.command.includes('git-police.sh'));
+      const advised = spawnSync('bash', ['-c', gitHook!.command], {
+        cwd: repo,
+        encoding: 'utf-8',
+        env: { ...process.env, HOME: home },
+        input: JSON.stringify({ tool_input: { command: 'git checkout -b feat/next' } }),
+        timeout: 15_000,
+      });
+      expect(advised.stdout).toContain('UNCHECKED');
+      expect(advised.stdout).toContain('feat/started');
+    } finally {
+      rmSync(home, { force: true, recursive: true });
+    }
+  }, globalInstallTimeoutMs);
+
   test('quotes shell-active CODEX_HOME paths before a trusted hook executes', () => {
     const home = mkdtempSync(join(tmpdir(), 'agentkit-hooks-'));
     const codexHome = join(

@@ -29,9 +29,23 @@ project path from `git remote -v` (see issue-raiser Phase 0) — never hardcode 
 
 ## The rules
 
-1. **Issue-first.** Every piece of work runs against an issue. Find an existing one or
-   create it BEFORE branching. Trivial fixes inside an existing issue's scope ride that
-   issue; retroactive filing is a fallback, not the default.
+1. **Issue-first, and filing is not free.** Every piece of work runs against an issue.
+   Find an existing one (`glab issue list --search`) or create it BEFORE branching.
+   Trivial fixes inside an existing issue's scope ride that issue; retroactive filing is
+   a fallback, not the default. Three things look identical at the moment you type
+   `issue create`, and only the first is unambiguously right:
+   - **New work**, unrelated to anything in flight → file it, then branch.
+   - **Scope carved OUT of the issue you are working on now** → a **deferral**, not a
+     discovery. It needs the operator's explicit sign-off before you file it and walk
+     away; the default is to finish the scope you accepted.
+   - **A review finding** → the default disposition is _fix it in the MR that caused it_.
+     Filing is the exception and has to be justified in the issue itself: out of that
+     MR's scope, blocked on a decision, or blocked on other work. Auto-filing every
+     finding is what runs a backlog away from its readers — measured on one repository,
+     34 issues filed in three days with 21 still open.
+
+   Whichever it is, say so. Every new issue carries a `Disposition:` line in its body
+   naming the case; the `issue-police` hook refuses a creation without one.
 2. **MRs reference, never auto-close.** Write `Refs #N` in the MR description — never a
    closing keyword. GitLab's default `issue_closing_pattern` auto-closes on merge for the
    **close / fix / resolve / implement** families and all their inflections:

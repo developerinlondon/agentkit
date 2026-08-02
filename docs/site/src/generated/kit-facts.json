@@ -50,6 +50,15 @@
       ]
     },
     {
+      "name": "issue",
+      "mechanisms": [
+        "hook"
+      ],
+      "claudePlugins": [
+        "agentkit"
+      ]
+    },
+    {
       "name": "kubectl",
       "mechanisms": [
         "hook",
@@ -150,6 +159,13 @@
     },
     {
       "unit": "git",
+      "event": "PreToolUse",
+      "matcher": "Bash",
+      "timeout": 20,
+      "failClosedBudget": null
+    },
+    {
+      "unit": "issue",
       "event": "PreToolUse",
       "matcher": "Bash",
       "timeout": 10,

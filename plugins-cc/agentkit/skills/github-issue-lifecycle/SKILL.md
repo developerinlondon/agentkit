@@ -27,9 +27,22 @@ the answer with `git config agentkit.issues.<key> <value>`.
 
 ## The rules
 
-1. **Issue-first.** Every piece of work runs against an issue. Find an existing one
-   (`gh issue list --search`) or create it BEFORE branching. Trivial fixes inside an
-   existing issue's scope ride that issue.
+1. **Issue-first, and filing is not free.** Every piece of work runs against an issue.
+   Find an existing one (`gh issue list --search`) or create it BEFORE branching. Trivial
+   fixes inside an existing issue's scope ride that issue. Three things look identical at
+   the moment you type `issue create`, and only the first is unambiguously right:
+   - **New work**, unrelated to anything in flight → file it, then branch.
+   - **Scope carved OUT of the issue you are working on now** → a **deferral**, not a
+     discovery. It needs the operator's explicit sign-off before you file it and walk
+     away; the default is to finish the scope you accepted.
+   - **A review finding** → the default disposition is _fix it in the PR that caused it_.
+     Filing is the exception and has to be justified in the issue itself: out of that
+     PR's scope, blocked on a decision, or blocked on other work. Auto-filing every
+     finding is what runs a backlog away from its readers — measured on one repository,
+     34 issues filed in three days with 21 still open.
+
+   Whichever it is, say so. Every new issue carries a `Disposition:` line in its body
+   naming the case; the `issue-police` hook refuses a creation without one.
 2. **PRs reference, never auto-close.** Write `Refs #N` in the PR body — never
    `Closes/Fixes/Resolves #N`. GitHub's closing keywords auto-close the issue the
    moment the PR merges to the default branch; the issue must stay open until the fix
