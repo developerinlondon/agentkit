@@ -12,6 +12,9 @@ describe('callout labels are marked by document order, not element position', ()
       ['an author-wrapped p', '<div class="callout"><p><strong>Heads up.</strong> body</p></div>'],
       ['a heading', '<div class="callout note"><h3>Heads up</h3><p>body</p></div>'],
       ['a heading with attributes', '<div class="callout"><h3 id="x">Heads up</h3><p>body</p></div>'],
+      ['the class after another attribute', '<div id="x" class="callout warn"><strong>Heads up.</strong></div>'],
+      ['callout after another class token', '<div class="warn callout"><strong>Heads up.</strong></div>'],
+      ['a single-quoted class', "<div class='callout warn'><strong>Heads up.</strong></div>"],
     ] as const
   ) {
     test(`${spelling} is a label`, () => {
