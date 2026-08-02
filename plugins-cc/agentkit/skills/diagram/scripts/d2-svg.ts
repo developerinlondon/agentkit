@@ -127,7 +127,11 @@ function valueKey(value: string): string {
   const v = value.trim().toLowerCase();
   const call = /^rgba?\(([^)]*)\)$/.exec(v);
   if (!call) return v.replace(/\s+/g, "");
-  return call[1].split(/[\s,/]+/).filter(Boolean).slice(0, 3).join(",");
+  const parts = call[1].split(/[\s,/]+/).filter(Boolean);
+  const channels = parts.slice(0, 3).join(",");
+  const alpha = parts[3];
+  if (!alpha || /^(?:1(?:\.0+)?|100(?:\.0+)?%)$/.test(alpha)) return channels;
+  return `${channels}/${parts.slice(3).join(",")}`;
 }
 
 // Colour lives in a fill or stroke value; the same string elsewhere is an id, a
@@ -136,8 +140,13 @@ function inkAttributes(markup: string, fill: string): string {
   const keys = colourKeys(fill);
   return markup.replace(
     /\b(fill|stroke|stop-color|flood-color)="([^"]*)"/gi,
-    (attribute, name: string, value: string) =>
-      keys.includes(valueKey(value)) ? `${name}="currentColor"` : attribute,
+    (attribute, name: string, value: string) => {
+      const key = valueKey(value);
+      if (keys.some((opaque) => key.startsWith(`${opaque}/`))) {
+        throw new SvgError("monochrome icon carries alpha-bearing ink, which cannot become opaque currentColor");
+      }
+      return keys.includes(key) ? `${name}="currentColor"` : attribute;
+    },
   );
 }
 
@@ -150,7 +159,10 @@ function bakedInStyle(markup: string, fill: string): boolean {
   return [...styles, ...blocks].some((css) => {
     const text = css.toLowerCase();
     if (keys.some((k) => k.startsWith("#") && text.replace(/\s+/g, "").includes(k))) return true;
-    return [...text.matchAll(/rgba?\([^)]*\)/g)].some((m) => keys.includes(valueKey(m[0])));
+    return [...text.matchAll(/rgba?\([^)]*\)/g)].some((m) => {
+      const key = valueKey(m[0]);
+      return keys.some((opaque) => key === opaque || key.startsWith(`${opaque}/`));
+    });
   });
 }
 

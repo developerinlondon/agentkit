@@ -265,6 +265,12 @@ describe('colour notation', () => {
     expect(out.svg).not.toContain(SPACED);
   });
 
+  test('alpha-bearing rgba is refused rather than silently made opaque', () => {
+    const translucent = 'rgba(113,113,122,0.5)';
+    const doc = `<svg viewBox="0 0 24 24"><path fill="${FILL}"/><path fill="${translucent}"/></svg>`;
+    expect(() => inlineMonochromeIcons(image(doc), [FILL], [doc])).toThrow(SvgError);
+  });
+
   for (
     const [how, css] of [
       ['a CSS block', RGB],
