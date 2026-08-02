@@ -150,3 +150,9 @@ Without that clone, publishing still works — it warns once that it is using th
 which can lag the canonical ones, and that no history is being recorded. That warning matters: a
 republish under an existing name overwrites silently, and on a machine with no clone there is nothing
 to recover from.
+
+Staleness runs both ways, and the clone is the side that goes stale quietly. Publishing prefers the
+clone's themes whenever a clone exists, so a clone left behind its upstream serves older chrome than
+the installed skill carries — while the renderer, which ships with the skill, stays current. The two
+disagree inside a single page, and nothing fails: the upload succeeds and the page loads. Pull the
+clone before publishing after an upgrade.
