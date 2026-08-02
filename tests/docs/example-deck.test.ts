@@ -18,8 +18,9 @@ function documented(): { title: string; template: string; link: string } {
   // Scoped to the deck's own paragraph — the page documents other templates and
   // other --title examples, and an unanchored match binds to one of those.
   const from = prose.indexOf('A rendered deck is worth more');
+  if (from < 0) throw new Error(`no line opening "A rendered deck is worth more" in ${cookbook}`);
   const to = prose.indexOf('## Callouts', from);
-  if (from < 0 || to < 0) throw new Error('the cookbook no longer carries the example deck paragraph');
+  if (to < 0) throw new Error(`no "## Callouts" heading after that line in ${cookbook}`);
   const para = prose.slice(from, to);
   const title = para.match(/--title "([^"]+)"/);
   const template = para.match(/through the `([a-z]+)` template/);
