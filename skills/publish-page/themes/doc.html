@@ -138,18 +138,31 @@
      severity. Body strongs stay in ink: an amber sentence misses contrast on
      its own ground in light mode. Each severity restates the label selector so
      it outranks the base one by specificity rather than by declaration order. */
-  .callout h3, .callout > strong:first-child {
+  /* A blank line inside the div is the spelling SKILL.md mandates for figures,
+     and markdown wraps that body in a <p> — so the label arrives one level
+     deeper and must still be a label. */
+  .callout h3,
+  .callout > strong:first-child,
+  .callout > p:first-child > strong:first-child {
     display: block; margin: 0 0 0.35rem; max-width: none;
     font-size: 1.02rem; font-weight: 650; color: var(--note-ink);
   }
   .callout.warn { border-left-color: var(--warn-ink); }
-  .callout.warn h3, .callout.warn > strong:first-child { color: var(--warn-ink); }
+  .callout.warn h3,
+  .callout.warn > strong:first-child,
+  .callout.warn > p:first-child > strong:first-child { color: var(--warn-ink); }
   .callout.alarm { border-left-color: var(--alarm-ink); }
-  .callout.alarm h3, .callout.alarm > strong:first-child { color: var(--alarm-ink); }
+  .callout.alarm h3,
+  .callout.alarm > strong:first-child,
+  .callout.alarm > p:first-child > strong:first-child { color: var(--alarm-ink); }
   .callout.ok { border-left-color: var(--ok-ink); }
-  .callout.ok h3, .callout.ok > strong:first-child { color: var(--ok-ink); }
+  .callout.ok h3,
+  .callout.ok > strong:first-child,
+  .callout.ok > p:first-child > strong:first-child { color: var(--ok-ink); }
   .callout.note { border-left-color: var(--muted); background: var(--code-bg); }
-  .callout.note h3, .callout.note > strong:first-child { color: var(--muted); }
+  .callout.note h3,
+  .callout.note > strong:first-child,
+  .callout.note > p:first-child > strong:first-child { color: var(--muted); }
   .flow { display: flex; flex-direction: column; margin: 1.2rem 0; }
   .frow { display: flex; align-items: stretch; gap: 0.6rem; flex-wrap: wrap; }
   .fbox {

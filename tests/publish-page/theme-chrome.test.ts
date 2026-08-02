@@ -149,14 +149,14 @@ function matches(selector: string, el: El): boolean {
 
 // `reversed` re-runs the resolution with document order inverted: a winner that
 // only holds one way round won on order, not on specificity.
-function colorOf(css: string, el: El, reversed = false): string | null {
+function declOf(css: string, el: El, prop: string, reversed = false): string | null {
   const rules = [...styleBlocks(css).matchAll(/([^{}]+)\{([^{}]*)\}/g)]
     .map((m) => ({ selectors: m[1].split(','), body: m[2] }))
     .filter((r) => r.selectors.some((s) => s.includes('.callout')));
   if (reversed) rules.reverse();
   let best: { spec: number; order: number; value: string } | null = null;
   rules.forEach((rule, order) => {
-    const decl = rule.body.match(/(?:^|;)\s*color:\s*([^;]+)/);
+    const decl = rule.body.match(new RegExp(`(?:^|;)\\s*${prop}:\\s*([^;]+)`));
     if (!decl) return;
     for (const raw of rule.selectors) {
       const sel = raw.trim();
@@ -170,9 +170,22 @@ function colorOf(css: string, el: El, reversed = false): string | null {
   return best === null ? null : (best as { value: string }).value;
 }
 
-function label(severity: string | null, tag: 'strong' | 'h3'): El {
-  const parent: El = { tag: 'div', classes: severity ? ['callout', severity] : ['callout'], first: true };
-  return { tag, classes: [], first: true, parent };
+// The three spellings an author actually writes. `p-strong` is what markdown
+// emits when the div contains a blank line — the spelling SKILL.md mandates for
+// figures — and it puts the label one level deeper than the other two.
+const IDIOMS = ['strong', 'h3', 'p-strong'] as const;
+
+function label(severity: string | null, idiom: (typeof IDIOMS)[number]): El {
+  const callout: El = {
+    tag: 'div',
+    classes: severity ? ['callout', severity] : ['callout'],
+    first: true,
+  };
+  if (idiom === 'p-strong') {
+    const para: El = { tag: 'p', classes: [], first: true, parent: callout };
+    return { tag: 'strong', classes: [], first: true, parent: para };
+  }
+  return { tag: idiom, classes: [], first: true, parent: callout };
 }
 
 describe('callout severities', () => {
@@ -223,19 +236,19 @@ describe('callout severities', () => {
       };
       for (const [variant, ink] of Object.entries(expected)) {
         const severity = variant === 'plain' ? null : variant;
-        for (const tag of ['strong', 'h3'] as const) {
-          expect({ variant, tag, color: colorOf(css, label(severity, tag)) })
-            .toEqual({ variant, tag, color: ink });
+        for (const idiom of IDIOMS) {
+          expect({ variant, idiom, color: declOf(css, label(severity, idiom), 'color') })
+            .toEqual({ variant, idiom, color: ink });
         }
       }
     });
 
     test(`${name} label colour is won by specificity, not by rule order`, () => {
       for (const variant of [null, ...SEVERITIES]) {
-        for (const tag of ['strong', 'h3'] as const) {
-          const el = label(variant, tag);
-          expect({ variant, tag, color: colorOf(css, el, true) })
-            .toEqual({ variant, tag, color: colorOf(css, el) });
+        for (const idiom of IDIOMS) {
+          const el = label(variant, idiom);
+          expect({ variant, idiom, color: declOf(css, el, 'color', true) })
+            .toEqual({ variant, idiom, color: declOf(css, el, 'color') });
         }
       }
     });
@@ -245,7 +258,12 @@ describe('callout severities', () => {
       // body text and must take no colour rule at all.
       const parent: El = { tag: 'div', classes: ['callout', 'warn'], first: true };
       const inline: El = { tag: 'strong', classes: [], first: false, parent };
-      expect({ theme: name, color: colorOf(css, inline) }).toEqual({ theme: name, color: null });
+      const para: El = { tag: 'p', classes: [], first: false, parent };
+      const trailing: El = { tag: 'strong', classes: [], first: true, parent: para };
+      for (const [what, el] of [['mid-sentence', inline], ['opening a later paragraph', trailing]] as const) {
+        expect({ theme: name, what, color: declOf(css, el, 'color') })
+          .toEqual({ theme: name, what, color: null });
+      }
     });
 
     test(`${name} callouts sit on --card so they lift off the page`, () => {
@@ -356,15 +374,19 @@ describe('width tiers', () => {
 describe('callout titles are headings', () => {
   for (const theme of [['doc', doc], ['deck', deck]] as const) {
     const [name, css] = theme;
-    test(`${name} sets a callout title as a block heading`, () => {
-      // A titled aside, not a paragraph with a bold lead-in: the label breaks
-      // to its own line and sizes above the body it introduces.
-      expect(css).toContain('.callout h3, .callout > strong:first-child {');
-      const at = css.indexOf('.callout h3, .callout > strong:first-child {');
-      const body = css.slice(at, css.indexOf('}', at));
-      for (const decl of ['display: block', 'font-size: 1.02rem', 'font-weight: 650']) {
-        expect({ theme: name, decl, present: body.includes(decl) })
-          .toEqual({ theme: name, decl, present: true });
+    test(`${name} sets a callout title as a block heading in every idiom`, () => {
+      // A titled aside, not a paragraph with a bold lead-in: the label breaks to
+      // its own line and sizes above the body it introduces. Asserting this on
+      // the rule text passed while the markdown idiom rendered inline, because
+      // the rule it read was not the rule that idiom lands on.
+      for (const idiom of IDIOMS) {
+        for (const variant of [null, ...SEVERITIES]) {
+          const el = label(variant, idiom);
+          expect({ idiom, variant, display: declOf(css, el, 'display') })
+            .toEqual({ idiom, variant, display: 'block' });
+          expect({ idiom, variant, size: declOf(css, el, 'font-size') })
+            .toEqual({ idiom, variant, size: '1.02rem' });
+        }
       }
     });
   }
