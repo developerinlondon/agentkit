@@ -29,6 +29,7 @@ export async function dashboard(env, user) {
     </article>`).join("");
   const deviceCards = devices.map((device) => `
     <li><strong>${escapeHtml(device.name)}</strong>${device.last_used_at ? " · active" : " · unused"}
+      · ${escapeHtml(device.scopes)} · expires ${escapeHtml(new Date(device.expires_at * 1000).toISOString().slice(0, 10))}
       <form method="post" action="/api/devices/${escapeHtml(device.token_hash)}/revoke">
         <button>Revoke</button>
       </form>

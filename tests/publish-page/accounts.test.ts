@@ -1,6 +1,7 @@
 import { Database } from 'bun:sqlite';
 import { afterEach, describe, expect, test } from 'bun:test';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
+import { consumeDeviceWrite } from '../../pages/worker/src/accounts.js';
 import worker from '../../pages/worker/src/worker.js';
 
 const openDatabases: Database[] = [];
@@ -10,7 +11,10 @@ const PAGES_URL = 'https://pages.agentkit.sbs';
 function d1() {
   const sqlite = new Database(':memory:');
   openDatabases.push(sqlite);
-  sqlite.run(readFileSync(new URL('../../pages/worker/migrations/0001_accounts.sql', import.meta.url), 'utf8'));
+  const migrationsUrl = new URL('../../pages/worker/migrations/', import.meta.url);
+  for (const migration of readdirSync(migrationsUrl).filter((name) => name.endsWith('.sql')).sort()) {
+    sqlite.run(readFileSync(new URL(migration, migrationsUrl), 'utf8'));
+  }
   return {
     sqlite,
     binding: {
@@ -83,12 +87,14 @@ async function accountEnv() {
     ['user-b', 'other@example.com', 'Other', now],
   );
   database.sqlite.run(
-    'INSERT INTO device_tokens (token_hash, user_id, name, created_at) VALUES (?, ?, ?, ?)',
-    [await digest('device-a'), 'user-a', 'MacBook', now],
+    `INSERT INTO device_tokens (token_hash, user_id, name, scopes, expires_at, created_at)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [await digest('device-a'), 'user-a', 'MacBook', 'pages:write pages:delete', now + 3600, now],
   );
   database.sqlite.run(
-    'INSERT INTO device_tokens (token_hash, user_id, name, created_at) VALUES (?, ?, ?, ?)',
-    [await digest('device-b'), 'user-b', 'Other Mac', now],
+    `INSERT INTO device_tokens (token_hash, user_id, name, scopes, expires_at, created_at)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [await digest('device-b'), 'user-b', 'Other Mac', 'pages:write pages:delete', now + 3600, now],
   );
   database.sqlite.run(
     'INSERT INTO sessions (token_hash, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)',
@@ -237,6 +243,104 @@ describe('account publishing', () => {
         .query('SELECT owner_id, visibility FROM pages WHERE slug = ?')
         .get('private-page'),
     ).toEqual({ owner_id: 'user-a', visibility: 'private' });
+  });
+
+  test('device scopes independently authorize publishing and deletion', async () => {
+    const setup = await accountEnv();
+    const future = Math.floor(Date.now() / 1000) + 3600;
+    setup.database.sqlite.run(
+      "UPDATE device_tokens SET scopes = 'pages:write', expires_at = ? WHERE token_hash = ?",
+      [future, await digest('device-a')],
+    );
+
+    expect((await worker.fetch(publish('device-a'), setup.env)).status).toBe(200);
+    expect((await worker.fetch(
+      new Request(`${ACCOUNT_URL}/api/pages/private-page`, {
+        method: 'DELETE',
+        headers: { authorization: 'Bearer device-a' },
+      }),
+      setup.env,
+    )).status).toBe(403);
+
+    setup.database.sqlite.run(
+      "UPDATE device_tokens SET scopes = 'pages:delete' WHERE token_hash = ?",
+      [await digest('device-a')],
+    );
+    expect((await worker.fetch(publish('device-a', '<h1>must not overwrite</h1>'), setup.env)).status).toBe(403);
+    expect((await worker.fetch(
+      new Request(`${ACCOUNT_URL}/api/pages/private-page`, {
+        method: 'DELETE',
+        headers: { authorization: 'Bearer device-a' },
+      }),
+      setup.env,
+    )).status).toBe(200);
+  });
+
+  test('expired device credentials fail closed', async () => {
+    const setup = await accountEnv();
+    setup.database.sqlite.run(
+      'UPDATE device_tokens SET expires_at = 0 WHERE token_hash = ?',
+      [await digest('device-a')],
+    );
+
+    expect((await worker.fetch(publish('device-a'), setup.env)).status).toBe(401);
+    expect(setup.pages.writes.size).toBe(0);
+  });
+
+  test('a token minted by the old Worker after migration remains valid for 90 days', async () => {
+    const setup = await accountEnv();
+    const createdAt = Math.floor(Date.now() / 1000);
+    setup.database.sqlite.run(
+      'INSERT INTO device_tokens (token_hash, user_id, name, created_at) VALUES (?, ?, ?, ?)',
+      [await digest('migration-gap-device'), 'user-a', 'Migration-gap Mac', createdAt],
+    );
+
+    expect((await worker.fetch(publish('migration-gap-device'), setup.env)).status).toBe(200);
+    const dashboardBody = await (await worker.fetch(
+      signedIn(`${ACCOUNT_URL}/dashboard`),
+      setup.env,
+    )).text();
+    const derivedExpiry = new Date((createdAt + 90 * 24 * 60 * 60) * 1000).toISOString().slice(0, 10);
+    expect(dashboardBody).toContain(`Migration-gap Mac`);
+    expect(dashboardBody).toContain(`expires ${derivedExpiry}`);
+  });
+
+  test('a D1-backed per-device rate limit bounds publish and delete bursts', async () => {
+    const setup = await accountEnv();
+    setup.env.WRITE_RATE_LIMIT_PER_MINUTE = '2';
+
+    expect((await worker.fetch(publish('device-a'), setup.env)).status).toBe(200);
+    expect((await worker.fetch(
+      new Request(`${ACCOUNT_URL}/api/pages/private-page`, {
+        method: 'DELETE',
+        headers: { authorization: 'Bearer device-a' },
+      }),
+      setup.env,
+    )).status).toBe(200);
+    const limited = await worker.fetch(publish('device-a'), setup.env);
+
+    expect(limited.status).toBe(429);
+    expect(limited.headers.get('retry-after')).toMatch(/^\d+$/);
+    expect(setup.database.sqlite.query(
+      'SELECT request_count FROM device_write_limits WHERE token_hash = ?',
+    ).get(await digest('device-a'))).toEqual({ request_count: 3 });
+  });
+
+  test('the rate window follows D1 time instead of an out-of-order Worker clock', async () => {
+    const setup = await accountEnv();
+    setup.env.WRITE_RATE_LIMIT_PER_MINUTE = '2';
+    const realNow = Date.now;
+    const baseSeconds = Math.floor(realNow() / 1000 / 60) * 60;
+    const rateWindowOffsets = [120, 60, 120];
+    Date.now = () => (baseSeconds + rateWindowOffsets.shift()!) * 1000;
+    try {
+      const tokenHash = await digest('device-a');
+      expect((await consumeDeviceWrite(setup.env, tokenHash)).allowed).toBe(true);
+      expect((await consumeDeviceWrite(setup.env, tokenHash)).allowed).toBe(true);
+      expect((await consumeDeviceWrite(setup.env, tokenHash)).allowed).toBe(false);
+    } finally {
+      Date.now = realNow;
+    }
   });
 
   test('a published title is stored and shown instead of the opaque slug', async () => {
@@ -560,8 +664,9 @@ describe('device authorization', () => {
     const setup = await accountEnv();
     const tokenHash = await digest('device-a');
     setup.database.sqlite.run(
-      'INSERT INTO device_tokens (token_hash, user_id, name, created_at) VALUES (?, ?, ?, ?)',
-      [await digest('unsafe-device'), 'user-a', '<script>alert(1)</script>', 1],
+      `INSERT INTO device_tokens (token_hash, user_id, name, scopes, expires_at, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [await digest('unsafe-device'), 'user-a', '<script>alert(1)</script>', 'pages:write', 2, 1],
     );
     const dashboardResponse = await worker.fetch(
       signedIn(`${ACCOUNT_URL}/dashboard`),
@@ -569,6 +674,9 @@ describe('device authorization', () => {
     );
     const dashboardBody = await dashboardResponse.text();
     expect(dashboardBody).toContain('MacBook');
+    expect(dashboardBody).toContain('pages:write');
+    expect(dashboardBody).toContain('pages:delete');
+    expect(dashboardBody).toContain('expires');
     expect(dashboardBody).toContain(`/api/devices/${tokenHash}/revoke`);
     expect(dashboardBody).not.toContain('<script>alert(1)</script>');
     expect(dashboardBody).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
@@ -631,7 +739,7 @@ describe('device authorization', () => {
       new Request(`${ACCOUNT_URL}/api/device/authorize`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ device_name: 'New Mac' }),
+        body: JSON.stringify({ device_name: 'New Mac', scopes: ['pages:write'] }),
       }),
       setup.env,
     );
@@ -663,9 +771,20 @@ describe('device authorization', () => {
       setup.env,
     );
     expect(tokenResponse.status).toBe(200);
-    const tokenBody = await tokenResponse.json() as { access_token: string; token_type: string };
+    const tokenBody = await tokenResponse.json() as {
+      access_token: string;
+      token_type: string;
+      scope: string;
+      expires_in: number;
+    };
     expect(tokenBody.token_type).toBe('Bearer');
     expect(tokenBody.access_token.length).toBeGreaterThan(30);
+    expect(tokenBody.scope).toBe('pages:write');
+    expect(tokenBody.expires_in).toBeGreaterThan(0);
+    expect(setup.database.sqlite.query(
+      'SELECT scopes, expires_at > ? AS active FROM device_tokens WHERE token_hash = ?',
+    ).get(Math.floor(Date.now() / 1000), await digest(tokenBody.access_token)))
+      .toEqual({ scopes: 'pages:write', active: 1 });
 
     const publishResponse = await worker.fetch(publish(tokenBody.access_token), setup.env);
     expect(publishResponse.status).toBe(200);
@@ -679,6 +798,21 @@ describe('device authorization', () => {
       setup.env,
     );
     expect(replay.status).toBe(400);
+  });
+
+  test('device authorization rejects unsupported scopes', async () => {
+    const setup = await accountEnv();
+    const response = await worker.fetch(
+      new Request(`${ACCOUNT_URL}/api/device/authorize`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ device_name: 'Unknown client', scopes: ['pages:admin'] }),
+      }),
+      setup.env,
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: 'invalid_scope' });
   });
 
   test('pending polls are bounded by the advertised interval', async () => {
