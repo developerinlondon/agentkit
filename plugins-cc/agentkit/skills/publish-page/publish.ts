@@ -90,7 +90,14 @@ function commitScoped(message: string, paths: string[]) {
   if (commit.exitCode === 0) {
     const push = git("push");
     if (push.exitCode !== 0) {
-      console.error(`warning: git push failed — commit is local only:\n${push.stderr.toString()}`);
+      // A rejected push means the canonical history silently lost this page —
+      // the publish already succeeded, so exit loud instead of failing here.
+      console.error(
+        `publish-page: the canonical push was rejected — agentkit-pages history does NOT carry this publish:\n`
+          + push.stderr.toString()
+          + `the page itself is live; fix the clone (git -C ${repo} pull --rebase) and re-run this publish to record it`,
+      );
+      process.exitCode = 1;
     }
   } else {
     console.error(`warning: git commit failed:\n${commit.stderr.toString()}`);
@@ -129,10 +136,22 @@ async function render(): Promise<string> {
   const bundledTheme = bundledThemePath(template);
   const themePath = existsSync(repoTheme) ? repoTheme : bundledTheme;
   if (!existsSync(themePath)) fail(`theme not found: ${repoTheme} or ${bundledTheme}`);
-  if (themePath === repoTheme && existsSync(bundledTheme)) {
-    const [canonical, bundled] = await Promise.all([readFile(repoTheme, "utf8"), readFile(bundledTheme, "utf8")]);
-    if (bundled !== canonical) {
-      console.error(`warning: bundled theme drifted from canonical ${repoTheme} — re-sync skills/publish-page/themes/`);
+  if (themePath === repoTheme) {
+    // A behind clone serves CSS upstream already replaced, and nothing fails:
+    // the page publishes with current markup and stale rules. Refuse only when
+    // upstream actually changed themes/ — merge-base..upstream, so a clone
+    // that is merely ahead or behind on other paths still publishes.
+    if (git("fetch", "--quiet").exitCode !== 0) {
+      console.error(`warning: could not verify the pages clone is current (git fetch failed) — publishing with its themes as-is`);
+    } else if (git("diff", "--quiet", "HEAD...@{u}", "--", "themes/").exitCode === 1) {
+      const behind = git("rev-list", "--count", "HEAD..@{u}").stdout.toString().trim();
+      fail(`pages clone is ${behind} commit(s) behind and themes/ changed upstream — run: git -C ${repo} pull; publishing now would serve stale CSS`);
+    }
+    if (existsSync(bundledTheme)) {
+      const [canonical, bundled] = await Promise.all([readFile(repoTheme, "utf8"), readFile(bundledTheme, "utf8")]);
+      if (bundled !== canonical) {
+        console.error(`warning: bundled theme lags canonical ${repoTheme} — re-sync skills/publish-page/themes/`);
+      }
     }
   }
   try {
