@@ -50,6 +50,23 @@ function tokens(css: string, palette: 'dark' | 'light'): Record<string, string> 
   return found;
 }
 
+describe('cross-theme ground coherence', () => {
+  // A doc and a deck rendered from the same content must sit on one ground
+  // family per palette: the deck kept the cool grey when the doc moved to warm
+  // paper, and nothing failed because each theme was only checked against
+  // itself.
+  const GROUND_FAMILY = ['--navy', '--navy-deep', '--card', '--code-bg', '--line', '--ink', '--muted'] as const;
+  for (const palette of ['dark', 'light'] as const) {
+    test(`${palette}: doc and deck agree on the ground family`, () => {
+      const d = tokens(doc, palette);
+      const k = tokens(deck, palette);
+      for (const t of GROUND_FAMILY) {
+        expect({ token: t, deck: k[t] }).toEqual({ token: t, deck: d[t] });
+      }
+    });
+  }
+});
+
 describe('labelled section nav', () => {
   test('the doc theme ships a section nav, not an unlabelled dot rail', () => {
     // A rail of anonymous dots cannot tell a reader what the page covers.
