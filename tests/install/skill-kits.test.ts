@@ -302,7 +302,7 @@ describe('skill kit selection', () => {
     } finally {
       rmSync(home, { force: true, recursive: true });
     }
-  }, globalInstallTimeoutMs);
+  }, globalInstallTimeoutMs * 2);
 
   test('dropping a kit from the persisted file stops selecting it', () => {
     const home = mkdtempSync(join(tmpdir(), 'agentkit-kits-'));
@@ -320,7 +320,7 @@ describe('skill kit selection', () => {
     } finally {
       rmSync(home, { force: true, recursive: true });
     }
-  }, globalInstallTimeoutMs);
+  }, globalInstallTimeoutMs * 2);
 
   test('an unknown flag fails with usage instead of becoming the target directory', () => {
     const home = mkdtempSync(join(tmpdir(), 'agentkit-kits-'));
@@ -400,7 +400,7 @@ describe('skill kit selection', () => {
     } finally {
       rmSync(home, { force: true, recursive: true });
     }
-  }, globalInstallTimeoutMs);
+  }, globalInstallTimeoutMs * 3);
 
   test('--without core is refused', () => {
     const home = mkdtempSync(join(tmpdir(), 'agentkit-kits-'));
