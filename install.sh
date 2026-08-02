@@ -484,6 +484,23 @@ link_children() {
 	done
 }
 
+copy_skill_source() {
+	local source="$1"
+	local target="$2"
+	local entry name
+	mkdir -p "$target"
+	for entry in "$source"/* "$source"/.[!.]* "$source"/..?*; do
+		if [[ ! -e "$entry" && ! -L "$entry" ]]; then
+			continue
+		fi
+		name="$(basename "$entry")"
+		if [[ "$name" == "node_modules" ]]; then
+			continue
+		fi
+		cp -R "$entry" "$target/"
+	done
+}
+
 install_skills() {
 	local dest="$1"
 	local bun_bin=""
@@ -535,7 +552,7 @@ install_skills() {
 			echo "[skills] Installing: $skill_name"
 		fi
 
-		cp -r "$skill_dir" "$target"
+		copy_skill_source "$skill_dir" "$target"
 
 		# Skills that ship runtime dependencies (a package.json) need an install
 		# step: bun does NOT auto-install when a package.json is present.
