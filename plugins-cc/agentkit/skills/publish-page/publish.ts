@@ -98,7 +98,14 @@ function commitScoped(message: string, paths: string[]) {
     const ahead = git("rev-list", "--count", "@{u}..HEAD");
     if (ahead.exitCode !== 0 || ahead.stdout.toString().trim() === "0") return;
   }
-  const push = git("push");
+  // Bounded like the fetch: this is the other network operation, and it runs
+  // after the page is already live — a prompting remote must not stall it.
+  const push = Bun.spawnSync(["git", "-C", repo, "push"], {
+    stdout: "pipe",
+    stderr: "pipe",
+    timeout: 30_000,
+    env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+  });
   if (push.exitCode !== 0) {
     // The push can fail without any rejection (offline, no upstream), so the
     // message reports the failure and leaves the cause to git's own error.
@@ -169,7 +176,7 @@ async function render(): Promise<string> {
         // and --rebase because a stranded local commit makes a plain pull abort.
         fail(`pages clone is ${behind} commit(s) behind and themes/ changed upstream — publishing now would serve stale CSS. run: git -C ${repo} pull --rebase`);
       } else if (upstream.exitCode !== 0) {
-        console.error(`warning: could not verify the pages clone is current (no upstream to compare) — publishing with its themes as-is`);
+        console.error(`warning: could not compare the pages clone against an upstream — publishing with its themes as-is`);
       }
     }
     if (existsSync(bundledTheme)) {

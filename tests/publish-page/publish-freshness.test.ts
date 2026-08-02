@@ -164,7 +164,7 @@ describe("publishing refuses a theme that upstream has superseded", () => {
     const before = puts;
     const r = await publish(w);
     expect({ puts: puts - before, refused: r.stderr.includes("stale CSS") }).toEqual({ puts: 1, refused: false });
-    expect(r.stderr).toMatch(/could not verify.*no upstream/);
+    expect(r.stderr).toMatch(/could not compare the pages clone against an upstream/);
   }, 20000);
 
   test("stranded commit then upstream theme change: refusal remedy still works on the divergent clone", async () => {
