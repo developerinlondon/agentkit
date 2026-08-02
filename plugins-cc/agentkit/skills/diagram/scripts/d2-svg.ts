@@ -123,13 +123,12 @@ function colourForms(fill: string): string[] {
 // Colour lives in a fill or stroke value; the same string elsewhere is an id, a
 // class or label text, and rewriting it there corrupts the mark silently.
 function inkAttributes(markup: string, fill: string): string {
-  return colourForms(fill).reduce((out, form) => {
-    const escaped = form.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    return out.replace(
-      new RegExp(`\\b(fill|stroke|stop-color|flood-color)="\\s*${escaped}\\s*"`, "gi"),
-      '$1="currentColor"',
-    );
-  }, markup);
+  const forms = colourForms(fill).map((form) => form.replace(/\s+/g, "").toLowerCase());
+  return markup.replace(
+    /\b(fill|stroke|stop-color|flood-color)="([^"]*)"/gi,
+    (attribute, name: string, value: string) =>
+      forms.includes(value.replace(/\s+/g, "").toLowerCase()) ? `${name}="currentColor"` : attribute,
+  );
 }
 
 // Colour set in a style attribute or a CSS block is not reachable by attribute

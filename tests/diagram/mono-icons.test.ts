@@ -245,6 +245,14 @@ describe('colour notation', () => {
     expect(out.svg).not.toContain(RGB);
   });
 
+  test('whitespace inside an rgb() attribute does not leave part of the mark baked', () => {
+    const spaced = 'rgb(113, 113, 122)';
+    const doc = `<svg viewBox="0 0 24 24"><path fill="${FILL}"/><path fill="${spaced}"/></svg>`;
+    const out = inlineMonochromeIcons(image(doc), [FILL], [doc]);
+    expect(out.converted).toBe(1);
+    expect(out.svg).not.toContain(spaced);
+  });
+
   for (const [how, css] of [['a CSS block', RGB], ['spacing', 'rgb(113, 113, 122)']] as const) {
     test(`rgb() with ${how} is caught by the post-condition, not shipped baked`, () => {
       const doc = `<svg viewBox="0 0 24 24"><path fill="${FILL}"/><style>.c{fill:${css}}</style><path class="c"/></svg>`;
