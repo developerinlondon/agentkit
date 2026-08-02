@@ -83,25 +83,33 @@ const repoAvailable = () => existsSync(join(repo, ".git"));
 
 function commitScoped(message: string, paths: string[]) {
   const staged = git("diff", "--cached", "--quiet", "--", ...paths);
-  if (staged.exitCode === 0) return;
-  // Pathspec-scoped commit: the clone is long-lived and shared — a bare
-  // commit would sweep anything else staged into this publish.
-  const commit = git("commit", "-m", message, "--", ...paths);
-  if (commit.exitCode === 0) {
-    const push = git("push");
-    if (push.exitCode !== 0) {
-      // A rejected push means the canonical history silently lost this change —
-      // the server operation already succeeded, so exit loud instead of failing here.
-      const done = isDelete ? "the page was deleted from the server" : "the page itself is live";
-      console.error(
-        `publish-page: the canonical push was rejected — agentkit-pages history does NOT carry this ${isDelete ? "deletion" : "publish"}:\n`
-          + push.stderr.toString()
-          + `${done}; fix the clone (git -C ${repo} pull --rebase) and re-run the same command to record it`,
-      );
-      process.exitCode = 1;
+  if (staged.exitCode !== 0) {
+    // Pathspec-scoped commit: the clone is long-lived and shared — a bare
+    // commit would sweep anything else staged into this publish.
+    const commit = git("commit", "-m", message, "--", ...paths);
+    if (commit.exitCode !== 0) {
+      console.error(`warning: git commit failed:\n${commit.stderr.toString()}`);
+      return;
     }
   } else {
-    console.error(`warning: git commit failed:\n${commit.stderr.toString()}`);
+    // Nothing newly staged — but a previously rejected push leaves committed
+    // work stranded, and a re-run of the same command must still push it or
+    // the printed remedy records nothing while exiting 0.
+    const ahead = git("rev-list", "--count", "@{u}..HEAD");
+    if (ahead.exitCode !== 0 || ahead.stdout.toString().trim() === "0") return;
+  }
+  const push = git("push");
+  if (push.exitCode !== 0) {
+    // The push can fail without any rejection (offline, no upstream), so the
+    // message reports the failure and leaves the cause to git's own error.
+    const done = isDelete ? "the page was deleted from the server" : "the page itself is live";
+    console.error(
+      `publish-page: the canonical push failed:\n`
+        + push.stderr.toString()
+        + `agentkit-pages history does NOT carry this ${isDelete ? "deletion" : "publish"}; ${done}.\n`
+        + `if the push was rejected because the clone is behind: git -C ${repo} pull --rebase, then re-run the same command`,
+    );
+    process.exitCode = 1;
   }
 }
 
@@ -157,7 +165,9 @@ async function render(): Promise<string> {
       const upstream = git("diff", "--quiet", "HEAD...@{u}", "--", "themes/");
       if (upstream.exitCode === 1) {
         const behind = git("rev-list", "--count", "HEAD..@{u}").stdout.toString().trim();
-        fail(`pages clone is ${behind} commit(s) behind and themes/ changed upstream — run: git -C ${repo} pull; publishing now would serve stale CSS`);
+        // Remedy last and nothing after it: this text gets pasted by agents,
+        // and --rebase because a stranded local commit makes a plain pull abort.
+        fail(`pages clone is ${behind} commit(s) behind and themes/ changed upstream — publishing now would serve stale CSS. run: git -C ${repo} pull --rebase`);
       } else if (upstream.exitCode !== 0) {
         console.error(`warning: could not verify the pages clone is current (no upstream to compare) — publishing with its themes as-is`);
       }

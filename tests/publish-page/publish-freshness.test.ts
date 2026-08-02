@@ -37,6 +37,8 @@ function sh(cwd: string, ...args: string[]) {
 }
 const git = (cwd: string, ...args: string[]) =>
   sh(cwd, "git", "-c", "user.email=t@t", "-c", "user.name=t", ...args);
+// Commits the clone holds that canonical does not — 0 means nothing stranded.
+const ahead = (clone: string) => git(clone, "rev-list", "--count", "@{u}..HEAD").trim();
 
 // origin (bare) + publisher clone + a second clone that advances origin.
 function makeWorld(): { home: string; origin: string; mine: string; theirs: string; page: string } {
@@ -110,8 +112,14 @@ describe("publishing refuses a theme that upstream has superseded", () => {
     // The refusal must say the CLONE is the stale side and give its remedy —
     // the old warning pointed at the bundle, whose remedy destroys good themes.
     expect(r.stderr).toMatch(/behind/);
-    expect(r.stderr).toMatch(/git -C \S+ pull/);
     expect(r.stderr).toMatch(/stale/i);
+    // Remedy last on its line, nothing after it: agents paste this.
+    expect(r.stderr).toMatch(/run: git -C \S+ pull --rebase\s*$/m);
+    // A printed remedy must WORK: run it verbatim, and the retry publishes.
+    git(w.mine, "pull", "--rebase");
+    const retry = await publish(w);
+    expect({ status: retry.status, puts: puts - before }).toEqual({ status: 0, puts: 1 });
+    expect(ahead(w.mine)).toBe("0");
   }, 20000);
 
   test("clone behind but themes/ untouched upstream: the page publishes", async () => {
@@ -159,6 +167,22 @@ describe("publishing refuses a theme that upstream has superseded", () => {
     expect(r.stderr).toMatch(/could not verify.*no upstream/);
   }, 20000);
 
+  test("stranded commit then upstream theme change: refusal remedy still works on the divergent clone", async () => {
+    const w = makeWorld();
+    advanceOrigin(w.theirs, "README.md", "strand the first publish commit\n");
+    const first = await publish(w);
+    expect(first.status).toBe(1);
+    advanceOrigin(w.theirs, "themes/doc.html", bundledDoc + "\n<!-- upstream css -->\n");
+    const refused = await publish(w);
+    expect(refused.status).toBe(1);
+    expect(refused.stderr).toMatch(/stale CSS/);
+    // A plain `git pull` aborts here (divergent branches) — the printed
+    // --rebase form must survive exactly the state the stranded commit creates.
+    git(w.mine, "pull", "--rebase");
+    const retry = await publish(w);
+    expect({ status: retry.status, stranded: ahead(w.mine) }).toEqual({ status: 0, stranded: "0" });
+  }, 20000);
+
   test("ahead-only clone (local theme edit, unpushed): publishes cleanly", async () => {
     const w = makeWorld();
     writeFileSync(join(w.mine, "themes/doc.html"), bundledDoc + "\n<!-- unpushed local edit -->\n");
@@ -181,8 +205,16 @@ describe("a rejected canonical push fails loud", () => {
     // silently losing the page was the defect, so the exit must be loud.
     expect({ puts: puts - before, status: r.status }).toEqual({ puts: 1, status: 1 });
     expect(r.stdout).toContain("/fake-slug");
-    expect(r.stderr).toMatch(/push.*rejected|rejected.*push/i);
-    expect(r.stderr).toMatch(/git -C \S+ pull/);
+    // No asserted cause — the failure is reported, git's error carries the why,
+    // and the rejection remedy is offered as a conditional.
+    expect(r.stderr).toMatch(/push failed/);
+    expect(r.stderr).toMatch(/does NOT carry this publish/);
+    expect(r.stderr).toMatch(/if the push was rejected.*git -C \S+ pull --rebase/);
+    // The remedy must WORK: pull --rebase, re-run the same command, and the
+    // stranded commit reaches canonical even though nothing new is staged.
+    git(w.mine, "pull", "--rebase");
+    const retry = await publish(w);
+    expect({ status: retry.status, stranded: ahead(w.mine) }).toEqual({ status: 0, stranded: "0" });
   }, 20000);
 
   test("delete with a rejected push: loud exit, and the message describes a deletion", async () => {
@@ -193,10 +225,14 @@ describe("a rejected canonical push fails loud", () => {
     const r = await publish(w, "--name", "fresh", "--delete");
     expect({ status: r.status }).toEqual({ status: 1 });
     expect(r.stdout).toContain("deleted:");
-    expect(r.stderr).toMatch(/rejected/);
-    expect(r.stderr).toMatch(/deletion/);
+    expect(r.stderr).toMatch(/push failed/);
+    expect(r.stderr).toMatch(/does NOT carry this deletion/);
     // The publish wording would be false here — the page is gone, not live.
     expect(r.stderr).not.toContain("the page itself is live");
-    expect(r.stderr).toMatch(/git -C \S+ pull/);
+    // Remedy works on the delete path too: the re-run pushes the stranded
+    // deletion commit even though rm and add find nothing left to stage.
+    git(w.mine, "pull", "--rebase");
+    const retry = await publish(w, "--name", "fresh", "--delete");
+    expect({ status: retry.status, stranded: ahead(w.mine) }).toEqual({ status: 0, stranded: "0" });
   }, 20000);
 });
