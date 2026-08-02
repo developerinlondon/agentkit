@@ -601,8 +601,8 @@ bun test
 That single install is the whole setup. It pulls a nested package too, so a
 fresh install is around 230 MB across both `node_modules` directories — the root
 one stays 75 MB and `skills/publish-page` holds the rest. Without it three suites
-throw on import and their failures name the renderer instead of the missing
-package.
+fail, and their errors point at the renderer file rather than at this setup
+step.
 
 1. Skills follow the [skills.sh](https://skills.sh) / [agentskills.io](https://agentskills.io) standard
 2. Each skill lives in `skills/<name>/SKILL.md` with optional `references/` and `scripts/` subdirs

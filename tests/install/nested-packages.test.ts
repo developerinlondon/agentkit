@@ -24,7 +24,7 @@ function nestedPackages(): string[] {
     .sort();
 }
 
-const RELATIVE_IMPORT = /(?:from|import)\s+['"](\.[^'"]+)['"]/g;
+const RELATIVE_IMPORT = /(?:from|import|require)\s*[(\s]\s*['"](\.[^'"]+)['"]/g;
 
 function reachable(entries: string[]): string[] {
   const seen = new Set<string>();
@@ -34,7 +34,10 @@ function reachable(entries: string[]): string[] {
     if (seen.has(file) || !existsSync(join(repo, file))) continue;
     seen.add(file);
     for (const m of read(file).matchAll(RELATIVE_IMPORT)) {
-      stack.push(relative(repo, join(repo, dirname(file), m[1])));
+      // Bun resolves './x' to x.ts and './dir' to dir/index.ts; push every
+      // candidate, since an extensionless import must not evade the walk.
+      const target = relative(repo, join(repo, dirname(file), m[1]));
+      stack.push(target, `${target}.ts`, `${target}/index.ts`);
     }
   }
   return [...seen].sort();
@@ -120,7 +123,7 @@ describe('nested skill packages are installed by a root install', () => {
       ...JSON.parse(read('skills/diagram/package.json')).devDependencies,
     }).filter((d) => !d.startsWith('@types/'));
     const alt = deps.map((d) => d.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')).join('|');
-    const pattern = new RegExp(`(?:from|import)\\s+['"](?:${alt})(?:/[^'"]*)?['"]`);
+    const pattern = new RegExp(`(?:from|import|require)\\s*[(\\s]\\s*['"](?:${alt})(?:/[^'"]*)?['"]`);
     const offenders = reachable(entries).filter((f) => pattern.test(read(f)));
     expect({ offenders, then: 'either install diagram in the postinstall, or move that import' })
       .toEqual({ offenders: [], then: 'either install diagram in the postinstall, or move that import' });
