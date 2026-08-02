@@ -91,3 +91,11 @@ export async function fetchWithDeviceAuthorization(
   response = await request(token);
   return response;
 }
+
+export async function deviceRequestError(action: string, response: Response): Promise<string> {
+  const detail = (await response.text()).trim();
+  let message = `${action} failed: HTTP ${response.status}${detail ? ` ${detail}` : ""}`;
+  const retryAfter = response.headers.get("retry-after");
+  if (response.status === 429 && retryAfter) message += `; retry after ${retryAfter} seconds`;
+  return message;
+}

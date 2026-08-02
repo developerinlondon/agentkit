@@ -1,6 +1,7 @@
 import { Database } from 'bun:sqlite';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { readdirSync, readFileSync } from 'node:fs';
+import { consumeDeviceWrite } from '../../pages/worker/src/accounts.js';
 import worker from '../../pages/worker/src/worker.js';
 
 const openDatabases: Database[] = [];
@@ -286,6 +287,24 @@ describe('account publishing', () => {
     expect(setup.pages.writes.size).toBe(0);
   });
 
+  test('a token minted by the old Worker after migration remains valid for 90 days', async () => {
+    const setup = await accountEnv();
+    const createdAt = Math.floor(Date.now() / 1000);
+    setup.database.sqlite.run(
+      'INSERT INTO device_tokens (token_hash, user_id, name, created_at) VALUES (?, ?, ?, ?)',
+      [await digest('migration-gap-device'), 'user-a', 'Migration-gap Mac', createdAt],
+    );
+
+    expect((await worker.fetch(publish('migration-gap-device'), setup.env)).status).toBe(200);
+    const dashboardBody = await (await worker.fetch(
+      signedIn(`${ACCOUNT_URL}/dashboard`),
+      setup.env,
+    )).text();
+    const derivedExpiry = new Date((createdAt + 90 * 24 * 60 * 60) * 1000).toISOString().slice(0, 10);
+    expect(dashboardBody).toContain(`Migration-gap Mac`);
+    expect(dashboardBody).toContain(`expires ${derivedExpiry}`);
+  });
+
   test('a D1-backed per-device rate limit bounds publish and delete bursts', async () => {
     const setup = await accountEnv();
     setup.env.WRITE_RATE_LIMIT_PER_MINUTE = '2';
@@ -305,6 +324,23 @@ describe('account publishing', () => {
     expect(setup.database.sqlite.query(
       'SELECT request_count FROM device_write_limits WHERE token_hash = ?',
     ).get(await digest('device-a'))).toEqual({ request_count: 3 });
+  });
+
+  test('the rate window follows D1 time instead of an out-of-order Worker clock', async () => {
+    const setup = await accountEnv();
+    setup.env.WRITE_RATE_LIMIT_PER_MINUTE = '2';
+    const realNow = Date.now;
+    const baseSeconds = Math.floor(realNow() / 1000 / 60) * 60;
+    const rateWindowOffsets = [120, 60, 120];
+    Date.now = () => (baseSeconds + rateWindowOffsets.shift()!) * 1000;
+    try {
+      const tokenHash = await digest('device-a');
+      expect((await consumeDeviceWrite(setup.env, tokenHash)).allowed).toBe(true);
+      expect((await consumeDeviceWrite(setup.env, tokenHash)).allowed).toBe(true);
+      expect((await consumeDeviceWrite(setup.env, tokenHash)).allowed).toBe(false);
+    } finally {
+      Date.now = realNow;
+    }
   });
 
   test('a published title is stored and shown instead of the opaque slug', async () => {

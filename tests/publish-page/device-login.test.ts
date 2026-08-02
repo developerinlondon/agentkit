@@ -2,7 +2,11 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { fetchWithDeviceAuthorization, loadOrAuthorize } from '../../skills/publish-page/auth.ts';
+import {
+  deviceRequestError,
+  fetchWithDeviceAuthorization,
+  loadOrAuthorize,
+} from '../../skills/publish-page/auth.ts';
 import { shouldCommitCanonical } from '../../skills/publish-page/publish-policy.ts';
 
 const temporaryDirectories: string[] = [];
@@ -118,5 +122,16 @@ describe('publish-page device login', () => {
     expect(requestedTokens).toEqual(['expired-device-token', 'replacement-device-token']);
     expect(messages.join('\n')).toContain('credential was rejected');
     expect(await readFile(path, 'utf8')).toBe('replacement-device-token\n');
+  });
+
+  test('a rate-limited device error exposes the server retry interval', async () => {
+    const response = new Response('device write rate exceeded\n', {
+      status: 429,
+      headers: { 'retry-after': '17' },
+    });
+
+    expect(await deviceRequestError('publish', response)).toBe(
+      'publish failed: HTTP 429 device write rate exceeded; retry after 17 seconds',
+    );
   });
 });

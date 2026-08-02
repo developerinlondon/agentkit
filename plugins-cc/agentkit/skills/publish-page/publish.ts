@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import { lintFigures } from "./lint.ts";
 import { bundledThemePath, renderThemed } from "./render-html.ts";
-import { fetchWithDeviceAuthorization, loadOrAuthorize } from "./auth.ts";
+import { deviceRequestError, fetchWithDeviceAuthorization, loadOrAuthorize } from "./auth.ts";
 import { shouldCommitCanonical } from "./publish-policy.ts";
 import { createHmac, randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
@@ -137,7 +137,7 @@ if (isDelete) {
     fail((error as Error).message);
   }
   const gone = res.status === 404;
-  if (!res.ok && !gone) fail(`delete failed: HTTP ${res.status} ${await res.text()}`);
+  if (!res.ok && !gone) fail(await deviceRequestError("delete", res));
   if (!noGit && repoAvailable()) {
     // A 404 is not always a dead end: a successful delete whose canonical push
     // was rejected leaves the server page gone and the deletion commit
@@ -240,7 +240,7 @@ try {
 } catch (error) {
   fail((error as Error).message);
 }
-if (!res.ok) fail(`publish failed: HTTP ${res.status} ${await res.text()}`);
+if (!res.ok) fail(await deviceRequestError("publish", res));
 const { url } = (await res.json()) as { url: string };
 
 if (!noGit && !foundRepo) noGit = true;
