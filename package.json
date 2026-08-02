@@ -3,6 +3,7 @@
   "private": true,
   "license": "Apache-2.0",
   "scripts": {
+    "postinstall": "bash scripts/install-nested.sh",
     "test": "bun test",
     "test:full": "bun run scripts/run-test-slices.ts",
     "test:slices": "bun run scripts/check-test-slices.ts --check"

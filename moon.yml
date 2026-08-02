@@ -122,6 +122,7 @@ fileGroups:
   installInputs:
     - "config.example.yaml"
     - "bootstrap.sh"
+    - "scripts/install-nested.sh"
     - "hooks/**/*"
     - "install.sh"
     - "kits/**/*"
