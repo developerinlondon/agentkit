@@ -113,11 +113,27 @@ function innerMarkup(raw: string): { inner: string; viewBox: string } | null {
 
 // The same colour can be written as a hex or as rgb(), and a pack that mixes
 // notations would leave half the mark baked.
+// #abc and #aabbccff are the same colour as #aabbcc; #aabbcc80 is not, and an
+// alpha channel is carried through so it can be refused rather than flattened.
+function hexKey(value: string): string | null {
+  const m = /^#([0-9a-f]{3,8})$/i.exec(value);
+  if (!m) return null;
+  let h = m[1].toLowerCase();
+  if (h.length === 3 || h.length === 4) h = [...h].map((c) => c + c).join("");
+  if (h.length === 6) return `#${h}`;
+  if (h.length !== 8) return null;
+  return h.slice(6) === "ff" ? `#${h.slice(0, 6)}` : `#${h.slice(0, 6)}/${h.slice(6)}`;
+}
+
+// Normalised on both sides or not at all: expanding the painted value but not
+// the registered fill stops a shorthand hex from matching itself.
 function colourKeys(fill: string): string[] {
-  const hex = /^#([0-9a-f]{6})$/i.exec(fill.trim());
-  if (!hex) return [fill.trim().toLowerCase()];
-  const [r, g, b] = [0, 2, 4].map((i) => parseInt(hex[1].slice(i, i + 2), 16));
-  return [fill.trim().toLowerCase(), `${r},${g},${b}`];
+  const key = hexKey(fill.trim());
+  if (key === null) return [fill.trim().toLowerCase()];
+  const six = /^#([0-9a-f]{6})$/.exec(key);
+  if (!six) return [key];
+  const [r, g, b] = [0, 2, 4].map((i) => parseInt(six[1].slice(i, i + 2), 16));
+  return [key, `${r},${g},${b}`];
 }
 
 // One colour has several spellings: CSS Color 4 writes `rgb(1 2 3)` beside
@@ -125,6 +141,8 @@ function colourKeys(fill: string): string[] {
 // every spelling without letting two different colours collapse into one.
 function valueKey(value: string): string {
   const v = value.trim().toLowerCase();
+  const hex = hexKey(v);
+  if (hex) return hex;
   const call = /^rgba?\(([^)]*)\)$/.exec(v);
   if (!call) return v.replace(/\s+/g, "");
   const parts = call[1].split(/[\s,/]+/).filter(Boolean);
@@ -158,11 +176,15 @@ function bakedInStyle(markup: string, fill: string): boolean {
   const keys = colourKeys(fill);
   return [...styles, ...blocks].some((css) => {
     const text = css.toLowerCase();
-    if (keys.some((k) => k.startsWith("#") && text.replace(/\s+/g, "").includes(k))) return true;
-    return [...text.matchAll(/rgba?\([^)]*\)/g)].some((m) => {
-      const key = valueKey(m[0]);
-      return keys.some((opaque) => key === opaque || key.startsWith(`${opaque}/`));
-    });
+    // A substring scan read #71717a inside #71717a80, so the two paths
+    // disagreed on the one notation each handled differently.
+    const found = [
+      ...[...text.matchAll(/#[0-9a-f]{3,8}\b/g)].map((m) => hexKey(m[0])),
+      ...[...text.matchAll(/rgba?\([^)]*\)/g)].map((m) => valueKey(m[0])),
+    ];
+    return found.some((key) =>
+      key !== null && keys.some((opaque) => key === opaque || key.startsWith(`${opaque}/`))
+    );
   });
 }
 

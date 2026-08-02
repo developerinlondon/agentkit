@@ -265,6 +265,29 @@ describe('colour notation', () => {
     expect(out.svg).not.toContain(SPACED);
   });
 
+  // The attribute path and the CSS-block path disagreed on 8-digit hex: the
+  // block scanned for the 6-digit form as a substring and so matched inside the
+  // 8-digit one, while the attribute path compared whole values and matched
+  // neither. A mark shipped half baked at 50% alpha with nothing raised.
+  for (
+    const [what, registered, painted, outcome] of [
+      ['a shorthand hex', '#777777', '#777', 'ink'],
+      ['an opaque 8-digit hex', FILL, '#71717aff', 'ink'],
+      ['an uppercase 8-digit hex', FILL, '#71717A80', 'refuse'],
+      ['an alpha-bearing 8-digit hex', FILL, '#71717a80', 'refuse'],
+    ] as const
+  ) {
+    test(`${what} in an attribute is ${outcome === 'ink' ? 'inked' : 'refused'}`, () => {
+      const doc = `<svg viewBox="0 0 24 24"><path fill="${registered}"/><path fill="${painted}"/></svg>`;
+      if (outcome === 'refuse') {
+        expect(() => inlineMonochromeIcons(image(doc), [registered], [doc])).toThrow(SvgError);
+        return;
+      }
+      const out = inlineMonochromeIcons(image(doc), [registered], [doc]);
+      expect(out.svg).not.toContain(painted);
+    });
+  }
+
   test('alpha-bearing rgba is refused rather than silently made opaque', () => {
     const translucent = 'rgba(113,113,122,0.5)';
     const doc = `<svg viewBox="0 0 24 24"><path fill="${FILL}"/><path fill="${translucent}"/></svg>`;
