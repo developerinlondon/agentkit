@@ -79,12 +79,25 @@ describe('portable product command', () => {
 
   test('keeps every product-review command verbatim and cross-platform', () => {
     const product = readFileSync(join(repoRoot, '.agentkit', 'product.yaml'), 'utf-8');
-    expect(product).toContain('build: scripts/product-command default -- bun install');
+    expect(product).toContain('scripts/product-command default -- bun install --frozen-lockfile');
     expect(product).toContain('verify: scripts/product-command default -- bun test');
     expect(product).toContain('run: tools/review-profile --help');
     expect(product).toContain('run: scripts/product-command default -- echo ok');
     expect(product).toContain(
       'run: scripts/product-command default -- bun plugins-cc/agentkit/server/index.ts',
+    );
+  });
+
+  test('the cold test-suite build installs every dependency tree its verify command loads', () => {
+    const product = Bun.YAML.parse(
+      readFileSync(join(repoRoot, '.agentkit', 'product.yaml'), 'utf-8'),
+    ) as { surfaces: Array<{ name: string; build?: string; verify?: string }> };
+    const surface = product.surfaces.find(({ name }) => name === 'test-suite');
+
+    expect(surface?.verify).toBe('scripts/product-command default -- bun test');
+    expect(surface?.build).toContain('scripts/product-command default -- bun install');
+    expect(surface?.build).toContain(
+      'scripts/product-command default -- bun install --frozen-lockfile --cwd skills/publish-page',
     );
   });
 
