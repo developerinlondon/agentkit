@@ -1,15 +1,16 @@
 import { describe, expect, test } from 'bun:test';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join, normalize, relative } from 'node:path';
 
 const repo = join(import.meta.dir, '..', '..');
 const root = JSON.parse(readFileSync(join(repo, 'package.json'), 'utf8'));
 const postinstall: string = root.scripts?.postinstall ?? '';
+const read = (p: string) => readFileSync(join(repo, p), 'utf8');
 
 // A skill that carries its own package.json is a second install nobody performs.
 // `skills/publish-page` is imported at MODULE LOAD by three suites, so without it
-// the import throws and fifteen assertions fail pointing at the renderer — a
-// clean clone reads as a code regression. The root postinstall closes that.
+// the import throws and the assertions blame the renderer — a clean clone reads
+// as a code regression. The root postinstall closes that.
 function nestedPackages(): string[] {
   const skills = join(repo, 'skills');
   return readdirSync(skills)
@@ -17,35 +18,54 @@ function nestedPackages(): string[] {
     .sort();
 }
 
+const RELATIVE_IMPORT = /from\s+['"](\.[^'"]+)['"]/g;
+
+function reachable(entries: string[]): string[] {
+  const seen = new Set<string>();
+  const stack = [...entries];
+  while (stack.length > 0) {
+    const file = normalize(stack.pop() as string);
+    if (seen.has(file) || !existsSync(join(repo, file))) continue;
+    seen.add(file);
+    for (const m of read(file).matchAll(RELATIVE_IMPORT)) {
+      stack.push(relative(repo, join(repo, dirname(file), m[1])));
+    }
+  }
+  return [...seen].sort();
+}
+
+function diagramModulesTestsLoad(): string[] {
+  const dir = join(repo, 'tests/diagram');
+  const found = new Set<string>();
+  for (const name of readdirSync(dir).filter((f) => f.endsWith('.ts'))) {
+    for (const m of read(join('tests/diagram', name)).matchAll(/['"][^'"]*?(skills\/diagram\/[\w/.-]+\.ts)['"]/g)) {
+      found.add(m[1]);
+    }
+  }
+  return [...found].sort();
+}
+
 describe('nested skill packages are installed by a root install', () => {
   // Asserting only the script's text passes while the effect is absent: refactor
   // the postinstall behind a helper and the string tests break with behaviour
   // intact, and `bun install --ignore-scripts` skips it entirely while they stay
-  // green. This asserts the outcome, so both cases fail here rather than as
-  // fifteen assertions blaming the renderer.
+  // green. This asserts the outcome, so an --ignore-scripts tree fails here with
+  // a remedy — in addition to, not instead of, the assertions that blame the
+  // renderer.
   test('publish-page is actually resolvable, not merely named in a script', () => {
-    const marked = join(repo, 'skills/publish-page/node_modules/marked');
-    expect({
-      resolvable: existsSync(marked),
-      remedy: 'bun install (or, if you passed --ignore-scripts: bun install --cwd skills/publish-page)',
-    }).toEqual({
-      resolvable: true,
-      remedy: 'bun install (or, if you passed --ignore-scripts: bun install --cwd skills/publish-page)',
-    });
+    const remedy = 'bun install (with --ignore-scripts: bun install --cwd skills/publish-page)';
+    expect({ resolvable: existsSync(join(repo, 'skills/publish-page/node_modules/marked')), remedy })
+      .toEqual({ resolvable: true, remedy });
   });
 
-  test('the set of nested packages is what we decided about', () => {
-    const decided = ['diagram', 'publish-page'];
-    // A new one appearing must force a decision rather than silently inheriting
-    // whichever default the last person happened to pick. The remedy rides in
-    // the assertion, not a comment, so the next person does not just delete it.
-    expect({
-      packages: nestedPackages(),
-      then: 'decide whether a root install should carry it, then update this test',
-    }).toEqual({
-      packages: decided,
-      then: 'decide whether a root install should carry it, then update this test',
-    });
+  test('the set of nested packages under skills/ is what we decided about', () => {
+    // plugins-cc carries generated copies; sync-cc-plugin.sh owns those, so only
+    // the sources are governed here. A new source package must force a decision
+    // rather than inherit whichever default the last person happened to pick,
+    // and the remedy rides in the assertion so it is read at the point of failure.
+    const then = 'decide whether a root install should carry it, then update this test';
+    expect({ packages: nestedPackages(), then })
+      .toEqual({ packages: ['diagram', 'publish-page'], then });
   });
 
   test('publish-page is installed, because the suite cannot load without it', () => {
@@ -53,30 +73,47 @@ describe('nested skill packages are installed by a root install', () => {
   });
 
   test('the nested install is pinned, and says what to do when the lockfile drifts', () => {
-    // Pinned for CI parity and drift detection — not to keep the tree clean; an
-    // unpinned install of an in-sync lockfile leaves it clean either way. Drift
-    // fails the WHOLE root install, and bun's own advice is to re-run without
-    // --frozen-lockfile, which fails identically because the flag lives in the
-    // script. So the script prints the remedy that actually works.
+    // Pinned for CI parity and drift detection, not for a clean tree: an
+    // unpinned install of an in-sync lockfile leaves it clean too. Drift fails
+    // the WHOLE root install, and bun's own advice is to re-run without
+    // --frozen-lockfile, which fails identically because the flag lives in this
+    // script — so it prints the remedy that works.
     expect(postinstall).toContain('--frozen-lockfile');
     expect(postinstall).toContain('bun install --cwd skills/publish-page, then commit that lockfile');
   });
 
-  test('diagram is deliberately excluded', () => {
-    // Measured rather than assumed: with skills/diagram/node_modules absent,
-    // tests/diagram is 283 pass / 0 fail. Its dependencies are excalidraw,
-    // react, react-dom and playwright-core, so installing them on every root
-    // install would cost every contributor for a suite that does not need them.
-    expect(postinstall).not.toContain('--cwd skills/diagram');
-    const diagram = JSON.parse(readFileSync(join(repo, 'skills/diagram/package.json'), 'utf8'));
-    expect(Object.keys(diagram.dependencies ?? {})).toContain('@excalidraw/excalidraw');
+  test('a pinned nested install only means anything where a lockfile exists', () => {
+    // skills/diagram has none, so --frozen-lockfile there succeeds while pinning
+    // nothing. Whoever adds it to the postinstall must commit a lockfile first,
+    // or inherit the false assurance rather than the guarantee.
+    for (const pkg of nestedPackages()) {
+      const named = postinstall.includes(`--cwd skills/${pkg}`);
+      const locked = existsSync(join(repo, 'skills', pkg, 'bun.lock'));
+      expect({ pkg, namedWithoutLockfile: named && !locked }).toEqual({ pkg, namedWithoutLockfile: false });
+    }
+  });
+
+  test('excluding diagram is safe: nothing the tests load reaches its runtime deps', () => {
+    // The exclusion holds only while no module tests import pulls excalidraw,
+    // react or playwright at load time. Nothing enforced that, which is this
+    // file's own defect one package over. Today renderer/entry.ts is the sole
+    // importer and no test path reaches it.
+    const entries = diagramModulesTestsLoad();
+    expect(entries.length).toBeGreaterThan(0);
+    const deps = Object.keys({
+      ...JSON.parse(read('skills/diagram/package.json')).dependencies,
+      ...JSON.parse(read('skills/diagram/package.json')).devDependencies,
+    }).filter((d) => !d.startsWith('@types/'));
+    const pattern = new RegExp(`from\\s+['"](${deps.map((d) => d.replace('/', '\\/')).join('|')})['"]`);
+    const offenders = reachable(entries).filter((f) => pattern.test(read(f)));
+    expect({ offenders, then: 'either install diagram in the postinstall, or move that import' })
+      .toEqual({ offenders: [], then: 'either install diagram in the postinstall, or move that import' });
   });
 
   test('every nested package the postinstall names actually exists', () => {
     // Only the command, not the failure message — which quotes a --cwd of its
     // own and whose trailing punctuation is not part of a path.
-    const command = postinstall.split('||')[0];
-    const named = [...command.matchAll(/--cwd\s+(\S+)/g)].map((m) => m[1]);
+    const named = [...postinstall.split('||')[0].matchAll(/--cwd\s+(\S+)/g)].map((m) => m[1]);
     expect(named.length).toBeGreaterThan(0);
     for (const dir of named) {
       expect({ dir, present: existsSync(join(repo, dir, 'package.json')) })
