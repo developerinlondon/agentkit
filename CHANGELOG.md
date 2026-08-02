@@ -5,6 +5,13 @@ top and ships with the next tag.
 
 ## [Unreleased]
 
+## v0.7.1 — 2026-08-02
+
+- fix(pages): add a forward D1 migration for `page_access_tokens`. The accounts
+  migration was squashed during active development after production had already
+  recorded its filename, so D1 skipped the expanded file and invite revocation
+  failed when it tried to clear a page-scoped access grant.
+
 ## v0.7.0 — 2026-08-02
 
 - feat(pages): replace anonymous publishing with Assay accounts and per-device
