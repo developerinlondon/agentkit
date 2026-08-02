@@ -90,7 +90,10 @@ function advanceOrigin(theirs: string, path: string, content: string) {
 // Async spawn: spawnSync would block the event loop this test's own
 // server runs on, deadlocking the publish PUT against it.
 async function publish(world: { home: string; mine: string; page: string }, ...extra: string[]) {
-  const args = extra.length > 0 ? extra : ["--name", "fresh", "--file", world.page];
+  const args = [
+    ...(extra.length > 0 ? extra : ["--name", "fresh", "--file", world.page]),
+    "--git",
+  ];
   const proc = Bun.spawn(["bun", join(repoRoot, "skills/publish-page/publish.ts"), ...args], {
     cwd: repoRoot,
     stdout: "pipe",
