@@ -3,6 +3,7 @@
 // it to a file that must open from file://. One implementation, so a portable
 // page and a published page are the same page.
 import { marked } from "marked";
+import { markCalloutLabels } from "./callout-labels.ts";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -90,6 +91,7 @@ export async function renderThemed(page: ThemedPage): Promise<string> {
   } else {
     content = page.isMd ? (marked.parse(page.source) as string) : page.source;
   }
+  content = markCalloutLabels(content);
   if (content.includes('class="mermaid"')) content += await mermaidRuntime();
   // Function replacers: a plain string replacement expands $&, $`, $' found in
   // page content and silently corrupts the output.

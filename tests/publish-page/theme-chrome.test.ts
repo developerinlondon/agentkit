@@ -227,11 +227,12 @@ function callout(severity: string | null): El {
 
 function label(severity: string | null, idiom: (typeof IDIOMS)[number]): El {
   const box = callout(severity);
+  const marked = ['callout-label'];
   if (idiom === 'p-strong') {
     const para: El = { tag: 'p', classes: [], first: true, parent: box };
-    return { tag: 'strong', classes: [], first: true, parent: para };
+    return { tag: 'strong', classes: marked, first: true, parent: para };
   }
-  return { tag: idiom, classes: [], first: true, parent: box };
+  return { tag: idiom, classes: marked, first: true, parent: box };
 }
 
 describe('callout severities', () => {
