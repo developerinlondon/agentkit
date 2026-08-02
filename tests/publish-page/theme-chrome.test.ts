@@ -340,11 +340,13 @@ describe('callout severities', () => {
         const box = callout(s);
         expect({ theme: name, severity: s, bg: declOf(css, box, 'background') })
           .toEqual({ theme: name, severity: s, bg: s === 'note' ? ground : 'var(--card)' });
-        // Resolving only the shorthand left the same hole one property name to
-        // the left: `background-color` is the more natural spelling for a
-        // reintroduced ground and was invisible to the guard.
-        expect({ theme: name, severity: s, longhand: declOf(css, box, 'background-color') })
-          .toEqual({ theme: name, severity: s, longhand: null });
+        // Naming one spelling at a time left the adjacent one open twice over.
+        // Painting a ground is a property family, so the whole family is asked
+        // for: a single-colour gradient is a flat ground to a reader.
+        for (const longhand of ['background-color', 'background-image']) {
+          expect({ theme: name, severity: s, longhand, value: declOf(css, box, longhand) })
+            .toEqual({ theme: name, severity: s, longhand, value: null });
+        }
       }
     });
 
