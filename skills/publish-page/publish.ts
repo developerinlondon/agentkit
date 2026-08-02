@@ -90,12 +90,13 @@ function commitScoped(message: string, paths: string[]) {
   if (commit.exitCode === 0) {
     const push = git("push");
     if (push.exitCode !== 0) {
-      // A rejected push means the canonical history silently lost this page —
-      // the publish already succeeded, so exit loud instead of failing here.
+      // A rejected push means the canonical history silently lost this change —
+      // the server operation already succeeded, so exit loud instead of failing here.
+      const done = isDelete ? "the page was deleted from the server" : "the page itself is live";
       console.error(
-        `publish-page: the canonical push was rejected — agentkit-pages history does NOT carry this publish:\n`
+        `publish-page: the canonical push was rejected — agentkit-pages history does NOT carry this ${isDelete ? "deletion" : "publish"}:\n`
           + push.stderr.toString()
-          + `the page itself is live; fix the clone (git -C ${repo} pull --rebase) and re-run this publish to record it`,
+          + `${done}; fix the clone (git -C ${repo} pull --rebase) and re-run the same command to record it`,
       );
       process.exitCode = 1;
     }
@@ -118,7 +119,8 @@ if (isDelete) {
     commitScoped(`pages: delete ${pageLabel}`, [`src/${slug}`, `dist/${slug}`]);
   }
   console.log(`deleted: ${endpoint}/${slug}`);
-  process.exit(0);
+  // Bare exit() honors the exitCode a rejected canonical push set; exit(0) discards it.
+  process.exit();
 }
 
 const source = await readFile(file!, "utf8");
@@ -141,11 +143,24 @@ async function render(): Promise<string> {
     // the page publishes with current markup and stale rules. Refuse only when
     // upstream actually changed themes/ — merge-base..upstream, so a clone
     // that is merely ahead or behind on other paths still publishes.
-    if (git("fetch", "--quiet").exitCode !== 0) {
+    // Bounded and prompt-free: an unreachable remote or a credential helper
+    // wanting input must degrade to the warning, not stall the publish.
+    const fetched = Bun.spawnSync(["git", "-C", repo, "fetch", "--quiet"], {
+      stdout: "pipe",
+      stderr: "pipe",
+      timeout: 15_000,
+      env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+    });
+    if (fetched.exitCode !== 0) {
       console.error(`warning: could not verify the pages clone is current (git fetch failed) — publishing with its themes as-is`);
-    } else if (git("diff", "--quiet", "HEAD...@{u}", "--", "themes/").exitCode === 1) {
-      const behind = git("rev-list", "--count", "HEAD..@{u}").stdout.toString().trim();
-      fail(`pages clone is ${behind} commit(s) behind and themes/ changed upstream — run: git -C ${repo} pull; publishing now would serve stale CSS`);
+    } else {
+      const upstream = git("diff", "--quiet", "HEAD...@{u}", "--", "themes/");
+      if (upstream.exitCode === 1) {
+        const behind = git("rev-list", "--count", "HEAD..@{u}").stdout.toString().trim();
+        fail(`pages clone is ${behind} commit(s) behind and themes/ changed upstream — run: git -C ${repo} pull; publishing now would serve stale CSS`);
+      } else if (upstream.exitCode !== 0) {
+        console.error(`warning: could not verify the pages clone is current (no upstream to compare) — publishing with its themes as-is`);
+      }
     }
     if (existsSync(bundledTheme)) {
       const [canonical, bundled] = await Promise.all([readFile(repoTheme, "utf8"), readFile(bundledTheme, "utf8")]);

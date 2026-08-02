@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -18,11 +18,17 @@ beforeAll(() => {
         puts++;
         return Response.json({ url: `http://127.0.0.1:${server.port}/fake-slug` });
       }
+      if (req.method === "DELETE") return Response.json({ deleted: true });
       return new Response("nope", { status: 405 });
     },
   });
 });
-afterAll(() => server.stop(true));
+afterAll(() => {
+  server.stop(true);
+  for (const base of worlds) rmSync(base, { recursive: true, force: true });
+});
+
+const worlds: string[] = [];
 
 function sh(cwd: string, ...args: string[]) {
   const r = spawnSync(args[0]!, args.slice(1), { cwd, encoding: "utf8" });
@@ -35,6 +41,7 @@ const git = (cwd: string, ...args: string[]) =>
 // origin (bare) + publisher clone + a second clone that advances origin.
 function makeWorld(): { home: string; origin: string; mine: string; theirs: string; page: string } {
   const base = mkdtempSync(join(tmpdir(), "pages-freshness-"));
+  worlds.push(base);
   const home = join(base, "home");
   mkdirSync(join(home, ".config/agentkit"), { recursive: true });
   writeFileSync(join(home, ".config/agentkit/pages-token"), "test-token\n");
@@ -63,6 +70,7 @@ function makeWorld(): { home: string; origin: string; mine: string; theirs: stri
 }
 
 function advanceOrigin(theirs: string, path: string, content: string) {
+  git(theirs, "pull", "--rebase", "origin", "main");
   writeFileSync(join(theirs, path), content);
   git(theirs, "add", "-A");
   git(theirs, "commit", "-m", `advance ${path}`);
@@ -71,8 +79,9 @@ function advanceOrigin(theirs: string, path: string, content: string) {
 
 // Async spawn: spawnSync would block the event loop this test's own
 // server runs on, deadlocking the publish PUT against it.
-async function publish(world: { home: string; mine: string; page: string }) {
-  const proc = Bun.spawn(["bun", join(repoRoot, "skills/publish-page/publish.ts"), "--name", "fresh", "--file", world.page], {
+async function publish(world: { home: string; mine: string; page: string }, ...extra: string[]) {
+  const args = extra.length > 0 ? extra : ["--name", "fresh", "--file", world.page];
+  const proc = Bun.spawn(["bun", join(repoRoot, "skills/publish-page/publish.ts"), ...args], {
     cwd: repoRoot,
     stdout: "pipe",
     stderr: "pipe",
@@ -140,6 +149,26 @@ describe("publishing refuses a theme that upstream has superseded", () => {
     expect(r.stderr).toMatch(/could not verify/);
     expect(r.stdout).toContain("/fake-slug");
   }, 20000);
+
+  test("no upstream to compare (detached HEAD): say so, then publish anyway", async () => {
+    const w = makeWorld();
+    git(w.mine, "checkout", "--detach");
+    const before = puts;
+    const r = await publish(w);
+    expect({ puts: puts - before, refused: r.stderr.includes("stale CSS") }).toEqual({ puts: 1, refused: false });
+    expect(r.stderr).toMatch(/could not verify.*no upstream/);
+  }, 20000);
+
+  test("ahead-only clone (local theme edit, unpushed): publishes cleanly", async () => {
+    const w = makeWorld();
+    writeFileSync(join(w.mine, "themes/doc.html"), bundledDoc + "\n<!-- unpushed local edit -->\n");
+    git(w.mine, "add", "-A");
+    git(w.mine, "commit", "-m", "local theme edit");
+    const before = puts;
+    const r = await publish(w);
+    expect({ status: r.status, puts: puts - before }).toEqual({ status: 0, puts: 1 });
+    expect(r.stderr).not.toMatch(/stale CSS/);
+  }, 20000);
 });
 
 describe("a rejected canonical push fails loud", () => {
@@ -153,6 +182,21 @@ describe("a rejected canonical push fails loud", () => {
     expect({ puts: puts - before, status: r.status }).toEqual({ puts: 1, status: 1 });
     expect(r.stdout).toContain("/fake-slug");
     expect(r.stderr).toMatch(/push.*rejected|rejected.*push/i);
+    expect(r.stderr).toMatch(/git -C \S+ pull/);
+  }, 20000);
+
+  test("delete with a rejected push: loud exit, and the message describes a deletion", async () => {
+    const w = makeWorld();
+    const first = await publish(w);
+    expect(first.status).toBe(0);
+    advanceOrigin(w.theirs, "README.md", "advance, so the delete commit cannot push\n");
+    const r = await publish(w, "--name", "fresh", "--delete");
+    expect({ status: r.status }).toEqual({ status: 1 });
+    expect(r.stdout).toContain("deleted:");
+    expect(r.stderr).toMatch(/rejected/);
+    expect(r.stderr).toMatch(/deletion/);
+    // The publish wording would be false here — the page is gone, not live.
+    expect(r.stderr).not.toContain("the page itself is live");
     expect(r.stderr).toMatch(/git -C \S+ pull/);
   }, 20000);
 });
