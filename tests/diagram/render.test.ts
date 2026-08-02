@@ -178,6 +178,9 @@ describe.if(available)('committed examples', () => {
     expect(svg.match(/https?:\/\/(?!www\.w3\.org)/)).toBeNull();
   });
 
+  // Three d2 subprocess renders in one test. Locally that is ~2.1s, but a
+  // shared hosted runner has cleared 5s only by margin — a timeout here reports
+  // as exit code null, which reads as a render failure rather than as slowness.
   test('the committed SVGs match a fresh render of their source', () => {
     withTemp((dir) => {
       for (const name of ['deployment-topology', 'c4-container', 'erd']) {
@@ -187,5 +190,5 @@ describe.if(available)('committed examples', () => {
         expect(readFileSync(out, 'utf-8')).toBe(readFileSync(join(examples, `${name}.svg`), 'utf-8'));
       }
     });
-  });
+  }, 30000);
 });

@@ -19,17 +19,23 @@ const NEARBY = 900;
 // an author's own declarations with them, and the house theme ships one <style>
 // for the entire page.
 const CSS_COMMENT = /\/\*[\s\S]*?\*\//g;
+const CSS_AT_OPEN = /@[a-z-]+[^{}]*\{/gi;
 const CSS_RULE = /([^{}]*)\{([^}]*)\}/g;
-const D2_SELECTOR = /\.d2-(?:\d+|mono)\b/;
+// d2 writes its own rules as `.d2-<salt> .thing` or the bare `.d2-mono`. A
+// selector where the class appears anywhere else — `.figure:not(.d2-mono)`,
+// `.d2-mono ~ .figure` — has an author's element as its subject.
+const D2_OWN_RULE = /^\s*\.d2-(?:\d+|mono)(?:\s+\.|\s*$)/;
 
-// Only rules that are entirely d2's. A comment naming .d2- above an author rule,
-// or a grouped selector like `.figure,.d2-mono{...}`, would otherwise take the
-// author's own declaration with it and hide the white ground being checked for.
 function stripD2Rules(css: string): string {
-  return css.replace(CSS_COMMENT, "").replace(CSS_RULE, (rule, selector: string) => {
-    const parts = selector.split(",").map((s) => s.trim()).filter(Boolean);
-    return parts.length > 0 && parts.every((s) => D2_SELECTOR.test(s)) ? "" : rule;
-  });
+  // At-rule wrappers are unwrapped first so a d2 rule nested in @media is seen
+  // as a rule rather than read as the selector `@media screen`.
+  return css.replace(CSS_COMMENT, "").replace(CSS_AT_OPEN, "").replace(
+    CSS_RULE,
+    (rule, selector: string) => {
+      const parts = selector.split(",").map((s) => s.trim()).filter(Boolean);
+      return parts.length > 0 && parts.every((s) => D2_OWN_RULE.test(s)) ? "" : rule;
+    },
+  );
 }
 
 function styleBlocks(html: string): string {
