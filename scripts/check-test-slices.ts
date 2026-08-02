@@ -50,6 +50,7 @@ export const TEST_SLICES = {
     'tests/install/bootstrap.test.ts',
     'tests/install/kit-shims.test.ts',
     'tests/install/manifest-readers.test.ts',
+    'tests/install/nested-packages.test.ts',
     'tests/install/plugin-scripts.test.ts',
     'tests/install/skill-kits.test.ts',
     'tests/install/uninstall.test.ts',
