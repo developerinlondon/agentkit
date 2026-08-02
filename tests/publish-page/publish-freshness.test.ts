@@ -9,16 +9,24 @@ const bundledDoc = readFileSync(join(repoRoot, "skills/publish-page/themes/doc.h
 
 let server: ReturnType<typeof Bun.serve>;
 let puts = 0;
+// Mirrors the production worker: a DELETE of an absent page 404s, which is
+// exactly what a delete-retry after a rejected push encounters.
+const stored = new Set<string>();
 
 beforeAll(() => {
   server = Bun.serve({
     port: 0,
     fetch(req) {
+      const key = new URL(req.url).pathname;
       if (req.method === "PUT") {
         puts++;
+        stored.add(key);
         return Response.json({ url: `http://127.0.0.1:${server.port}/fake-slug` });
       }
-      if (req.method === "DELETE") return Response.json({ deleted: true });
+      if (req.method === "DELETE") {
+        if (!stored.delete(key)) return new Response("not found\n", { status: 404 });
+        return Response.json({ deleted: true });
+      }
       return new Response("nope", { status: 405 });
     },
   });
@@ -229,10 +237,20 @@ describe("a rejected canonical push fails loud", () => {
     expect(r.stderr).toMatch(/does NOT carry this deletion/);
     // The publish wording would be false here — the page is gone, not live.
     expect(r.stderr).not.toContain("the page itself is live");
-    // Remedy works on the delete path too: the re-run pushes the stranded
-    // deletion commit even though rm and add find nothing left to stage.
+    // Remedy works on the delete path too — against real server semantics: the
+    // page is already gone, the retry's DELETE 404s, and the stranded deletion
+    // commit must still reach canonical instead of dying on "nothing deleted".
     git(w.mine, "pull", "--rebase");
     const retry = await publish(w, "--name", "fresh", "--delete");
     expect({ status: retry.status, stranded: ahead(w.mine) }).toEqual({ status: 0, stranded: "0" });
+    expect(retry.stdout).toContain("canonical record updated");
+  }, 20000);
+
+  test("deleting a page that never existed still fails loud", async () => {
+    const w = makeWorld();
+    const r = await publish(w, "--name", "never-published", "--delete");
+    expect(r.status).toBe(1);
+    expect(r.stderr).toMatch(/nothing deleted/);
+    expect(ahead(w.mine)).toBe("0");
   }, 20000);
 });

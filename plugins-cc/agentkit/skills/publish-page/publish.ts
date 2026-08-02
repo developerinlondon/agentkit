@@ -125,15 +125,24 @@ if (isDelete) {
     method: "DELETE",
     headers: { authorization: `Bearer ${token}` },
   });
-  if (res.status === 404) fail(`no page at ${slug} — nothing deleted`);
-  if (!res.ok) fail(`delete failed: HTTP ${res.status} ${await res.text()}`);
+  const gone = res.status === 404;
+  if (!res.ok && !gone) fail(`delete failed: HTTP ${res.status} ${await res.text()}`);
   if (!noGit && repoAvailable()) {
+    // A 404 is not always a dead end: a successful delete whose canonical push
+    // was rejected leaves the server page gone and the deletion commit
+    // stranded, and the advised re-run must still push that commit.
+    const hadLocal = existsSync(join(repo, "src", slug)) || existsSync(join(repo, "dist", slug));
+    const ahead = git("rev-list", "--count", "@{u}..HEAD");
+    const stranded = ahead.exitCode === 0 && ahead.stdout.toString().trim() !== "0";
+    if (gone && !hadLocal && !stranded) fail(`no page at ${slug} — nothing deleted`);
     await rm(join(repo, "src", slug), { recursive: true, force: true });
     await rm(join(repo, "dist", slug), { recursive: true, force: true });
     git("add", "-A", "--", `src/${slug}`, `dist/${slug}`);
     commitScoped(`pages: delete ${pageLabel}`, [`src/${slug}`, `dist/${slug}`]);
+  } else if (gone) {
+    fail(`no page at ${slug} — nothing deleted`);
   }
-  console.log(`deleted: ${endpoint}/${slug}`);
+  console.log(gone ? `no page on the server at ${slug} — canonical record updated` : `deleted: ${endpoint}/${slug}`);
   // Bare exit() honors the exitCode a rejected canonical push set; exit(0) discards it.
   process.exit();
 }
