@@ -71,9 +71,15 @@ const BUILT = [
   'sitemap-0.xml',
 ];
 
-// Records every argv it is handed and answers the three shapes deploy.sh uses:
-// an upload, the stamp read-back, and a status probe.
-function stubCurl(): void {
+// Records every argv it is handed and answers the shapes deploy.sh uses: an
+// upload, a delete, the key listing, a status probe and the stamp read-back.
+// One key namespace, as the worker has: a lease this run writes comes back in
+// the listing, and a lease it deletes is recorded like any other delete.
+function curlStub(
+  options: { putLines?: readonly string[]; rival?: string; flipOn?: 'listing' | 'delete' } = {},
+): void {
+  const { putLines = [], rival = '', flipOn = 'listing' } = options;
+  const flip = rival ? `printf "%s" ${JSON.stringify(rival)} > "$LIVE"` : ':';
   stub(
     'curl',
     [
@@ -84,15 +90,29 @@ function stubCurl(): void {
       `LIVE=${JSON.stringify(join(root, '.live-sha'))}`,
       `REMOTE=${JSON.stringify(join(root, '.remote-keys'))}`,
       `DEL=${JSON.stringify(join(root, '.deleted'))}`,
+      `OPS=${JSON.stringify(join(root, '.lease-ops'))}`,
       'printf "%s\\n" "$*" >> "$ARGV"',
       'is_put=; is_code=; is_delete=',
       'for a in "$@"; do',
       '  case "$a" in PUT) is_put=1 ;; DELETE) is_delete=1 ;; -w) is_code=1 ;; esac',
       'done',
       'eval "url=\\${$#}"',
-      'if [ -n "$is_delete" ]; then printf "%s\\n" "${url##*/api/site/}" >> "$DEL"; exit 0; fi',
-      'case "$url" in *api/site-list/*) cat "$REMOTE" 2>/dev/null || printf "{\\"keys\\":[]}"; exit 0 ;; esac',
-      'if [ -n "$is_put" ]; then printf "%s\\n" "${url##*/api/site/docs/}" >> "$LOG"; exit 0; fi',
+      'key=${url##*/api/site/}',
+      'if [ -n "$is_delete" ]; then',
+      '  case "$key" in docs/deploy-lease/*) printf "delete %s\\n" "$key" >> "$OPS" ;; esac',
+      `  ${flipOn === 'delete' ? flip : ':'}`,
+      '  printf "%s\\n" "$key" >> "$DEL"; exit 0',
+      'fi',
+      'if [ -n "$is_put" ]; then',
+      '  case "$key" in docs/deploy-lease/*) printf "put %s\\n" "$key" >> "$OPS"; exit 0 ;; esac',
+      ...putLines,
+      '  printf "%s\\n" "${key#docs/}" >> "$LOG"; exit 0',
+      'fi',
+      'case "$url" in *api/site-list/*)',
+      `  ${flipOn === 'listing' ? flip : ':'}`,
+      '  cat "$REMOTE" 2>/dev/null || printf "{\\"keys\\":[]}"',
+      '  [ -f "$OPS" ] && awk \'$1=="put"{p[$2]=1} $1=="delete"{delete p[$2]} END{for (k in p) printf ",\\"%s\\"", k}\' "$OPS"',
+      '  exit 0 ;; esac',
       'if [ -n "$is_code" ]; then printf "200"; exit 0; fi',
       'if [ -f "$LIVE" ]; then cat "$LIVE"; fi',
       'exit 0',
@@ -100,29 +120,25 @@ function stubCurl(): void {
   );
 }
 
+function stubCurl(): void {
+  curlStub();
+}
+
 // Answers 400 for one upload, the way the worker does for a path it rejects.
 function stubCurlRejecting(fragment: string): void {
-  stub(
-    'curl',
-    [
-      '#!/usr/bin/env bash',
-      'set -eu',
-      `LOG=${JSON.stringify(join(root, '.uploads'))}`,
-      `LIVE=${JSON.stringify(join(root, '.live-sha'))}`,
-      'is_put=; is_code=',
-      'for a in "$@"; do',
-      '  case "$a" in PUT) is_put=1 ;; -w) is_code=1 ;; esac',
-      'done',
-      'eval "url=\\${$#}"',
-      'if [ -n "$is_put" ]; then',
-      `  case "$url" in *${fragment}*) printf 'invalid path\\n'; exit 22 ;; esac`,
-      '  printf "%s\\n" "${url##*/api/site/docs/}" >> "$LOG"; exit 0',
-      'fi',
-      'if [ -n "$is_code" ]; then printf "200"; exit 0; fi',
-      'if [ -f "$LIVE" ]; then cat "$LIVE"; fi',
-      'exit 0',
-    ].join('\n'),
-  );
+  curlStub({ putLines: [`  case "$url" in *${fragment}*) printf 'invalid path\\n'; exit 22 ;; esac`] });
+}
+
+// A lease belonging to another run: one object per deploy, its start time in
+// the key, so the listing alone says whether that run is still going.
+function rivalLeaseKey(sha: string, ageSeconds = 0): string {
+  return `docs/deploy-lease/${Math.floor(Date.now() / 1000) - ageSeconds}-${sha}.txt`;
+}
+
+function leaseOps(): string[] {
+  const path = join(root, '.lease-ops');
+  if (!existsSync(path)) return [];
+  return readFileSync(path, 'utf-8').trim().split('\n').filter(Boolean);
 }
 
 function deploy(env: Record<string, string> = {}): ReturnType<typeof spawnSync> {
@@ -144,10 +160,13 @@ function remoteKeys(keys: string[]): void {
   writeFileSync(join(root, '.remote-keys'), JSON.stringify({ ok: true, keys }));
 }
 
+// Content prunes only. The lease is deleted on the way out of every run, so
+// counting that here would put a lifecycle op in every prune assertion.
 function deleted(): string[] {
   const path = join(root, '.deleted');
   if (!existsSync(path)) return [];
-  return readFileSync(path, 'utf-8').trim().split('\n').filter(Boolean);
+  return readFileSync(path, 'utf-8').trim().split('\n').filter(Boolean)
+    .filter((key) => !key.startsWith('docs/deploy-lease/'));
 }
 
 function uploads(): string[] {
@@ -176,7 +195,11 @@ beforeEach(() => {
   writeFileSync(join(site, 'build-archives.sh'), '#!/usr/bin/env bash\nexit 0\n');
   chmodSync(join(site, 'build-archives.sh'), 0o755);
   write('token', 'site-secret');
-  write('.gitignore', 'dist/\n.bin/\n.uploads\n.argv\n.live-sha\n.remote-keys\n.deleted\ntoken\n');
+  write(
+    '.gitignore',
+    ['dist/', '.bin/', '.uploads', '.argv', '.live-sha', '.remote-keys', '.deleted', 'token', '.live-lease', '.rival-lease', '.lease-ops']
+      .join('\n') + '\n',
+  );
   stubCurl();
   stubBuild(BUILT);
   git('init', '-q');
@@ -474,5 +497,115 @@ describe('a reused archive survives the prune that removes deleted pages', () =>
     expect(result.status, result.stderr).toBe(0);
     expect(deleted()).toEqual(['docs/retired/index.html']);
     expect(result.stdout).not.toContain('reused archive');
+  });
+});
+
+describe('a deploy that overlaps another one stops instead of reporting success', () => {
+  // Seen live: two runs overlapped, each verified itself green, and the site
+  // served one commit's stamp over the other's pages. The stamp goes up LAST,
+  // so it only answers "did a rival finish". Each run writes its own lease
+  // first, and a shared key would be clobbered by whoever started last — which
+  // is whoever is about to read it.
+  const SETTLED = ['docs/index.html', 'docs/getting-started/install/index.html', 'docs/favicon.svg'];
+
+  test('a lease belonging to a running deploy stops the prune before anything is deleted', () => {
+    const rival = rivalLeaseKey('deadbeef');
+    remoteKeys([...SETTLED, 'docs/gone.html', rival]);
+    const result = deploy();
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('holds a deploy lease');
+    expect(deleted()).toEqual([]);
+    // deleted() filters lease keys, so pin the rival's survival explicitly.
+    expect(leaseOps().filter((line) => line === `delete ${rival}`)).toEqual([]);
+  });
+
+  test('a lease left behind by a crashed deploy ages out and is itself pruned', () => {
+    const abandoned = rivalLeaseKey('deadbeef', 4000);
+    remoteKeys([...SETTLED, 'docs/gone.html', abandoned]);
+    const result = deploy();
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(deleted()).toEqual(['docs/gone.html']);
+    expect(leaseOps().some((line) => line === `delete ${abandoned}`)).toBe(true);
+  });
+
+  test('this run never prunes its own lease', () => {
+    remoteKeys([...SETTLED, 'docs/gone.html']);
+    const result = deploy();
+
+    // Pruned AND released would show two deletes; released only shows one.
+    expect(result.status, result.stderr).toBe(0);
+    expect(leaseOps().map((line) => line.split(' ')[0])).toEqual(['put', 'delete']);
+  });
+
+  test('a lease key this run cannot place in time stops the prune', () => {
+    remoteKeys([...SETTLED, 'docs/gone.html', 'docs/deploy-lease/not-a-timestamp.txt']);
+    const result = deploy();
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('cannot place in time');
+    expect(deleted()).toEqual([]);
+  });
+
+  test('a lease dated in the future stops the prune rather than reading as fresh forever', () => {
+    remoteKeys([...SETTLED, 'docs/gone.html', rivalLeaseKey('deadbeef', -86400)]);
+    const result = deploy();
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('cannot place in time');
+    expect(deleted()).toEqual([]);
+  });
+
+  test('a rival stamp appearing during the prune phase stops the deploy', () => {
+    remoteKeys([...SETTLED, 'docs/gone.html']);
+    curlStub({ rival: 'deadbeef', flipOn: 'listing' });
+    const result = deploy();
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("serves 'deadbeef'");
+    expect(deleted()).toEqual([]);
+  }, 30000);
+
+  test('a rival stamp appearing after the prune is not reported as verified', () => {
+    remoteKeys([...SETTLED, 'docs/gone.html']);
+    curlStub({ rival: 'deadbeef', flipOn: 'delete' });
+    const result = deploy();
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("serves 'deadbeef'");
+    expect(result.stdout).not.toContain('verified live');
+    expect(deleted()).toEqual(['docs/gone.html']);
+  }, 30000);
+
+  test('two runs take different lease keys, so neither can clobber the other', () => {
+    remoteKeys(SETTLED);
+    expect(deploy().status).toBe(0);
+    expect(deploy().status).toBe(0);
+
+    const taken = leaseOps().filter((line) => line.startsWith('put ')).map((line) => line.split(' ')[1]);
+    expect({ count: taken.length, distinct: new Set(taken).size }).toEqual({ count: 2, distinct: 2 });
+  });
+
+  test('the lease is taken before any upload', () => {
+    remoteKeys(SETTLED);
+    const result = deploy();
+
+    expect(result.status, result.stderr).toBe(0);
+    const argv = readFileSync(join(root, '.argv'), 'utf-8').split('\n');
+    const lease = argv.findIndex((line) => line.includes('/api/site/docs/deploy-lease/'));
+    const firstAsset = argv.findIndex((line) => line.includes('/api/site/docs/_astro/'));
+    expect({ leaseFirst: lease >= 0 && lease < firstAsset }).toEqual({ leaseFirst: true });
+  });
+
+  test('a deploy that refuses still releases its lease, so the retry is not blocked', () => {
+    // Refusing to prune is itself an exit; releasing only on the happy path
+    // would make one failed deploy block the next for the whole cutoff.
+    remoteKeys(['docs/a.html', 'docs/b.html', 'docs/c.html', 'docs/d.html']);
+    const result = deploy();
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('refusing to prune');
+    expect(leaseOps().map((line) => line.split(' ')[0])).toEqual(['put', 'delete']);
   });
 });

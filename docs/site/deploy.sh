@@ -53,7 +53,16 @@ printf '%s\n' "$sha" > "$STAMP"
 # command line is readable by every other process on the host.
 umask 077
 auth=$(mktemp)
-trap 'rm -f "$auth"' EXIT
+LEASE_PREFIX=docs/deploy-lease
+LEASE_MAX_AGE=900
+LEASE_KEY="$LEASE_PREFIX/$(date +%s)-$$-$sha.txt"
+
+release_lease() {
+	[[ -n "${LEASE_HELD:-}" ]] || return 0
+	curl -sS -X DELETE --config "$auth" "$ENDPOINT/api/site/$LEASE_KEY" >/dev/null 2>&1 || true
+	LEASE_HELD=
+}
+trap 'release_lease; rm -f "$auth"' EXIT
 printf 'header = "Authorization: Bearer %s"\n' "$(cat "$TOKEN_FILE")" > "$auth"
 
 put() {
@@ -65,6 +74,21 @@ put() {
 		exit 1
 	fi
 }
+
+# The stamp goes up last, so it only ever answers "did a rival FINISH". The
+# prune needs "is a rival RUNNING", so each run writes its OWN marker first —
+# a shared key would be clobbered by whichever run started last, which is
+# whoever is about to read it. The start time rides the key, so the listing
+# alone answers the question and no body has to be fetched or parsed.
+lease=$(mktemp)
+printf '%s %s\n' "$sha" "$(date +%s)" > "$lease"
+if ! curl -sS --fail-with-body -X PUT --config "$auth" --data-binary "@$lease" \
+	"$ENDPOINT/api/site/$LEASE_KEY" >/dev/null 2>&1; then
+	echo "deploy: could not take a deploy lease at $LEASE_KEY" >&2
+	exit 1
+fi
+LEASE_HELD=1
+rm -f "$lease"
 
 # Assets before documents, and the stamp last: a walk that dies part-way leaves
 # the previously deployed pages intact and still pointing at assets that exist,
@@ -83,11 +107,27 @@ done < <(find dist -type f -name '*.html' | sort)
 put "$STAMP"
 echo "deploy: $((uploaded + 1)) file(s) at $sha"
 
+live_stamp() {
+	curl -sS "$SITE_URL/docs/build-sha.txt" 2>/dev/null | tr -d '[:space:]' || true
+}
+
+# The worker can serve the previous object briefly after a write, so a single
+# read cannot tell staleness from an overlap; a real overlap keeps answering.
+stamp_settled() {
+	local seen=
+	for _ in 1 2 3; do
+		seen=$(live_stamp)
+		[[ "$seen" == "$sha" ]] && break
+		sleep 2
+	done
+	printf '%s' "$seen"
+}
+
 # The worker occasionally serves the previous object for a moment after a write.
 # Retry a fixed few times so a correct deploy is not reported broken, then fail —
 # an unbounded wait would hide a real failure.
 for attempt in 1 2 3 4 5 6; do
-	live=$(curl -sS "$SITE_URL/docs/build-sha.txt" 2>/dev/null | tr -d '[:space:]' || true)
+	live=$(live_stamp)
 	[[ "$live" == "$sha" ]] && break
 	if [[ "$attempt" == 6 ]]; then
 		echo "deploy: $SITE_URL/docs/ serves '$live', expected '$sha'" >&2
@@ -118,7 +158,7 @@ done
 live_keys=$(mktemp)
 built_keys=$(mktemp)
 stale_keys=$(mktemp)
-trap 'rm -f "$auth" "$live_keys" "$built_keys" "$stale_keys"' EXIT
+trap 'release_lease; rm -f "$auth" "$live_keys" "$built_keys" "$stale_keys"' EXIT
 
 # The fetch is checked on its own: piping it straight into a filter conflates "the
 # listing failed" with "the listing was empty", because grep exits 1 on no match
@@ -148,6 +188,9 @@ if [[ -s "$REUSED" ]]; then
 	echo "deploy: kept $(grep -c . "$REUSED" || true) reused archive(s) out of the prune"
 fi
 
+grep -vxF "$LEASE_KEY" "$stale_keys" > "$stale_keys.kept" || true
+mv "$stale_keys.kept" "$stale_keys"
+
 stale_count=$(grep -c . "$stale_keys" || true)
 live_count=$(grep -c . "$live_keys" || true)
 if [[ "${stale_count:-0}" -gt 0 ]]; then
@@ -156,6 +199,32 @@ if [[ "${stale_count:-0}" -gt 0 ]]; then
 		sed 's/^/  /' "$stale_keys" >&2
 		exit 1
 	fi
+	# Last moment before anything is deleted, and both answers can change under
+	# us: a foreign lease says a rival is running, the stamp says one landed.
+	now=$(date +%s)
+	while IFS= read -r held; do
+		[[ -n "$held" ]] || continue
+		started=${held#"$LEASE_PREFIX/"}
+		started=${started%%-*}
+		# Unreadable or dated ahead of us: refuse rather than skip, because
+		# skipping is fail-open in the one path that deletes.
+		if ! [[ "$started" =~ ^[0-9]+$ ]] || [[ $((now - started)) -lt 0 ]]; then
+			echo "deploy: $held is a lease key this run cannot place in time — not pruning" >&2
+			echo "  delete it once you have established no deploy is running" >&2
+			exit 1
+		fi
+		[[ $((now - started)) -lt "$LEASE_MAX_AGE" ]] || continue
+		echo "deploy: $held holds a deploy lease taken $((now - started))s ago" >&2
+		echo "  another deploy is most likely running; not pruning, because this build cannot tell its pages from stale objects" >&2
+		exit 1
+	done < <(grep "^$LEASE_PREFIX/" "$live_keys" | grep -vxF "$LEASE_KEY" || true)
+	settled=$(stamp_settled)
+	if [[ "$settled" != "$sha" ]]; then
+		echo "deploy: $SITE_URL/docs/ still serves '$settled' after retries, not the '$sha' this run uploaded" >&2
+		echo "  another deploy most likely finished during this one; not pruning" >&2
+		exit 1
+	fi
+
 	while IFS= read -r key; do
 		[[ -n "$key" ]] || continue
 		curl -sS --fail-with-body -X DELETE --config "$auth" "$ENDPOINT/api/site/$key" >/dev/null 2>&1 \
@@ -165,6 +234,19 @@ if [[ "${stale_count:-0}" -gt 0 ]]; then
 	echo "deploy: pruned $stale_count object(s) no longer in the build"
 else
 	echo "deploy: nothing to prune"
+fi
+
+# The verify above is one moment; a run that started earlier can land its stamp
+# after it, leaving a site made of both with every step having reported success.
+final=$(stamp_settled)
+if [[ "$final" != "$sha" ]]; then
+	if [[ -z "$final" ]]; then
+		echo "deploy: uploaded $sha, but the stamp could not be read back to confirm it is live" >&2
+	else
+		echo "deploy: $SITE_URL/docs/ serves '$final' now this run has finished, not '$sha'" >&2
+		echo "  an overlapping deploy most likely landed; the site holds objects from both" >&2
+	fi
+	exit 1
 fi
 
 echo "deploy: verified live at $SITE_URL/docs/ ($sha)"
