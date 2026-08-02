@@ -94,7 +94,7 @@ function styleBlocks(html: string): string {
 }
 
 function compound(text: string) {
-  const m = text.match(/^([a-z0-9]*)((?:\.[a-z-]+)*)((?::(?:first|last)-child)*)$/i);
+  const m = text.match(/^([a-z0-9]*)((?:\.[a-z0-9_-]+)*)((?::(?:first|last)-child)*)$/i);
   if (!m) throw new Error(`unsupported selector compound: ${text}`);
   const classes = m[2] ? m[2].slice(1).split('.') : [];
   const pseudo = m[3] ? m[3].split(':').filter(Boolean) : [];
@@ -176,7 +176,7 @@ function couldMatch(selector: string, el: El): boolean {
   const head = right.split(/[[:]/)[0];
   const tag = head.match(/^[a-z][a-z0-9]*/i);
   if (tag && tag[0].toLowerCase() !== el.tag) return false;
-  for (const cls of head.match(/\.[a-z-]+/gi) ?? []) {
+  for (const cls of head.match(/\.[a-z0-9_-]+/gi) ?? []) {
     if (!el.classes.includes(cls.slice(1))) return false;
   }
   return hits(compound(right), el);
@@ -195,9 +195,12 @@ function declOf(css: string, el: El, prop: string, reversed = false): string | n
   let best: { rank: number; spec: number; order: number; value: string } | null = null;
   rules.forEach((rule, order) => {
     const safe = prop.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const decl = rule.body.match(new RegExp(`(?:^|;)\\s*${safe}:\\s*([^;]+)`));
-    if (!decl) return;
-    const raw = decl[1].trim();
+    // The LAST declaration in a rule wins, and re-declaring a property is the
+    // ordinary custom-property fallback idiom, so taking the first reported the
+    // fallback rather than the value that renders.
+    const decls = [...rule.body.matchAll(new RegExp(`(?:^|;)\\s*${safe}:\\s*([^;]+)`, 'g'))];
+    if (decls.length === 0) return;
+    const raw = decls[decls.length - 1][1].trim();
     const rank = /!\s*important$/i.test(raw) ? 1 : 0;
     const value = raw.replace(/\s*!\s*important$/i, '').trim();
     for (const part of rule.selectors) {
@@ -333,8 +336,14 @@ describe('callout severities', () => {
       // text-matched, so a reintroduced ground fails however it is spelled.
       const ground = name === 'doc' ? 'var(--code-bg)' : 'var(--card)';
       for (const s of [null, ...SEVERITIES]) {
-        expect({ theme: name, severity: s, bg: declOf(css, callout(s), 'background') })
+        const box = callout(s);
+        expect({ theme: name, severity: s, bg: declOf(css, box, 'background') })
           .toEqual({ theme: name, severity: s, bg: s === 'note' ? ground : 'var(--card)' });
+        // Resolving only the shorthand left the same hole one property name to
+        // the left: `background-color` is the more natural spelling for a
+        // reintroduced ground and was invisible to the guard.
+        expect({ theme: name, severity: s, longhand: declOf(css, box, 'background-color') })
+          .toEqual({ theme: name, severity: s, longhand: null });
       }
     });
 
