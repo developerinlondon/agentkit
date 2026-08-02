@@ -509,12 +509,15 @@ describe('a deploy that overlaps another one stops instead of reporting success'
   const SETTLED = ['docs/index.html', 'docs/getting-started/install/index.html', 'docs/favicon.svg'];
 
   test('a lease belonging to a running deploy stops the prune before anything is deleted', () => {
-    remoteKeys([...SETTLED, 'docs/gone.html', rivalLeaseKey('deadbeef')]);
+    const rival = rivalLeaseKey('deadbeef');
+    remoteKeys([...SETTLED, 'docs/gone.html', rival]);
     const result = deploy();
 
     expect(result.status).toBe(1);
     expect(result.stderr).toContain('holds a deploy lease');
     expect(deleted()).toEqual([]);
+    // deleted() filters lease keys, so pin the rival's survival explicitly.
+    expect(leaseOps().filter((line) => line === `delete ${rival}`)).toEqual([]);
   });
 
   test('a lease left behind by a crashed deploy ages out and is itself pruned', () => {
@@ -534,6 +537,24 @@ describe('a deploy that overlaps another one stops instead of reporting success'
     // Pruned AND released would show two deletes; released only shows one.
     expect(result.status, result.stderr).toBe(0);
     expect(leaseOps().map((line) => line.split(' ')[0])).toEqual(['put', 'delete']);
+  });
+
+  test('a lease key this run cannot place in time stops the prune', () => {
+    remoteKeys([...SETTLED, 'docs/gone.html', 'docs/deploy-lease/not-a-timestamp.txt']);
+    const result = deploy();
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('cannot place in time');
+    expect(deleted()).toEqual([]);
+  });
+
+  test('a lease dated in the future stops the prune rather than reading as fresh forever', () => {
+    remoteKeys([...SETTLED, 'docs/gone.html', rivalLeaseKey('deadbeef', -86400)]);
+    const result = deploy();
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('cannot place in time');
+    expect(deleted()).toEqual([]);
   });
 
   test('a rival stamp appearing during the prune phase stops the deploy', () => {

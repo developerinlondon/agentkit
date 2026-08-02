@@ -206,7 +206,13 @@ if [[ "${stale_count:-0}" -gt 0 ]]; then
 		[[ -n "$held" ]] || continue
 		started=${held#"$LEASE_PREFIX/"}
 		started=${started%%-*}
-		[[ "$started" =~ ^[0-9]+$ ]] || continue
+		# Unreadable or dated ahead of us: refuse rather than skip, because
+		# skipping is fail-open in the one path that deletes.
+		if ! [[ "$started" =~ ^[0-9]+$ ]] || [[ $((now - started)) -lt 0 ]]; then
+			echo "deploy: $held is a lease key this run cannot place in time — not pruning" >&2
+			echo "  delete it once you have established no deploy is running" >&2
+			exit 1
+		fi
 		[[ $((now - started)) -lt "$LEASE_MAX_AGE" ]] || continue
 		echo "deploy: $held holds a deploy lease taken $((now - started))s ago" >&2
 		echo "  another deploy is most likely running; not pruning, because this build cannot tell its pages from stale objects" >&2
