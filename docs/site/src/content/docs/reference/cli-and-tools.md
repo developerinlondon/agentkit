@@ -410,15 +410,16 @@ Every one of these is read from the hook's environment **and** matched as an inl
 command text, because a prefix assignment never reaches the hook's own environment. Prefix them onto
 one command; they are deliberately not config.
 
-| Variable                           | Clears                                                    | Read by                                                         |
-| ---------------------------------- | --------------------------------------------------------- | --------------------------------------------------------------- |
-| `AGENTKIT_ALLOW_PKG=1`             | `pkg-police` — npm/npx/yarn/pnpm                          | `hooks/claude/pkg-police.sh`, `plugins/pkg-police.ts`           |
-| `AGENTKIT_ALLOW_DELEGATED=1`       | `resource-police` — delegated workloads                   | `hooks/claude/resource-police.sh`, `plugins/resource-police.ts` |
-| `AGENTKIT_ALLOW_STALE_PUSH=1`      | `git-police` — branch behind the default branch           | `hooks/claude/git-police.sh`                                    |
-| `AGENTKIT_ALLOW_BRANCH_STACKING=1` | `git-police` — new branch cut from a feature branch       | `hooks/claude/git-police.sh`                                    |
-| `AGENTKIT_ALLOW_SHARED_BRANCH=1`   | `git-police` — new branch in a clone with other worktrees | `hooks/claude/git-police.sh`                                    |
-| `AGENTKIT_ALLOW_BARE_SVG=1`        | `pages-police` — `--allow-bare-svg` figure lint           | `hooks/claude/pages-police.sh`                                  |
-| `AGENTKIT_MR_POLICE_MAX=<n>`       | `mr-police` — raises the open-MR ceiling (default `1`)    | `hooks/claude/mr-police.sh`                                     |
+| Variable                           | Clears                                                                                                                                                                                        | Read by                                                         |
+| ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| `AGENTKIT_ALLOW_PKG=1`             | `pkg-police` — npm/npx/yarn/pnpm                                                                                                                                                              | `hooks/claude/pkg-police.sh`, `plugins/pkg-police.ts`           |
+| `AGENTKIT_ALLOW_DELEGATED=1`       | `resource-police` — delegated workloads                                                                                                                                                       | `hooks/claude/resource-police.sh`, `plugins/resource-police.ts` |
+| `AGENTKIT_ALLOW_STALE_PUSH=1`      | `git-police` — branch behind the default branch                                                                                                                                               | `hooks/claude/git-police.sh`                                    |
+| `AGENTKIT_ALLOW_BRANCH_STACKING=1` | `git-police` — new branch cut from a feature branch                                                                                                                                           | `hooks/claude/git-police.sh`                                    |
+| `AGENTKIT_ALLOW_SHARED_BRANCH=1`   | `git-police` — new branch in a clone with other worktrees                                                                                                                                     | `hooks/claude/git-police.sh`                                    |
+| `AGENTKIT_ALLOW_BARE_SVG=1`        | `pages-police` — `--allow-bare-svg` figure lint                                                                                                                                               | `hooks/claude/pages-police.sh`                                  |
+| `AGENTKIT_MR_POLICE_MAX=<n>`       | `mr-police` — raises the open-MR ceiling (default `1`)                                                                                                                                        | `hooks/claude/mr-police.sh`                                     |
+| `AGENTKIT_BRANCH_WIP_MAX=<n>`      | `git-police` — raises the unfinished-branch ceiling (default `1`); exactly `off` disables the cap, and any other unusable value warns and falls back to `1` rather than disabling it silently | `hooks/claude/git-police.sh`                                    |
 
 `AGENTKIT_ALLOW_DELEGATED=1` does **not** clear the unrecognised-runner refusal:
 `resource-police` trusts `bounded-run` by installed path, never by name.
@@ -446,8 +447,9 @@ one command; they are deliberately not config.
 | everything else  | **no**     | —                                  |
 
 The three that honour it are the `PostToolUse` write hooks; `version-police` is an OpenCode plugin.
-The `PreToolUse` guards — `git-police`, `pkg-police`, `resource-police`, `kubectl-police`,
-`mr-police`, `pages-police`, `review-police` — ignore `AGENTKIT_SKIP_HOOKS` entirely. Values are
+The `PreToolUse` guards — `git-police`, `issue-police`, `pkg-police`, `resource-police`,
+`kubectl-police`, `mr-police`, `pages-police`, `review-police` — ignore `AGENTKIT_SKIP_HOOKS`
+entirely. Values are
 whitespace-stripped, so `a, b` behaves like `a,b`.
 
 ### Installer and bootstrap

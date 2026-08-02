@@ -113,6 +113,7 @@ fileGroups:
     - "tests/git-police.test.ts"
     - "tests/hook-payload-compat.test.ts"
     - "tests/hook-supervisor.test.ts"
+    - "tests/hooks/**/*"
     - "tests/kubectl-police.test.ts"
     - "tests/mr-police.test.ts"
     - "tests/pkg-police.test.ts"

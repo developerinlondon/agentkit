@@ -7,8 +7,14 @@
           {
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/hooks/git-police.sh",
-            "timeout": 10,
+            "timeout": 20,
             "statusMessage": "git-police: checking safety rules..."
+          },
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/issue-police.sh",
+            "timeout": 10,
+            "statusMessage": "issue-police: checking issue disposition..."
           },
           {
             "type": "command",
