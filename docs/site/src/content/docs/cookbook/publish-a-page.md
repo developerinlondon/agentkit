@@ -59,10 +59,12 @@ bun ~/.agentkit/skills/publish-page/publish.ts \
 | `raw`    | complete self-contained HTML, published as-is |
 
 A rendered deck is worth more than a description of one:
-[the publish-freshness deck](/docs/examples/publish-freshness-deck.html) is six slides built from
-[its markdown source](/docs/examples/publish-freshness-deck.md) through the `deck` template — cover
-with a stat row, a severity callout, a stage flow, legend rails, and column cards. Arrow keys, space
-and swipe move between slides; the toggle in the nav bar flips the theme.
+[the publish-freshness deck](/docs/examples/publish-freshness-deck.html) is six slides through the
+`deck` template — a cover with a stat row, a severity callout, legend rails, and column cards. Arrow
+keys, space and swipe move between slides; the toggle in the nav bar flips the theme. Its markdown
+source is
+[`docs/site/examples/publish-freshness-deck.md`](https://github.com/developerinlondon/agentkit/blob/main/docs/site/examples/publish-freshness-deck.md),
+and re-rendering it reproduces the published file byte for byte.
 
 ## Callouts
 
