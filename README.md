@@ -591,6 +591,18 @@ externalsecret) that auto-generate and manage secrets for any GitOps app.
 
 ## Contributing
 
+Set up a clone before anything else:
+
+```sh
+bun install   # also installs skills/publish-page, which the test suite loads
+bun test
+```
+
+That single install is the whole setup. It pulls a nested package too, so a
+fresh `node_modules` is around 230 MB rather than 75 MB — without it three
+suites throw on import and their failures name the renderer instead of the
+missing package.
+
 1. Skills follow the [skills.sh](https://skills.sh) / [agentskills.io](https://agentskills.io) standard
 2. Each skill lives in `skills/<name>/SKILL.md` with optional `references/` and `scripts/` subdirs
 3. Rules live in `rules/<name>.md` with frontmatter globs for auto-loading

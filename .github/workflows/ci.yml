@@ -105,9 +105,6 @@ jobs:
       - name: Install dependencies from the lockfile
         run: bun install --frozen-lockfile
 
-      - name: Install publish-page skill dependencies
-        run: bun install --frozen-lockfile --cwd skills/publish-page
-
       - name: Install the pinned d2 renderer
         uses: ./.github/actions/install-d2
         with:
@@ -197,10 +194,6 @@ jobs:
       - name: Install dependencies from the lockfile
         if: steps.reuse.outputs.tested != 'true'
         run: bun install --frozen-lockfile
-
-      - name: Install publish-page skill dependencies
-        if: steps.reuse.outputs.tested != 'true'
-        run: bun install --frozen-lockfile --cwd skills/publish-page
 
       - name: Install the pinned d2 renderer
         if: steps.reuse.outputs.tested != 'true'

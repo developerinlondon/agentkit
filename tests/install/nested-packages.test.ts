@@ -6,6 +6,12 @@ const repo = join(import.meta.dir, '..', '..');
 const root = JSON.parse(readFileSync(join(repo, 'package.json'), 'utf8'));
 const postinstall: string = root.scripts?.postinstall ?? '';
 const read = (p: string) => readFileSync(join(repo, p), 'utf8');
+const NESTED_SCRIPT = 'scripts/install-nested.sh';
+const script = existsSync(join(repo, NESTED_SCRIPT)) ? read(NESTED_SCRIPT) : '';
+// Commands only: the failure message quotes a --cwd of its own, and the command
+// itself may be wrapped (`if bun install ...; then`).
+const installCommands = script.split('\n')
+  .filter((l) => l.includes('bun install') && !l.trim().startsWith('echo'));
 
 // A skill that carries its own package.json is a second install nobody performs.
 // `skills/publish-page` is imported at MODULE LOAD by three suites, so without it
@@ -68,8 +74,13 @@ describe('nested skill packages are installed by a root install', () => {
       .toEqual({ packages: ['diagram', 'publish-page'], then });
   });
 
+  test('the postinstall runs the nested install, and it is a real file', () => {
+    expect(postinstall).toContain(NESTED_SCRIPT);
+    expect(existsSync(join(repo, NESTED_SCRIPT))).toBe(true);
+  });
+
   test('publish-page is installed, because the suite cannot load without it', () => {
-    expect(postinstall).toContain('--cwd skills/publish-page');
+    expect(installCommands.join('\n')).toContain('--cwd skills/publish-page');
   });
 
   test('the nested install is pinned, and says what to do when the lockfile drifts', () => {
@@ -78,8 +89,8 @@ describe('nested skill packages are installed by a root install', () => {
     // the WHOLE root install, and bun's own advice is to re-run without
     // --frozen-lockfile, which fails identically because the flag lives in this
     // script — so it prints the remedy that works.
-    expect(postinstall).toContain('--frozen-lockfile');
-    expect(postinstall).toContain('bun install --cwd skills/publish-page, then commit that lockfile');
+    expect(installCommands.join('\n')).toContain('--frozen-lockfile');
+    expect(script).toContain('bun install --cwd skills/publish-page, then commit that lockfile');
   });
 
   test('a pinned nested install only means anything where a lockfile exists', () => {
@@ -87,7 +98,7 @@ describe('nested skill packages are installed by a root install', () => {
     // nothing. Whoever adds it to the postinstall must commit a lockfile first,
     // or inherit the false assurance rather than the guarantee.
     for (const pkg of nestedPackages()) {
-      const named = postinstall.includes(`--cwd skills/${pkg}`);
+      const named = installCommands.some((l) => l.includes(`--cwd skills/${pkg}`));
       const locked = existsSync(join(repo, 'skills', pkg, 'bun.lock'));
       expect({ pkg, namedWithoutLockfile: named && !locked }).toEqual({ pkg, namedWithoutLockfile: false });
     }
@@ -111,9 +122,7 @@ describe('nested skill packages are installed by a root install', () => {
   });
 
   test('every nested package the postinstall names actually exists', () => {
-    // Only the command, not the failure message — which quotes a --cwd of its
-    // own and whose trailing punctuation is not part of a path.
-    const named = [...postinstall.split('||')[0].matchAll(/--cwd\s+(\S+)/g)].map((m) => m[1]);
+    const named = [...installCommands.join('\n').matchAll(/--cwd\s+([\w./-]+)/g)].map((m) => m[1]);
     expect(named.length).toBeGreaterThan(0);
     for (const dir of named) {
       expect({ dir, present: existsSync(join(repo, dir, 'package.json')) })
