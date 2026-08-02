@@ -14,7 +14,6 @@ const ALLOWED_CAUTIONS: Record<string, string[]> = {
   'getting-started/upgrading.md': ['Local edits inside an installed skill are destroyed on upgrade'],
   'cookbook/contain-a-build.md': ['Provision `agent-work.slice` on the host first'],
   'cookbook/gate-a-merge.md': ['Keep the record out of git'],
-  'concepts/pages.md': ['Published pages are public'],
   'reference/cli-and-tools.md': ['Pass an explicit file list'],
 };
 

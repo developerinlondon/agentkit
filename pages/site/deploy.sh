@@ -2,7 +2,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 TOKEN_FILE="${AGENTKIT_SITE_TOKEN_FILE:-$HOME/.config/agentkit/site-token}"
-ENDPOINT="${AGENTKIT_PAGES_ENDPOINT:-https://pages.agentkit.sbs}"
+ENDPOINT="${AGENTKIT_SITE_ENDPOINT:-https://agentkit.sbs}"
 SITE_URL="${AGENTKIT_SITE_URL:-https://agentkit.sbs}"
 [[ -f "$TOKEN_FILE" ]] || { echo "deploy: site token missing at $TOKEN_FILE" >&2; exit 1; }
 

@@ -93,7 +93,11 @@ function createFixture(): Fixture {
   return { home, repo, root, target };
 }
 
-function run(fixture: Fixture, args: string[]) {
+function run(
+  fixture: Fixture,
+  args: string[],
+  extraEnv: Record<string, string | undefined> = {},
+) {
   return spawnSync('bash', [join(fixture.repo, 'install.sh'), ...args], {
     cwd: fixture.repo,
     env: {
@@ -108,6 +112,7 @@ function run(fixture: Fixture, args: string[]) {
       // Keeps `systemctl --user` out of the run: both the installer and the
       // uninstaller probe this before touching a real user manager.
       XDG_RUNTIME_DIR: join(fixture.home, 'no-such-runtime'),
+      ...extraEnv,
     },
     encoding: 'utf-8',
     timeout: 120_000,
@@ -284,6 +289,36 @@ describe('install.sh --uninstall (global)', () => {
       const second = run(fixture, ['--global', '--uninstall']);
       expect(second.status, second.stderr).toBe(0);
       expect(second.stdout).not.toContain('Removed: ');
+    } finally {
+      rmSync(fixture.root, { force: true, recursive: true });
+    }
+  });
+
+  test('warns when the Claude marketplace cannot be removed', () => {
+    const fixture = createFixture();
+    const bin = join(fixture.root, 'bin');
+    try {
+      writeFixtureFile(
+        join(bin, 'claude'),
+        `#!/usr/bin/env bash
+if [[ "$*" == "plugin list --json" ]]; then
+  printf '[]\n'
+  exit 0
+fi
+if [[ "$*" == "plugin marketplace remove agentkit" ]]; then
+  exit 9
+fi
+exit 0
+`,
+        true,
+      );
+
+      const removed = run(fixture, ['--global', '--uninstall', '--claude-plugin'], {
+        PATH: `${bin}:${process.env.PATH}`,
+      });
+      expect(removed.status, removed.stderr).toBe(0);
+      expect(removed.stdout).not.toContain('Removed marketplace: agentkit');
+      expect(removed.stderr).toContain('WARNING: failed to remove marketplace agentkit');
     } finally {
       rmSync(fixture.root, { force: true, recursive: true });
     }

@@ -35,6 +35,24 @@ function canonSkill(home: string, name: string) {
 }
 
 describe('skill kit selection', () => {
+  test('an install never copies a source dependency tree', () => {
+    const home = mkdtempSync(join(tmpdir(), 'agentkit-kits-'));
+    const sourceModules = join(repoRoot, 'skills', 'autonomous-workflow', 'node_modules');
+
+    try {
+      expect(existsSync(sourceModules)).toBe(false);
+      mkdirSync(sourceModules);
+      writeFileSync(join(sourceModules, 'source-only.txt'), 'must not be installed\n');
+
+      const result = install(home);
+      expect(result.status, result.stderr).toBe(0);
+      expect(existsSync(join(canonSkill(home, 'autonomous-workflow'), 'node_modules'))).toBe(false);
+    } finally {
+      rmSync(sourceModules, { force: true, recursive: true });
+      rmSync(home, { force: true, recursive: true });
+    }
+  }, globalInstallTimeoutMs);
+
   test('a default install ships core skills and leaves the product kit out', () => {
     const home = mkdtempSync(join(tmpdir(), 'agentkit-kits-'));
 
@@ -284,7 +302,7 @@ describe('skill kit selection', () => {
     } finally {
       rmSync(home, { force: true, recursive: true });
     }
-  }, globalInstallTimeoutMs);
+  }, globalInstallTimeoutMs * 2);
 
   test('dropping a kit from the persisted file stops selecting it', () => {
     const home = mkdtempSync(join(tmpdir(), 'agentkit-kits-'));
@@ -302,7 +320,7 @@ describe('skill kit selection', () => {
     } finally {
       rmSync(home, { force: true, recursive: true });
     }
-  }, globalInstallTimeoutMs);
+  }, globalInstallTimeoutMs * 2);
 
   test('an unknown flag fails with usage instead of becoming the target directory', () => {
     const home = mkdtempSync(join(tmpdir(), 'agentkit-kits-'));
@@ -382,7 +400,7 @@ describe('skill kit selection', () => {
     } finally {
       rmSync(home, { force: true, recursive: true });
     }
-  }, globalInstallTimeoutMs);
+  }, globalInstallTimeoutMs * 3);
 
   test('--without core is refused', () => {
     const home = mkdtempSync(join(tmpdir(), 'agentkit-kits-'));

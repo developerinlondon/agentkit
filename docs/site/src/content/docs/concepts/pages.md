@@ -1,6 +1,6 @@
 ---
 title: Pages
-description: The self-hosted artifact publisher — how a page gets a stable URL, and the three secrets that keep rotation from orphaning it.
+description: The self-hosted artifact publisher — Assay accounts, private pages, stable URLs, and controlled sharing.
 sidebar:
   order: 6
 ---
@@ -9,10 +9,11 @@ An agent finishes something worth looking at — a report, an architecture page,
 the wrong container for it. Pages is the other end: one command renders that content through a house
 theme and returns a live URL.
 
-:::caution[Published pages are public]
-Reads are unauthenticated, so anyone with the URL can load the page. A `noindex, nofollow` robots
-header keeps an unlinked slug out of search results, and an unguessable slug is not access
-control. Publish nothing confidential.
+:::note[New pages are private]
+Publishing requires an Assay account and creates a page visible only to its owner. The owner can
+create a revocable sharing link or grant access to another verified Assay email from
+`https://account.agentkit.sbs/dashboard`. Pages created before accounts remain public during the
+migration; an old unguessable slug is still not access control.
 :::
 
 ## The serving path
@@ -20,9 +21,17 @@ control. Publish nothing confidential.
 ```mermaid
 flowchart LR
   agent["agent output<br/>markdown or HTML"] --> pub["publish.ts<br/>theme · figure lint · 5 MB gate"]
-  pub -- "PUT /api/pages/&lt;slug&gt;<br/>bearer token" --> worker["Cloudflare Worker"]
+  pub -- "device authorization" --> assay["Assay Auth<br/>identity"]
+  pub -- "PUT /api/pages/&lt;slug&gt;<br/>device credential" --> account["account.agentkit.sbs<br/>trusted control plane"]
+  browser["browser"] -- "host-only session" --> account
+  account -- "10 minute page capability" --> pages["pages.agentkit.sbs<br/>untrusted content"]
+  browser -- "capability or share link" --> pages
+  account --> worker["Cloudflare Worker"]
+  pages --> worker
   worker --> r2["R2 bucket<br/>the served copy"]
-  pub -. "when a canonical clone is present" .-> repo["git clone<br/>source + rendered HTML, committed"]
+  worker --> d1["D1<br/>owners · sessions · sharing"]
+  account -. "OIDC code + PKCE" .-> assay
+  pub -. "with --git" .-> repo["git clone<br/>explicit archival"]
 ```
 
 Three parts in the serving path — a skill that renders and uploads, a Worker that serves, an object
@@ -30,18 +39,21 @@ store that holds the rendered HTML — plus an optional canonical clone.
 
 ### The Worker contract
 
-| Method        | Path                       | Behaviour                                                                                                           |
-| ------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `PUT`         | `/api/pages/<slug>`        | 401 on a bad bearer · 400 on a bad slug · 413 over 5 MB or on an empty body · else store and return the URL as JSON |
-| `DELETE`      | `/api/pages/<slug>`        | 401 · 400 · 404 when the key is absent · else delete                                                                |
-| `PUT`         | `/api/site/<path>`         | site-token only · the docs-asset keyspace, real filenames and extensions · same 5 MB rule                           |
-| `DELETE`      | `/api/site/<path>`         | site-token only · 400 on a path outside the docs subtree · 404 when absent                                          |
-| `GET`, `HEAD` | apex (and `www`) `/<path>` | the site keyspace; the root is the site index                                                                       |
-| `GET`, `HEAD` | pages host `/<slug>`       | the published-pages keyspace with `noindex, nofollow`; the root is the pages index                                  |
-| anything else | —                          | 405                                                                                                                 |
+| Origin                      | Method        | Path                | Behaviour                                                                                     |
+| --------------------------- | ------------- | ------------------- | --------------------------------------------------------------------------------------------- |
+| `account.agentkit.sbs`      | `PUT`         | `/api/pages/<slug>` | Device bearer required · owner-only updates · new pages private · 5 MB and per-account quotas |
+| `account.agentkit.sbs`      | `DELETE`      | `/api/pages/<slug>` | Device bearer required · owner-only · 404 when absent                                         |
+| `account.agentkit.sbs`      | `GET`         | `/dashboard`        | Owner pages, invites, sharing controls, and publishing devices                                |
+| `account.agentkit.sbs`      | `POST`        | `/api/device/*`     | Bounded device authorization for the publish skill                                            |
+| `pages.agentkit.sbs`        | `GET`, `HEAD` | `/<slug>`           | Public/legacy page, share token, or account-issued page capability; every other method is 404 |
+| apex (and `www`)            | `PUT`         | `/api/site/<path>`  | Site-token only · docs assets with real filenames and extensions · same 5 MB rule             |
+| apex (and `www`)            | `GET`, `HEAD` | `/<path>`           | Marketing and documentation keyspace; the root is the site index                              |
+| an unconfigured Worker host | any           | any                 | 404                                                                                           |
 
-Reads split on host. Writes split on keyspace. Auth is checked **before** the slug or path is
-validated, so an unauthenticated caller learns nothing from a 400.
+Routing and credentials both split by host. The host-only account session is never sent with
+rendered content. A private-page request visits the account origin to prove ownership or an invite,
+then returns with a random capability scoped to that one page for ten minutes. This keeps arbitrary
+inline JavaScript on a published page outside the dashboard's same-origin boundary.
 
 :::note[The docs subtree is a deliberate relaxation]
 This documentation is served from the site keyspace under a `docs/` prefix, and that subtree is the
@@ -52,17 +64,20 @@ Every one of those relaxations is confined to that prefix. Outside it the apex s
 `<slug>/index.html` under `default-src 'none'`.
 :::
 
-## Three secrets, three jobs
+## Credentials have separate jobs
 
-| Secret        | Grants                                             | Consequence                                 |
-| ------------- | -------------------------------------------------- | ------------------------------------------- |
-| slug key      | derives a URL from a name — no write access at all | rotating the auth tokens never moves a page |
-| publish token | writes `pages/<slug>/…`                            | a leak defaces pages, not the site          |
-| site token    | writes `_site/…` only                              | the site's own keys need a different secret |
+| Credential      | Grants                                                    | Storage                                               |
+| --------------- | --------------------------------------------------------- | ----------------------------------------------------- |
+| slug key        | Derives a URL from a name; no network access              | Local file, mode `0600`                               |
+| device token    | Writes only pages owned by one Assay user until revoked   | Local file, mode `0600`; SHA-256 hash in D1           |
+| browser session | Account dashboard and access-broker requests              | Host-only secure HTTP-only cookie; SHA-256 hash in D1 |
+| page capability | Read access to one page for ten minutes                   | URL parameter; SHA-256 hash and expiry in D1          |
+| sharing token   | Read access to one page until its owner disables the link | URL shown once; SHA-256 hash in D1                    |
+| site token      | Writes the marketing and documentation `_site/` keyspace  | Worker secret, isolated from account publishing       |
 
-The separation between the two write tokens is **mechanical, not policy**: every site key is rooted at
-`_site/`, and the published-page slug alphabet has no way to express a leading underscore. A
-publish-token holder cannot address a site key at all.
+The site-token separation remains mechanical: every site key is rooted at `_site/`, and the
+published-page slug alphabet cannot express a leading underscore. A device-token holder cannot
+address a site key at all.
 
 Slugs are an HMAC-SHA256 of the name under the slug key, truncated to 20 hex characters. Deterministic,
 so republishing the same name updates the same URL, and no name-to-slug mapping has to be stored
@@ -77,7 +92,7 @@ URL aloud.
 
 ```
 bun <skill-dir>/publish.ts --name <name> --file <content-file> \
-  [--template doc|deck|raw] [--title "Title"]
+  [--template doc|deck|raw] [--title "Title"] [--git]
 bun <skill-dir>/publish.ts --name <name> --delete
 ```
 
@@ -90,12 +105,13 @@ bun <skill-dir>/publish.ts --name <name> --delete
 | `--title`          | Overrides the title, which otherwise comes from the first heading, a `<title>`, or the page's name |
 | `--delete`         | Remove a page you published                                                                        |
 | `--no-git`         | Skip the canonical commit                                                                          |
+| `--git`            | Explicitly archive source and rendered HTML in the canonical clone                                 |
 | `--allow-bare-svg` | Suppress the bare-diagram refusal — blocked by a hook unless the user approved it                  |
 
-The skill publishes end to end without asking about slug, template or mechanics — [publish a page](/docs/cookbook/publish-a-page/) walks one through. The one carve-out is
-content: when it is _proposing_ the page and the material is private, it confirms first. And it does not
-skip verification — load the printed URL in headless Chromium, screenshot both themes, read every
-figure. **Never report the URL of an unviewed page.**
+On first use the skill opens Assay sign-in, shows a short device code, and stores the resulting
+per-device credential. It then publishes end to end without asking about slug, template, or
+mechanics. It does not skip verification: load the printed URL in headless Chromium, screenshot
+both themes, and read every figure. **Never report the URL of an unviewed page.**
 
 ## Direct writes are blocked on purpose
 
@@ -133,9 +149,10 @@ styles hardcode white while carrying a baked diagram.
 
 ## The canonical clone
 
-When a clone of the canonical pages repository is present, publishing also writes the unrendered source
-and its metadata, the rendered HTML, and a commit **scoped by path** to exactly those files, pushed
-immediately. A failed push warns that the commit is local only.
+Canonical archival is deliberately explicit because repository visibility is independent of the
+page ACL. With `--git` and a canonical clone present, publishing writes the unrendered source and
+metadata, the rendered HTML, and a commit **scoped by path** to exactly those files, then pushes it.
+A failed push warns that the commit is local only.
 
 ```
 themes/          versioned page chrome
@@ -146,10 +163,10 @@ dist/<slug>/     rendered HTML — the archived copy of what was uploaded
 The path scoping is deliberate: the clone is long-lived and shared, and a bare commit would sweep in
 anything else that happened to be staged.
 
-Without that clone, publishing still works — it warns once that it is using the skill's bundled themes,
-which can lag the canonical ones, and that no history is being recorded. That warning matters: a
-republish under an existing name overwrites silently, and on a machine with no clone there is nothing
-to recover from.
+Without `--git`, no page content enters the canonical repository. Without a clone, publishing still
+works — it warns once that it is using the skill's bundled themes, which can lag the canonical ones,
+and that no history is being recorded. That warning matters: a republish under an existing name
+overwrites silently, and on a machine with no clone there is nothing to recover from.
 
 Staleness runs both ways, and the clone is the side that is easiest to miss. Publishing prefers the
 clone's themes whenever a clone exists, so a clone left behind its upstream serves older chrome than

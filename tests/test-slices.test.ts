@@ -11,9 +11,11 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import {
+  DEFAULT_TEST_TIMEOUT_MS,
   TEST_SLICES,
   discoverProductionSurfaces,
   discoverTestFiles,
+  sliceCommand,
   testTaskInputPatterns,
   validateProductionRouting,
   validateTestSlices,
@@ -86,6 +88,16 @@ function readMoonConfig(): MoonConfig {
 }
 
 describe('test slice routing', () => {
+  test('direct slice runs use the same bounded default as the authoritative runner', () => {
+    expect(DEFAULT_TEST_TIMEOUT_MS).toBe(60_000);
+    expect(sliceCommand('review')).toEqual([
+      process.execPath,
+      'test',
+      '--timeout=60000',
+      ...TEST_SLICES.review,
+    ]);
+  });
+
   test('assigns every test file to exactly one slice', () => {
     expect(validateTestSlices(discoverTestFiles())).toEqual([]);
   });
