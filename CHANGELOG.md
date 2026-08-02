@@ -5,6 +5,35 @@ top and ships with the next tag.
 
 ## [Unreleased]
 
+## v0.6.4 — 2026-08-02
+
+- feat(themes): editorial typography for published pages, and a light mode that
+  is a warm paper ground in its own right rather than an inversion of the dark
+  palette. Headline clamps rather than sitting at a flat size, the lede is
+  selected structurally so a markdown author gets it by writing a paragraph
+  after the title, and prose, headings and full-bleed content sit at three
+  distinct width tiers so a heading no longer overhangs the prose beneath it.
+  A callout's label is now marked by the renderer rather than guessed at by
+  position: `:first-child` counts element children, so CSS cannot tell a label
+  from a bold phrase that merely happens to be the first element in a sentence,
+  and every spelling an author writes — inline, a blank line inside the div, an
+  `<h3>`, a paragraph the author wrapped themselves — renders identically, at
+  one height, with the label taking its own rail's colour. Bold anywhere else
+  stays body text. Every ink and ground pair the themes actually paint was
+  recomputed on the new ground before shipping; the worst measures 5.28:1
+- fix(diagram): one colour normalisation, applied to both the registered fill
+  and the painted value and shared by the attribute and CSS-block paths.
+  `rgb(1 2 3)`, `rgb(1,2,3)`, 3-digit, 6-digit and 8-digit hex are the same
+  colour when they are the same colour, and an alpha-bearing paint is refused
+  rather than silently flattened to an opaque `currentColor`. Previously a mark
+  could ship half baked with nothing raised
+- feat(diagram,pages): monochrome vendor marks are re-inlined as `<svg>` so the
+  page theme drives their ink, since one baked grey cannot clear contrast on
+  both the dark and the light node fill; full-colour logos are left untouched.
+  `find-icon` searches the manifest and reports set, licence and colour class,
+  and an unknown icon suggests real candidates. The doc theme gains a sticky
+  labelled section nav in place of the unlabelled dot rail, and both themes gain
+  `.callout` severities contrast-checked at 4.5:1
 - feat(wip): `wip` reports what was started and not finished in a repository —
   branches with age and commit count, worktrees with a loud warning on dirty
   ones, open merge requests or pull requests and what holds each, open issues
