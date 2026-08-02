@@ -52,8 +52,7 @@ A police unit is a policy with up to three implementations, and they do not read
 | `wip`               | `plan-police` (via `plan-gate`) | —                       | no such policy                    |
 
 `format-police`, `issue-police`, `kubectl-police`, `mr-police` and `pages-police` read no config at
-all; their
-exceptions are per-command environment variables. The Codex `.rules` files contain no config
+all. Most take their exceptions as per-command environment variables; `issue-police` takes none. The Codex `.rules` files contain no config
 reader — they are static argv-prefix policies, so the installer reads the config for them and
 installs, filters, or removes the corresponding rules file on each run.
 

@@ -13,11 +13,16 @@ top and ships with the next tag.
   Finished is the forge's answer, never git topology, for the reason `wip`
   records: a squash-merged branch stays a non-ancestor of the default branch
   forever, and every git-only rule reports it as outstanding. Branches the forge
-  says merged or closed drop out; so do branches with nothing committed, no
-  worktree, and no change ever raised, which is what a worktree-per-branch
-  harness leaves behind. A gone upstream is left to the existing stale-branch
-  rule. `AGENTKIT_BRANCH_WIP_MAX=<n>` raises the ceiling and `=off` disables it,
-  inline or from the environment.
+  says merged or closed drop out, as do branches with nothing committed and
+  branches a worktree is holding. That last one matters: under one worktree per
+  agent, counting held branches would refuse agent B a branch because agent A is
+  mid-flight, and would name a branch whose deletion destroys a live checkout.
+  The stale-branch rule already excludes those for the same reason, and a gone
+  upstream is likewise left to it.
+  `AGENTKIT_BRANCH_WIP_MAX=<n>` raises the ceiling, inline or from the
+  environment. Exactly `off` disables the cap; any other unusable value (`0`,
+  `-1`, a typo) warns and falls back to `1`, because a guard that a mistyped
+  value switches off silently is the failure this rule exists to close.
   Three outcomes stay distinguishable: silence when the repository is clean, a
   refusal naming the branches when it is not, and an `UNCHECKED` reminder — never
   a refusal — when no forge could be reached, because blocking a developer on a

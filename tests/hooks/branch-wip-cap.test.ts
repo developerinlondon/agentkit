@@ -202,13 +202,54 @@ describe('branch WIP cap: what does not count as started', () => {
     expect(runHook(clone, 'git checkout -b feat/next').trim()).toBe('');
   });
 
-  test('a branch with nothing committed but a worktree on it does count', () => {
+  // The operator's real shape: many agents, one worktree each. Agent B's first
+  // branch must not be refused because agent A is mid-flight, and the refusal
+  // must never name a branch whose deletion would destroy a live checkout.
+  test('branches other worktrees hold do not count, however many there are', () => {
+    const clone = freshClone();
+    for (const name of ['agent/a', 'agent/b', 'agent/c']) {
+      git(clone, `checkout -q -b ${name}`);
+      git(clone, 'commit -q --allow-empty -m work');
+      git(clone, 'checkout -q main');
+      git(clone, `worktree add -q ${join(root, `wt-${cloneCount}-${name.replace('/', '-')}`)} ${name}`);
+    }
+    const out = runHook(clone, 'git checkout -b feat/next');
+    expect(out.trim()).toBe('');
+    for (const name of ['agent/a', 'agent/b', 'agent/c']) {
+      expect(out).not.toContain(name);
+    }
+  });
+
+  test('a branch with nothing committed and only a worktree does not count', () => {
     const clone = freshClone();
     git(clone, 'branch feat/uncommitted');
     git(clone, `worktree add -q ${join(root, `wt-${cloneCount}`)} feat/uncommitted`);
+    expect(runHook(clone, 'git checkout -b feat/next').trim()).toBe('');
+  });
+
+  test('the same branch counts once the worktree holding it is gone', () => {
+    const clone = freshClone();
+    const wt = join(root, `wt-released-${cloneCount}`);
+    git(clone, 'checkout -q -b feat/released');
+    git(clone, 'commit -q --allow-empty -m work');
+    git(clone, 'checkout -q main');
+    git(clone, `worktree add -q ${wt} feat/released`);
+    expect(runHook(clone, 'git checkout -b feat/next').trim()).toBe('');
+
+    git(clone, `worktree remove ${wt}`);
     const out = runHook(clone, 'git checkout -b feat/next');
     expect(out).toContain('"deny"');
-    expect(out).toContain('feat/uncommitted');
+    expect(out).toContain('feat/released');
+  });
+
+  test('the refusal never leads with deleting a branch', () => {
+    const clone = freshClone();
+    startedBranch(clone, 'feat/orphan');
+    const out = runHook(clone, 'git checkout -b feat/next');
+    expect(out).toContain('"deny"');
+    expect(out).toContain('open its MR/PR and get it merged');
+    expect(out).toContain('git worktree list');
+    expect(out).not.toContain('or delete the branch if the work is dead');
   });
 
   // Rule 7 lets this one through (it cannot be deleted from here), so the cap
@@ -295,6 +336,35 @@ describe('branch WIP cap: overrides', () => {
     expect(out).toContain('"deny"');
     expect(out).toContain('feat/one');
     expect(out).toContain('feat/two');
+  });
+
+  // A guard that a typo switches off, silently, is the failure this whole rule
+  // exists to close — so an unusable value falls back to the default and says so.
+  for (const bad of ['tow', '0', '-1', 'OFF']) {
+    test(`an unusable value ${JSON.stringify(bad)} warns and still applies the default`, () => {
+      const clone = freshClone();
+      startedBranch(clone, 'feat/orphan');
+      const out = runHook(clone, `AGENTKIT_BRANCH_WIP_MAX=${bad} git checkout -b feat/second`);
+      expect(out).toContain('"deny"');
+      expect(out).toContain('is not a positive integer');
+      expect(out).toContain(bad);
+      expect(out).toContain('feat/orphan');
+    });
+  }
+
+  test('an unusable value is announced even when the cap finds nothing', () => {
+    const clone = freshClone();
+    const out = runHook(clone, 'AGENTKIT_BRANCH_WIP_MAX=tow git checkout -b feat/first');
+    expect(out).not.toContain('"deny"');
+    expect(out).toContain('additionalContext');
+    expect(out).toContain('is not a positive integer');
+  });
+
+  test('only the exact word off disables the cap, and it does so silently', () => {
+    const clone = freshClone();
+    startedBranch(clone, 'feat/orphan');
+    expect(runHook(clone, 'AGENTKIT_BRANCH_WIP_MAX=off git checkout -b feat/second').trim())
+      .toBe('');
   });
 
   test('the environment override works where an inline prefix cannot reach', () => {

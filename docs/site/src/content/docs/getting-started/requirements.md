@@ -94,6 +94,6 @@ default review profile. Repositories may override the `review` section in `.agen
 `AGENTKIT_SKIP_HOOKS` turns hooks off for one session, by comma-separated name or with `all`. Only
 some units honour it: `coding-police`, `comment-police` and `format-police` on the Claude side, and
 `version-police` on the OpenCode side. The refusing hooks — `git-police`, `pkg-police`,
-`resource-police`, `mr-police`, `issue-police`, `kubectl-police`, `pages-police`, `review-police` — do
-not, and use
-their own per-command override variables instead.
+`resource-police`, `mr-police`, `issue-police`, `kubectl-police`, `pages-police`, `review-police` —
+do not. Most take a per-command override variable instead; `issue-police` takes none, because the
+disposition line it asks for is the whole of what it wants and there is nothing to trade against it.
