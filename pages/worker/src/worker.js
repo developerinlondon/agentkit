@@ -1,8 +1,9 @@
 import {
   canReadPage,
   claimPage,
+  consumeDeviceWrite,
   deletePageRecord,
-  deviceUser,
+  deviceCredential,
   endSession,
   inviteEmail,
   issuePageAccess,
@@ -89,8 +90,8 @@ const BASE_HEADERS = {
   "content-security-policy":
     "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:; font-src data:; frame-ancestors 'none'; form-action 'none'; base-uri 'none'",
 };
-// Published pages are public-by-slug until the accounts phase: keep crawlers
-// out so an unlinked slug stays unlisted.
+// Private and legacy page responses both stay out of crawler indexes. Access
+// control happens before this response is built, not through an unguessable URL.
 const PAGE_HEADERS = { ...BASE_HEADERS, "x-robots-tag": "noindex, nofollow" };
 
 // Pagefind fetches index shards, spawns a worker and compiles WebAssembly from
@@ -171,9 +172,8 @@ function siteKey(slug) {
   return SLUG_RE.test(path) ? `_site/${path}/index.html` : "";
 }
 
-// Shared write-path gate: bearer auth (site slugs need SITE_TOKEN, pages need
-// PUBLISH_TOKEN, both fail closed when unset) + slug validation + R2 key.
-// Returns a Response on rejection, else { isSite, key }.
+// Shared write-path gate: site slugs need SITE_TOKEN; account pages need a
+// live device credential, the operation's scope, and rate-limit capacity.
 function bearerToken(request) {
   return (request.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
 }
@@ -187,9 +187,20 @@ async function authorizeWrite(request, env, slug) {
   }
   if (!isSite && (env.ACCOUNT_MODE === "required" || env.DB)) {
     if (!SLUG_RE.test(slug)) return new Response("invalid slug\n", { status: 400 });
-    const user = await deviceUser(env, token);
-    if (!user) return new Response("unauthorized\n", { status: 401 });
-    return { isSite: false, key: `pages/${slug}/index.html`, user };
+    const credential = await deviceCredential(env, token);
+    if (!credential) return new Response("unauthorized\n", { status: 401 });
+    const requiredScope = request.method === "DELETE" ? "pages:delete" : "pages:write";
+    if (!credential.scopes.includes(requiredScope)) {
+      return new Response(`insufficient scope: ${requiredScope}\n`, { status: 403 });
+    }
+    const rate = await consumeDeviceWrite(env, credential.tokenHash);
+    if (!rate.allowed) {
+      return new Response("device write rate exceeded\n", {
+        status: 429,
+        headers: { "retry-after": String(rate.retryAfter) },
+      });
+    }
+    return { isSite: false, key: `pages/${slug}/index.html`, user: credential.user };
   }
   const expected = isSite ? env.SITE_TOKEN : env.PUBLISH_TOKEN;
   if (!expected || token !== expected) {
@@ -480,7 +491,8 @@ async function handleAccountRequest(request, env, path) {
   if (request.method === "POST" && inviteMatch) return handleInvite(request, env, inviteMatch[1]);
   if (request.method === "POST" && path === "api/device/authorize") {
     const body = await requestBody(request);
-    return Response.json(await startDevice(env, body.device_name));
+    const started = await startDevice(env, body.device_name, body.scopes);
+    return started ? Response.json(started) : Response.json({ error: "invalid_scope" }, { status: 400 });
   }
   if (request.method === "POST" && path === "api/device/approve") {
     return handleDeviceApprove(request, env);

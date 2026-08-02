@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { hostname } from "node:os";
 import { dirname } from "node:path";
 
@@ -34,7 +34,10 @@ export async function loadOrAuthorize(options: AuthorizationOptions): Promise<st
   const started = await fetcher(`${options.endpoint}/api/device/authorize`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ device_name: options.deviceName ?? hostname() }),
+    body: JSON.stringify({
+      device_name: options.deviceName ?? hostname(),
+      scopes: ["pages:write", "pages:delete"],
+    }),
   });
   if (!started.ok) throw new Error(`device authorization failed: HTTP ${started.status}`);
   const authorization = await started.json() as {
@@ -72,4 +75,19 @@ export async function loadOrAuthorize(options: AuthorizationOptions): Promise<st
     }
   }
   throw new Error("device authorization expired before approval");
+}
+
+export async function fetchWithDeviceAuthorization(
+  options: AuthorizationOptions,
+  request: (token: string) => Promise<Response>,
+): Promise<Response> {
+  let token = await loadOrAuthorize(options);
+  let response = await request(token);
+  if (response.status !== 401) return response;
+
+  (options.output ?? console.error)("AgentKit Pages credential was rejected; reauthorizing this device.");
+  await rm(options.tokenPath, { force: true });
+  token = await loadOrAuthorize(options);
+  response = await request(token);
+  return response;
 }

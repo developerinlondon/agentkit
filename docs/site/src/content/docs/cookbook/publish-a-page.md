@@ -27,9 +27,13 @@ It prints the live URL, `https://pages.agentkit.sbs/<slug>`.
 
 On the first publish, the command opens `account.agentkit.sbs/device` and prints a short code. Sign in
 with Assay and approve that device. The resulting credential belongs only to that account and device;
-later publishes reuse it. New pages are private and appear at `https://account.agentkit.sbs/dashboard`,
+it grants `pages:write` and `pages:delete` for 90 days, and later publishes reuse it. A rejected or
+expired credential starts the device flow again. New pages are private and appear at
+`https://account.agentkit.sbs/dashboard`,
 where the owner can create a revocable sharing link or invite another verified Assay email.
-The same dashboard lists publishing devices so a lost or retired machine can be revoked.
+The same dashboard lists each device's scopes and expiry so a lost or retired machine can be revoked.
+Publish and delete operations are limited to 60 per device per minute; a `429` response says how long
+to wait through `Retry-After`.
 
 The slug is `HMAC(key, name)` — cryptic hex nobody can guess, but **deterministic**. The same name
 republished updates the same URL, and `--delete --name <name>` finds it again. There is no mapping

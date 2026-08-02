@@ -66,14 +66,14 @@ Every one of those relaxations is confined to that prefix. Outside it the apex s
 
 ## Credentials have separate jobs
 
-| Credential      | Grants                                                    | Storage                                               |
-| --------------- | --------------------------------------------------------- | ----------------------------------------------------- |
-| slug key        | Derives a URL from a name; no network access              | Local file, mode `0600`                               |
-| device token    | Writes only pages owned by one Assay user until revoked   | Local file, mode `0600`; SHA-256 hash in D1           |
-| browser session | Account dashboard and access-broker requests              | Host-only secure HTTP-only cookie; SHA-256 hash in D1 |
-| page capability | Read access to one page for ten minutes                   | URL parameter; SHA-256 hash and expiry in D1          |
-| sharing token   | Read access to one page until its owner disables the link | URL shown once; SHA-256 hash in D1                    |
-| site token      | Writes the marketing and documentation `_site/` keyspace  | Worker secret, isolated from account publishing       |
+| Credential      | Grants                                                             | Storage                                               |
+| --------------- | ------------------------------------------------------------------ | ----------------------------------------------------- |
+| slug key        | Derives a URL from a name; no network access                       | Local file, mode `0600`                               |
+| device token    | `pages:write` / `pages:delete` for owned pages; expires in 90 days | Local file, mode `0600`; SHA-256 hash in D1           |
+| browser session | Account dashboard and access-broker requests                       | Host-only secure HTTP-only cookie; SHA-256 hash in D1 |
+| page capability | Read access to one page for ten minutes                            | URL parameter; SHA-256 hash and expiry in D1          |
+| sharing token   | Read access to one page until its owner disables the link          | URL shown once; SHA-256 hash in D1                    |
+| site token      | Writes the marketing and documentation `_site/` keyspace           | Worker secret, isolated from account publishing       |
 
 The site-token separation remains mechanical: every site key is rooted at `_site/`, and the
 published-page slug alphabet cannot express a leading underscore. A device-token holder cannot
@@ -109,7 +109,9 @@ bun <skill-dir>/publish.ts --name <name> --delete
 | `--allow-bare-svg` | Suppress the bare-diagram refusal — blocked by a hook unless the user approved it                  |
 
 On first use the skill opens Assay sign-in, shows a short device code, and stores the resulting
-per-device credential. It then publishes end to end without asking about slug, template, or
+per-device credential. A rejected or expired credential repeats that flow automatically. Each
+device is bounded to 60 publish/delete operations per minute in D1; a `429` carries `Retry-After`.
+It then publishes end to end without asking about slug, template, or
 mechanics. It does not skip verification: load the printed URL in headless Chromium, screenshot
 both themes, and read every figure. **Never report the URL of an unviewed page.**
 

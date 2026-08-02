@@ -47,8 +47,9 @@ surfaces:
       sessions and control requests; the rendered-content origin accepts only
       reads through a public page, sharing token, or short-lived page-scoped
       capability. Verified-email invites, immediate invite revocation, and device
-      revocation enforce their D1 records; missing account storage fails closed
-      when account mode is required.
+      revocation enforce their D1 records. Device credentials carry independently
+      enforced write/delete scopes, expire, and consume a D1-backed write-rate
+      counter. Missing account storage fails closed when account mode is required.
 
   - name: plugin
     kind: desktop
