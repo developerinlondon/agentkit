@@ -253,12 +253,39 @@ describe('colour notation', () => {
     expect(out.svg).not.toContain(spaced);
   });
 
-  for (const [how, css] of [['a CSS block', RGB], ['spacing', 'rgb(113, 113, 122)']] as const) {
+  // CSS Color 4 separates channels with spaces. Stripping whitespace before a
+  // substring search turned that spelling into rgb(113113122), which matches no
+  // generated form, so the mark shipped half baked with nothing raised.
+  const SPACED = 'rgb(113 113 122)';
+
+  test('a space-separated rgb() attribute is inked too', () => {
+    const doc = `<svg viewBox="0 0 24 24"><path fill="${FILL}"/><path fill="${SPACED}"/></svg>`;
+    const out = inlineMonochromeIcons(image(doc), [FILL], [doc]);
+    expect(out.converted).toBe(1);
+    expect(out.svg).not.toContain(SPACED);
+  });
+
+  for (
+    const [how, css] of [
+      ['a CSS block', RGB],
+      ['spacing', 'rgb(113, 113, 122)'],
+      ['CSS Color 4 spacing', SPACED],
+    ] as const
+  ) {
     test(`rgb() with ${how} is caught by the post-condition, not shipped baked`, () => {
       const doc = `<svg viewBox="0 0 24 24"><path fill="${FILL}"/><style>.c{fill:${css}}</style><path class="c"/></svg>`;
       expect(() => inlineMonochromeIcons(image(doc), [FILL], [doc])).toThrow(SvgError);
     });
   }
+
+  test('two different colours are not collapsed into one by normalisation', () => {
+    // Deleting separators to compare spellings would read rgb(1,131,13122) and
+    // rgb(113,113,122) as the same colour and ink artwork that must stay.
+    const other = 'rgb(1,131,13122)';
+    const doc = `<svg viewBox="0 0 24 24"><path fill="${FILL}"/><path fill="${other}"/></svg>`;
+    const out = inlineMonochromeIcons(image(doc), [FILL], [doc]);
+    expect(out.svg).toContain(other);
+  });
 
   test('the hex in a text node is left alone — it renders nothing', () => {
     const doc = `<svg viewBox="0 0 24 24"><desc>${FILL}</desc><path fill="${FILL}" d="M1 1"/></svg>`;

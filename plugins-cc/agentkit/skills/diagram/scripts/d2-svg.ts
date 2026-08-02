@@ -113,21 +113,31 @@ function innerMarkup(raw: string): { inner: string; viewBox: string } | null {
 
 // The same colour can be written as a hex or as rgb(), and a pack that mixes
 // notations would leave half the mark baked.
-function colourForms(fill: string): string[] {
+function colourKeys(fill: string): string[] {
   const hex = /^#([0-9a-f]{6})$/i.exec(fill.trim());
-  if (!hex) return [fill];
+  if (!hex) return [fill.trim().toLowerCase()];
   const [r, g, b] = [0, 2, 4].map((i) => parseInt(hex[1].slice(i, i + 2), 16));
-  return [fill, `rgb(${r},${g},${b})`];
+  return [fill.trim().toLowerCase(), `${r},${g},${b}`];
+}
+
+// One colour has several spellings: CSS Color 4 writes `rgb(1 2 3)` beside
+// `rgb(1,2,3)`. Comparing parsed channels rather than stripped text matches
+// every spelling without letting two different colours collapse into one.
+function valueKey(value: string): string {
+  const v = value.trim().toLowerCase();
+  const call = /^rgba?\(([^)]*)\)$/.exec(v);
+  if (!call) return v.replace(/\s+/g, "");
+  return call[1].split(/[\s,/]+/).filter(Boolean).slice(0, 3).join(",");
 }
 
 // Colour lives in a fill or stroke value; the same string elsewhere is an id, a
 // class or label text, and rewriting it there corrupts the mark silently.
 function inkAttributes(markup: string, fill: string): string {
-  const forms = colourForms(fill).map((form) => form.replace(/\s+/g, "").toLowerCase());
+  const keys = colourKeys(fill);
   return markup.replace(
     /\b(fill|stroke|stop-color|flood-color)="([^"]*)"/gi,
     (attribute, name: string, value: string) =>
-      forms.includes(value.replace(/\s+/g, "").toLowerCase()) ? `${name}="currentColor"` : attribute,
+      keys.includes(valueKey(value)) ? `${name}="currentColor"` : attribute,
   );
 }
 
@@ -136,10 +146,12 @@ function inkAttributes(markup: string, fill: string): string {
 function bakedInStyle(markup: string, fill: string): boolean {
   const styles = [...markup.matchAll(/style="([^"]*)"/gi)].map((m) => m[1]);
   const blocks = [...markup.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi)].map((m) => m[1]);
-  const forms = colourForms(fill).map((f) => f.toLowerCase());
-  return [...styles, ...blocks]
-    .map((css) => css.toLowerCase().replace(/\s+/g, ""))
-    .some((css) => forms.some((f) => css.includes(f)));
+  const keys = colourKeys(fill);
+  return [...styles, ...blocks].some((css) => {
+    const text = css.toLowerCase();
+    if (keys.some((k) => k.startsWith("#") && text.replace(/\s+/g, "").includes(k))) return true;
+    return [...text.matchAll(/rgba?\([^)]*\)/g)].some((m) => keys.includes(valueKey(m[0])));
+  });
 }
 
 // A monochrome pack is baked to one fill at vendor time because currentColor has

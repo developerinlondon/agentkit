@@ -147,24 +147,52 @@ function matches(selector: string, el: El): boolean {
   return true;
 }
 
-// `reversed` re-runs the resolution with document order inverted: a winner that
-// only holds one way round won on order, not on specificity.
+// Only a pseudo-element box or a non-base state can be dismissed without being
+// understood. Anything else must parse, so a rule that cannot be proved
+// irrelevant throws instead of being quietly dropped.
+const NOT_BASE_STATE = /::|:(?:hover|focus|active|visited|target|focus-within|focus-visible)\b/;
+
+function couldMatch(selector: string, el: El): boolean {
+  const parts = selector.trim().split(/\s+/).filter((p) => p !== '>');
+  const right = parts[parts.length - 1] ?? '';
+  if (NOT_BASE_STATE.test(right)) return false;
+  // A required tag or class settles a compound whatever else it carries, which
+  // dismisses `svg:not(.edges)` and `.fig-lightbox[hidden]` without parsing
+  // them. Anything left has to parse.
+  const head = right.split(/[[:]/)[0];
+  const tag = head.match(/^[a-z][a-z0-9]*/i);
+  if (tag && tag[0].toLowerCase() !== el.tag) return false;
+  for (const cls of head.match(/\.[a-z-]+/gi) ?? []) {
+    if (!el.classes.includes(cls.slice(1))) return false;
+  }
+  return hits(compound(right), el);
+}
+
+// Considering only rules whose text mentioned .callout dropped candidates before
+// parsing them, so a global `strong { color: red !important }` — which really
+// does win in a browser — resolved as though it were not there. Every rule
+// declaring the property is weighed now, priority before specificity before
+// order. `reversed` re-runs with document order inverted: a winner that holds
+// only one way round won on order, not on rank.
 function declOf(css: string, el: El, prop: string, reversed = false): string | null {
   const rules = [...styleBlocks(css).matchAll(/([^{}]+)\{([^{}]*)\}/g)]
-    .map((m) => ({ selectors: m[1].split(','), body: m[2] }))
-    .filter((r) => r.selectors.some((s) => s.includes('.callout')));
+    .map((m) => ({ selectors: m[1].split(','), body: m[2] }));
   if (reversed) rules.reverse();
-  let best: { spec: number; order: number; value: string } | null = null;
+  let best: { rank: number; spec: number; order: number; value: string } | null = null;
   rules.forEach((rule, order) => {
     const decl = rule.body.match(new RegExp(`(?:^|;)\\s*${prop}:\\s*([^;]+)`));
     if (!decl) return;
-    for (const raw of rule.selectors) {
-      const sel = raw.trim();
-      if (!sel || !matches(sel, el)) continue;
-      const spec = sequence(sel).reduce((n, part) => n + part.c.weight, 0);
-      if (!best || spec > best.spec || (spec === best.spec && order > best.order)) {
-        best = { spec, order, value: decl[1].trim() };
-      }
+    const raw = decl[1].trim();
+    const rank = /!\s*important$/i.test(raw) ? 1 : 0;
+    const value = raw.replace(/\s*!\s*important$/i, '').trim();
+    for (const part of rule.selectors) {
+      const sel = part.trim();
+      if (!sel || !couldMatch(sel, el) || !matches(sel, el)) continue;
+      const spec = sequence(sel).reduce((n, p) => n + p.c.weight, 0);
+      const better = !best || rank > best.rank
+        || (rank === best.rank
+          && (spec > best.spec || (spec === best.spec && order > best.order)));
+      if (better) best = { rank, spec, order, value };
     }
   });
   return best === null ? null : (best as { value: string }).value;
@@ -175,17 +203,17 @@ function declOf(css: string, el: El, prop: string, reversed = false): string | n
 // figures — and it puts the label one level deeper than the other two.
 const IDIOMS = ['strong', 'h3', 'p-strong'] as const;
 
+function callout(severity: string | null): El {
+  return { tag: 'div', classes: severity ? ['callout', severity] : ['callout'], first: true };
+}
+
 function label(severity: string | null, idiom: (typeof IDIOMS)[number]): El {
-  const callout: El = {
-    tag: 'div',
-    classes: severity ? ['callout', severity] : ['callout'],
-    first: true,
-  };
+  const box = callout(severity);
   if (idiom === 'p-strong') {
-    const para: El = { tag: 'p', classes: [], first: true, parent: callout };
+    const para: El = { tag: 'p', classes: [], first: true, parent: box };
     return { tag: 'strong', classes: [], first: true, parent: para };
   }
-  return { tag: idiom, classes: [], first: true, parent: callout };
+  return { tag: idiom, classes: [], first: true, parent: box };
 }
 
 describe('callout severities', () => {
@@ -201,11 +229,16 @@ describe('callout severities', () => {
     });
 
     test(`${name} every painted ink/ground pair clears 4.5:1`, () => {
-      const pairs = name === 'doc' ? [...INK_PAIRS, ...DOC_ONLY_PAIRS] : INK_PAIRS;
+      // Skipping unpainted pairs silently let deck run zero assertions and
+      // still report pass. The count is asserted, so a theme that stops
+      // painting a pair has to say so here.
+      const pairs = (name === 'doc' ? [...INK_PAIRS, ...DOC_ONLY_PAIRS] : INK_PAIRS)
+        .filter(([, , bg]) => css.includes(`var(${bg})`));
+      expect({ theme: name, painted: pairs.length })
+        .toEqual({ theme: name, painted: name === 'doc' ? 2 : 0 });
       for (const palette of ['dark', 'light'] as const) {
         const t = tokens(css, palette);
         for (const [rule, ink, bg] of pairs) {
-          if (!css.includes(`var(${bg})`)) continue;
           const r = ratio(t[ink], t[bg]);
           expect({ palette, rule, pass: r >= 4.5 }).toEqual({ palette, rule, pass: true });
         }
@@ -268,10 +301,12 @@ describe('callout severities', () => {
 
     test(`${name} callouts sit on --card so they lift off the page`, () => {
       // A severity-tinted ground presses the callout INTO the paper; the rail
-      // carries the colour and the card carries the lift.
-      expect(css).toMatch(/\.callout \{[\s\S]*?background: var\(--card\);/);
-      for (const s of SEVERITIES.filter((x) => x !== 'note')) {
-        expect(css).not.toContain(`.callout.${s} { border-left-color: var(--${s}-ink); background:`);
+      // carries the colour and the card carries the lift. Resolved rather than
+      // text-matched, so a reintroduced ground fails however it is spelled.
+      const ground = name === 'doc' ? 'var(--code-bg)' : 'var(--card)';
+      for (const s of [null, ...SEVERITIES]) {
+        expect({ theme: name, severity: s, bg: declOf(css, callout(s), 'background') })
+          .toEqual({ theme: name, severity: s, bg: s === 'note' ? ground : 'var(--card)' });
       }
     });
 
