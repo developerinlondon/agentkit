@@ -53,7 +53,16 @@ printf '%s\n' "$sha" > "$STAMP"
 # command line is readable by every other process on the host.
 umask 077
 auth=$(mktemp)
-trap 'rm -f "$auth"' EXIT
+LEASE_PREFIX=docs/deploy-lease
+LEASE_MAX_AGE=900
+LEASE_KEY="$LEASE_PREFIX/$(date +%s)-$$-$sha.txt"
+
+release_lease() {
+	[[ -n "${LEASE_HELD:-}" ]] || return 0
+	curl -sS -X DELETE --config "$auth" "$ENDPOINT/api/site/$LEASE_KEY" >/dev/null 2>&1 || true
+	LEASE_HELD=
+}
+trap 'release_lease; rm -f "$auth"' EXIT
 printf 'header = "Authorization: Bearer %s"\n' "$(cat "$TOKEN_FILE")" > "$auth"
 
 put() {
@@ -66,24 +75,19 @@ put() {
 	fi
 }
 
-LEASE_URL="$SITE_URL/docs/deploy-lease.txt"
-LEASE_KEY=docs/deploy-lease.txt
-LEASE_MAX_AGE=900
-
-live_lease() {
-	curl -sS "$LEASE_URL" 2>/dev/null | tr -d '\r\n' || true
-}
-
 # The stamp goes up last, so it only ever answers "did a rival FINISH". The
-# prune needs "is a rival RUNNING", so this marker goes up first and is dropped
-# at the end; a crashed run stops blocking once it ages past the cutoff.
+# prune needs "is a rival RUNNING", so each run writes its OWN marker first —
+# a shared key would be clobbered by whichever run started last, which is
+# whoever is about to read it. The start time rides the key, so the listing
+# alone answers the question and no body has to be fetched or parsed.
 lease=$(mktemp)
 printf '%s %s\n' "$sha" "$(date +%s)" > "$lease"
 if ! curl -sS --fail-with-body -X PUT --config "$auth" --data-binary "@$lease" \
 	"$ENDPOINT/api/site/$LEASE_KEY" >/dev/null 2>&1; then
-	echo "deploy: could not take the deploy lease at $LEASE_URL" >&2
+	echo "deploy: could not take a deploy lease at $LEASE_KEY" >&2
 	exit 1
 fi
+LEASE_HELD=1
 rm -f "$lease"
 
 # Assets before documents, and the stamp last: a walk that dies part-way leaves
@@ -154,7 +158,7 @@ done
 live_keys=$(mktemp)
 built_keys=$(mktemp)
 stale_keys=$(mktemp)
-trap 'rm -f "$auth" "$live_keys" "$built_keys" "$stale_keys"' EXIT
+trap 'release_lease; rm -f "$auth" "$live_keys" "$built_keys" "$stale_keys"' EXIT
 
 # The fetch is checked on its own: piping it straight into a filter conflates "the
 # listing failed" with "the listing was empty", because grep exits 1 on no match
@@ -184,7 +188,7 @@ if [[ -s "$REUSED" ]]; then
 	echo "deploy: kept $(grep -c . "$REUSED" || true) reused archive(s) out of the prune"
 fi
 
-grep -v "^$LEASE_KEY$" "$stale_keys" > "$stale_keys.kept" || true
+grep -vxF "$LEASE_KEY" "$stale_keys" > "$stale_keys.kept" || true
 mv "$stale_keys.kept" "$stale_keys"
 
 stale_count=$(grep -c . "$stale_keys" || true)
@@ -196,21 +200,18 @@ if [[ "${stale_count:-0}" -gt 0 ]]; then
 		exit 1
 	fi
 	# Last moment before anything is deleted, and both answers can change under
-	# us: the lease says whether a rival is running, the stamp whether one landed.
-	held=$(live_lease)
-	held_sha=${held%% *}
-	held_at=${held##* }
+	# us: a foreign lease says a rival is running, the stamp says one landed.
 	now=$(date +%s)
-	[[ "$held_at" =~ ^[0-9]+$ ]] || held_at=$now
-	if [[ -z "$held" ]]; then
-		echo "deploy: could not read the deploy lease at $LEASE_URL — not pruning" >&2
-		exit 1
-	fi
-	if [[ "$held_sha" != "$sha" && $((now - held_at)) -lt "$LEASE_MAX_AGE" ]]; then
-		echo "deploy: the lease at $LEASE_URL holds '$held_sha', not the '$sha' this run wrote ($((now - held_at))s old)" >&2
+	while IFS= read -r held; do
+		[[ -n "$held" ]] || continue
+		started=${held#"$LEASE_PREFIX/"}
+		started=${started%%-*}
+		[[ "$started" =~ ^[0-9]+$ ]] || continue
+		[[ $((now - started)) -lt "$LEASE_MAX_AGE" ]] || continue
+		echo "deploy: $held holds a deploy lease taken $((now - started))s ago" >&2
 		echo "  another deploy is most likely running; not pruning, because this build cannot tell its pages from stale objects" >&2
 		exit 1
-	fi
+	done < <(grep "^$LEASE_PREFIX/" "$live_keys" | grep -vxF "$LEASE_KEY" || true)
 	settled=$(stamp_settled)
 	if [[ "$settled" != "$sha" ]]; then
 		echo "deploy: $SITE_URL/docs/ still serves '$settled' after retries, not the '$sha' this run uploaded" >&2
@@ -228,8 +229,6 @@ if [[ "${stale_count:-0}" -gt 0 ]]; then
 else
 	echo "deploy: nothing to prune"
 fi
-
-curl -sS -X DELETE --config "$auth" "$ENDPOINT/api/site/$LEASE_KEY" >/dev/null 2>&1 || true
 
 # The verify above is one moment; a run that started earlier can land its stamp
 # after it, leaving a site made of both with every step having reported success.

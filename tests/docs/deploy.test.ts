@@ -72,8 +72,9 @@ const BUILT = [
 ];
 
 // Records every argv it is handed and answers the shapes deploy.sh uses: an
-// upload, a delete, the key listing, a status probe, the lease and the stamp
-// read-back. `flipOn` renames the phase at which a rival deploy becomes visible.
+// upload, a delete, the key listing, a status probe and the stamp read-back.
+// One key namespace, as the worker has: a lease this run writes comes back in
+// the listing, and a lease it deletes is recorded like any other delete.
 function curlStub(
   options: { putLines?: readonly string[]; rival?: string; flipOn?: 'listing' | 'delete' } = {},
 ): void {
@@ -89,33 +90,29 @@ function curlStub(
       `LIVE=${JSON.stringify(join(root, '.live-sha'))}`,
       `REMOTE=${JSON.stringify(join(root, '.remote-keys'))}`,
       `DEL=${JSON.stringify(join(root, '.deleted'))}`,
-      `LEASE=${JSON.stringify(join(root, '.live-lease'))}`,
-      `RIVAL=${JSON.stringify(join(root, '.rival-lease'))}`,
       `OPS=${JSON.stringify(join(root, '.lease-ops'))}`,
       'printf "%s\\n" "$*" >> "$ARGV"',
-      'is_put=; is_code=; is_delete=; body=',
+      'is_put=; is_code=; is_delete=',
       'for a in "$@"; do',
-      '  case "$a" in PUT) is_put=1 ;; DELETE) is_delete=1 ;; -w) is_code=1 ;; @*) body=${a#@} ;; esac',
+      '  case "$a" in PUT) is_put=1 ;; DELETE) is_delete=1 ;; -w) is_code=1 ;; esac',
       'done',
       'eval "url=\\${$#}"',
-      'case "$url" in',
-      '  *deploy-lease.txt)',
-      '    if [ -n "$is_put" ]; then cat "$body" > "$LEASE"; printf "put\\n" >> "$OPS"; exit 0; fi',
-      '    if [ -n "$is_delete" ]; then rm -f "$LEASE"; printf "delete\\n" >> "$OPS"; exit 0; fi',
-      '    if [ -f "$RIVAL" ]; then cat "$RIVAL"; elif [ -f "$LEASE" ]; then cat "$LEASE"; fi',
-      '    exit 0 ;;',
-      'esac',
+      'key=${url##*/api/site/}',
       'if [ -n "$is_delete" ]; then',
+      '  case "$key" in docs/deploy-lease/*) printf "delete %s\\n" "$key" >> "$OPS" ;; esac',
       `  ${flipOn === 'delete' ? flip : ':'}`,
-      '  printf "%s\\n" "${url##*/api/site/}" >> "$DEL"; exit 0',
+      '  printf "%s\\n" "$key" >> "$DEL"; exit 0',
+      'fi',
+      'if [ -n "$is_put" ]; then',
+      '  case "$key" in docs/deploy-lease/*) printf "put %s\\n" "$key" >> "$OPS"; exit 0 ;; esac',
+      ...putLines,
+      '  printf "%s\\n" "${key#docs/}" >> "$LOG"; exit 0',
       'fi',
       'case "$url" in *api/site-list/*)',
       `  ${flipOn === 'listing' ? flip : ':'}`,
-      '  cat "$REMOTE" 2>/dev/null || printf "{\\"keys\\":[]}"; exit 0 ;; esac',
-      'if [ -n "$is_put" ]; then',
-      ...putLines,
-      '  printf "%s\\n" "${url##*/api/site/docs/}" >> "$LOG"; exit 0',
-      'fi',
+      '  cat "$REMOTE" 2>/dev/null || printf "{\\"keys\\":[]}"',
+      '  [ -f "$OPS" ] && awk \'$1=="put"{p[$2]=1} $1=="delete"{delete p[$2]} END{for (k in p) printf ",\\"%s\\"", k}\' "$OPS"',
+      '  exit 0 ;; esac',
       'if [ -n "$is_code" ]; then printf "200"; exit 0; fi',
       'if [ -f "$LIVE" ]; then cat "$LIVE"; fi',
       'exit 0',
@@ -132,10 +129,10 @@ function stubCurlRejecting(fragment: string): void {
   curlStub({ putLines: [`  case "$url" in *${fragment}*) printf 'invalid path\\n'; exit 22 ;; esac`] });
 }
 
-// A rival deploy holding the lease: written first by a run still uploading, so
-// its stamp is not visible yet — the window the stamp alone cannot see.
-function rivalLease(sha: string, ageSeconds = 0): void {
-  writeFileSync(join(root, '.rival-lease'), `${sha} ${Math.floor(Date.now() / 1000) - ageSeconds}\n`);
+// A lease belonging to another run: one object per deploy, its start time in
+// the key, so the listing alone says whether that run is still going.
+function rivalLeaseKey(sha: string, ageSeconds = 0): string {
+  return `docs/deploy-lease/${Math.floor(Date.now() / 1000) - ageSeconds}-${sha}.txt`;
 }
 
 function leaseOps(): string[] {
@@ -163,10 +160,13 @@ function remoteKeys(keys: string[]): void {
   writeFileSync(join(root, '.remote-keys'), JSON.stringify({ ok: true, keys }));
 }
 
+// Content prunes only. The lease is deleted on the way out of every run, so
+// counting that here would put a lifecycle op in every prune assertion.
 function deleted(): string[] {
   const path = join(root, '.deleted');
   if (!existsSync(path)) return [];
-  return readFileSync(path, 'utf-8').trim().split('\n').filter(Boolean);
+  return readFileSync(path, 'utf-8').trim().split('\n').filter(Boolean)
+    .filter((key) => !key.startsWith('docs/deploy-lease/'));
 }
 
 function uploads(): string[] {
@@ -501,42 +501,43 @@ describe('a reused archive survives the prune that removes deleted pages', () =>
 });
 
 describe('a deploy that overlaps another one stops instead of reporting success', () => {
-  // Seen live: two runs from different commits overlapped, each verified itself
-  // green, and the site served one commit's stamp over the other's pages. The
-  // stamp goes up LAST, so it only ever answers "did a rival finish" — the lease
-  // goes up first and answers "is a rival running", which is what the prune needs.
-  test('a lease held by a running deploy stops the prune before anything is deleted', () => {
-    remoteKeys(['docs/index.html', 'docs/gone.html']);
-    rivalLease('deadbeef');
+  // Seen live: two runs overlapped, each verified itself green, and the site
+  // served one commit's stamp over the other's pages. The stamp goes up LAST,
+  // so it only answers "did a rival finish". Each run writes its own lease
+  // first, and a shared key would be clobbered by whoever started last — which
+  // is whoever is about to read it.
+  const SETTLED = ['docs/index.html', 'docs/getting-started/install/index.html', 'docs/favicon.svg'];
+
+  test('a lease belonging to a running deploy stops the prune before anything is deleted', () => {
+    remoteKeys([...SETTLED, 'docs/gone.html', rivalLeaseKey('deadbeef')]);
     const result = deploy();
 
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain("holds 'deadbeef'");
-    expect(result.stderr).toContain('not pruning');
+    expect(result.stderr).toContain('holds a deploy lease');
     expect(deleted()).toEqual([]);
   });
 
-  test('a lease left behind by a crashed deploy stops blocking once it is old', () => {
-    remoteKeys(['docs/index.html', 'docs/gone.html']);
-    rivalLease('deadbeef', 4000);
+  test('a lease left behind by a crashed deploy ages out and is itself pruned', () => {
+    const abandoned = rivalLeaseKey('deadbeef', 4000);
+    remoteKeys([...SETTLED, 'docs/gone.html', abandoned]);
     const result = deploy();
 
     expect(result.status, result.stderr).toBe(0);
     expect(deleted()).toEqual(['docs/gone.html']);
+    expect(leaseOps().some((line) => line === `delete ${abandoned}`)).toBe(true);
   });
 
-  test('a lease that cannot be read stops the prune rather than guessing', () => {
-    remoteKeys(['docs/index.html', 'docs/gone.html']);
-    writeFileSync(join(root, '.rival-lease'), '');
+  test('this run never prunes its own lease', () => {
+    remoteKeys([...SETTLED, 'docs/gone.html']);
     const result = deploy();
 
-    expect(result.status).toBe(1);
-    expect(result.stderr).toContain('could not read the deploy lease');
-    expect(deleted()).toEqual([]);
+    // Pruned AND released would show two deletes; released only shows one.
+    expect(result.status, result.stderr).toBe(0);
+    expect(leaseOps().map((line) => line.split(' ')[0])).toEqual(['put', 'delete']);
   });
 
   test('a rival stamp appearing during the prune phase stops the deploy', () => {
-    remoteKeys(['docs/index.html', 'docs/gone.html']);
+    remoteKeys([...SETTLED, 'docs/gone.html']);
     curlStub({ rival: 'deadbeef', flipOn: 'listing' });
     const result = deploy();
 
@@ -546,7 +547,7 @@ describe('a deploy that overlaps another one stops instead of reporting success'
   }, 30000);
 
   test('a rival stamp appearing after the prune is not reported as verified', () => {
-    remoteKeys(['docs/index.html', 'docs/gone.html']);
+    remoteKeys([...SETTLED, 'docs/gone.html']);
     curlStub({ rival: 'deadbeef', flipOn: 'delete' });
     const result = deploy();
 
@@ -556,26 +557,34 @@ describe('a deploy that overlaps another one stops instead of reporting success'
     expect(deleted()).toEqual(['docs/gone.html']);
   }, 30000);
 
-  test('the lease is taken before any upload and released when the deploy succeeds', () => {
-    remoteKeys(['docs/index.html']);
+  test('two runs take different lease keys, so neither can clobber the other', () => {
+    remoteKeys(SETTLED);
+    expect(deploy().status).toBe(0);
+    expect(deploy().status).toBe(0);
+
+    const taken = leaseOps().filter((line) => line.startsWith('put ')).map((line) => line.split(' ')[1]);
+    expect({ count: taken.length, distinct: new Set(taken).size }).toEqual({ count: 2, distinct: 2 });
+  });
+
+  test('the lease is taken before any upload', () => {
+    remoteKeys(SETTLED);
     const result = deploy();
 
     expect(result.status, result.stderr).toBe(0);
-    expect(leaseOps()).toEqual(['put', 'delete']);
-    // Uploaded before the walk, so a rival reads it while this run is still busy.
     const argv = readFileSync(join(root, '.argv'), 'utf-8').split('\n');
-    const lease = argv.findIndex((line) => line.includes('deploy-lease.txt'));
+    const lease = argv.findIndex((line) => line.includes('/api/site/docs/deploy-lease/'));
     const firstAsset = argv.findIndex((line) => line.includes('/api/site/docs/_astro/'));
     expect({ leaseFirst: lease >= 0 && lease < firstAsset }).toEqual({ leaseFirst: true });
   });
 
-  test('the lease is never pruned, though it is not part of the build', () => {
-    remoteKeys(['docs/index.html', 'docs/deploy-lease.txt']);
+  test('a deploy that refuses still releases its lease, so the retry is not blocked', () => {
+    // Refusing to prune is itself an exit; releasing only on the happy path
+    // would make one failed deploy block the next for the whole cutoff.
+    remoteKeys(['docs/a.html', 'docs/b.html', 'docs/c.html', 'docs/d.html']);
     const result = deploy();
 
-    // Asserted through the lease's own operations, not deleted(): a prune of the
-    // lease goes to the same endpoint as the release and would not show there.
-    expect(result.status, result.stderr).toBe(0);
-    expect(leaseOps()).toEqual(['put', 'delete']);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('refusing to prune');
+    expect(leaseOps().map((line) => line.split(' ')[0])).toEqual(['put', 'delete']);
   });
 });
