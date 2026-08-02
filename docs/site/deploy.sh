@@ -66,6 +66,26 @@ put() {
 	fi
 }
 
+LEASE_URL="$SITE_URL/docs/deploy-lease.txt"
+LEASE_KEY=docs/deploy-lease.txt
+LEASE_MAX_AGE=900
+
+live_lease() {
+	curl -sS "$LEASE_URL" 2>/dev/null | tr -d '\r\n' || true
+}
+
+# The stamp goes up last, so it only ever answers "did a rival FINISH". The
+# prune needs "is a rival RUNNING", so this marker goes up first and is dropped
+# at the end; a crashed run stops blocking once it ages past the cutoff.
+lease=$(mktemp)
+printf '%s %s\n' "$sha" "$(date +%s)" > "$lease"
+if ! curl -sS --fail-with-body -X PUT --config "$auth" --data-binary "@$lease" \
+	"$ENDPOINT/api/site/$LEASE_KEY" >/dev/null 2>&1; then
+	echo "deploy: could not take the deploy lease at $LEASE_URL" >&2
+	exit 1
+fi
+rm -f "$lease"
+
 # Assets before documents, and the stamp last: a walk that dies part-way leaves
 # the previously deployed pages intact and still pointing at assets that exist,
 # and never claims a version it did not finish uploading.
@@ -85,6 +105,18 @@ echo "deploy: $((uploaded + 1)) file(s) at $sha"
 
 live_stamp() {
 	curl -sS "$SITE_URL/docs/build-sha.txt" 2>/dev/null | tr -d '[:space:]' || true
+}
+
+# The worker can serve the previous object briefly after a write, so a single
+# read cannot tell staleness from an overlap; a real overlap keeps answering.
+stamp_settled() {
+	local seen=
+	for _ in 1 2 3; do
+		seen=$(live_stamp)
+		[[ "$seen" == "$sha" ]] && break
+		sleep 2
+	done
+	printf '%s' "$seen"
 }
 
 # The worker occasionally serves the previous object for a moment after a write.
@@ -107,20 +139,6 @@ for path in "" getting-started/install/; do
 		exit 1
 	}
 done
-
-# A deploy that started earlier can land its objects after ours, and the prune
-# below would then read its pages as stale and delete them.
-current=$(live_stamp)
-if [[ "$current" != "$sha" ]]; then
-	if [[ -z "$current" ]]; then
-		echo "deploy: could not re-read the stamp before pruning — not pruning" >&2
-	else
-		echo "deploy: $SITE_URL/docs/ serves '$current', not the '$sha' this run uploaded" >&2
-		echo "  another deploy landed while this one was running; this build cannot tell its pages from stale objects" >&2
-		echo "  not pruning — redeploy the commit you intend to publish" >&2
-	fi
-	exit 1
-fi
 
 # Uploading never removes: before this, a page deleted from the build kept
 # answering 200 and nothing reported it. Ten migration redirects had to be deleted
@@ -166,6 +184,9 @@ if [[ -s "$REUSED" ]]; then
 	echo "deploy: kept $(grep -c . "$REUSED" || true) reused archive(s) out of the prune"
 fi
 
+grep -v "^$LEASE_KEY$" "$stale_keys" > "$stale_keys.kept" || true
+mv "$stale_keys.kept" "$stale_keys"
+
 stale_count=$(grep -c . "$stale_keys" || true)
 live_count=$(grep -c . "$live_keys" || true)
 if [[ "${stale_count:-0}" -gt 0 ]]; then
@@ -174,6 +195,29 @@ if [[ "${stale_count:-0}" -gt 0 ]]; then
 		sed 's/^/  /' "$stale_keys" >&2
 		exit 1
 	fi
+	# Last moment before anything is deleted, and both answers can change under
+	# us: the lease says whether a rival is running, the stamp whether one landed.
+	held=$(live_lease)
+	held_sha=${held%% *}
+	held_at=${held##* }
+	now=$(date +%s)
+	[[ "$held_at" =~ ^[0-9]+$ ]] || held_at=$now
+	if [[ -z "$held" ]]; then
+		echo "deploy: could not read the deploy lease at $LEASE_URL — not pruning" >&2
+		exit 1
+	fi
+	if [[ "$held_sha" != "$sha" && $((now - held_at)) -lt "$LEASE_MAX_AGE" ]]; then
+		echo "deploy: the lease at $LEASE_URL holds '$held_sha', not the '$sha' this run wrote ($((now - held_at))s old)" >&2
+		echo "  another deploy is most likely running; not pruning, because this build cannot tell its pages from stale objects" >&2
+		exit 1
+	fi
+	settled=$(stamp_settled)
+	if [[ "$settled" != "$sha" ]]; then
+		echo "deploy: $SITE_URL/docs/ still serves '$settled' after retries, not the '$sha' this run uploaded" >&2
+		echo "  another deploy most likely finished during this one; not pruning" >&2
+		exit 1
+	fi
+
 	while IFS= read -r key; do
 		[[ -n "$key" ]] || continue
 		curl -sS --fail-with-body -X DELETE --config "$auth" "$ENDPOINT/api/site/$key" >/dev/null 2>&1 \
@@ -185,15 +229,17 @@ else
 	echo "deploy: nothing to prune"
 fi
 
-# Re-read at the end: an overlapping deploy landing its stamp after our verify
-# leaves the site a mix of both, with every step above having reported success.
-final=$(live_stamp)
+curl -sS -X DELETE --config "$auth" "$ENDPOINT/api/site/$LEASE_KEY" >/dev/null 2>&1 || true
+
+# The verify above is one moment; a run that started earlier can land its stamp
+# after it, leaving a site made of both with every step having reported success.
+final=$(stamp_settled)
 if [[ "$final" != "$sha" ]]; then
 	if [[ -z "$final" ]]; then
-		echo "deploy: uploaded $sha, but the stamp could not be re-read to confirm it is still live" >&2
+		echo "deploy: uploaded $sha, but the stamp could not be read back to confirm it is live" >&2
 	else
-		echo "deploy: $SITE_URL/docs/ serves '$final' now that this run has finished, not '$sha'" >&2
-		echo "  an overlapping deploy landed; the site holds objects from both — redeploy the commit you intend to publish" >&2
+		echo "deploy: $SITE_URL/docs/ serves '$final' now this run has finished, not '$sha'" >&2
+		echo "  an overlapping deploy most likely landed; the site holds objects from both" >&2
 	fi
 	exit 1
 fi
