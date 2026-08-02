@@ -2000,8 +2000,11 @@ uninstall_claude_plugins() {
 			claude plugin uninstall "$id" || echo "[uninstall] WARNING: failed to uninstall $id." >&2
 		fi
 	done
-	claude plugin marketplace remove agentkit >/dev/null 2>&1 \
-		&& echo "[uninstall] Removed marketplace: agentkit"
+	if claude plugin marketplace remove agentkit >/dev/null 2>&1; then
+		echo "[uninstall] Removed marketplace: agentkit"
+	else
+		echo "[uninstall] WARNING: failed to remove marketplace agentkit." >&2
+	fi
 	return 0
 }
 
