@@ -71,9 +71,10 @@ const BUILT = [
   'sitemap-0.xml',
 ];
 
-// Records every argv it is handed and answers the three shapes deploy.sh uses:
-// an upload, the stamp read-back, and a status probe.
-function stubCurl(): void {
+// Records every argv it is handed and answers the shapes deploy.sh uses: an
+// upload, a delete, the key listing, a status probe and the stamp read-back.
+// `stampLines` and `putLines` are where the variants differ.
+function curlStub(stampLines: readonly string[] = [], putLines: readonly string[] = []): void {
   stub(
     'curl',
     [
@@ -84,6 +85,7 @@ function stubCurl(): void {
       `LIVE=${JSON.stringify(join(root, '.live-sha'))}`,
       `REMOTE=${JSON.stringify(join(root, '.remote-keys'))}`,
       `DEL=${JSON.stringify(join(root, '.deleted'))}`,
+      `N=${JSON.stringify(join(root, '.stamp-reads'))}`,
       'printf "%s\\n" "$*" >> "$ARGV"',
       'is_put=; is_code=; is_delete=',
       'for a in "$@"; do',
@@ -92,37 +94,35 @@ function stubCurl(): void {
       'eval "url=\\${$#}"',
       'if [ -n "$is_delete" ]; then printf "%s\\n" "${url##*/api/site/}" >> "$DEL"; exit 0; fi',
       'case "$url" in *api/site-list/*) cat "$REMOTE" 2>/dev/null || printf "{\\"keys\\":[]}"; exit 0 ;; esac',
-      'if [ -n "$is_put" ]; then printf "%s\\n" "${url##*/api/site/docs/}" >> "$LOG"; exit 0; fi',
+      'if [ -n "$is_put" ]; then',
+      ...putLines,
+      '  printf "%s\\n" "${url##*/api/site/docs/}" >> "$LOG"; exit 0',
+      'fi',
       'if [ -n "$is_code" ]; then printf "200"; exit 0; fi',
+      ...stampLines,
       'if [ -f "$LIVE" ]; then cat "$LIVE"; fi',
       'exit 0',
     ].join('\n'),
   );
 }
 
+function stubCurl(): void {
+  curlStub();
+}
+
+// Serves `rival` once `afterReads` stamp reads have happened: another deploy
+// landing its objects part-way through this one.
+function stubCurlInterleaving(afterReads: number, rival: string): void {
+  curlStub([
+    'count=$(cat "$N" 2>/dev/null || printf 0)',
+    'count=$((count + 1)); printf "%s" "$count" > "$N"',
+    `if [ "$count" -gt ${afterReads} ]; then printf "%s" ${JSON.stringify(rival)}; exit 0; fi`,
+  ]);
+}
+
 // Answers 400 for one upload, the way the worker does for a path it rejects.
 function stubCurlRejecting(fragment: string): void {
-  stub(
-    'curl',
-    [
-      '#!/usr/bin/env bash',
-      'set -eu',
-      `LOG=${JSON.stringify(join(root, '.uploads'))}`,
-      `LIVE=${JSON.stringify(join(root, '.live-sha'))}`,
-      'is_put=; is_code=',
-      'for a in "$@"; do',
-      '  case "$a" in PUT) is_put=1 ;; -w) is_code=1 ;; esac',
-      'done',
-      'eval "url=\\${$#}"',
-      'if [ -n "$is_put" ]; then',
-      `  case "$url" in *${fragment}*) printf 'invalid path\\n'; exit 22 ;; esac`,
-      '  printf "%s\\n" "${url##*/api/site/docs/}" >> "$LOG"; exit 0',
-      'fi',
-      'if [ -n "$is_code" ]; then printf "200"; exit 0; fi',
-      'if [ -f "$LIVE" ]; then cat "$LIVE"; fi',
-      'exit 0',
-    ].join('\n'),
-  );
+  curlStub([], [`  case "$url" in *${fragment}*) printf 'invalid path\\n'; exit 22 ;; esac`]);
 }
 
 function deploy(env: Record<string, string> = {}): ReturnType<typeof spawnSync> {
@@ -474,5 +474,33 @@ describe('a reused archive survives the prune that removes deleted pages', () =>
     expect(result.status, result.stderr).toBe(0);
     expect(deleted()).toEqual(['docs/retired/index.html']);
     expect(result.stdout).not.toContain('reused archive');
+  });
+});
+
+describe('a deploy that overlaps another one stops instead of reporting success', () => {
+  // Seen live: two runs from different commits overlapped, each verified itself
+  // green, and the site was left serving one commit's stamp over the other's
+  // pages. Both halves are guarded — the prune, which could delete the other
+  // run's work, and the final word, which claimed a version that was not live.
+  test('a stamp that changes before the prune stops the deploy and deletes nothing', () => {
+    remoteKeys(['docs/index.html', 'docs/gone.html']);
+    stubCurlInterleaving(1, 'deadbeef');
+    const result = deploy();
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("serves 'deadbeef'");
+    expect(result.stderr).toContain('not pruning');
+    expect(deleted()).toEqual([]);
+  });
+
+  test('a stamp that changes after the prune is not reported as verified', () => {
+    remoteKeys(['docs/index.html', 'docs/gone.html']);
+    stubCurlInterleaving(2, 'deadbeef');
+    const result = deploy();
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("serves 'deadbeef'");
+    expect(result.stdout).not.toContain('verified live');
+    expect(deleted()).toEqual(['docs/gone.html']);
   });
 });

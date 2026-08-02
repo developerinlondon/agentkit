@@ -83,11 +83,15 @@ done < <(find dist -type f -name '*.html' | sort)
 put "$STAMP"
 echo "deploy: $((uploaded + 1)) file(s) at $sha"
 
+live_stamp() {
+	curl -sS "$SITE_URL/docs/build-sha.txt" 2>/dev/null | tr -d '[:space:]' || true
+}
+
 # The worker occasionally serves the previous object for a moment after a write.
 # Retry a fixed few times so a correct deploy is not reported broken, then fail —
 # an unbounded wait would hide a real failure.
 for attempt in 1 2 3 4 5 6; do
-	live=$(curl -sS "$SITE_URL/docs/build-sha.txt" 2>/dev/null | tr -d '[:space:]' || true)
+	live=$(live_stamp)
 	[[ "$live" == "$sha" ]] && break
 	if [[ "$attempt" == 6 ]]; then
 		echo "deploy: $SITE_URL/docs/ serves '$live', expected '$sha'" >&2
@@ -103,6 +107,20 @@ for path in "" getting-started/install/; do
 		exit 1
 	}
 done
+
+# A deploy that started earlier can land its objects after ours, and the prune
+# below would then read its pages as stale and delete them.
+current=$(live_stamp)
+if [[ "$current" != "$sha" ]]; then
+	if [[ -z "$current" ]]; then
+		echo "deploy: could not re-read the stamp before pruning — not pruning" >&2
+	else
+		echo "deploy: $SITE_URL/docs/ serves '$current', not the '$sha' this run uploaded" >&2
+		echo "  another deploy landed while this one was running; this build cannot tell its pages from stale objects" >&2
+		echo "  not pruning — redeploy the commit you intend to publish" >&2
+	fi
+	exit 1
+fi
 
 # Uploading never removes: before this, a page deleted from the build kept
 # answering 200 and nothing reported it. Ten migration redirects had to be deleted
@@ -165,6 +183,19 @@ if [[ "${stale_count:-0}" -gt 0 ]]; then
 	echo "deploy: pruned $stale_count object(s) no longer in the build"
 else
 	echo "deploy: nothing to prune"
+fi
+
+# Re-read at the end: an overlapping deploy landing its stamp after our verify
+# leaves the site a mix of both, with every step above having reported success.
+final=$(live_stamp)
+if [[ "$final" != "$sha" ]]; then
+	if [[ -z "$final" ]]; then
+		echo "deploy: uploaded $sha, but the stamp could not be re-read to confirm it is still live" >&2
+	else
+		echo "deploy: $SITE_URL/docs/ serves '$final' now that this run has finished, not '$sha'" >&2
+		echo "  an overlapping deploy landed; the site holds objects from both — redeploy the commit you intend to publish" >&2
+	fi
+	exit 1
 fi
 
 echo "deploy: verified live at $SITE_URL/docs/ ($sha)"
