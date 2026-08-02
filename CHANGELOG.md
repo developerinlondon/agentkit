@@ -5,6 +5,17 @@ top and ships with the next tag.
 
 ## [Unreleased]
 
+## v0.7.0 — 2026-08-02
+
+- feat(pages): replace anonymous publishing with Assay accounts and per-device
+  credentials. New pages are private and owned by the verified Assay user; the
+  account dashboard lists their pages and publishing devices, creates revocable
+  share links, grants and removes access by verified email, and revokes device
+  credentials. The account control plane lives on `account.agentkit.sbs`, while
+  arbitrary rendered HTML stays on `pages.agentkit.sbs`; a host-only session is
+  exchanged for a random ten-minute capability scoped to one page, so published
+  JavaScript never shares the dashboard's origin or cookie. The site deployment
+  API remains separately credentialed on `agentkit.sbs`.
 - feat(git-police): a branch WIP cap refuses creating a branch while unfinished
   ones are already open on the repository. `mr-police` has capped open merge
   requests at one for a while, but an agent that never opens an MR never meets

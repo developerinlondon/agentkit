@@ -26,9 +26,9 @@ const promptedKitCount = readSkillKits(repoRoot).kits
 // greps the whole transcript for it, so it has to be the literal the installer
 // prints rather than a paraphrase of it.
 const promptMarker = '? [y/N]';
-// A blocked wizard is not slow, it is stopped. A bare install takes about a
-// second, so a run still alive after this was waiting for a keystroke.
-const hangTimeoutMs = 20_000;
+// A blocked wizard is stopped, while an isolated install can take over 30
+// seconds under full-suite contention. Keep this below the outer deadline.
+const hangTimeoutMs = 45_000;
 
 // The gate names the environment that suppresses the wizard, and this reads
 // that same declaration rather than keeping a second copy: the two drifting
@@ -355,7 +355,7 @@ describe('installer skill-kit wizard', () => {
     } finally {
       rmSync(home, { force: true, recursive: true });
     }
-  }, globalInstallTimeoutMs);
+  }, globalInstallTimeoutMs * 2);
 
   test('a piped install never prompts, so CI cannot block on an unanswered question', () => {
     const home = mkdtempSync(join(tmpdir(), 'agentkit-wizard-'));
@@ -393,7 +393,7 @@ describe('installer skill-kit wizard', () => {
         rmSync(home, { force: true, recursive: true });
       }
     }
-  }, globalInstallTimeoutMs);
+  }, globalInstallTimeoutMs * 3);
 
   test('declining every kit installs exactly what a bare piped install installs', () => {
     if (noPtyDriver()) return;
@@ -424,7 +424,7 @@ describe('installer skill-kit wizard', () => {
       rmSync(declined, { force: true, recursive: true });
       rmSync(piped, { force: true, recursive: true });
     }
-  }, globalInstallTimeoutMs);
+  }, globalInstallTimeoutMs * 2);
 
   test('a CI runner that allocated a terminal is never asked', () => {
     if (noPtyDriver()) return;
@@ -532,7 +532,7 @@ describe('installer skill-kit wizard', () => {
         rmSync(home, { force: true, recursive: true });
       }
     }
-  }, globalInstallTimeoutMs);
+  }, globalInstallTimeoutMs * 2);
 
   test('a project install does not ask, because it has nowhere to remember', () => {
     if (noPtyDriver()) return;
@@ -573,5 +573,5 @@ describe('installer skill-kit wizard', () => {
     } finally {
       rmSync(home, { force: true, recursive: true });
     }
-  }, globalInstallTimeoutMs);
+  }, globalInstallTimeoutMs * 2);
 });

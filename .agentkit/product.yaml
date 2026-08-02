@@ -13,7 +13,10 @@ surfaces:
     kind: library
     # This repo-owned adapter keeps the command verbatim on every host: Linux
     # delegates to installed agentkit-run; other platforms execute directly.
-    build: scripts/product-command default -- bun install
+    build: |
+      set -eu
+      scripts/product-command default -- bun install --frozen-lockfile
+      scripts/product-command default -- bun install --frozen-lockfile --cwd skills/publish-page
     verify: scripts/product-command default -- bun test
     expect: |
       The suite passes with 0 failures. Platform-specific skips are expected and
@@ -23,6 +26,29 @@ surfaces:
       The suite is the real gate on this repo: it asserts the plugin wiring,
       that every police hook parses under `bash -n`, and that `skills/` stays
       byte-identical to the plugin mirror.
+
+  - name: pages-worker
+    kind: api
+    build: scripts/product-command default -- bun install --frozen-lockfile --cwd pages/worker
+    verify: >-
+      scripts/product-command default -- bun test
+      tests/publish-page/accounts.test.ts
+      tests/publish-page/device-login.test.ts
+      tests/publish-page/worker.test.ts
+    run: |
+      set -eu
+      CI=1 scripts/product-command default -- node pages/worker/node_modules/wrangler/bin/wrangler.js d1 migrations apply agentkit-pages --local --config pages/worker/wrangler.toml
+      scripts/product-command default -- node pages/worker/node_modules/wrangler/bin/wrangler.js dev --local --config pages/worker/wrangler.toml
+    expect: |
+      The Worker starts with local R2 and D1 bindings. Site-token routes remain
+      isolated from account publishing. Page publishing requires a per-device
+      credential owned by an Assay user, creates private pages, and records the
+      page in that user's dashboard. The account origin alone receives host-only
+      sessions and control requests; the rendered-content origin accepts only
+      reads through a public page, sharing token, or short-lived page-scoped
+      capability. Verified-email invites, immediate invite revocation, and device
+      revocation enforce their D1 records; missing account storage fails closed
+      when account mode is required.
 
   - name: plugin
     kind: desktop
