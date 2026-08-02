@@ -176,6 +176,11 @@
      severity. Body strongs stay in ink: an amber sentence misses contrast on
      its own ground in light mode. Each severity restates the label selector so
      it outranks the base one by specificity rather than by declaration order. */
+  /* The body only sometimes arrives in a <p>, depending on which spelling the
+     author used, and a UA margin there makes the same callout two heights.
+     Padding does not collapse a margin, so the reset has to be explicit. */
+  .callout p { margin: 0 0 0.5rem; max-width: none; }
+  .callout p:last-child { margin-bottom: 0; }
   /* A blank line inside the div is the spelling SKILL.md mandates for figures,
      and markdown wraps that body in a <p> — so the label arrives one level
      deeper and must still be a label. */

@@ -84,7 +84,7 @@ describe('labelled section nav', () => {
 // silently decided the label colour. This resolves the cascade instead. The
 // grammar is narrow and throws on what it cannot represent, so an unrecognised
 // selector fails the suite rather than being skipped.
-type El = { tag: string; classes: string[]; first: boolean; parent?: El };
+type El = { tag: string; classes: string[]; first: boolean; last?: boolean; parent?: El; prev?: El };
 
 function styleBlocks(html: string): string {
   return [...html.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g)]
@@ -94,31 +94,41 @@ function styleBlocks(html: string): string {
 }
 
 function compound(text: string) {
-  const m = text.match(/^([a-z0-9]*)((?:\.[a-z-]+)*)(:first-child)?$/i);
+  const m = text.match(/^([a-z0-9]*)((?:\.[a-z-]+)*)((?::(?:first|last)-child)*)$/i);
   if (!m) throw new Error(`unsupported selector compound: ${text}`);
   const classes = m[2] ? m[2].slice(1).split('.') : [];
+  const pseudo = m[3] ? m[3].split(':').filter(Boolean) : [];
   return {
     tag: m[1] ?? '',
     classes,
-    first: Boolean(m[3]),
-    weight: (classes.length + (m[3] ? 1 : 0)) * 1000 + (m[1] ? 1 : 0),
+    first: pseudo.includes('first-child'),
+    last: pseudo.includes('last-child'),
+    weight: (classes.length + pseudo.length) * 1000 + (m[1] ? 1 : 0),
   };
 }
+
+const COMBINATORS: Record<string, 'child' | 'next' | 'later'> = {
+  '>': 'child',
+  '+': 'next',
+  '~': 'later',
+};
 
 function sequence(selector: string) {
   const parts = selector.trim().split(/\s+/);
   for (const p of parts) {
-    if (p !== '>' && /[>+~]/.test(p)) throw new Error(`unsupported combinator syntax: ${selector}`);
+    if (!COMBINATORS[p] && /[>+~]/.test(p)) {
+      throw new Error(`unsupported combinator syntax: ${selector}`);
+    }
   }
-  const seq: Array<{ c: ReturnType<typeof compound>; child: boolean }> = [];
-  let child = false;
+  const seq: Array<{ c: ReturnType<typeof compound>; comb: string }> = [];
+  let comb = 'descendant';
   for (const p of parts) {
-    if (p === '>') {
-      child = true;
+    if (COMBINATORS[p]) {
+      comb = COMBINATORS[p];
       continue;
     }
-    seq.push({ c: compound(p), child });
-    child = false;
+    seq.push({ c: compound(p), comb });
+    comb = 'descendant';
   }
   return seq;
 }
@@ -126,6 +136,7 @@ function sequence(selector: string) {
 function hits(c: ReturnType<typeof compound>, el: El): boolean {
   if (c.tag && c.tag !== el.tag) return false;
   if (c.first && !el.first) return false;
+  if (c.last && !el.last) return false;
   return c.classes.every((k) => el.classes.includes(k));
 }
 
@@ -134,14 +145,17 @@ function matches(selector: string, el: El): boolean {
   let cur: El | undefined = el;
   if (!hits(seq[seq.length - 1].c, cur)) return false;
   for (let i = seq.length - 2; i >= 0; i -= 1) {
-    if (seq[i + 1].child) {
-      cur = cur?.parent;
-      if (!cur || !hits(seq[i].c, cur)) return false;
+    const c = seq[i].c;
+    const step = seq[i + 1].comb;
+    if (step === 'child' || step === 'next') {
+      cur = step === 'child' ? cur?.parent : cur?.prev;
+      if (!cur || !hits(c, cur)) return false;
     } else {
-      let up = cur?.parent;
-      while (up && !hits(seq[i].c, up)) up = up.parent;
-      if (!up) return false;
-      cur = up;
+      const up = (e: El | undefined) => (step === 'later' ? e?.prev : e?.parent);
+      let at = up(cur);
+      while (at && !hits(c, at)) at = up(at);
+      if (!at) return false;
+      cur = at;
     }
   }
   return true;
@@ -180,7 +194,8 @@ function declOf(css: string, el: El, prop: string, reversed = false): string | n
   if (reversed) rules.reverse();
   let best: { rank: number; spec: number; order: number; value: string } | null = null;
   rules.forEach((rule, order) => {
-    const decl = rule.body.match(new RegExp(`(?:^|;)\\s*${prop}:\\s*([^;]+)`));
+    const safe = prop.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const decl = rule.body.match(new RegExp(`(?:^|;)\\s*${safe}:\\s*([^;]+)`));
     if (!decl) return;
     const raw = decl[1].trim();
     const rank = /!\s*important$/i.test(raw) ? 1 : 0;
@@ -284,6 +299,19 @@ describe('callout severities', () => {
             .toEqual({ variant, idiom, color: declOf(css, el, 'color') });
         }
       }
+    });
+
+    test(`${name} does not make the same callout two heights`, () => {
+      // Only some spellings put the body in a <p>. A UA margin there is dead
+      // space inside the callout's own padding, which padding cannot collapse,
+      // so two callouts written the two documented ways stack differently.
+      const box = callout(null);
+      const body: El = { tag: 'p', classes: [], first: true, parent: box };
+      const last: El = { tag: 'p', classes: [], first: false, last: true, parent: box, prev: body };
+      expect({ theme: name, margin: declOf(css, body, 'margin') })
+        .toEqual({ theme: name, margin: '0 0 0.5rem' });
+      expect({ theme: name, trailing: declOf(css, last, 'margin-bottom') })
+        .toEqual({ theme: name, trailing: '0' });
     });
 
     test(`${name} leaves emphasis inside callout body text in ink`, () => {
