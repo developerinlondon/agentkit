@@ -93,7 +93,8 @@ content and a reviewer cannot tell which needed a designer.
   collapse, `prefers-reduced-motion`) are a different matter and fine.
 - **Standalone pages ship the scaffold's `.theme-toggle`** (persisted, stamps
   `data-theme`) — without host chrome a viewer can never flip themes, so the
-  second theme goes unseen and unjudged. Keep it only when the host has no
+  second theme goes unseen and unjudged. The button shows the ◐ glyph only;
+  the words live in `aria-label`, not on the page. Keep it only when the host has no
   toggle of its own; a host that stamps `data-theme` composes with it anyway.
 - Dark values are re-picked, not inverted: soft grounds go deep and desaturated,
   accents brighten to hold contrast.
