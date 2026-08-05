@@ -52,9 +52,10 @@ content and a reviewer cannot tell which needed a designer.
    - **Screenshot the full height.** Read `documentElement.scrollHeight` from
      the rendered page first and size the capture window to it — a fixed-height
      window verifies the top of the page and silently calls the rest clean.
-     `--window-size` height is the WINDOW, not the viewport: measure the chrome
-     once (`windowSize − innerHeight`, ~90 px) and add it, or the by-the-book
-     capture still clips the last lines.
+     `--window-size` height is the WINDOW, not the viewport: measure the
+     chrome (`windowSize − innerHeight`; it varies with launch flags, so
+     measure it in the same command you capture with) and add it, or the
+     by-the-book capture still clips the last lines.
    - **Measure, don't estimate.** Absolute-positioned figures (mockup edges,
      sequence messages) depend on how text wraps in the font that actually
      resolves. Dump the rendered nodes' `offsetLeft/Top/Width/Height` with a
@@ -62,8 +63,8 @@ content and a reviewer cannot tell which needed a designer.
      probe assert `scrollWidth === clientWidth` on every `overflow-x` wrapper —
      a horizontally clipped figure is invisible under `--hide-scrollbars`.
    - **Compute contrast, don't eyeball it.** In the same probe, walk the
-     rendered elements and compute the WCAG ratio of every text/ground pair
-     the page actually paints; each must clear 4.5:1. Element-level beats
+     rendered elements in each theme and compute the WCAG ratio of every
+     text/ground pair the page actually paints; each must clear 4.5:1. Element-level beats
      enumerating token pairs — it catches combinations no token list names.
      The eye happily passes a 3.2:1 mono pill that the contract fails.
    - **A self-measuring page converges last.** If the page states its own
