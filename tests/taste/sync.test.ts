@@ -309,7 +309,7 @@ describe('sync answers for what it cannot do', () => {
     const gitconfig = join(scratch({ gitconfig: '[protocol "ext"]\n\tallow = always\n' }), 'gitconfig');
     const cwd = scratch({
       '.agentkit/config.yaml': config({
-        repo: JSON.stringify(`ext::sh -c "touch ${sentinel}"`),
+        repo: JSON.stringify(`ext::touch ${sentinel}`),
         ref: 'v1',
         name: 'evil',
       }),

@@ -66,6 +66,7 @@ const EXTERNAL_SOURCES: [string, string][] = [
   ['reference mode is refused, not downgraded', 'an error naming the deferral'],
   ['a fresh clone reads its policy with no network', 'already has the policy'],
   ['a ref cannot smuggle a git option', 'a program git would'],
+  ['a repo cannot name a transport helper', 'runs a program instead of fetching'],
   ['the lock pins the commit that was reviewed', 'the commit whose contents were reviewed'],
   ['the pin date moves only with the pin', 'The date moves only when the pin does'],
   ['the vendored tree is never hand-edited', 'Never edit `.agentkit/tastes-vendor/` by hand'],

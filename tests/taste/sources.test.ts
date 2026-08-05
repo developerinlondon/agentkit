@@ -150,6 +150,32 @@ describe('a declaration the resolver cannot act on is refused, by name', () => {
     );
   });
 
+  test('a repo that names a transport helper is refused', () => {
+    const errors = errorsFor(config(source('"ext::touch /tmp/pwn"', { ref: 'v1' })));
+
+    expect(errors).toContain('transport helper');
+    expect(errors).toContain('runs a program');
+  });
+
+  test('a repo that begins with a dash is refused', () => {
+    expect(errorsFor(config(source('"--upload-pack=id"', { ref: 'v1' })))).toContain('option');
+  });
+
+  test.each([
+    ['an ssh URL', 'ssh://git@example.invalid/org/tastes.git'],
+    ['an scp-style ssh path', 'git@example.invalid:org/tastes.git'],
+    ['an https URL', 'https://example.invalid/org/tastes.git'],
+    ['a file URL', 'file:///srv/tastes.git'],
+    ['an absolute path', '/srv/tastes.git'],
+  ])('a repo that is %s is accepted', (_shape, repo) => {
+    const { sources, errors } = declare({
+      '.agentkit/config.yaml': config(source(JSON.stringify(repo), { ref: 'v1', name: 'x' })),
+    });
+
+    expect(errors).toEqual([]);
+    expect(sources[0]?.repo).toBe(repo);
+  });
+
   test('a ref that is really a git option is refused', () => {
     const errors = errorsFor(
       config(source(CENTRAL, { ref: '"--upload-pack=touch /tmp/pwn"' })),

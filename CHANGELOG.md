@@ -32,8 +32,10 @@ release PR — "publish this" authorizes a release, never the tier.
   independent stops now: `sources.ts` refuses a ref that is not a plain branch, tag or commit
   name (leading `-`, spaces, substitutions, `..`, `@{`, a `.lock` suffix), and every git
   invocation carrying a config-supplied value passes `--end-of-options`. The `ext::` transport
-  is pinned off with `-c protocol.ext.allow=never` in the same audit, so a host whose global
-  git config re-enabled it cannot have a repository URL run as a shell command either. (#303)
+  is pinned off with `-c protocol.ext.allow=never` in the same audit, and a `repo` naming any
+  `scheme::command` transport helper is refused at the boundary — verified both ways: with the
+  pin removed and a git config that re-enables the helper, `repo: ext::touch /tmp/pwn` creates
+  the file. (#303)
 - fix(taste): sync bounds every git step at 60s (`STEP_TIMEOUT_MS`). `GIT_TERMINAL_PROMPT=0`
   answers a credential prompt but not a host that accepts a connection and never replies,
   which held a session past two minutes. On expiry the source fails with `unreachable within

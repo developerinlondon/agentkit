@@ -84,7 +84,9 @@ taste:
 - **A `ref` is a plain branch, tag or commit name**, and one beginning with `-` is refused:
   git reads options after positionals, so a ref like `--upload-pack=…` is a program git would
   run rather than a revision it would fetch. The sync passes `--end-of-options` as well, so
-  the refusal does not depend on the validator alone.
+  the refusal does not depend on the validator alone. A `repo` is a URL or a path for the same
+  reason: git's `scheme::command` remote form runs a program instead of fetching, and is
+  refused at the boundary and pinned off in the fetch.
 - **`.agentkit/tastes.lock` pins each source to the commit whose contents were reviewed.** It
   is generated in `taste.sources` order and carries the name, repository, ref, commit and the
   date that pin was taken. The date moves only when the pin does.

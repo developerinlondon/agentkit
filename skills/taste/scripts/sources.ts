@@ -23,6 +23,7 @@ const MODES = ['vendored', 'reference'];
 // the checkout its files land.
 const SOURCE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const REF = /^[A-Za-z0-9][A-Za-z0-9._/-]*$/;
+const TRANSPORT_HELPER = /^[a-z][a-z0-9+.-]*::/i;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -61,6 +62,19 @@ function checkName(name: string, at: string): string[] {
   return [
     `${at}: name ${JSON.stringify(name)} must be a plain directory name — it keys `
     + '.agentkit/tastes-vendor/, and a source does not choose where in the checkout it lands',
+  ];
+}
+
+// `scheme::command` is git's transport-helper syntax: the remote runs a program
+// rather than naming a repository. Sync pins that off too.
+function checkRepo(repo: string, at: string): string[] {
+  if (repo.startsWith('-')) {
+    return [`${at}: repo ${JSON.stringify(repo)} begins with "-", which git reads as an option`];
+  }
+  if (!TRANSPORT_HELPER.test(repo)) return [];
+  return [
+    `${at}: repo ${JSON.stringify(repo)} names a git transport helper rather than a repository `
+    + '— that form runs a program. Use an ssh, https, git or file URL, or a path.',
   ];
 }
 
@@ -117,7 +131,9 @@ function readSource(
         SOURCE_KEYS.join(', ')
       }`]
       : []),
-    ...(repo === undefined ? [`${at}: missing repo — a source is a git repository`] : []),
+    ...(repo === undefined
+      ? [`${at}: missing repo — a source is a git repository`]
+      : checkRepo(repo, at)),
     ...(ref === undefined
       ? [
         `${at}: missing ref — a source is pinned to a tag, branch or commit, never to whatever `
