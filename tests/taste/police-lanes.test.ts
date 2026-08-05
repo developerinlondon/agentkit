@@ -175,9 +175,10 @@ Why: it is the shape the evaluator has to survive.
 How to apply: it never matches anything in time.
 `;
 
-  // The hook's own `timeout 8` would also stop this, so the assertion is that it
-  // comes back FAST — under the evaluator's deadline plus a runtime start,
-  // nowhere near the outer ceiling. That is what proves the inner bound ran.
+  // The hook's own `timeout 8` would also stop this, and returning fast only
+  // rules out a hang — it cannot tell the two bounds apart. What proves the
+  // evaluator's own deadline ran is the notice naming the taste: an outer kill
+  // reports UNCHECKED and names nothing.
   test('a pathological pattern returns in well under the outer timeout', () => {
     const cwd = sandbox({ '.agentkit/tastes/evil.md': EVIL_TASTE });
 

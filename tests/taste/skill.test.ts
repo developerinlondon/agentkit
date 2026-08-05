@@ -40,6 +40,7 @@ const CONVERSATIONAL_SURFACES: [string, string][] = [
   ['listing carries strength and enforce', '| `strength` |'],
   ['listing names what a scope shadowed', 'Name the shadowed layers explicitly'],
   ['an empty folder is said, not tabulated', 'rather than presenting an empty table'],
+  ['a skipped taste is named, not omitted', '**named in the listing as skipped**'],
   ['dictation is not a lesser path', 'first-class capture path, not a lesser one'],
   ['dictation runs the same sequence', 'It runs the same Learning'],
   ['dictation still lands through an MR', 'merge request for a project taste'],

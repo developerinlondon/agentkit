@@ -87,6 +87,11 @@ your home directory" is usually the answer someone came for, and a table of winn
 hides exactly the surprise they are chasing. Give the path of any row on request, and say
 plainly when a folder is empty rather than presenting an empty table.
 
+A file the lint refuses is **named in the listing as skipped**, with what the lint said —
+never left out of it. The reasoning is `UNCHECKED`'s: a surface that goes quiet about what it
+could not read reports the same thing as a folder that never held it, and the missing row is
+usually the taste the question was about.
+
 ### "Add a taste: …"
 
 A dictated taste is a first-class capture path, not a lesser one. It runs the same Learning

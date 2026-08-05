@@ -369,10 +369,12 @@ describe('a malformed taste is loud, and never contagious', () => {
       const elapsed = performance.now() - started;
 
       expect(verdict.decision).toBe('allow');
-      // A literal, not a multiple of the constant under test: a bound derived
-      // from the deadline moves with it, and would pass at any deadline at all.
-      // Generous against a slow CI box, and still nothing next to the wall-clock
-      // cost of letting that pattern finish.
+      // This bound proves only that the session came back rather than hanging —
+      // a three-second deadline would satisfy it too. What pins the deadline is
+      // the assertion on MATCH_DEADLINE_MS above, and what proves the evaluator
+      // reached its own abandon path is the skip notice below. The literal is
+      // deliberate: a bound derived from the constant would move with it and
+      // pass at any deadline at all.
       expect(elapsed).toBeLessThan(2000);
     });
 
