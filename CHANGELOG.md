@@ -9,6 +9,8 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+## v0.7.5 — 2026-08-05
+
 - feat(taste): `taste-police` — one generic hook that carries out `enforce:
   block`. It resolves the same folders the skill reads (project >
   `tastes-vendor` > user, replacing by name), takes the tastes whose `rule` the
