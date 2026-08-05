@@ -5,6 +5,14 @@ top and ships with the next tag.
 
 ## [Unreleased]
 
+## v0.8.0 — 2026-08-05
+
+- docs(designer): the altitude rule — clarity outranks detail. The centerpiece
+  figure carries every stage of its story at a glance, headline + centerpiece
+  must pass a ten-second newcomer test, zooms come after the overview and are
+  labeled as zooms, and evidence supports a figure the reader already
+  understands rather than leading it. Distilled from an owner review where the
+  measured-richer page read worse than a plainer one. (#292)
 - fix(designer): standalone pages carry their own persisted theme toggle. The
   scaffold themed correctly through `prefers-color-scheme` and `data-theme`
   overrides, but a page hosted without chrome (a product repo, a raw publish)
