@@ -14,11 +14,17 @@ import { lintTasteDirectory, tasteFiles } from './lint.ts';
 import { formatLock, type LockEntry, parseLock, pinnedOn } from './lock.ts';
 import { readSources, type TasteSource } from './sources.ts';
 
+// Per git step. GIT_TERMINAL_PROMPT=0 answers a credential prompt but not a
+// name resolution or a TCP connect that never returns, and a session must not
+// be held by a host that stopped answering.
+export const STEP_TIMEOUT_MS = 60_000;
+
 export interface SyncRequest {
   cwd: string;
   home?: string;
   env?: Record<string, string | undefined>;
   today?: string;
+  timeoutMs?: number;
 }
 
 export interface SyncResult {
@@ -42,16 +48,30 @@ function lockPath(cwd: string): string {
   return join(cwd, '.agentkit', 'tastes.lock');
 }
 
-function git(cwd: string, args: string[]): { code: number; out: string; err: string } {
+interface GitRun {
+  ok: boolean;
+  out: string;
+  err: string;
+  timedOut: boolean;
+}
+
+// protocol.ext.allow is pinned rather than inherited: git's own default refuses
+// the ext helper, but a host whose global config re-enabled it would run a
+// source's URL as a shell command.
+function git(cwd: string, args: string[], timeoutMs: number): GitRun {
+  const started = performance.now();
   const result = Bun.spawnSync({
-    cmd: ['git', '-c', 'advice.detachedHead=false', ...args],
+    cmd: ['git', '-c', 'advice.detachedHead=false', '-c', 'protocol.ext.allow=never', ...args],
     cwd,
     env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+    timeout: timeoutMs,
+    killSignal: 'SIGKILL',
   });
   return {
-    code: result.exitCode,
+    ok: result.exitCode === 0,
     out: result.stdout.toString().trim(),
     err: result.stderr.toString().trim(),
+    timedOut: result.exitCode === null && performance.now() - started >= timeoutMs,
   };
 }
 
@@ -60,19 +80,33 @@ function firstLine(text: string): string {
 }
 
 // Shallow, and at the named ref only: a taste set is read, never developed from
-// here, so its history is not something this checkout has any use for.
-function fetchSource(source: TasteSource, into: string): { sha?: string; error?: string } {
+// here, so its history is not something this checkout has any use for. Both
+// values that come from config — the repo and the ref — sit after
+// --end-of-options, because git reads options after positionals and would
+// otherwise run a ref of `--upload-pack=...` as a program.
+function fetchSource(
+  source: TasteSource,
+  into: string,
+  timeoutMs: number,
+): { sha?: string; error?: string } {
   mkdirSync(into, { recursive: true });
   const steps: string[][] = [
     ['init', '--quiet'],
-    ['remote', 'add', 'origin', source.repo],
-    ['fetch', '--depth', '1', '--quiet', 'origin', source.ref],
-    ['checkout', '--quiet', 'FETCH_HEAD'],
+    ['remote', 'add', '--end-of-options', 'origin', source.repo],
+    ['fetch', '--depth', '1', '--quiet', '--end-of-options', 'origin', source.ref],
+    ['checkout', '--quiet', '--end-of-options', 'FETCH_HEAD'],
   ];
 
   for (const args of steps) {
-    const step = git(into, args);
-    if (step.code !== 0) {
+    const step = git(into, args, timeoutMs);
+    if (step.timedOut) {
+      return {
+        error: `${source.name}: ${source.repo} was unreachable within ${
+          Math.round(timeoutMs / 1000)
+        }s — the fetch was abandoned and nothing was written`,
+      };
+    }
+    if (!step.ok) {
       return {
         error: `${source.name}: could not fetch ref ${JSON.stringify(source.ref)} from `
           + `${source.repo} — ${firstLine(step.err)}`,
@@ -80,8 +114,8 @@ function fetchSource(source: TasteSource, into: string): { sha?: string; error?:
     }
   }
 
-  const head = git(into, ['rev-parse', 'FETCH_HEAD']);
-  if (head.code !== 0) return { error: `${source.name}: could not resolve ${source.ref}` };
+  const head = git(into, ['rev-parse', 'FETCH_HEAD'], timeoutMs);
+  if (!head.ok) return { error: `${source.name}: could not resolve ${source.ref}` };
   return { sha: head.out };
 }
 
@@ -104,7 +138,7 @@ function lintSource(source: TasteSource, dir: string): string[] {
   return errors.map((error) => `${source.name}: ${error}`);
 }
 
-function stage(sources: readonly TasteSource[], workspace: string): {
+function stage(sources: readonly TasteSource[], workspace: string, timeoutMs: number): {
   staged: Staged[];
   errors: string[];
 } {
@@ -113,7 +147,7 @@ function stage(sources: readonly TasteSource[], workspace: string): {
 
   for (const source of sources) {
     const checkout = join(workspace, source.name);
-    const fetched = fetchSource(source, checkout);
+    const fetched = fetchSource(source, checkout, timeoutMs);
     if (fetched.sha === undefined) {
       errors.push(fetched.error as string);
       continue;
@@ -209,7 +243,11 @@ export function syncSources(request: SyncRequest): SyncResult {
 
   const workspace = mkdtempSync(join(tmpdir(), 'agentkit-taste-sync-'));
   try {
-    const { staged, errors: refused } = stage(sources, workspace);
+    const { staged, errors: refused } = stage(
+      sources,
+      workspace,
+      request.timeoutMs ?? STEP_TIMEOUT_MS,
+    );
     if (refused.length > 0) return { ok: false, errors: refused, report: [], entries: [] };
     return land(request.cwd, staged, today);
   } finally {

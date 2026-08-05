@@ -22,6 +22,7 @@ const MODES = ['vendored', 'reference'];
 // directory name or it is refused: a source must not be able to choose where in
 // the checkout its files land.
 const SOURCE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+const REF = /^[A-Za-z0-9][A-Za-z0-9._/-]*$/;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -60,6 +61,18 @@ function checkName(name: string, at: string): string[] {
   return [
     `${at}: name ${JSON.stringify(name)} must be a plain directory name — it keys `
     + '.agentkit/tastes-vendor/, and a source does not choose where in the checkout it lands',
+  ];
+}
+
+// git parses options after positionals, so a ref of `--upload-pack=...` is a
+// program git runs. The fetch call stops that with --end-of-options too; this
+// is the outer of two independent stops.
+function checkRef(ref: string, at: string): string[] {
+  if (REF.test(ref) && !ref.includes('..') && !ref.endsWith('.lock')) return [];
+  return [
+    `${at}: ref ${JSON.stringify(ref)} must be a plain branch, tag or commit — letters, digits, `
+    + 'dot, dash, underscore and slash, starting with a letter or digit. A ref beginning with '
+    + '"-" is a git option rather than a ref, and is refused here before git ever sees it.',
   ];
 }
 
@@ -110,7 +123,7 @@ function readSource(
         `${at}: missing ref — a source is pinned to a tag, branch or commit, never to whatever `
         + 'the default branch says today',
       ]
-      : []),
+      : checkRef(ref, at)),
     ...checkMode(mode, at),
     ...(name === undefined ? [] : checkName(name, at)),
     ...checkPath(path, at),

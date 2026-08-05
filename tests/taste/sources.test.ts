@@ -1,8 +1,11 @@
 import { afterEach, describe, expect, test } from 'bun:test';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { evaluateCommand } from '../../skills/taste/scripts/police.ts';
 import { resolveTastes } from '../../skills/taste/scripts/resolve.ts';
 import { readSources } from '../../skills/taste/scripts/sources.ts';
-import { removeScratch, scratch, taste } from './fixtures.ts';
+import { syncSources } from '../../skills/taste/scripts/sync.ts';
+import { remote, removeScratch, scratch, taste } from './fixtures.ts';
 
 afterEach(removeScratch);
 
@@ -147,6 +150,47 @@ describe('a declaration the resolver cannot act on is refused, by name', () => {
     );
   });
 
+  test('a ref that is really a git option is refused', () => {
+    const errors = errorsFor(
+      config(source(CENTRAL, { ref: '"--upload-pack=touch /tmp/pwn"' })),
+    );
+
+    expect(errors).toContain('ref');
+    expect(errors).toContain('git option');
+  });
+
+  test.each([
+    ['a long option', '--upload-pack=touch /tmp/pwn'],
+    ['a short option', '-u'],
+    ['a leading dash on an otherwise ordinary name', '-main'],
+    ['a command substitution', 'v1$(touch /tmp/pwn)'],
+    ['a backtick', 'v1`id`'],
+    ['a space', 'v1 --upload-pack=id'],
+    ['a semicolon', 'v1;id'],
+    ['the parent-directory sequence git reserves', 'refs/heads/../../evil'],
+    ['a reflog selector', 'main@{yesterday}'],
+    ['the .lock suffix git reserves', 'main.lock'],
+  ])('a ref carrying %s is refused', (_shape, ref) => {
+    expect(errorsFor(config(source(CENTRAL, { ref: JSON.stringify(ref) })))).toContain('ref');
+  });
+
+  // The allowlist has to leave the refs people actually pin usable, or the
+  // guard gets turned off rather than obeyed.
+  test.each([
+    ['a branch', 'main'],
+    ['a namespaced branch', 'feat/tastes-phase3'],
+    ['a version tag', 'v2026.08.1'],
+    ['a tag with an underscore', 'release_2026'],
+    ['a full commit sha', '4f1c2be9a7d0e3b8c5a19f7264e0d3b1c8a5f2e9'],
+  ])('a ref that is %s is accepted', (_shape, ref) => {
+    const { sources, errors } = declare({
+      '.agentkit/config.yaml': config(source(CENTRAL, { ref })),
+    });
+
+    expect(errors).toEqual([]);
+    expect(sources[0]?.ref).toBe(ref);
+  });
+
   test('a path that would escape the checkout is refused', () => {
     expect(errorsFor(config(source(CENTRAL, { ref: 'main', path: '"../secrets"' })))).toContain(
       'path',
@@ -280,6 +324,30 @@ describe('external sources stack in the order they were declared', () => {
     });
 
     expect(resolveTastes(cwd, home, {}).warnings.join('\n')).toContain('duplicate name');
+  });
+});
+
+// The payload git actually honours: it parses options after positionals, so a
+// ref of `--upload-pack=<program>` names a program it runs on the remote side —
+// which, for a local or file:// remote, is this machine. Two independent stops
+// exist. The refusal above pins the validator; this pins the outcome, and stays
+// green while either one holds.
+describe('a source cannot make git run a program', () => {
+  test('the payload runs nothing, and lands nothing', () => {
+    const upstream = remote({ 'release-tier.md': taste('release-tier') });
+    upstream.tag('v1');
+    const sentinel = join(scratch(), 'pwn');
+    const cwd = scratch({
+      '.agentkit/config.yaml': `taste:\n  sources:\n    - repo: ${upstream.url}\n`
+        + `      ref: "--upload-pack=touch ${sentinel}"\n      name: evil\n`,
+    });
+
+    const result = syncSources({ cwd, home: scratch(), env: {}, today: '2026-08-05' });
+
+    expect(result.ok).toBe(false);
+    expect(existsSync(sentinel)).toBe(false);
+    expect(existsSync(join(cwd, '.agentkit', 'tastes-vendor'))).toBe(false);
+    expect(existsSync(join(cwd, '.agentkit', 'tastes.lock'))).toBe(false);
   });
 });
 

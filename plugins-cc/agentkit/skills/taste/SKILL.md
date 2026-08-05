@@ -81,6 +81,10 @@ taste:
   fetching anything. `mode: reference`, the per-machine cache, is **deferred**: declaring it
   is an error naming the deferral, never a quiet fall back to vendoring something the owner
   did not ask to commit.
+- **A `ref` is a plain branch, tag or commit name**, and one beginning with `-` is refused:
+  git reads options after positionals, so a ref like `--upload-pack=…` is a program git would
+  run rather than a revision it would fetch. The sync passes `--end-of-options` as well, so
+  the refusal does not depend on the validator alone.
 - **`.agentkit/tastes.lock` pins each source to the commit whose contents were reviewed.** It
   is generated in `taste.sources` order and carries the name, repository, ref, commit and the
   date that pin was taken. The date moves only when the pin does.

@@ -26,6 +26,18 @@ release PR — "publish this" authorizes a release, never the tier.
   policy from the working tree alone. Sync is skill-driven like the rest of it: no CLI, no
   PATH tool. A lock bump lands as an ordinary merge request whose diff **is** the text
   agents will start reading. (#303)
+- fix(taste): a source's `ref` could make git run a program. git parses options after
+  positionals, so `ref: --upload-pack=touch /tmp/pwn` against a local or `file://` remote
+  executed that command during the fetch — before the sync reported the failure. Two
+  independent stops now: `sources.ts` refuses a ref that is not a plain branch, tag or commit
+  name (leading `-`, spaces, substitutions, `..`, `@{`, a `.lock` suffix), and every git
+  invocation carrying a config-supplied value passes `--end-of-options`. The `ext::` transport
+  is pinned off with `-c protocol.ext.allow=never` in the same audit, so a host whose global
+  git config re-enabled it cannot have a repository URL run as a shell command either. (#303)
+- fix(taste): sync bounds every git step at 60s (`STEP_TIMEOUT_MS`). `GIT_TERMINAL_PROMPT=0`
+  answers a credential prompt but not a host that accepts a connection and never replies,
+  which held a session past two minutes. On expiry the source fails with `unreachable within
+  Ns` and the all-or-nothing rule stands: nothing is written. (#303)
 - feat(taste): the listing surface gains a `source` column, and a taste the lint refused is
   now named in the listing as skipped rather than dropped from it — the reasoning `UNCHECKED`
   already carries, applied to the one row someone is most likely asking about. (#303)

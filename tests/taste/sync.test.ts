@@ -269,6 +269,65 @@ describe('sync answers for what it cannot do', () => {
     expect(result.errors.join('\n')).toContain('v9');
   });
 
+  // GIT_TERMINAL_PROMPT=0 answers a credential prompt, not a socket that
+  // accepts and then says nothing — which is what an unreachable forge behind a
+  // load balancer looks like. The listener here reproduces exactly that.
+  test('a host that accepts and never answers is abandoned, not waited on', () => {
+    const server = Bun.listen({
+      hostname: '127.0.0.1',
+      port: 0,
+      socket: { data() {}, open() {} },
+    });
+
+    try {
+      const cwd = scratch({
+        '.agentkit/config.yaml': config({
+          repo: `git://127.0.0.1:${server.port}/tastes.git`,
+          ref: 'v1',
+          name: 'agentkit-tastes',
+        }),
+      });
+
+      const result = syncSources({ cwd, home: scratch(), env: {}, today: TODAY, timeoutMs: 1200 });
+
+      expect(result.ok).toBe(false);
+      // The message is the assertion that pins the deadline: a bound on how long
+      // this test took would pass at any timeout, including none.
+      expect(result.errors.join('\n')).toContain('unreachable within 1s');
+      expect(result.errors.join('\n')).toContain('agentkit-tastes');
+      expect(existsSync(vendor(cwd))).toBe(false);
+      expect(existsSync(join(cwd, '.agentkit', 'tastes.lock'))).toBe(false);
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  // git refuses the ext helper by default, so the pin is what makes the refusal
+  // ours rather than the host's: this global config re-enables it.
+  test('a repo that is a shell command stays refused where git config allows it', () => {
+    const sentinel = join(scratch(), 'pwn');
+    const gitconfig = join(scratch({ gitconfig: '[protocol "ext"]\n\tallow = always\n' }), 'gitconfig');
+    const cwd = scratch({
+      '.agentkit/config.yaml': config({
+        repo: JSON.stringify(`ext::sh -c "touch ${sentinel}"`),
+        ref: 'v1',
+        name: 'evil',
+      }),
+    });
+    const held = process.env.GIT_CONFIG_GLOBAL;
+    process.env.GIT_CONFIG_GLOBAL = gitconfig;
+
+    try {
+      const result = syncSources({ cwd, home: scratch(), env: {}, today: TODAY });
+
+      expect(result.ok).toBe(false);
+      expect(existsSync(sentinel)).toBe(false);
+    } finally {
+      if (held === undefined) delete process.env.GIT_CONFIG_GLOBAL;
+      else process.env.GIT_CONFIG_GLOBAL = held;
+    }
+  });
+
   test('no sources declared writes nothing at all, and says so', () => {
     const cwd = scratch({
       '.agentkit/config.yaml': 'taste:\n  enabled: true\n',
