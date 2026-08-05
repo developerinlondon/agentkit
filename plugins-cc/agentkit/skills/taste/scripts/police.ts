@@ -1,8 +1,6 @@
-import { YAML } from 'bun';
-import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
 import { type ResolvedTaste, resolveTastes } from './resolve.ts';
+import { configFiles, tasteSection } from './sources.ts';
 
 // The rule's pattern is capped where the lint can refuse it; the subject is
 // capped here. Neither bounds backtracking: a 200-character pattern well inside
@@ -27,29 +25,16 @@ export interface Request {
   env?: Record<string, string | undefined>;
 }
 
-function readConfigFlag(path: string): boolean | undefined {
-  let parsed: unknown;
-  try {
-    parsed = YAML.parse(readFileSync(path, 'utf-8'));
-  } catch {
-    return undefined;
-  }
-  if (typeof parsed !== 'object' || parsed === null) return undefined;
-  const taste = (parsed as Record<string, unknown>).taste;
-  if (typeof taste !== 'object' || taste === null) return undefined;
-  const enabled = (taste as Record<string, unknown>).enabled;
-  return typeof enabled === 'boolean' ? enabled : undefined;
-}
-
 function tasteEnabled(
   cwd: string,
   home: string,
   env: Record<string, string | undefined>,
 ): boolean {
-  const project = readConfigFlag(join(cwd, '.agentkit', 'config.yaml'));
-  if (project !== undefined) return project;
-  const configHome = env.XDG_CONFIG_HOME || join(home, '.config');
-  return readConfigFlag(join(configHome, 'agentkit', 'config.yaml')) ?? true;
+  for (const path of configFiles(cwd, home, env)) {
+    const enabled = tasteSection(path)?.enabled;
+    if (typeof enabled === 'boolean') return enabled;
+  }
+  return true;
 }
 
 type Override =
@@ -175,7 +160,7 @@ export async function evaluateCommand(request: Request): Promise<Verdict> {
   const env = request.env ?? process.env;
   if (!tasteEnabled(request.cwd, home, env)) return { decision: 'allow', notices: [] };
 
-  const { tastes, warnings } = resolveTastes(request.cwd, home);
+  const { tastes, warnings } = resolveTastes(request.cwd, home, env);
   const notices = warnings.map((warning) => `taste skipped — ${warning}`);
   const matcher = new BoundedMatcher();
 

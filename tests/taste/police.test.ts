@@ -240,16 +240,20 @@ describe('scope resolution decides which file enforces', () => {
       enforce: 'advise',
       provenance: '2026-08-05 · vendored policy',
     });
-    const where = project({ '.agentkit/tastes-vendor/org/release-tier.md': external }, userBlocks);
+    const where = project({
+      '.agentkit/config.yaml': 'taste:\n  sources:\n    - repo: https://example.invalid/org.git\n'
+        + '      ref: v1\n      name: org\n',
+      '.agentkit/tastes-vendor/org/release-tier.md': external,
+    }, userBlocks);
 
     expect((await judge(TAG_MINOR, where)).decision).toBe('allow');
-    const resolved = resolveTastes(where.cwd, where.home).tastes[0];
+    const resolved = resolveTastes(where.cwd, where.home, {}).tastes[0];
     expect(resolved?.layer).toBe('external');
   });
 
   test('an absent tastes-vendor directory costs nothing', async () => {
     const where = project({}, userBlocks);
-    expect(resolveTastes(where.cwd, where.home).warnings).toEqual([]);
+    expect(resolveTastes(where.cwd, where.home, {}).warnings).toEqual([]);
   });
 });
 
@@ -392,7 +396,7 @@ describe('a malformed taste is loud, and never contagious', () => {
     // copy so the failure is real rather than mocked.
     test('a matcher that cannot start skips the taste instead of crashing', async () => {
       const scriptDir = sandbox({});
-      for (const name of ['police.ts', 'resolve.ts', 'lint.ts']) {
+      for (const name of ['police.ts', 'resolve.ts', 'lint.ts', 'sources.ts']) {
         writeFileSync(
           join(scriptDir, name),
           readFileSync(join(repoRoot, 'skills', 'taste', 'scripts', name), 'utf-8'),

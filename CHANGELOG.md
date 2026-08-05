@@ -9,6 +9,33 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+- feat(taste): **external sources** — a taste is no longer confined to the repository it was
+  written in. `taste.sources` in `.agentkit/config.yaml` (or the user config) declares an
+  ordered list of git repositories whose files are tastes; the skill's own
+  `scripts/sync.ts` fetches each at its `ref`, **lints it before copying a single file** —
+  a source whose tastes the lint refuses is named, with its files, and nothing enters the
+  tree — snapshots the taste files into `.agentkit/tastes-vendor/<name>/` and pins them in
+  `.agentkit/tastes.lock` (name, repo, ref, commit, and the date that pin was taken, which
+  moves only when the pin does, so an unchanged re-sync is an empty diff). Only those two
+  paths are ever written; a source dropped from the config loses its vendored copy, and
+  anything that is not a `.md` taste stays upstream, so nothing executable rides in with the
+  words. Resolution stacks the sources in declaration order — a later source wins a name an
+  earlier one also defines, project still beats external and external still beats user — and
+  `taste-police` inherits it by resolving the same folders. Both snapshot and lock are
+  committed, so a fresh clone with no network and no reachable remote reads and enforces the
+  policy from the working tree alone. Sync is skill-driven like the rest of it: no CLI, no
+  PATH tool. A lock bump lands as an ordinary merge request whose diff **is** the text
+  agents will start reading. (#303)
+- feat(taste): the listing surface gains a `source` column, and a taste the lint refused is
+  now named in the listing as skipped rather than dropped from it — the reasoning `UNCHECKED`
+  already carries, applied to the one row someone is most likely asking about. (#303)
+- **Deferred, on the owner's word rather than silently:** `mode: reference` — the
+  per-machine taste cache with `on_unreachable`, `max_cache_age` and atomic swap — is
+  declared in the design but not built. Vendored is the default, and the topology this was
+  designed for uses only vendored, so the cache had no day-one users. Declaring
+  `mode: reference` is an error that names the deferral; it never falls back to committing
+  something the owner did not ask to commit. (#303)
+
 ## v0.7.5 — 2026-08-05
 
 - feat(taste): `taste-police` — one generic hook that carries out `enforce:
