@@ -41,9 +41,9 @@ content and a reviewer cannot tell which needed a designer.
    components; prefix modifiers (`.f-step`) when a family shares a component's
    name.
 4. **Compose sections** by routing each concept through the component grammar
-   below. Real content everywhere: real paths, real payloads, real numbers —
-   a mockup with placeholder labels is a failure exactly like a diagram with
-   "API" boxes.
+   below, overview before zoom (the altitude rule after the grammar). Real
+   content everywhere: real paths, real payloads, real numbers — a mockup with
+   placeholder labels is a failure exactly like a diagram with "API" boxes.
 5. **Verify by looking** (mandatory): open the file in a browser session at
    ~1280 px, screenshot **both themes** (stamp `data-theme` on `<html>` to
    flip), Read the screenshots, fix, repeat until nothing clips, contrast
@@ -135,6 +135,25 @@ badges, border variants; the selected node's detail appears in the inspector.
 Keep side rails ≤430 px combined at a 1080 canvas so the canvas keeps ~640 px.
 Keep edge endpoints on node borders — measured from the rendered DOM (workflow
 step 5), recomputed whenever a node moves or its text rewraps.
+
+## Altitude — the whole story before any zoom
+
+Measured polish is necessary and not sufficient: a page can pass every probe
+and still lose to a plainer one that reads faster. Clarity outranks detail.
+
+- **The centerpiece carries the story whole.** The first figure answers the
+  page title's question with every stage of the story it depicts visible at a
+  glance. A figure that opens at stage 4 of a 5-stage method is a zoom
+  mislabeled as a centerpiece — a first-time reader cannot follow it.
+- **The 10-second test**: headline + centerpiece alone must hand a newcomer
+  the complete story. If any stage exists only in a side rail, a caption, or
+  a later section, the centerpiece fails the test regardless of its craft.
+- **Zooms come after, labeled as zooms** ("inside pass 5"), once the overview
+  has established the frame they zoom into.
+- **Evidence supports, never leads.** Probe readouts, measured numbers, and
+  dense inspectors enrich a figure the reader already understands. When
+  richness competes with readability, readability wins — a simpler figure the
+  reader can follow beats a denser one they must decode.
 
 Escalate beyond the grammar when the concept outgrows it: hand-drawn
 architecture and anything with loop-backs or trust boundaries → the `diagram`
