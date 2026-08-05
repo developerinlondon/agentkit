@@ -371,6 +371,12 @@
       "description": "Mine past Claude Code conversations for corrections, preferences, and knowledge that never reached the brain vault. Complements reflect (current session) and meditate (vault audit). Good for bootstrapping a vault from existing history. Triggers: \"ruminate\", \"mine my history\"."
     },
     {
+      "name": "taste",
+      "kit": "core",
+      "explicit": false,
+      "description": "Load and maintain tastes — one small markdown file per convention, committed to the repository it governs or kept in your home directory, telling every harness how this owner wants work done. Load them before acting, re-read a `check` taste immediately before an action it covers, and capture a correction as a taste instead of losing it. Triggers: \"from now on\", \"always/never do X\", \"that is not how I want it\", any correction that is a preference rather than a bug, and any question about where a convention lives or why an agent behaves a certain way."
+    },
+    {
       "name": "test-driven-development",
       "kit": "core",
       "explicit": false,

@@ -231,6 +231,11 @@ fileGroups:
     - "tests/session/**/*"
     - "tools/agent-session"
 
+  tasteInputs:
+    - "config.example.yaml"
+    - "skills/taste/**/*"
+    - "tests/taste/**/*"
+
   wipInputs:
     - "hooks/claude/lib/hook-input.sh"
     - "hooks/claude/plan-police.sh"
@@ -313,6 +318,12 @@ tasks:
     inputs:
       - "group://ciConfig"
       - "group://sessionInputs"
+
+  test-taste:
+    command: "bun run scripts/check-test-slices.ts taste"
+    inputs:
+      - "group://ciConfig"
+      - "group://tasteInputs"
 
   test-wip:
     command: "bun run scripts/check-test-slices.ts wip"

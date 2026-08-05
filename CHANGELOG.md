@@ -9,6 +9,23 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+- feat(skills): `taste` — one markdown file per convention, read by every
+  harness agentkit installs to. A taste carries frontmatter an agent can filter
+  on (`name` as the key, `scope`, `strength`, `enforce`, an optional declarative
+  `rule`, `provenance`) and a body stating the preference, why it holds, and how
+  to apply it. Scopes resolve project > external > user > kit, replacing by name
+  rather than merging, so a repository's own file overrides the policy it
+  subscribes to and the override is visible in that repository's diff. Learning
+  fires only at an explicit correction: dedupe by name before writing, fork
+  one-off (use the named override, touch nothing) from durable (supersede in
+  place, never a `-v2` file), gate ceremony on `strength`, and route the
+  preference to the scope that owns it instead of forking it locally. This slice
+  ships the format, the skill, and `skills/taste/scripts/lint.ts`, which refuses
+  a malformed folder in CI rather than in a future session. Enforcement is
+  configuration the owner sets, never a rank a taste earns — and `block` is
+  honestly documented as behaving like `check` until the generic `taste-police`
+  hook lands. (#301)
+
 ## v0.7.3 — 2026-08-05
 
 - docs(designer): the altitude rule — clarity outranks detail. The centerpiece
