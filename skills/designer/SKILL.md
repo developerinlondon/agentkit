@@ -82,6 +82,9 @@ content and a reviewer cannot tell which needed a designer.
   AND on its own `--x-soft`) and `--x-soft` (its background ground). The
   soft-ground requirement is the binding one — light-theme accents that look
   right usually land near 3:1 there and must be darkened.
+- A family painted as a **large-area fill** (a band, a zone, a canvas region)
+  gets a third, calmer value (`--x-band`): soft grounds are badge-scale, and
+  at hundreds of pixels wide they shout, especially in dark.
 - Three theme blocks, token-level only: base `:root`, then
   `@media (prefers-color-scheme: dark)`, then BOTH `:root[data-theme="dark"]`
   and `:root[data-theme="light"]` so a host's toggle overrides the OS in both
@@ -159,12 +162,16 @@ and still lose to a plainer one that reads faster. Clarity outranks detail.
   reader can follow beats a denser one they must decode.
 
 Escalate beyond the grammar when the concept outgrows it: hand-drawn
-architecture and anything with loop-backs or trust boundaries → the `diagram`
-skill (inline its SVG in a figure block); message exchanges of >6 participants,
-alt/loop fragments, or state machines → mermaid where the host renders it, else
-the `diagram` skill. Inventing a component above the grammar's floor is
-encouraged when the subject demands one — keep it on the page's tokens. Never
-ASCII art.
+architecture → the `diagram` skill (inline its SVG in a figure block); message
+exchanges of >6 participants, alt/loop fragments, or state machines → mermaid
+where the host renders it, else the `diagram` skill. A trust/boundary figure
+stays **in-grammar** when it must share the page's measured type and node
+geometry: build it bespoke on the page's tokens — banded zones (`--x-band`
+grounds), dashed boundary rules, numbered crossings, refused crossings in the
+failure family — and escalate to the `diagram` skill only when it needs
+hand-drawn semantics no page CSS carries. Inventing a component above the
+grammar's floor is encouraged when the subject demands one — keep it on the
+page's tokens. Never ASCII art.
 
 ## Do not ship the templated look
 
