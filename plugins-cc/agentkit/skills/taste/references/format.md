@@ -40,9 +40,12 @@ environment-variable name and nothing else. A preference no pattern can capture 
 
 **A remedy is plain prose.** It is a sentence an agent reads, never a command anything runs, so
 name the command in words — `Cut a patch tag` rather than a backticked or `$()`-wrapped
-fragment. Both `match` and `remedy` are refused if they carry a raw `` ` `` or `$(`. An escaped
-regex like `\$\(` is fine and always was: those characters are a backslash, a dollar, a
-backslash, a paren, so the literal sequence the check looks for is not in the string at all.
+fragment. Both `match` and `remedy` are refused if they carry a raw `` ` `` or `$(`.
+
+A `match` may still pattern on those characters where it needs to: `\$\(` passes, because the
+string then holds a backslash, a dollar, a backslash, and a paren — the literal sequence the
+check looks for is not in it. A backtick has no such escape. It is a single character, so
+`` \` `` still contains one, and a backtick therefore cannot appear in a `match` at all.
 
 ## A taste in full
 

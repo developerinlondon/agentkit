@@ -102,8 +102,8 @@ function checkRuleFields(rule: Frontmatter): string[] {
     }
     if (SHELL_SUBSTITUTION.test(rule.match)) {
       errors.push(
-        'rule.match carries a command substitution — a rule is data; escape it as \\$\\( or '
-          + '\\` to match those characters literally',
+        'rule.match carries a command substitution — a rule is data; escape it as \\$\\( to '
+          + 'match those characters literally. A backtick cannot appear in a match at all.',
       );
     }
   }
@@ -138,7 +138,7 @@ interface Inspection {
   errors: string[];
 }
 
-function inspectTaste(file: string, contents: string): Inspection {
+export function inspectTaste(file: string, contents: string): Inspection {
   const parts = FRONTMATTER.exec(contents);
   if (parts === null) {
     return { name: undefined, errors: ['no frontmatter — a taste opens with a --- block'] };
@@ -167,10 +167,6 @@ function inspectTaste(file: string, contents: string): Inspection {
     errors.push('body is empty — a taste states the preference, why, and how to apply it');
   }
   return { name: scalar(front.name), errors };
-}
-
-export function lintTaste(file: string, contents: string): string[] {
-  return inspectTaste(file, contents).errors.map((error) => `${file}: ${error}`);
 }
 
 function tasteFiles(dir: string): string[] {

@@ -337,7 +337,7 @@ describe('the rule block is data, and only where it means something', () => {
     expect(errors[0]).toContain('substitution');
   });
 
-  test('a match carrying backticks is rejected', () => {
+  test('a match carrying backticks is rejected, and told there is no escape for it', () => {
     const errors = lint({
       'release-tier.md': taste(withFields({
         name: 'release-tier',
@@ -347,16 +347,38 @@ describe('the rule block is data, and only where it means something', () => {
     });
     expect(errors).toHaveLength(1);
     expect(errors[0]).toContain('rule.match');
+    // A backtick is one character: `\`` still contains one, so an escape hint
+    // here would send the author around the same refusal forever.
+    expect(errors[0]).toContain('backtick cannot appear');
+  });
+
+  function matchRule(pattern: string): Record<string, string> {
+    return withFields({
+      name: 'release-tier',
+      enforce: 'block',
+      rule: `  kind: command\n  match: '${pattern}'\n  remedy: Cut a patch tag.`,
+    });
+  }
+
+  // The refusal names an escape, so the test performs that escape rather than
+  // asserting a remembered one — a message advising something that does not work
+  // is worse than a message advising nothing.
+  test('the escape the match refusal names actually clears the refusal', () => {
+    const refused = lint({ 'release-tier.md': taste(matchRule('echo $(date)')) });
+    expect(refused).toHaveLength(1);
+
+    const escape = /escape it as (\S+) to match/.exec(refused[0] as string)?.[1] as string;
+    expect(escape, 'the refusal names an escape sequence').toBeDefined();
+
+    // Two things have to hold, and the second alone is satisfied by any string
+    // that happens not to trip the guard: the named escape must spell the
+    // sequence being refused, and using it must clear the refusal.
+    expect(escape.replaceAll('\\', ''), 'the escape spells the refused sequence').toBe('$(');
+    expect(lint({ 'release-tier.md': taste(matchRule(`git tag ${escape}`)) })).toEqual([]);
   });
 
   test('an escaped substitution in a match is accepted — it is not the literal sequence', () => {
-    expect(lint({
-      'release-tier.md': taste(withFields({
-        name: 'release-tier',
-        enforce: 'block',
-        rule: "  kind: command\n  match: 'git tag \\$\\(date\\)'\n  remedy: Cut a patch tag.",
-      })),
-    })).toEqual([]);
+    expect(lint({ 'release-tier.md': taste(matchRule('git tag \\$\\(date\\)')) })).toEqual([]);
   });
 });
 

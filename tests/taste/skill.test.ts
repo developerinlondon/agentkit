@@ -64,8 +64,11 @@ describe('the taste skill and its contract agree', () => {
     ['contradicting a require taste asks first', '**ask outright**'],
     ['the confirm names both readings', 'one-off, or change the taste?'],
     ['a prefer taste updates and says so', 'update it and say that you did'],
+    // Asserted on the boolean rather than the document: toContain reports the
+    // whole of SKILL.md as the received value, burying the one phrase that went
+    // missing under the ten kilobytes that did not.
   ])('the skill still carries the behaviour: %s', (_behaviour, phrase) => {
-    expect(skill).toContain(phrase);
+    expect(skill.includes(phrase), `SKILL.md must still say: ${phrase}`).toBe(true);
   });
 
   test('the routing heuristic keeps an unclear correction out of the public set', () => {
