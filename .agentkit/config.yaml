@@ -1,0 +1,11 @@
+taste:
+  sources: # ordered — a later entry wins any name an earlier one also defines
+    - repo: git@github.com:developerinlondon/agentkit-tastes.git
+      ref: main
+      path: tastes/
+      mode: vendored
+    - repo: git@gitlab.com:bizfoundry/core/agentkit-tastes.git
+      ref: main
+      path: tastes/
+      name: agentkit-tastes-central
+      mode: vendored
