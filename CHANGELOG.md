@@ -9,6 +9,8 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+## v0.7.4 — 2026-08-05
+
 - feat(skills): `taste` — one markdown file per convention, read by every
   harness agentkit installs to. A taste carries frontmatter an agent can filter
   on (`name` as the key, `scope`, `strength`, `enforce`, an optional declarative
