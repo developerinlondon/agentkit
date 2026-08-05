@@ -10,6 +10,12 @@ export const ENFORCEMENTS = ['advise', 'check', 'block'];
 const RULE_KEYS = ['kind', 'match', 'remedy', 'override'];
 const RULE_KINDS = ['command'];
 
+// A rule is tested in-process against every command an agent runs, and a
+// regular expression can be made to backtrack for longer than anyone will wait.
+// The subject is bounded where the matching happens (police.ts); the pattern is
+// bounded here, so an unrunnable rule fails the lint rather than a session.
+export const MAX_MATCH_LENGTH = 200;
+
 // Unnumbered as well as kebab: position carries no meaning in a taste folder, so
 // a leading number is a record's habit leaking into a dictionary.
 const NAME = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
@@ -23,7 +29,7 @@ function isRecord(value: unknown): value is Frontmatter {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function scalar(value: unknown): string | undefined {
+export function scalar(value: unknown): string | undefined {
   if (typeof value === 'string') return value;
   if (typeof value === 'number') return String(value);
   if (value instanceof Date) return value.toISOString().slice(0, 10);
@@ -95,6 +101,12 @@ function checkRuleFields(rule: Frontmatter): string[] {
     errors.push(`rule.kind: ${JSON.stringify(rule.kind)} is not one of ${RULE_KINDS.join(', ')}`);
   }
   if (typeof rule.match === 'string') {
+    if (rule.match.length > MAX_MATCH_LENGTH) {
+      errors.push(
+        `rule.match is ${rule.match.length} characters — the cap is ${MAX_MATCH_LENGTH}, because `
+          + 'the hook runs it against every command. Narrow the pattern, or keep the taste at check.',
+      );
+    }
     try {
       new RegExp(rule.match);
     } catch (error) {
@@ -133,9 +145,13 @@ function checkRule(front: Frontmatter): string[] {
   return checkRuleFields(front.rule);
 }
 
-interface Inspection {
+export interface Inspection {
   name: string | undefined;
   errors: string[];
+  // The fields, once, for callers that must act on a taste rather than only
+  // report on it. Present whenever the frontmatter parsed as a mapping — a
+  // caller reads it only after finding no errors.
+  front?: Record<string, unknown>;
 }
 
 export function inspectTaste(file: string, contents: string): Inspection {
@@ -166,10 +182,10 @@ export function inspectTaste(file: string, contents: string): Inspection {
   if ((parts[2] as string).trim() === '') {
     errors.push('body is empty — a taste states the preference, why, and how to apply it');
   }
-  return { name: scalar(front.name), errors };
+  return { name: scalar(front.name), errors, front };
 }
 
-function tasteFiles(dir: string): string[] {
+export function tasteFiles(dir: string): string[] {
   const found: string[] = [];
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     if (entry.name.startsWith('.')) continue;

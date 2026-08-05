@@ -64,6 +64,20 @@ Do this before your first substantive action in a repository, not after.
 Honor a loaded taste as an instruction from the owner. A `require` taste is not something
 to argue with; a `prefer` taste is a default you may depart from if you say why.
 
+## Answering questions about the folder
+
+There is no `taste` command, deliberately: reading a directory of small markdown files is
+something you already do, and a CLI would be a second way to say what the files say.
+
+- **"What tastes are in force here?"** — resolve as above and answer with a table: name,
+  scope, `strength`, `enforce`, and the path. Say which ones a higher scope is shadowing;
+  that is usually the answer someone is actually looking for.
+- **"Add a taste that …"** — write the file yourself from the dictated preference, following
+  `references/format.md`. Ask for whatever the body needs and the frontmatter cannot guess:
+  the **why**, and how to apply it. Never invent a `provenance` — it is today's date and where
+  the preference came from.
+- **"Is this folder valid?"** — run the lint below and report what it says, unedited.
+
 ## The file format
 
 Full contract and a worked example: `references/format.md`. In brief — frontmatter carries
@@ -87,11 +101,27 @@ bun <skill-dir>/scripts/lint.ts .agentkit/tastes
 | `check`  | Re-read the taste's body immediately before an action it covers — a tag, a commit, a merge request — instead of trusting that an hour-old instruction survived. |
 | `block`  | A generic `taste-police` hook refuses a matching command using this taste's own `remedy` and `override`.                                                        |
 
-**Phase-1 honesty: no hook is installed yet, so `block` behaves exactly like `check`.** A
-taste marked `block` is re-read before matching actions and must be obeyed, but nothing
-mechanically refuses the command. Say this plainly if someone asks why a `block` taste did
-not stop something. The `rule` block is still written and still linted, so the hook enforces
-existing files the day it lands.
+`block` is carried out by one generic hook — `taste-police`, in the core kit, on every harness
+agentkit installs to. It resolves the same folders this skill does, takes the tastes at
+`enforce: block` whose `rule` the lint accepts, and tests `rule.match` against the command in
+process. Nothing in a taste is ever executed. Adding a blocking taste changes no code
+anywhere: it is a file.
+
+What it does at the edges, so you can answer for it:
+
+- **Refusal** names the taste, its file, its own `remedy`, and its own `override`.
+- **The override** is that taste's named variable, set inline on the command (`NAME=1 …`) or
+  exported. Empty, `0`, `false`, `no` and `off` do not count — they warn and the taste still
+  refuses, because a guard you can switch off by mistyping it is worse than none.
+- **A malformed taste** is skipped with a warning and takes nothing else down with it.
+- **An unrunnable hook** (no `bun`, no evaluator) says `UNCHECKED` and allows. It never
+  refuses on its own uncertainty, and it never goes quiet where there were tastes to read.
+- **Bounds**: `rule.match` is capped at 200 characters and only the first 4000 characters of a
+  command are examined. `references/format.md` carries the reasoning.
+
+If someone asks why a `block` taste did not stop something, check those in order: the taste is
+`advise`, the pattern did not match, the override was set, the file failed the lint, or the
+hook reported `UNCHECKED`.
 
 Never raise `enforce` yourself. Observed violations are evidence for a proposal the owner
 merges — the diff is how it changes.

@@ -96,7 +96,12 @@ export const TEST_SLICES = {
     'tests/review-profile.test.ts',
   ],
   session: ['tests/session/agent-session.test.ts', 'tests/session/install-session-slice.test.ts'],
-  taste: ['tests/taste/lint.test.ts', 'tests/taste/skill.test.ts'],
+  taste: [
+    'tests/taste/lint.test.ts',
+    'tests/taste/police-lanes.test.ts',
+    'tests/taste/police.test.ts',
+    'tests/taste/skill.test.ts',
+  ],
   wip: [
     'tests/wip/plan-gate.test.ts',
     'tests/wip/plan-police.test.ts',

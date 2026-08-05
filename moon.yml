@@ -233,6 +233,10 @@ fileGroups:
 
   tasteInputs:
     - "config.example.yaml"
+    - "hooks/claude/lib/**/*"
+    - "hooks/claude/taste-police.sh"
+    - "plugins-cc/agentkit/hooks/taste-police.sh"
+    - "plugins/taste-police.ts"
     - "skills/taste/**/*"
     - "tests/taste/**/*"
 

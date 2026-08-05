@@ -9,6 +9,26 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+- feat(taste): `taste-police` — one generic hook that carries out `enforce:
+  block`. It resolves the same folders the skill reads (project >
+  `tastes-vendor` > user, replacing by name), takes the tastes whose `rule` the
+  lint accepts, and tests `rule.match` against the command in process. No rule
+  value ever reaches a shell, and adding a blocking taste changes no code: a
+  test asserts the guard's own bytes are identical before and after a second
+  blocking taste starts refusing. The refusal names the taste, its file, its own
+  `remedy` and its own `override`; the override is honored inline on the command
+  or from the environment, and a value that reads as off (empty, `0`, `false`,
+  `no`, `off`) warns and still refuses. Both bounds are documented: `rule.match`
+  caps at 200 characters (the lint refuses longer, so CI catches it) and only
+  the first 4000 characters of a command are examined. A malformed taste is
+  skipped with a warning and takes nothing else down; a hook that cannot run
+  reports UNCHECKED rather than allowing quietly or refusing on its own
+  uncertainty. Ships on both police lanes — `hooks/claude/taste-police.sh` and
+  `plugins/taste-police.ts` — over one shared evaluator, so a taste cannot mean
+  different things on different harnesses. `taste.enabled: false` makes it
+  inert. Listing, adding and linting a folder stay conversational in the skill:
+  no CLI. (#302)
+
 ## v0.7.4 — 2026-08-05
 
 - feat(skills): `taste` — one markdown file per convention, read by every

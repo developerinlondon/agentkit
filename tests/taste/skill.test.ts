@@ -42,11 +42,25 @@ describe('the taste skill and its contract agree', () => {
     expect(skill).toContain('~/.config/agentkit/config.yaml');
   });
 
-  // The hook lands in a later phase. Until it does, a skill that presented block
-  // as a refusal would be promising enforcement nothing performs — the exact
-  // failure the tastes design exists to end.
-  test('the skill says plainly that block does not yet refuse anything', () => {
-    expect(skill).toContain('`block` behaves exactly like `check`');
+  // The hook now exists, so the honest sentence changed direction: prose that
+  // still said block was inert would understate enforcement the same way the
+  // phase-1 prose would have overstated it.
+  test('the skill describes block as the hook that performs it', () => {
+    expect(skill).not.toContain('`block` behaves exactly like `check`');
+    expect(skill).toContain('`taste-police`');
+    expect(skill).toContain('UNCHECKED');
+  });
+
+  // Every edge the hook has, said in the words an agent answers with. The skill
+  // is what a session reads when someone asks why a block did or did not fire.
+  test.each([
+    ['the override is named by the taste', 'that taste\'s named variable'],
+    ['off-reading values do not disable it', 'do not count'],
+    ['a malformed taste is not contagious', 'takes nothing else down with it'],
+    ['an unrunnable hook allows', 'refuses on its own uncertainty'],
+    ['the bounds are stated', '200 characters'],
+  ])('the skill carries the hook behaviour: %s', (_behaviour, phrase) => {
+    expect(skill.includes(phrase), `SKILL.md must say: ${phrase}`).toBe(true);
   });
 
   // The skill is the whole mechanism in this phase: nothing executes these rules,

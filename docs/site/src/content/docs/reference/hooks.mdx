@@ -73,6 +73,7 @@ a unit cannot go missing from this table, but a cell can be incomplete.
 | `pkg-police` | package-management subcommands belonging to a manager the project does not use — inferred from the lockfile, so `bun install` is refused in an `npm` project just as `npm install` is in a bun one. Read-only queries such as `npm ls` pass |
 | `resource-police` | a heavy command not run through the **installed** `bounded-run` — trust is by installed path, not by filename, so a copy in the current directory is still refused — plus delegated workloads, which `bounded-run` cannot contain at all, and commands whose shell nesting it cannot parse (Linux only) |
 | `review-police` | a forge merge unless review evidence passed for the forge-selected source head and the current target |
+| `taste-police` | whatever your own tastes say it refuses. It carries no rules of its own: it reads the taste files at `enforce: block`, tests each `rule.match` against the command in process, and refuses with that taste's `remedy` and its named `override` — so blocking a new preference is a file, never a release |
 | `version-police` | a dependency pin that lags the upstream latest by a major version; a pin merely behind within its major warns instead |
 | `delegation-police` | commands whose work escapes local containment — off-machine delegation such as `ansible`, and privilege wrappers such as `doas`. Read-only diagnostic forms are explicitly allowed, so `kubectl get` and `docker ps` pass |
 
