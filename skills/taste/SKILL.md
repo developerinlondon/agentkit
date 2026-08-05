@@ -14,7 +14,7 @@ description: >-
 
 A taste is one preference, in one file, that outlives the session it was stated in. The
 folder is a dictionary keyed by `name`, not a record: files are added, rewritten, and
-deleted, and the same `name` at a higher scope replaces the lower one outright.
+deleted, and the same `name` at a higher scope wins outright.
 
 Nothing here is learned invisibly. A taste is written only at an explicit correction, and
 its whole output is a diff someone can read, reject, or amend.

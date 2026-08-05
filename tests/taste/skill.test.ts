@@ -10,6 +10,49 @@ function read(...parts: string[]): string {
   return readFileSync(join(repoRoot, ...parts), 'utf-8');
 }
 
+// Named rather than inline so the uniqueness gate below can read every binding
+// in the file, instead of restating a list that would drift from them.
+const HOOK_BEHAVIOURS: [string, string][] = [
+  ['the override is named by the taste', 'that taste\'s named variable'],
+  ['off-reading values do not disable it', 'do not count'],
+  ['a malformed taste is not contagious', 'takes nothing else down with it'],
+  ['an unrunnable hook allows', 'refuses on its own uncertainty'],
+  ['the bounds are stated', '200 characters'],
+];
+
+const SETTLED_BEHAVIOURS: [string, string][] = [
+  ['precedence resolves in one direction', 'project > external > user > kit'],
+  ['a higher scope replaces rather than merges', 'replaces the lower one'],
+  ['dedupe happens before anything is written', '**2. Dedupe before writing anything.**'],
+  ['a one-off leaves the file alone', '**The file is not touched.**'],
+  ['a durable change supersedes in place', 'Supersede the taste **in place**'],
+  ['no second file on the same topic', '`release-tier-v2.md`'],
+  ['git history is the archive, not a v2 file', 'git history is the archive'],
+  ['contradicting a require taste asks first', '**ask outright**'],
+  ['the confirm names both readings', 'one-off, or change the taste?'],
+  ['a prefer taste updates and says so', 'update it and say that you did'],
+];
+
+const CONVERSATIONAL_SURFACES: [string, string][] = [
+  ['no command exists, deliberately', 'skill-driven, and there is no CLI'],
+  ['listing collapses to the winner', 'one row per name'],
+  ['listing carries the scope column', 'the layer the winning file came from'],
+  ['listing carries strength and enforce', '| `strength` |'],
+  ['listing names what a scope shadowed', 'Name the shadowed layers explicitly'],
+  ['an empty folder is said, not tabulated', 'rather than presenting an empty table'],
+  ['dictation is not a lesser path', 'first-class capture path, not a lesser one'],
+  ['dictation runs the same sequence', 'It runs the same Learning'],
+  ['dictation still lands through an MR', 'merge request for a project taste'],
+  ['dictation asks rather than invents', 'Ask for what dictation did not supply'],
+  ['a dictated provenance is never guessed', 'never a guess'],
+  ['dictation earns no enforcement', 'does not earn `block` by being dictated'],
+  ['learning fires on a dictated taste too', 'or when a taste is dictated'],
+  ['every write is linted', 'run `bun <skill-dir>/scripts/lint.ts` on every directory'],
+  ['the lint runs before the diff is shown', '**before you show anyone the diff**'],
+  ['an unlinted taste is not finished', 'is not written yet'],
+  ['the lint rule covers edits as well as captures', 'This holds for every write'],
+];
+
 const skill = read('skills', 'taste', 'SKILL.md');
 const reference = read('skills', 'taste', 'references', 'format.md');
 const example = read('config.example.yaml');
@@ -53,13 +96,7 @@ describe('the taste skill and its contract agree', () => {
 
   // Every edge the hook has, said in the words an agent answers with. The skill
   // is what a session reads when someone asks why a block did or did not fire.
-  test.each([
-    ['the override is named by the taste', 'that taste\'s named variable'],
-    ['off-reading values do not disable it', 'do not count'],
-    ['a malformed taste is not contagious', 'takes nothing else down with it'],
-    ['an unrunnable hook allows', 'refuses on its own uncertainty'],
-    ['the bounds are stated', '200 characters'],
-  ])('the skill carries the hook behaviour: %s', (_behaviour, phrase) => {
+  test.each(HOOK_BEHAVIOURS)('the skill carries the hook behaviour: %s', (_behaviour, phrase) => {
     expect(skill.includes(phrase), `SKILL.md must say: ${phrase}`).toBe(true);
   });
 
@@ -67,21 +104,7 @@ describe('the taste skill and its contract agree', () => {
   // so a behaviour silently dropped from the prose is a behaviour that stops
   // happening. Each entry is a decision the design settled, bound to the words
   // that carry it.
-  test.each([
-    ['precedence resolves in one direction', 'project > external > user > kit'],
-    ['a higher scope replaces rather than merges', 'replaces the lower one'],
-    ['dedupe happens before anything is written', '**2. Dedupe before writing anything.**'],
-    ['a one-off leaves the file alone', '**The file is not touched.**'],
-    ['a durable change supersedes in place', 'Supersede the taste **in place**'],
-    ['no second file on the same topic', '`release-tier-v2.md`'],
-    ['git history is the archive, not a v2 file', 'git history is the archive'],
-    ['contradicting a require taste asks first', '**ask outright**'],
-    ['the confirm names both readings', 'one-off, or change the taste?'],
-    ['a prefer taste updates and says so', 'update it and say that you did'],
-    // Asserted on the boolean rather than the document: toContain reports the
-    // whole of SKILL.md as the received value, burying the one phrase that went
-    // missing under the ten kilobytes that did not.
-  ])('the skill still carries the behaviour: %s', (_behaviour, phrase) => {
+  test.each(SETTLED_BEHAVIOURS)('the skill still carries the behaviour: %s', (_behaviour, phrase) => {
     expect(skill.includes(phrase), `SKILL.md must still say: ${phrase}`).toBe(true);
   });
 
@@ -89,27 +112,26 @@ describe('the taste skill and its contract agree', () => {
   // the skill performs them conversationally, which makes this prose the whole
   // implementation — a sentence dropped here is a capability that stops
   // existing, with no compiler and no hook to notice.
-  test.each([
-    ['no command exists, deliberately', 'skill-driven, and there is no CLI'],
-    ['listing collapses to the winner', 'one row per name'],
-    ['listing carries the scope column', 'the layer the winning file came from'],
-    ['listing carries strength and enforce', '| `strength` |'],
-    ['listing names what a scope shadowed', 'Name the shadowed layers explicitly'],
-    ['an empty folder is said, not tabulated', 'rather than presenting an empty table'],
-    ['dictation is not a lesser path', 'first-class capture path, not a lesser one'],
-    ['dictation runs the same sequence', 'It runs the same Learning'],
-    ['dictation still lands through an MR', 'merge request for a project taste'],
-    ['dictation asks rather than invents', 'Ask for what dictation did not supply'],
-    ['a dictated provenance is never guessed', 'never a guess'],
-    ['dictation earns no enforcement', 'does not earn `block` by being dictated'],
-    ['learning fires on a dictated taste too', 'or when a taste is dictated'],
-    ['every write is linted', 'run `bun <skill-dir>/scripts/lint.ts` on every directory'],
-    ['the lint runs before the diff is shown', '**before you show anyone the diff**'],
-    ['an unlinted taste is not finished', 'is not written yet'],
-    ['the lint rule covers edits as well as captures', 'This holds for every write'],
-  ])('the skill carries the conversational surface: %s', (_surface, phrase) => {
-    expect(skill.includes(phrase), `SKILL.md must say: ${phrase}`).toBe(true);
-  });
+  test.each(CONVERSATIONAL_SURFACES)(
+    'the skill carries the conversational surface: %s',
+    (_surface, phrase) => {
+      expect(skill.includes(phrase), `SKILL.md must say: ${phrase}`).toBe(true);
+    },
+  );
+
+  // A substring binding is only as strong as its phrase is distinctive: an echo
+  // elsewhere keeps it green while the paragraph it names is rewritten to say
+  // the opposite. Uniqueness is what points a binding at one place.
+  test.each([...HOOK_BEHAVIOURS, ...SETTLED_BEHAVIOURS, ...CONVERSATIONAL_SURFACES])(
+    'the phrase bound for %s occurs exactly once in SKILL.md',
+    (_behaviour, phrase) => {
+      expect(
+        skill.split(phrase).length - 1,
+        `${JSON.stringify(phrase)} must appear once — an echo elsewhere in SKILL.md means this `
+          + 'binding no longer holds the paragraph it names',
+      ).toBe(1);
+    },
+  );
 
   // A PATH tool is the thing the owner rejected, so its absence is asserted on
   // the tree rather than trusted to review.
