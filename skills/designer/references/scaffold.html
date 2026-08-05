@@ -4,6 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Page title — Design</title>
+<script>
+try {
+  const saved = localStorage.getItem("designer-theme");
+  if (saved === "dark" || saved === "light") document.documentElement.dataset.theme = saved;
+} catch {}
+</script>
 <style>
   /* Tokens. Rename the four semantic families to THIS page's own distinctions
      (exists/build/gate/ok is one worked example) and re-derive every value from
@@ -16,6 +22,7 @@
     --muted: #5b6678;
     --line: #d3dae6;
     --line-soft: #e2e8f2;
+    color-scheme: light;
     --core: #0b6f80;      --core-soft: #e0f2f5;
     --new: #6250d8;       --new-soft: #eceafb;
     --gate: #8a5c04;      --gate-soft: #f7ecd6;
@@ -28,6 +35,7 @@
     :root {
       --bg: #0c1018; --surface: #141a26; --surface-2: #1a2233;
       --ink: #e4eaf4; --muted: #8b96aa; --line: #2a3448; --line-soft: #202939;
+      color-scheme: dark;
       --core: #56cfe0; --core-soft: #10333c;
       --new: #a293ff; --new-soft: #2a2650;
       --gate: #e6a63d; --gate-soft: #3a2c10;
@@ -38,6 +46,7 @@
   :root[data-theme="light"] {
     --bg: #f4f6fa; --surface: #ffffff; --surface-2: #eaeef5;
     --ink: #1a2230; --muted: #5b6678; --line: #d3dae6; --line-soft: #e2e8f2;
+    color-scheme: light;
     --core: #0b6f80; --core-soft: #e0f2f5;
     --new: #6250d8; --new-soft: #eceafb;
     --gate: #8a5c04; --gate-soft: #f7ecd6;
@@ -47,6 +56,7 @@
   :root[data-theme="dark"] {
     --bg: #0c1018; --surface: #141a26; --surface-2: #1a2233;
     --ink: #e4eaf4; --muted: #8b96aa; --line: #2a3448; --line-soft: #202939;
+    color-scheme: dark;
     --core: #56cfe0; --core-soft: #10333c;
     --new: #a293ff; --new-soft: #2a2650;
     --gate: #e6a63d; --gate-soft: #3a2c10;
@@ -307,18 +317,19 @@
 </style>
 </head>
 <body>
-<button class="theme-toggle" aria-label="Switch color theme">◐ theme</button>
+<button class="theme-toggle" type="button" aria-label="Switch color theme" aria-pressed="false">◐ theme</button>
 <script>
 (() => {
   const root = document.documentElement;
-  const saved = localStorage.getItem("theme");
-  if (saved === "dark" || saved === "light") root.dataset.theme = saved;
-  document.querySelector(".theme-toggle").addEventListener("click", () => {
-    const current = root.dataset.theme
-      || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
-    const next = current === "dark" ? "light" : "dark";
+  const btn = document.querySelector(".theme-toggle");
+  const isDark = () => (root.dataset.theme
+    || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")) === "dark";
+  btn.setAttribute("aria-pressed", String(isDark()));
+  btn.addEventListener("click", () => {
+    const next = isDark() ? "light" : "dark";
     root.dataset.theme = next;
-    localStorage.setItem("theme", next);
+    btn.setAttribute("aria-pressed", String(next === "dark"));
+    try { localStorage.setItem("designer-theme", next); } catch {}
   });
 })();
 </script>
