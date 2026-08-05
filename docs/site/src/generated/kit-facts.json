@@ -128,6 +128,16 @@
       ]
     },
     {
+      "name": "taste",
+      "mechanisms": [
+        "hook",
+        "plugin"
+      ],
+      "claudePlugins": [
+        "agentkit"
+      ]
+    },
+    {
       "name": "version",
       "mechanisms": [
         "plugin"
@@ -226,6 +236,13 @@
       "matcher": "Bash",
       "timeout": 60,
       "failClosedBudget": 45
+    },
+    {
+      "unit": "taste",
+      "event": "PreToolUse",
+      "matcher": "Bash",
+      "timeout": 15,
+      "failClosedBudget": null
     }
   ],
   "kits": [

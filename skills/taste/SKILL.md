@@ -14,7 +14,7 @@ description: >-
 
 A taste is one preference, in one file, that outlives the session it was stated in. The
 folder is a dictionary keyed by `name`, not a record: files are added, rewritten, and
-deleted, and the same `name` at a higher scope replaces the lower one outright.
+deleted, and the same `name` at a higher scope wins outright.
 
 Nothing here is learned invisibly. A taste is written only at an explicit correction, and
 its whole output is a diff someone can read, reject, or amend.
@@ -64,6 +64,45 @@ Do this before your first substantive action in a repository, not after.
 Honor a loaded taste as an instruction from the owner. A `require` taste is not something
 to argue with; a `prefer` taste is a default you may depart from if you say why.
 
+## Working the folder, without a command
+
+Tastes are skill-driven, and there is no CLI. You are the interface: reading a directory of
+small markdown files is something you already do, and a command would be a second way to say
+what the files already say. Three requests come up, and each is a behaviour here.
+
+### "Show me my tastes"
+
+Resolve as under Loading, then present one row per name — the winner, never every file:
+
+| Column     | What it holds                                                    |
+| ---------- | ---------------------------------------------------------------- |
+| `name`     | the key everything resolves on                                   |
+| `scope`    | the layer the winning file came from: project, external, or user |
+| `strength` | `prefer` or `require`                                            |
+| `enforce`  | `advise`, `check`, or `block`                                    |
+| shadowed   | the layers holding a same-named file that lost, or nothing       |
+
+Name the shadowed layers explicitly. "Your project's `release-tier` is overriding the one in
+your home directory" is usually the answer someone came for, and a table of winners alone
+hides exactly the surprise they are chasing. Give the path of any row on request, and say
+plainly when a folder is empty rather than presenting an empty table.
+
+### "Add a taste: …"
+
+A dictated taste is a first-class capture path, not a lesser one. It runs the same Learning
+sequence below — dedupe first, route to the scope that owns it, write, lint, land through a
+merge request for a project taste — with one difference: the preference is already stated, so
+there is nothing to judge about whether a correction was worth keeping.
+
+Ask for what dictation did not supply rather than inventing it: the **why**, the **how to
+apply**, and where the preference came from. `provenance` is today's date and its origin,
+never a guess. Leave `enforce` at `advise` unless the owner asked for more — the owner sets
+enforcement, and a taste does not earn `block` by being dictated.
+
+### "Is this folder valid?"
+
+Run the lint below and report what it says, unedited.
+
 ## The file format
 
 Full contract and a worked example: `references/format.md`. In brief — frontmatter carries
@@ -87,18 +126,39 @@ bun <skill-dir>/scripts/lint.ts .agentkit/tastes
 | `check`  | Re-read the taste's body immediately before an action it covers — a tag, a commit, a merge request — instead of trusting that an hour-old instruction survived. |
 | `block`  | A generic `taste-police` hook refuses a matching command using this taste's own `remedy` and `override`.                                                        |
 
-**Phase-1 honesty: no hook is installed yet, so `block` behaves exactly like `check`.** A
-taste marked `block` is re-read before matching actions and must be obeyed, but nothing
-mechanically refuses the command. Say this plainly if someone asks why a `block` taste did
-not stop something. The `rule` block is still written and still linted, so the hook enforces
-existing files the day it lands.
+`block` is carried out by one generic hook — `taste-police`, in the core kit, on every harness
+agentkit installs to. It resolves the same folders this skill does, takes the tastes at
+`enforce: block` whose `rule` the lint accepts, and tests `rule.match` against the command in
+process. Nothing in a taste is ever executed. Adding a blocking taste changes no code
+anywhere: it is a file.
+
+What it does at the edges, so you can answer for it:
+
+- **Refusal** names the taste, its file, its own `remedy`, and its own `override`.
+- **The override** is that taste's named variable, set inline on the command (`NAME=1 …`) or
+  exported. Empty, `0`, `false`, `no` and `off` do not count — they warn and the taste still
+  refuses, because a guard you can switch off by mistyping it is worse than none.
+- **A malformed taste** is skipped with a warning and takes nothing else down with it. So is a
+  pattern that outruns the match deadline — it is named, skipped, and the rest still bind.
+- **An unrunnable hook** (no `bun`, no evaluator) says `UNCHECKED` and allows. It never
+  refuses on its own uncertainty, and it never goes quiet where there were tastes to read.
+- **Bounds**: `rule.match` is capped at 200 characters, only the first 4000 characters of a
+  command are examined, and the match itself is abandoned after 250ms — length is not safety,
+  since a short pattern can still backtrack forever. `references/format.md` carries the
+  reasoning.
+
+If someone asks why a `block` taste did not stop something, check those in order: the taste is
+`advise`, the pattern did not match, the override was set, the file failed the lint, or the
+hook reported `UNCHECKED`.
 
 Never raise `enforce` yourself. Observed violations are evidence for a proposal the owner
 merges — the diff is how it changes.
 
-## Learning: what to do when corrected
+## Learning: what to do when corrected, or asked
 
-Learning is an event. It fires when a correction arrives, and never in the background.
+Learning is an event. It fires when a correction arrives or when a taste is dictated, and
+never in the background. A dictated taste skips step 1 — the owner already decided it is
+worth keeping — and runs every step after it unchanged.
 
 **1. Is this a correction worth keeping?** It is, when the user says you did the wrong
 thing for a reason that will hold next time. A bug you introduced is not a taste. A
@@ -149,10 +209,16 @@ Until the external layer ships, a correction that routes there cannot be written
 owner. Say where it belongs, show the file you would write, and ask whether to hold it as a
 project taste meanwhile. Do not silently downgrade it into the wrong scope.
 
-**5. Write it.** Name it for the topic, kebab-case and unnumbered. State the preference,
-then **why** it holds — an agent that knows the reason can tell a genuine exception from a
-violation — then **how to apply** it at the moment it matters. Set `strength`; leave
-`enforce` at `advise` unless the owner asked for more. Run the lint.
+**5. Write it, then lint it.** Name it for the topic, kebab-case and unnumbered. State the
+preference, then **why** it holds — an agent that knows the reason can tell a genuine
+exception from a violation — then **how to apply** it at the moment it matters. Set
+`strength`; leave `enforce` at `advise` unless the owner asked for more.
+
+Then run `bun <skill-dir>/scripts/lint.ts` on every directory you touched, and fix what it
+reports **before you show anyone the diff**. A taste that fails the lint is not written yet:
+the folder is a dictionary something else reads, and at `enforce: block` an unlintable rule
+is a refusal that never fires. This holds for every write — a correction, a dictated taste,
+or an edit to one that already existed.
 
 **6. Land it.** A project taste is an ordinary committed file: branch, merge request,
 review — **never a direct commit to the default branch**, and never a file that exists only

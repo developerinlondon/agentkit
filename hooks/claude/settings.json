@@ -48,6 +48,12 @@
           },
           {
             "type": "command",
+            "command": "$HOME/.claude/hooks/taste-police.sh",
+            "timeout": 15,
+            "statusMessage": "taste-police: applying your blocking tastes..."
+          },
+          {
+            "type": "command",
             "command": "$HOME/.claude/hooks/fail-closed-hook.sh 45 $HOME/.claude/hooks/review-police.sh",
             "timeout": 60,
             "statusMessage": "review-police: verifying the review gate..."

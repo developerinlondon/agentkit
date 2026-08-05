@@ -188,12 +188,12 @@ wip:
   # or a UTF-8 label, and a wrong "tracked" loses the gap silently.
   # issue-refs: '#[0-9]+|![0-9]+|[A-Z][A-Z0-9]+-[0-9]+'
 
-# Read by the `taste` skill, which loads one markdown file per convention from
-# .agentkit/tastes/ and ~/.agentkit/tastes/. A repository's own
-# .agentkit/config.yaml overrides this.
+# Read by the `taste` skill and by the `taste-police` hook, which load one
+# markdown file per convention from .agentkit/tastes/ and ~/.agentkit/tastes/.
+# A repository's own .agentkit/config.yaml overrides this.
 taste:
-  # Load applicable tastes before acting and honor them. False makes the skill
-  # inert: nothing is read, and nothing is written.
+  # Load applicable tastes before acting and honor them. False makes both the
+  # skill and the hook inert: nothing is read, refused, or written.
   enabled: true
 
   # Write or update a taste when a correction lands. False keeps the folder

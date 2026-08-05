@@ -9,6 +9,41 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+- feat(taste): `taste-police` — one generic hook that carries out `enforce:
+  block`. It resolves the same folders the skill reads (project >
+  `tastes-vendor` > user, replacing by name), takes the tastes whose `rule` the
+  lint accepts, and tests `rule.match` against the command in process. No rule
+  value ever reaches a shell, and adding a blocking taste changes no code: a
+  test drops a second taste into the folder mid-run and it starts refusing, with
+  no guard source naming anything it enforces. The refusal names the taste, its file, its own
+  `remedy` and its own `override`; the override is honored inline on the command
+  or from the environment, and a value that reads as off (empty, `0`, `false`,
+  `no`, `off`) warns and still refuses. Three bounds keep someone else's regular
+  expression from taking the session: `rule.match` caps at 200 characters (the
+  lint refuses longer, so CI catches it), only the first 4000 characters of a
+  command are examined, and the match itself runs on an abandonable thread with a
+  250ms deadline — length is not safety, since `(a+)+$` is eight characters and
+  doubles its work per character. The deadline lives in the evaluator rather than
+  in either adapter, so the OpenCode lane, which matches inside the editor's own
+  process where no outer timeout can reach, inherits it. A malformed taste, or
+  one whose pattern outruns the deadline, is skipped by name and leaves every
+  other taste binding; a hook that cannot run reports UNCHECKED rather than
+  allowing quietly or refusing on its own uncertainty. Ships on both police lanes — `hooks/claude/taste-police.sh` and
+  `plugins/taste-police.ts` — over one shared evaluator, so a taste cannot mean
+  different things on different harnesses. `taste.enabled: false` makes it
+  inert. (#302)
+- feat(taste): managing the folder is **skill-driven, no CLI** — an owner
+  decision, recorded here because the obvious shape was a `taste list|add|lint`
+  command and there deliberately is none. `SKILL.md` carries the three surfaces
+  instead: listing resolves to one row per name (scope, strength, enforce) and
+  names the layers a scope shadowed, since the override is the answer someone is
+  usually after; a dictated taste is a first-class capture path running the same
+  dedupe, routing and merge-request discipline as a correction, asking for the
+  why rather than inventing it and earning no enforcement by being dictated; and
+  every write is linted with the skill's own `scripts/lint.ts` before the diff is
+  shown, because a taste that fails the lint is not written yet. `lint.ts` stays
+  skill-internal plumbing rather than becoming a PATH tool. (#302)
+
 ## v0.7.4 — 2026-08-05
 
 - feat(skills): `taste` — one markdown file per convention, read by every

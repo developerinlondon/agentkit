@@ -101,6 +101,7 @@ const PRE_TOOL_USE_HOOKS = [
   'pages-police.sh',
   'mr-police.sh',
   'resource-police.sh',
+  'taste-police.sh',
 ];
 // Not a Bash gate: it judges the content an Edit or Write is about to land.
 const PRE_TOOL_USE_WRITE_HOOKS = ['plan-police.sh'];

@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { lintTasteDirectory } from '../../skills/taste/scripts/lint.ts';
+import { lintTasteDirectory, MAX_MATCH_LENGTH } from '../../skills/taste/scripts/lint.ts';
 
 const repoRoot = join(import.meta.dir, '..', '..');
 const linter = join(repoRoot, 'skills', 'taste', 'scripts', 'lint.ts');
@@ -379,6 +379,25 @@ describe('the rule block is data, and only where it means something', () => {
 
   test('an escaped substitution in a match is accepted — it is not the literal sequence', () => {
     expect(lint({ 'release-tier.md': taste(matchRule('git tag \\$\\(date\\)')) })).toEqual([]);
+  });
+
+  // The hook runs this pattern against every command, so an unrunnable one has
+  // to fail here — where CI sees it — rather than in a session that then quietly
+  // enforces nothing.
+  describe('the pattern length cap', () => {
+    const atCap = `git tag ${'a'.repeat(MAX_MATCH_LENGTH - 8)}`;
+
+    test('a pattern at the cap is accepted', () => {
+      expect(atCap).toHaveLength(MAX_MATCH_LENGTH);
+      expect(lint({ 'release-tier.md': taste(matchRule(atCap)) })).toEqual([]);
+    });
+
+    test('one character more is refused, and told the cap', () => {
+      const errors = lint({ 'release-tier.md': taste(matchRule(`${atCap}a`)) });
+      expect(errors).toHaveLength(1);
+      expect(errors[0]).toContain('rule.match');
+      expect(errors[0]).toContain(String(MAX_MATCH_LENGTH));
+    });
   });
 });
 

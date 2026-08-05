@@ -30,7 +30,7 @@ reads; nothing in it is ever executed as a command.
 | Key        | Required | Value                                                                   |
 | ---------- | -------- | ----------------------------------------------------------------------- |
 | `kind`     | yes      | `command` — the action class the pattern matches                        |
-| `match`    | yes      | a regular expression that must compile                                  |
+| `match`    | yes      | a regular expression that must compile, at most 200 characters          |
 | `remedy`   | yes      | the sentence an agent is shown instead of the refused action            |
 | `override` | no       | the name of one environment variable that lets it through, deliberately |
 
@@ -46,6 +46,36 @@ A `match` may still pattern on those characters where it needs to: `\$\(` passes
 string then holds a backslash, a dollar, a backslash, and a paren — the literal sequence the
 check looks for is not in it. A backtick has no such escape. It is a single character, so
 `` \` `` still contains one, and a backtick therefore cannot appear in a `match` at all.
+
+### Two bounds, because a rule runs on every command
+
+`taste-police` tests the pattern in-process against the command string; nothing is ever handed
+to a shell. A regular expression can still be made to backtrack for longer than anyone will
+wait, so the match is bounded three ways:
+
+| Bound                | Value            | What happens at the edge                                         |
+| -------------------- | ---------------- | ---------------------------------------------------------------- |
+| `rule.match` length  | 200 characters   | The lint refuses the file, and the hook skips it with a warning  |
+| the command examined | first 4000 chars | A pattern that would only match past that does not fire          |
+| the match itself     | 250 milliseconds | The taste is skipped, by name, and every other taste still binds |
+
+Length is not safety: `(a+)+$` is eight characters and doubles its work for every character
+you feed it. That is why the match runs on a thread the hook can abandon — a pattern that
+outruns the deadline is treated exactly like a malformed taste, named in a warning and left
+unenforced, rather than taking the session down with it.
+
+The subject bound is the honest trade: a command long enough to hit it is a script, and a
+taste is not a way to audit one. Write the pattern against what an agent actually types.
+
+### What counts as using an override
+
+The override is one environment variable name — the taste's own — and using it is a decision,
+so it must look like one. `AGENTKIT_RELEASE_TIER=1` before the command, or the same variable
+exported into the session, lets that one command through and nothing else.
+
+Empty, `0`, `false`, `no` and `off` do not switch it on. A guard that can be disabled by
+mistyping its escape hatch is worse than no guard, so those values warn and the taste still
+refuses. Misspelling the variable's name simply leaves the override unset — also a refusal.
 
 ## A taste in full
 
