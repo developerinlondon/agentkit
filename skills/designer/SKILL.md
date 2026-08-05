@@ -35,7 +35,11 @@ content and a reviewer cannot tell which needed a designer.
    token families to the plan's, re-derive every value, and delete every
    component the page does not use. The scaffold is a floor for quality, not a
    ceiling for invention — but its token structure (3-level surface stack,
-   `-soft` variants, three theme blocks) is the contract.
+   `-soft` variants, three theme blocks) is the contract. Never reuse a
+   component class name as a family modifier (`.step` the card vs `.step` the
+   family) — the collision leaks counters and padding into unrelated
+   components; prefix modifiers (`.f-step`) when a family shares a component's
+   name.
 4. **Compose sections** by routing each concept through the component grammar
    below. Real content everywhere: real paths, real payloads, real numbers —
    a mockup with placeholder labels is a failure exactly like a diagram with
@@ -48,17 +52,23 @@ content and a reviewer cannot tell which needed a designer.
    - **Screenshot the full height.** Read `documentElement.scrollHeight` from
      the rendered page first and size the capture window to it — a fixed-height
      window verifies the top of the page and silently calls the rest clean.
+     `--window-size` height is the WINDOW, not the viewport: measure the chrome
+     once (`windowSize − innerHeight`, ~90 px) and add it, or the by-the-book
+     capture still clips the last lines.
    - **Measure, don't estimate.** Absolute-positioned figures (mockup edges,
      sequence messages) depend on how text wraps in the font that actually
      resolves. Dump the rendered nodes' `offsetLeft/Top/Width/Height` with a
      DOM probe and derive SVG endpoints from the measured borders; in the same
      probe assert `scrollWidth === clientWidth` on every `overflow-x` wrapper —
      a horizontally clipped figure is invisible under `--hide-scrollbars`.
-   - **Compute contrast, don't eyeball it.** In the same probe, resolve the
-     tokens per theme and compute the WCAG ratio of every semantic text/ground
-     pair actually used (`--x` on `--surface`, `--x` on `--x-soft`, button text
-     on `--x`); each must clear 4.5:1. The eye happily passes a 3.2:1 mono
-     pill that the contract fails.
+   - **Compute contrast, don't eyeball it.** In the same probe, walk the
+     rendered elements and compute the WCAG ratio of every text/ground pair
+     the page actually paints; each must clear 4.5:1. Element-level beats
+     enumerating token pairs — it catches combinations no token list names.
+     The eye happily passes a 3.2:1 mono pill that the contract fails.
+   - **A self-measuring page converges last.** If the page states its own
+     probe numbers, land the layout first and write the numbers in the final
+     pass — every fix moves the measurements it reports.
 
 ## The token contract
 
