@@ -75,6 +75,10 @@ content and a reviewer cannot tell which needed a designer.
   directions. Components never restyle inside the color-scheme media query —
   theme changes travel through tokens only; layout media queries (responsive
   collapse, `prefers-reduced-motion`) are a different matter and fine.
+- **Standalone pages ship the scaffold's `.theme-toggle`** (persisted, stamps
+  `data-theme`) — without host chrome a viewer can never flip themes, so the
+  second theme goes unseen and unjudged. Keep it only when the host has no
+  toggle of its own; a host that stamps `data-theme` composes with it anyway.
 - Dark values are re-picked, not inverted: soft grounds go deep and desaturated,
   accents brighten to hold contrast.
 

@@ -295,9 +295,33 @@
   }
 
   footer { margin-top: 60px; border-top: 1px solid var(--line); padding-top: 16px; font-size: 12px; color: var(--muted); font-family: var(--mono); line-height: 1.7; }
+
+  .theme-toggle {
+    position: fixed; top: 14px; right: 14px; z-index: 10;
+    font-family: var(--mono); font-size: 11.5px; padding: 5px 12px;
+    border: 1px solid var(--line); border-radius: 99px;
+    background: var(--surface); color: var(--muted); cursor: pointer;
+  }
+  .theme-toggle:hover { color: var(--ink); border-color: var(--muted); }
+  .theme-toggle:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 </style>
 </head>
 <body>
+<button class="theme-toggle" aria-label="Switch color theme">◐ theme</button>
+<script>
+(() => {
+  const root = document.documentElement;
+  const saved = localStorage.getItem("theme");
+  if (saved === "dark" || saved === "light") root.dataset.theme = saved;
+  document.querySelector(".theme-toggle").addEventListener("click", () => {
+    const current = root.dataset.theme
+      || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    const next = current === "dark" ? "light" : "dark";
+    root.dataset.theme = next;
+    localStorage.setItem("theme", next);
+  });
+})();
+</script>
 <main>
   <header class="page">
     <div class="eyebrow">project · document kind · 2026-01-01</div>
