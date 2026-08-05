@@ -9,6 +9,8 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+## v0.7.6 — 2026-08-05
+
 - feat(taste): **external sources** — a taste is no longer confined to the repository it was
   written in. `taste.sources` in `.agentkit/config.yaml` (or the user config) declares an
   ordered list of git repositories whose files are tastes; the skill's own
