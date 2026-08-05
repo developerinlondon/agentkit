@@ -16,10 +16,11 @@
     --muted: #5b6678;
     --line: #d3dae6;
     --line-soft: #e2e8f2;
-    --core: #0e8fa3;      --core-soft: #e0f2f5;
+    --core: #0b6f80;      --core-soft: #e0f2f5;
     --new: #6250d8;       --new-soft: #eceafb;
-    --gate: #b3770e;      --gate-soft: #f7ecd6;
-    --ok: #2e9e62;        --ok-soft: #e2f3e9;
+    --gate: #8a5c04;      --gate-soft: #f7ecd6;
+    --ok: #1c6f42;        --ok-soft: #e2f3e9;
+    --shadow: 0 1px 4px rgba(10, 16, 30, 0.10);
     --mono: "SF Mono", ui-monospace, "Cascadia Code", "JetBrains Mono", Menlo, Consolas, monospace;
     --sans: "Avenir Next", "Segoe UI", system-ui, -apple-system, sans-serif;
   }
@@ -31,15 +32,17 @@
       --new: #a293ff; --new-soft: #2a2650;
       --gate: #e6a63d; --gate-soft: #3a2c10;
       --ok: #4cc98a; --ok-soft: #123324;
+      --shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
     }
   }
   :root[data-theme="light"] {
     --bg: #f4f6fa; --surface: #ffffff; --surface-2: #eaeef5;
     --ink: #1a2230; --muted: #5b6678; --line: #d3dae6; --line-soft: #e2e8f2;
-    --core: #0e8fa3; --core-soft: #e0f2f5;
+    --core: #0b6f80; --core-soft: #e0f2f5;
     --new: #6250d8; --new-soft: #eceafb;
-    --gate: #b3770e; --gate-soft: #f7ecd6;
-    --ok: #2e9e62; --ok-soft: #e2f3e9;
+    --gate: #8a5c04; --gate-soft: #f7ecd6;
+    --ok: #1c6f42; --ok-soft: #e2f3e9;
+    --shadow: 0 1px 4px rgba(10, 16, 30, 0.10);
   }
   :root[data-theme="dark"] {
     --bg: #0c1018; --surface: #141a26; --surface-2: #1a2233;
@@ -48,6 +51,7 @@
     --new: #a293ff; --new-soft: #2a2650;
     --gate: #e6a63d; --gate-soft: #3a2c10;
     --ok: #4cc98a; --ok-soft: #123324;
+    --shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
   }
 
   * { box-sizing: border-box; }
@@ -82,7 +86,7 @@
 
   .legend { display: flex; flex-wrap: wrap; gap: 16px; margin: 10px 0 18px; font-size: 13px; color: var(--muted); }
   .legend span { display: inline-flex; align-items: center; gap: 7px; }
-  .key { width: 22px; height: 12px; border-radius: 3px; display: inline-block; }
+  .key { width: 22px; height: 12px; border-radius: 4px; display: inline-block; }
   .key.core { background: var(--core-soft); border: 1.5px solid var(--core); }
   .key.new  { background: var(--new-soft);  border: 1.5px dashed var(--new); }
   .key.gate { background: var(--gate-soft); border: 1.5px solid var(--gate); }
@@ -116,7 +120,7 @@
   }
   .mock-btn.primary { background: var(--core); border-color: var(--core); color: var(--bg); font-weight: 600; }
 
-  .mock-body { display: grid; grid-template-columns: 195px 1fr 265px; min-height: 380px; }
+  .mock-body { display: grid; grid-template-columns: 180px 1fr 250px; min-height: 380px; }
   @media (max-width: 900px) {
     .mock-body { grid-template-columns: 1fr; }
     .palette, .inspector { border-right: none !important; border-left: none !important; border-top: 1px solid var(--line); }
@@ -145,7 +149,7 @@
   .canvas { position: relative; width: 560px; height: 380px; margin: 0 auto; }
   .node {
     position: absolute; width: 190px; border-radius: 8px; background: var(--surface);
-    border: 1.5px solid var(--line); box-shadow: 0 1px 4px rgba(10,16,30,0.10);
+    border: 1.5px solid var(--line); box-shadow: var(--shadow);
     font-size: 12px; overflow: hidden;
   }
   .node .n-head {
@@ -286,7 +290,7 @@
   .accept { margin-top: 14px; display: grid; gap: 11px; max-width: 82ch; }
   .ac { display: flex; gap: 12px; align-items: baseline; font-size: 14px; line-height: 1.55; }
   .ac .box {
-    flex-shrink: 0; width: 12px; height: 12px; border-radius: 3px;
+    flex-shrink: 0; width: 12px; height: 12px; border-radius: 4px;
     border: 1.5px solid var(--gate); background: var(--gate-soft); transform: translateY(1px);
   }
 
@@ -340,10 +344,13 @@
                 <marker id="arr" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
                   <path d="M0,0 L8,4 L0,8 z" fill="currentColor" style="color:var(--muted)"></path>
                 </marker>
+                <marker id="arrg" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+                  <path d="M0,0 L8,4 L0,8 z" fill="currentColor" style="color:var(--gate)"></path>
+                </marker>
               </defs>
               <path d="M 230 100 C 260 100 260 100 288 100" marker-end="url(#arr)"></path>
-              <path d="M 333 138 C 333 165 333 165 333 192" marker-end="url(#arr)"></path>
-              <text x="345" y="170">edge label</text>
+              <path class="approved" d="M 333 154 C 333 172 333 172 333 190" marker-end="url(#arrg)"></path>
+              <text x="345" y="176">edge label</text>
             </svg>
             <div class="node hot" style="left:40px; top:66px">
               <div class="n-head"><span class="n-dot done"></span> kind · variant</div>

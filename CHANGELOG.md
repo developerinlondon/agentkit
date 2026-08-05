@@ -10,8 +10,12 @@ top and ships with the next tag.
   stack, dual token-level theming, a chosen type system) and a component
   grammar with a verified working scaffold: page header with chips, section
   eyebrows, legend keys, product-surface mockups (toolbar, rails, dotted canvas
-  with SVG edges, inspector), flow strips, counter step cards, phase cards, and
-  non-goal lists. `architect` routes design proposals and product-design briefs
+  with SVG edges, inspector), flow strips, counter step cards, phase cards,
+  non-goal lists, sequence lanes (ordered messages without a mermaid runtime),
+  and acceptance checklists. Verification is measured, not eyeballed:
+  full-scrollHeight capture in both themes, DOM-probed figure endpoints,
+  overflow assertions, and computed ≥4.5:1 contrast for every semantic
+  text/ground pair. `architect` routes design proposals and product-design briefs
   through it, and `publish-page` points bespoke raw design pages at it, so a PD
   comes out at the grade a Claude artifact produces without manual redesign.
   (#286)

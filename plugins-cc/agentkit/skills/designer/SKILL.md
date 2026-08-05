@@ -54,25 +54,35 @@ content and a reviewer cannot tell which needed a designer.
      DOM probe and derive SVG endpoints from the measured borders; in the same
      probe assert `scrollWidth === clientWidth` on every `overflow-x` wrapper —
      a horizontally clipped figure is invisible under `--hide-scrollbars`.
+   - **Compute contrast, don't eyeball it.** In the same probe, resolve the
+     tokens per theme and compute the WCAG ratio of every semantic text/ground
+     pair actually used (`--x` on `--surface`, `--x` on `--x-soft`, button text
+     on `--x`); each must clear 4.5:1. The eye happily passes a 3.2:1 mono
+     pill that the contract fails.
 
 ## The token contract
 
 - Neutrals: `--bg`, `--surface`, `--surface-2`, `--ink`, `--muted`, `--line`,
   `--line-soft`. Three surface levels minimum — depth comes from surface
   layering, not shadows.
-- Every semantic family is a pair: `--x` (border/text on soft, ≥4.5:1 on
-  `--surface`) and `--x-soft` (its background ground).
+- Every semantic family is a pair: `--x` (border/text, ≥4.5:1 on `--surface`
+  AND on its own `--x-soft`) and `--x-soft` (its background ground). The
+  soft-ground requirement is the binding one — light-theme accents that look
+  right usually land near 3:1 there and must be darkened.
 - Three theme blocks, token-level only: base `:root`, then
   `@media (prefers-color-scheme: dark)`, then BOTH `:root[data-theme="dark"]`
   and `:root[data-theme="light"]` so a host's toggle overrides the OS in both
-  directions. Components never restyle inside a media query.
+  directions. Components never restyle inside the color-scheme media query —
+  theme changes travel through tokens only; layout media queries (responsive
+  collapse, `prefers-reduced-motion`) are a different matter and fine.
 - Dark values are re-picked, not inverted: soft grounds go deep and desaturated,
   accents brighten to hold contrast.
 
 ## Type and layout non-negotiables
 
-- Canvas ≤1080 px; prose measure ≤68 ch inside it. Wide figures scroll in their
-  own `overflow-x: auto` wrapper; the body never scrolls sideways.
+- Canvas ≤1080 px; running paragraphs measure ≤68 ch inside it (structured
+  list rows — non-goals, acceptance — may run to ~82 ch). Wide figures scroll
+  in their own `overflow-x: auto` wrapper; the body never scrolls sideways.
 - Body: the sans stack, 15–16 px, line-height ~1.6. Mono is for eyebrows,
   labels, data, and code **only** — mono body text or mono headings read as a
   terminal dump, which is the look this skill exists to replace.
@@ -82,8 +92,9 @@ content and a reviewer cannot tell which needed a designer.
 - Section headers are `sec-head` rows: eyebrow + h2 on one baseline. Number
   eyebrows (`01 · topic`) only when the reading order carries information.
 - Space with flex/grid `gap`; `tabular-nums` wherever digits align; radii on
-  one scale (4/6/8/10 px, 99px pills); interactive-looking things get hover
-  states; any animation sits behind `prefers-reduced-motion: no-preference`.
+  one scale (4/6/8/10 px, 99px pills); real links and controls get hover
+  states — mockup chrome is a picture, hover there is an optional hint; any
+  animation sits behind `prefers-reduced-motion: no-preference`.
 
 ## Component grammar — route by what the concept is
 
