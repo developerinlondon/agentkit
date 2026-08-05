@@ -3,6 +3,10 @@
 Notable changes per release. Newest first. Unreleased work accumulates at the
 top and ships with the next tag.
 
+Releasing: bump the PATCH version by default. A minor or major tier requires
+the owner's explicit agreement for that specific release, recorded in the
+release PR — "publish this" authorizes a release, never the tier.
+
 ## [Unreleased]
 
 ## v0.8.0 — 2026-08-05
