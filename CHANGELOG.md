@@ -9,6 +9,8 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+## v0.7.8 — 2026-08-05
+
 - fix(designer): three refinements from the fourth acceptance run. The token contract now states
   the contrast bar for text on an `--x-band` ground — calmer is a matter of saturation, never of
   the 4.5:1 floor a large ground still owes the text it carries. "Measure, don't estimate" now
