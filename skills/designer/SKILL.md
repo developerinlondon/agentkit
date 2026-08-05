@@ -62,6 +62,10 @@ content and a reviewer cannot tell which needed a designer.
      DOM probe and derive SVG endpoints from the measured borders; in the same
      probe assert `scrollWidth === clientWidth` on every `overflow-x` wrapper —
      a horizontally clipped figure is invisible under `--hide-scrollbars`.
+     A centerpiece laid out in CSS grid or normal flow satisfies this
+     structurally — the layout owns the alignment, so the probe verifies the
+     measurements rather than deriving coordinates from them; the rule binds
+     wherever a coordinate is authored by hand.
    - **Compute contrast, don't eyeball it.** In the same probe, walk the
      rendered elements in each theme and compute the WCAG ratio of every
      text/ground pair the page actually paints; each must clear 4.5:1. Element-level beats
@@ -84,7 +88,10 @@ content and a reviewer cannot tell which needed a designer.
   right usually land near 3:1 there and must be darkened.
 - A family painted as a **large-area fill** (a band, a zone, a canvas region)
   gets a third, calmer value (`--x-band`): soft grounds are badge-scale, and
-  at hundreds of pixels wide they shout, especially in dark.
+  at hundreds of pixels wide they shout, especially in dark. Calmer is about
+  saturation, not about the contrast floor — text painted on a band ground
+  clears the same 4.5:1 as every other pair, and a band is a reading surface
+  precisely because it is large.
 - Three theme blocks, token-level only: base `:root`, then
   `@media (prefers-color-scheme: dark)`, then BOTH `:root[data-theme="dark"]`
   and `:root[data-theme="light"]` so a host's toggle overrides the OS in both
@@ -126,6 +133,7 @@ content and a reviewer cannot tell which needed a designer.
 | Linear pipeline whose stages carry build/gate state | `.strip` flow strip: `.fbox` variants + labelled `.arrow`s                                                      |
 | Ordered passes through a system                     | `.steps` counter cards, top border encoding state                                                               |
 | Enumerable facts, N items × M properties            | table with mono uppercase `th`, `.tag` state pills                                                              |
+| A file or config the page is about                  | `.filecard` — path header, optional badges, the file's own text                                                 |
 | Delivery slices with estimates                      | `.phases` cards with `.est` pill and a `ship:` line                                                             |
 | Ordered messages between ≤6 participants            | `.seq` lane figure — CSS lifelines + offset messages, no runtime                                                |
 | Verifiable done-criteria                            | `.accept` checklist rows — these become the implementation's test targets                                       |

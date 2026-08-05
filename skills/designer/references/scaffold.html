@@ -282,6 +282,31 @@ try {
   .tag.exists { background: var(--core-soft); color: var(--core); }
   .tag.build { background: var(--new-soft); color: var(--new); }
 
+  /* File card: an artifact rendered as the file it is — path header with
+     optional badges, the file's own verbatim text, the prose it carries. */
+  .filecard { border: 1px solid var(--line); border-radius: 10px; background: var(--surface); overflow: hidden; margin-top: 14px; max-width: 620px; }
+  .fc-top {
+    display: flex; align-items: center; gap: 9px; flex-wrap: wrap;
+    padding: 9px 14px; border-bottom: 1px solid var(--line); background: var(--surface-2);
+    font-family: var(--mono); font-size: 11.5px;
+  }
+  .fc-top .pth { font-weight: 600; color: var(--ink); }
+  .fc-pill {
+    font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.06em; padding: 2px 8px;
+    border-radius: 99px; border: 1px solid var(--new); color: var(--new); background: var(--new-soft);
+  }
+  .fc-pill.plain { border-color: var(--line); color: var(--muted); background: var(--surface); }
+  .fc-src {
+    margin: 0; padding: 12px 14px; background: var(--surface-2); border-bottom: 1px solid var(--line-soft);
+    font-family: var(--mono); font-size: 11.5px; line-height: 1.6; color: var(--ink);
+    white-space: pre; overflow-x: auto;
+  }
+  .fc-src .k, .fc-src .rule { color: var(--muted); }
+  .fc-body { padding: 13px 16px 15px; font-size: 13.5px; line-height: 1.6; }
+  .fc-body p { margin: 0 0 9px; max-width: 62ch; }
+  .fc-body p:last-child { margin-bottom: 0; }
+  .fc-body b { font-weight: 650; }
+
   .phases { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; margin-top: 16px; }
   .phase { border: 1px solid var(--line); border-radius: 10px; background: var(--surface); padding: 16px 18px; }
   .phase .ph-top { display: flex; justify-content: space-between; align-items: baseline; }
@@ -478,7 +503,28 @@ try {
   </section>
 
   <section>
-    <div class="sec-head"><span class="eyebrow">05 · Phases</span><h2>Shippable slices</h2></div>
+    <div class="sec-head"><span class="eyebrow">05 · The artifact</span><h2>The file the convention lives in</h2></div>
+    <p>One sentence saying why the file itself states the rule better than a paragraph about it.</p>
+    <div class="filecard">
+      <div class="fc-top">
+        <span class="pth">real/path/to/the-file.md</span>
+        <span class="fc-pill">scope badge</span>
+        <span class="fc-pill plain">state badge</span>
+      </div>
+<pre class="fc-src"><span class="rule">---</span>
+<span class="k">name:</span> real-name
+<span class="k">applies-to:</span> the real selector, not a placeholder
+<span class="k">enforce:</span> block
+<span class="rule">---</span></pre>
+      <div class="fc-body">
+        <p>The file's own prose, quoted as it reads on disk.</p>
+        <p><b>Why:</b> the reason that survives a reader who disagrees with the rule.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="eyebrow">06 · Phases</span><h2>Shippable slices</h2></div>
     <div class="phases">
       <div class="phase">
         <div class="ph-top"><h3>1 · Name</h3><span class="est">~N sessions</span></div>
@@ -499,7 +545,7 @@ try {
   </section>
 
   <section>
-    <div class="sec-head"><span class="eyebrow">06 · Non-goals</span><h2>What this deliberately is not</h2></div>
+    <div class="sec-head"><span class="eyebrow">07 · Non-goals</span><h2>What this deliberately is not</h2></div>
     <div class="nongoals">
       <div class="ng"><span class="x">✕</span><div><b>Not this.</b> <span class="why">Why refusing it is the better product decision, in one sentence.</span></div></div>
       <div class="ng"><span class="x">✕</span><div><b>Not this either.</b> <span class="why">Why.</span></div></div>
@@ -507,7 +553,7 @@ try {
   </section>
 
   <section>
-    <div class="sec-head"><span class="eyebrow">07 · Acceptance</span><h2>What has to be true to call it done</h2></div>
+    <div class="sec-head"><span class="eyebrow">08 · Acceptance</span><h2>What has to be true to call it done</h2></div>
     <div class="accept">
       <div class="ac"><span class="box"></span><div>A verifiable criterion, phrased so it can become a test target.</div></div>
       <div class="ac"><span class="box"></span><div>Another criterion, one behavior each.</div></div>

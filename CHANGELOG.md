@@ -9,6 +9,18 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+- fix(designer): three refinements from the fourth acceptance run. The token contract now states
+  the contrast bar for text on an `--x-band` ground — calmer is a matter of saturation, never of
+  the 4.5:1 floor a large ground still owes the text it carries. "Measure, don't estimate" now
+  says a centerpiece laid out in CSS grid or normal flow satisfies it structurally, so a
+  grid-built bespoke figure no longer reads as a rule violation; the rule binds wherever a
+  coordinate is authored by hand. And the scaffold gains `.filecard` — an artifact rendered as
+  the file it is: path header, optional badges, the file's verbatim text, the prose it carries —
+  with a grammar row routing "a file or config the page is about" to it. Verified by the skill's
+  own rules: scaffold rendered at 1280 px in both themes at the measured 2900 px scrollHeight,
+  137 painted text/ground pairs per theme clearing 4.5:1 (light min 4.85, dark min 4.51), all
+  five `overflow-x` wrappers unclipped. (#299)
+
 ## v0.7.7 — 2026-08-05
 
 - fix(taste): `resolveTastes(cwd)` threw `TypeError: The "paths[0]" property must be of type
