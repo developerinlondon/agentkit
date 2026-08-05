@@ -1,0 +1,485 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Page title — Design</title>
+<style>
+  /* Tokens. Rename the four semantic families to THIS page's own distinctions
+     (exists/build/gate/ok is one worked example) and re-derive every value from
+     the design plan. Neutrals carry a slight hue bias toward the accent. */
+  :root {
+    --bg: #f4f6fa;
+    --surface: #ffffff;
+    --surface-2: #eaeef5;
+    --ink: #1a2230;
+    --muted: #5b6678;
+    --line: #d3dae6;
+    --line-soft: #e2e8f2;
+    --core: #0b6f80;      --core-soft: #e0f2f5;
+    --new: #6250d8;       --new-soft: #eceafb;
+    --gate: #8a5c04;      --gate-soft: #f7ecd6;
+    --ok: #1c6f42;        --ok-soft: #e2f3e9;
+    --shadow: 0 1px 4px rgba(10, 16, 30, 0.10);
+    --mono: "SF Mono", ui-monospace, "Cascadia Code", "JetBrains Mono", Menlo, Consolas, monospace;
+    --sans: "Avenir Next", "Segoe UI", system-ui, -apple-system, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0c1018; --surface: #141a26; --surface-2: #1a2233;
+      --ink: #e4eaf4; --muted: #8b96aa; --line: #2a3448; --line-soft: #202939;
+      --core: #56cfe0; --core-soft: #10333c;
+      --new: #a293ff; --new-soft: #2a2650;
+      --gate: #e6a63d; --gate-soft: #3a2c10;
+      --ok: #4cc98a; --ok-soft: #123324;
+      --shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+    }
+  }
+  :root[data-theme="light"] {
+    --bg: #f4f6fa; --surface: #ffffff; --surface-2: #eaeef5;
+    --ink: #1a2230; --muted: #5b6678; --line: #d3dae6; --line-soft: #e2e8f2;
+    --core: #0b6f80; --core-soft: #e0f2f5;
+    --new: #6250d8; --new-soft: #eceafb;
+    --gate: #8a5c04; --gate-soft: #f7ecd6;
+    --ok: #1c6f42; --ok-soft: #e2f3e9;
+    --shadow: 0 1px 4px rgba(10, 16, 30, 0.10);
+  }
+  :root[data-theme="dark"] {
+    --bg: #0c1018; --surface: #141a26; --surface-2: #1a2233;
+    --ink: #e4eaf4; --muted: #8b96aa; --line: #2a3448; --line-soft: #202939;
+    --core: #56cfe0; --core-soft: #10333c;
+    --new: #a293ff; --new-soft: #2a2650;
+    --gate: #e6a63d; --gate-soft: #3a2c10;
+    --ok: #4cc98a; --ok-soft: #123324;
+    --shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg); color: var(--ink);
+    font-family: var(--sans); font-size: 15.5px; line-height: 1.6;
+    margin: 0; padding: 0 20px 80px;
+  }
+  main { max-width: 1080px; margin: 0 auto; }
+  h1, h2, h3 { text-wrap: balance; line-height: 1.2; }
+  h1 { font-size: 34px; font-weight: 650; letter-spacing: -0.015em; margin: 10px 0 14px; }
+  h2 { font-size: 21px; font-weight: 650; letter-spacing: -0.01em; margin: 0 0 6px; }
+  p { max-width: 68ch; }
+  code { font-family: var(--mono); font-size: 0.86em; background: var(--surface-2); padding: 1px 5px; border-radius: 4px; }
+
+  .eyebrow {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--muted);
+  }
+  header.page { padding: 44px 0 8px; border-bottom: 1px solid var(--line); margin-bottom: 8px; }
+  .lede { font-size: 17px; max-width: 62ch; color: var(--muted); margin-top: 0; }
+  .meta-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 18px 0 26px; }
+  .chip {
+    font-family: var(--mono); font-size: 11.5px; padding: 4px 10px;
+    border: 1px solid var(--line); border-radius: 99px; color: var(--muted); background: var(--surface);
+  }
+  .chip b { color: var(--ink); font-weight: 600; }
+
+  section { margin: 46px 0; }
+  .sec-head { display: flex; align-items: baseline; gap: 14px; margin-bottom: 4px; }
+  .sec-head .eyebrow { flex-shrink: 0; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 16px; margin: 10px 0 18px; font-size: 13px; color: var(--muted); }
+  .legend span { display: inline-flex; align-items: center; gap: 7px; }
+  .key { width: 22px; height: 12px; border-radius: 4px; display: inline-block; }
+  .key.core { background: var(--core-soft); border: 1.5px solid var(--core); }
+  .key.new  { background: var(--new-soft);  border: 1.5px dashed var(--new); }
+  .key.gate { background: var(--gate-soft); border: 1.5px solid var(--gate); }
+
+  /* Surface mockup: frame → toolbar → optional side rails → dotted canvas
+     with positioned nodes and an SVG edge layer. */
+  .mock {
+    border: 1px solid var(--line); border-radius: 10px; background: var(--surface);
+    overflow: hidden; margin-top: 14px;
+  }
+  .mock-top {
+    display: flex; align-items: center; gap: 12px; padding: 10px 16px;
+    border-bottom: 1px solid var(--line); background: var(--surface-2);
+    font-family: var(--mono); font-size: 12.5px;
+  }
+  .mock-top .wf-name { font-weight: 600; color: var(--ink); }
+  .status-pill {
+    display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 99px;
+    font-size: 11px; letter-spacing: 0.04em; background: var(--gate-soft); color: var(--gate);
+    border: 1px solid var(--gate);
+  }
+  .status-pill .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--gate); }
+  @media (prefers-reduced-motion: no-preference) {
+    .status-pill .dot, .n-dot.wait { animation: pulse 1.6s ease-in-out infinite; }
+    @keyframes pulse { 50% { opacity: 0.35; } }
+  }
+  .mock-top .spacer { flex: 1; }
+  .mock-btn {
+    font-family: var(--mono); font-size: 11.5px; padding: 4px 12px; border-radius: 6px;
+    border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+  }
+  .mock-btn.primary { background: var(--core); border-color: var(--core); color: var(--bg); font-weight: 600; }
+
+  .mock-body { display: grid; grid-template-columns: 180px 1fr 250px; min-height: 380px; }
+  @media (max-width: 900px) {
+    .mock-body { grid-template-columns: 1fr; }
+    .palette, .inspector { border-right: none !important; border-left: none !important; border-top: 1px solid var(--line); }
+  }
+
+  .palette { border-right: 1px solid var(--line); padding: 14px; }
+  .palette h4, .inspector h4 {
+    margin: 0 0 10px; font-family: var(--mono); font-size: 10.5px;
+    letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); font-weight: 600;
+  }
+  .pal-item {
+    display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px;
+    font-family: var(--mono); font-size: 11.5px; color: var(--ink); border: 1px solid transparent;
+  }
+  .pal-item:hover { background: var(--surface-2); border-color: var(--line-soft); }
+  .pal-kind {
+    font-size: 9px; letter-spacing: 0.08em; padding: 1px 6px; border-radius: 4px;
+    background: var(--surface-2); color: var(--muted); border: 1px solid var(--line-soft);
+  }
+  .pal-kind.gated { background: var(--gate-soft); color: var(--gate); border-color: var(--gate); }
+  .pal-note { font-size: 11px; color: var(--muted); margin-top: 12px; line-height: 1.5; }
+
+  .canvas-wrap { position: relative; overflow-x: auto; background:
+    radial-gradient(circle, var(--line-soft) 1px, transparent 1px);
+    background-size: 22px 22px; }
+  .canvas { position: relative; width: 560px; height: 380px; margin: 0 auto; }
+  .node {
+    position: absolute; width: 190px; border-radius: 8px; background: var(--surface);
+    border: 1.5px solid var(--line); box-shadow: var(--shadow);
+    font-size: 12px; overflow: hidden;
+  }
+  .node .n-head {
+    display: flex; align-items: center; gap: 7px; padding: 7px 10px 3px;
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted);
+  }
+  .node .n-body { padding: 0 10px 9px; font-family: var(--mono); font-size: 11.5px; color: var(--ink); line-height: 1.45; }
+  .node .n-body small { color: var(--muted); font-size: 10.5px; display: block; }
+  .n-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .n-dot.done { background: var(--ok); }
+  .n-dot.wait { background: var(--gate); }
+  .n-dot.idle { background: var(--line); }
+  .node.hot { border-color: var(--core); }
+  .node.accent-left { border-left: 4px solid var(--core); }
+  .node.gatepoint { border-color: var(--gate); background: var(--gate-soft); }
+  .node.selected { outline: 2px solid var(--gate); outline-offset: 2px; }
+  .badge {
+    display: inline-block; font-size: 9px; letter-spacing: 0.07em; padding: 1px 6px;
+    border-radius: 4px; margin-top: 4px; font-family: var(--mono);
+  }
+  .badge.auto { background: var(--ok-soft); color: var(--ok); }
+  .badge.hard { background: var(--gate-soft); color: var(--gate); border: 1px solid var(--gate); }
+  .badge.role { background: var(--surface-2); color: var(--muted); border: 1px solid var(--line-soft); }
+  .edges { position: absolute; inset: 0; pointer-events: none; }
+  .edges path { fill: none; stroke: var(--muted); stroke-width: 1.6; }
+  .edges marker path { fill: currentColor; stroke: none; }
+  .edges path.approved { stroke: var(--gate); stroke-dasharray: 5 4; }
+  .edges text { font-family: var(--mono); font-size: 9.5px; fill: var(--muted); }
+
+  .inspector { border-left: 1px solid var(--line); padding: 14px; background: var(--surface); }
+  .insp-block { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; font-size: 12px; }
+  .insp-block.gate { border-color: var(--gate); background: var(--gate-soft); }
+  .insp-row { display: flex; justify-content: space-between; gap: 10px; padding: 3px 0; font-family: var(--mono); font-size: 11px; }
+  .insp-row .k { color: var(--muted); }
+  .insp-row .v { color: var(--ink); text-align: right; }
+  .insp-note { font-size: 11px; color: var(--muted); line-height: 1.5; margin: 8px 0 0; }
+  .insp-actions { display: flex; gap: 8px; margin-top: 10px; }
+  .insp-actions .mock-btn { flex: 1; text-align: center; }
+  .mock-btn.approve { background: var(--gate); border-color: var(--gate); color: var(--bg); font-weight: 600; }
+
+  /* Flow strip: fixed boxes joined by labelled arrows. */
+  .strip-label { font-family: var(--mono); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin: 22px 0 8px; }
+  .strip { display: flex; align-items: stretch; gap: 0; overflow-x: auto; padding-bottom: 6px; }
+  .fbox {
+    flex-shrink: 0; min-width: 128px; max-width: 180px; border-radius: 8px; padding: 9px 12px;
+    background: var(--core-soft); border: 1.5px solid var(--core); font-size: 12px; line-height: 1.4;
+  }
+  .fbox b { display: block; font-size: 12.5px; font-weight: 650; }
+  .fbox code { background: transparent; padding: 0; font-size: 10.5px; color: var(--muted); display: block; margin-top: 2px; }
+  .fbox.is-new { background: var(--new-soft); border-style: dashed; border-color: var(--new); }
+  .fbox.is-gate { background: var(--gate-soft); border-color: var(--gate); }
+  .fbox.is-ext { background: var(--surface); border-color: var(--line); }
+  .arrow {
+    flex-shrink: 0; align-self: center; padding: 0 4px; color: var(--muted);
+    font-family: var(--mono); font-size: 10px; text-align: center; min-width: 52px; line-height: 1.3;
+  }
+  .arrow::after { content: "⟶"; display: block; font-size: 15px; color: var(--muted); }
+
+  /* Step cards: auto-numbered, top border encodes state. */
+  .steps { counter-reset: step; display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin-top: 16px; }
+  .step {
+    border: 1px solid var(--line); border-radius: 10px; background: var(--surface);
+    padding: 14px 16px 12px; position: relative; font-size: 13.5px; line-height: 1.5;
+  }
+  .step::before {
+    counter-increment: step; content: counter(step, decimal-leading-zero);
+    font-family: var(--mono); font-size: 11px; color: var(--muted); letter-spacing: 0.1em; display: block; margin-bottom: 6px;
+  }
+  .step b { font-weight: 650; }
+  .step .where { display: block; margin-top: 7px; font-family: var(--mono); font-size: 10.5px; color: var(--muted); }
+  .step.exists { border-top: 3px solid var(--core); }
+  .step.is-new { border-top: 3px dashed var(--new); }
+  .step.is-gate { border-top: 3px solid var(--gate); }
+
+  /* Sequence lanes: ordered messages between participants, no mermaid runtime.
+     Position lane names and lifelines by percentage; each .msg spans between
+     two lifelines with left/right offsets measured from the rendered page. */
+  .seq-wrap { overflow-x: auto; margin-top: 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+  .seq { min-width: 700px; padding: 16px 20px 18px; }
+  .seq-head { position: relative; height: 30px; }
+  .lane-name {
+    position: absolute; transform: translateX(-50%); white-space: nowrap;
+    font-family: var(--mono); font-size: 10.5px; padding: 3px 9px; border-radius: 6px;
+    border: 1px solid var(--line); background: var(--surface-2); color: var(--ink);
+  }
+  .lane-name.is-new { border-color: var(--new); color: var(--new); background: var(--new-soft); }
+  .lane-name.is-gate { border-color: var(--gate); color: var(--gate); background: var(--gate-soft); }
+  .seq-rows { position: relative; height: 140px; margin-top: 6px; }
+  .lifeline { position: absolute; top: 0; bottom: 0; width: 0; border-left: 1px dashed var(--line); }
+  .msg { position: absolute; height: 24px; }
+  .msg .ln { position: absolute; left: 0; right: 0; top: 17px; border-top: 1.6px solid var(--muted); }
+  .msg .lbl {
+    position: absolute; left: 50%; transform: translateX(-50%); top: 0;
+    font-family: var(--mono); font-size: 10.5px; white-space: nowrap;
+    background: var(--surface); padding: 0 8px; color: var(--ink);
+  }
+  .msg .hd { position: absolute; top: 13px; width: 0; height: 0; border-top: 5px solid transparent; border-bottom: 5px solid transparent; }
+  .msg.fwd .hd { right: -1px; border-left: 8px solid var(--muted); }
+  .msg.rev .hd { left: -1px; border-right: 8px solid var(--muted); }
+  .msg.dash .ln { border-top-style: dashed; }
+  .msg.g .ln { border-top-color: var(--gate); }
+  .msg.g .lbl { color: var(--gate); }
+  .msg.g.fwd .hd { border-left-color: var(--gate); }
+  .msg.g.rev .hd { border-right-color: var(--gate); }
+  .msg.k .ln { border-top-color: var(--ok); }
+  .msg.k .lbl { color: var(--ok); }
+  .msg.k.fwd .hd { border-left-color: var(--ok); }
+  .msg.k.rev .hd { border-right-color: var(--ok); }
+  .seq-n {
+    position: absolute; left: 0; top: 3px; transform: translateX(-100%); padding-right: 10px;
+    font-family: var(--mono); font-size: 10px; color: var(--muted); font-variant-numeric: tabular-nums;
+  }
+
+  .tbl-wrap { overflow-x: auto; margin-top: 14px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+  th { text-align: left; font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); font-weight: 600; padding: 8px 14px 8px 0; border-bottom: 1px solid var(--line); }
+  td { padding: 9px 14px 9px 0; border-bottom: 1px solid var(--line-soft); vertical-align: top; line-height: 1.5; }
+  td:first-child { white-space: nowrap; }
+  .tag { font-family: var(--mono); font-size: 10px; padding: 1px 7px; border-radius: 4px; letter-spacing: 0.05em; }
+  .tag.exists { background: var(--core-soft); color: var(--core); }
+  .tag.build { background: var(--new-soft); color: var(--new); }
+
+  .phases { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; margin-top: 16px; }
+  .phase { border: 1px solid var(--line); border-radius: 10px; background: var(--surface); padding: 16px 18px; }
+  .phase .ph-top { display: flex; justify-content: space-between; align-items: baseline; }
+  .phase h3 { margin: 0; font-size: 15.5px; font-weight: 650; }
+  .est { font-family: var(--mono); font-size: 11px; color: var(--new); background: var(--new-soft); padding: 2px 8px; border-radius: 99px; white-space: nowrap; }
+  .phase ul { margin: 10px 0 0; padding-left: 18px; font-size: 13px; line-height: 1.6; color: var(--muted); }
+  .phase ul b { color: var(--ink); font-weight: 600; }
+  .ship { margin-top: 10px; font-size: 12px; color: var(--ok); font-family: var(--mono); }
+
+  .nongoals { margin-top: 14px; display: grid; gap: 10px; max-width: 78ch; }
+  .ng { display: flex; gap: 12px; align-items: baseline; font-size: 14px; line-height: 1.55; }
+  .ng .x { font-family: var(--mono); color: var(--muted); flex-shrink: 0; }
+  .ng b { font-weight: 650; }
+  .ng span.why { color: var(--muted); }
+
+  .accept { margin-top: 14px; display: grid; gap: 11px; max-width: 82ch; }
+  .ac { display: flex; gap: 12px; align-items: baseline; font-size: 14px; line-height: 1.55; }
+  .ac .box {
+    flex-shrink: 0; width: 12px; height: 12px; border-radius: 4px;
+    border: 1.5px solid var(--gate); background: var(--gate-soft); transform: translateY(1px);
+  }
+
+  footer { margin-top: 60px; border-top: 1px solid var(--line); padding-top: 16px; font-size: 12px; color: var(--muted); font-family: var(--mono); line-height: 1.7; }
+</style>
+</head>
+<body>
+<main>
+  <header class="page">
+    <div class="eyebrow">project · document kind · 2026-01-01</div>
+    <h1>Subject: the claim this page defends, stated as a sentence</h1>
+    <p class="lede">
+      Two sentences. What this is, built on what, and the one decision that makes it different
+      from the obvious alternative.
+    </p>
+    <div class="meta-row">
+      <span class="chip">status <b>proposal</b></span>
+      <span class="chip">decided <b>load-bearing decision</b></span>
+      <span class="chip">estimate <b>N sessions, M phases</b></span>
+    </div>
+  </header>
+
+  <section>
+    <div class="sec-head"><span class="eyebrow">01 · The surface</span><h2>What a user sees</h2></div>
+    <p>One short paragraph framing the mockup below — what the reader should notice in it.</p>
+    <div class="legend">
+      <span><span class="key" style="background:var(--ok-soft);border:1.5px solid var(--ok)"></span> state one</span>
+      <span><span class="key gate"></span> state two</span>
+      <span><span class="key" style="background:var(--surface);border:1.5px solid var(--line)"></span> state three</span>
+    </div>
+
+    <div class="mock">
+      <div class="mock-top">
+        <span class="wf-name">object-name</span>
+        <span class="status-pill"><span class="dot"></span> live status</span>
+        <span class="spacer"></span>
+        <span class="mock-btn">Secondary</span>
+        <span class="mock-btn primary">Primary</span>
+      </div>
+      <div class="mock-body">
+        <div class="palette">
+          <h4>Rail · list title</h4>
+          <div class="pal-item"><span>item-one</span><span class="pal-kind">kind</span></div>
+          <div class="pal-item"><span>item-two</span><span class="pal-kind gated">gated</span></div>
+          <p class="pal-note">One sentence of insight the rail proves.</p>
+        </div>
+        <div class="canvas-wrap">
+          <div class="canvas">
+            <svg class="edges" viewBox="0 0 560 380" aria-hidden="true">
+              <defs>
+                <marker id="arr" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+                  <path d="M0,0 L8,4 L0,8 z" fill="currentColor" style="color:var(--muted)"></path>
+                </marker>
+                <marker id="arrg" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+                  <path d="M0,0 L8,4 L0,8 z" fill="currentColor" style="color:var(--gate)"></path>
+                </marker>
+              </defs>
+              <path d="M 230 100 C 260 100 260 100 288 100" marker-end="url(#arr)"></path>
+              <path class="approved" d="M 333 154 C 333 172 333 172 333 190" marker-end="url(#arrg)"></path>
+              <text x="345" y="176">edge label</text>
+            </svg>
+            <div class="node hot" style="left:40px; top:66px">
+              <div class="n-head"><span class="n-dot done"></span> kind · variant</div>
+              <div class="n-body">Real name, real value<small>grounding detail</small></div>
+            </div>
+            <div class="node" style="left:288px; top:66px">
+              <div class="n-head"><span class="n-dot done"></span> kind</div>
+              <div class="n-body">Real name<small>detail</small><span class="badge auto">state badge</span></div>
+            </div>
+            <div class="node gatepoint selected" style="left:238px; top:192px">
+              <div class="n-head"><span class="n-dot wait"></span> gated kind</div>
+              <div class="n-body">Blocking thing<small>constraint</small><span class="badge role">policy badge</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="inspector">
+          <h4>Inspector · selection</h4>
+          <div class="insp-block gate">
+            <div class="insp-row"><span class="k">key</span><span class="v">value</span></div>
+            <div class="insp-row"><span class="k">key</span><span class="v">value</span></div>
+            <div class="insp-actions">
+              <span class="mock-btn approve">Approve</span>
+              <span class="mock-btn">Deny</span>
+            </div>
+          </div>
+          <p class="insp-note">One sentence tying the inspector back to the page's thesis.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="eyebrow">02 · The fit</span><h2>How it plugs into what exists</h2></div>
+    <div class="legend">
+      <span><span class="key core"></span> exists today</span>
+      <span><span class="key new"></span> new build</span>
+      <span><span class="key gate"></span> gate semantics</span>
+    </div>
+    <div class="strip-label">Flow name</div>
+    <div class="strip">
+      <div class="fbox is-new"><b>New piece</b><code>where/it/lives</code></div>
+      <div class="arrow">what travels</div>
+      <div class="fbox"><b>Existing piece</b><code>real/path.ts</code></div>
+      <div class="arrow">what travels</div>
+      <div class="fbox is-gate"><b>Gate</b><code>real/path.ts</code></div>
+      <div class="arrow">what travels</div>
+      <div class="fbox is-ext"><b>External system</b><code>not ours to build</code></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="eyebrow">03 · A run, end to end</span><h2>One pass through the system</h2></div>
+    <div class="steps">
+      <div class="step exists"><b>Something happens.</b> One or two grounded sentences.<span class="where">real/code-path</span></div>
+      <div class="step is-new"><b>The new piece acts.</b> What it does, per step.<span class="where">new/path · NEW</span></div>
+      <div class="step is-gate"><b>The gate checks.</b> Same path as the existing flow.<span class="where">gate/path.ts</span></div>
+    </div>
+
+    <div class="seq-wrap">
+      <div class="seq">
+        <div class="seq-head">
+          <span class="lane-name" style="left:12%">caller</span>
+          <span class="lane-name is-new" style="left:50%">new piece</span>
+          <span class="lane-name is-gate" style="left:88%">gate</span>
+        </div>
+        <div class="seq-rows">
+          <div class="lifeline" style="left:12%"></div>
+          <div class="lifeline" style="left:50%"></div>
+          <div class="lifeline" style="left:88%"></div>
+          <div class="msg fwd" style="left:12%; right:50%; top:8px"><span class="seq-n">01</span><span class="ln"></span><span class="lbl">request · payload</span><span class="hd"></span></div>
+          <div class="msg fwd g dash" style="left:50%; right:12%; top:52px"><span class="seq-n">02</span><span class="ln"></span><span class="lbl">check · parks durably</span><span class="hd"></span></div>
+          <div class="msg rev k" style="left:12%; right:50%; top:96px"><span class="seq-n">03</span><span class="ln"></span><span class="lbl">result · audit row</span><span class="hd"></span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="eyebrow">04 · Inventory</span><h2>Enumerable facts go in a table</h2></div>
+    <div class="tbl-wrap">
+      <table>
+        <tr><th>Item</th><th>What it does</th><th>Runs on</th><th></th></tr>
+        <tr><td><b>Thing</b></td><td>Plain-language description</td><td>real substrate</td><td><span class="tag exists">exists</span></td></tr>
+        <tr><td><b>Thing</b></td><td>Plain-language description</td><td>real substrate</td><td><span class="tag build">new</span></td></tr>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="eyebrow">05 · Phases</span><h2>Shippable slices</h2></div>
+    <div class="phases">
+      <div class="phase">
+        <div class="ph-top"><h3>1 · Name</h3><span class="est">~N sessions</span></div>
+        <ul>
+          <li><b>Headline deliverable</b> in one line</li>
+          <li>Second deliverable</li>
+        </ul>
+        <div class="ship">ship: what becomes true</div>
+      </div>
+      <div class="phase">
+        <div class="ph-top"><h3>2 · Name</h3><span class="est">~N sessions</span></div>
+        <ul>
+          <li><b>Headline deliverable</b> in one line</li>
+        </ul>
+        <div class="ship">ship: what becomes true</div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="eyebrow">06 · Non-goals</span><h2>What this deliberately is not</h2></div>
+    <div class="nongoals">
+      <div class="ng"><span class="x">✕</span><div><b>Not this.</b> <span class="why">Why refusing it is the better product decision, in one sentence.</span></div></div>
+      <div class="ng"><span class="x">✕</span><div><b>Not this either.</b> <span class="why">Why.</span></div></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="eyebrow">07 · Acceptance</span><h2>What has to be true to call it done</h2></div>
+    <div class="accept">
+      <div class="ac"><span class="box"></span><div>A verifiable criterion, phrased so it can become a test target.</div></div>
+      <div class="ac"><span class="box"></span><div>Another criterion, one behavior each.</div></div>
+    </div>
+  </section>
+
+  <footer>
+    Grounded in: the code study / evidence this page rests on, with real paths.
+    Estimates are agent-session units. Status line naming what is and is not built.
+  </footer>
+</main>
+</body>
+</html>

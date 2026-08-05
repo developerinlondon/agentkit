@@ -158,8 +158,11 @@ sequence/state diagram with the `diagram` skill instead.
 - **Facts with columns**: markdown tables (themed automatically).
 
 All of these work inside markdown files — markdown passes raw HTML through. Raw
-pages: full freedom, but reuse the house tokens above so pages feel like one
-product.
+pages: full freedom — dashboards and one-off visualizations may reuse the house
+tokens above, but a design doc, proposal, or PD published raw goes through the
+**designer** skill first: it carries the bespoke per-subject token system,
+component grammar, and surface-mockup form that the house theme deliberately
+does not.
 
 ### Decks — the slide grammar
 
