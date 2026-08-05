@@ -168,9 +168,12 @@ describe.if(hasDepcruise)('a live cruise of this repository', () => {
     expect(result.stdout).toContain('scripts.scripts_extract_ts -> scripts.scripts_extract:');
   }, CRUISE_TIMEOUT_MS);
 
-  test('the default flags meet both guards on this repository, and --focus resolves it', () => {
-    // Real data either side of the budget: the whole tree is one component
-    // over the ceiling at the default depth, and narrowing brings it back.
+  test('the default flags meet both guards on this repository, and narrowing resolves it', () => {
+    // Real data either side of the budget: the whole tree is one component over
+    // the ceiling at the default depth, and narrowing brings it back. Both
+    // remedies the refusal names are exercised — a subtree, then a shallower
+    // grouping, which is what the skills subtree needs now that it carries
+    // enough modules to exceed the budget at the default depth on its own.
     const cruised = Bun.spawnSync({
       cmd: [depcruise, '--no-config', '--output-type', 'json', 'skills/**/*.ts', 'scripts/**/*.ts', 'plugins/**/*.ts'],
       cwd: repo,
@@ -183,9 +186,13 @@ describe.if(hasDepcruise)('a live cruise of this repository', () => {
     expect(wide.code).toBe(1);
     expect(wide.stderr).toMatch(/exceeds the density budget.*--focus a subtree/s);
 
-    const focused = run(['deps', '--focus', 'skills'], raw);
+    const subtree = run(['deps', '--focus', 'skills'], raw);
+    expect(subtree.code).toBe(1);
+    expect(subtree.stderr).toMatch(/exceeds the density budget.*--group-depth/s);
+
+    const focused = run(['deps', '--focus', 'skills', '--group-depth', '1'], raw);
     expect(focused.code).toBe(0);
-    expect(focused.stdout).toContain('diagram: "diagram" {');
+    expect(focused.stdout).toContain('publish_page: "publish-page');
     // The cross-skill import this repository actually has, derived rather than
     // remembered — skills ship as separate plugins, so it is worth seeing.
     expect(focused.stdout).toMatch(/product_intelligence\S* -> publish_page\S*: "\d+ imports?"/);
