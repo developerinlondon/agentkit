@@ -39,6 +39,12 @@ genuinely understanding a system — not a file listing with boxes around it.
      in `.figure` blocks with semantic captions, a "decisions & constraints"
      section (why it is shaped this way, what must not be broken), and a
      "sharp edges" section for the traps a newcomer hits,
+   - **design proposals and product-design briefs are the exception**: build
+     those as bespoke pages through the **designer** skill (its scaffold,
+     token plan, and component grammar — surface mockups, flow strips, phase
+     cards), then host via publish-page `--template raw` or the product repo.
+     The house doc theme is for documenting what exists; a page arguing for
+     what to build earns its own visual system,
    - use a stable `--name` (e.g. `<system>-architecture`) so refreshes update
      the SAME URL.
 6. **Refresh mode**: when asked to update (or triggered after merges), diff

@@ -5,6 +5,17 @@ top and ships with the next tag.
 
 ## [Unreleased]
 
+- feat(skills): `designer` — bespoke, artifact-grade design pages. Carries the
+  per-subject design method (semantic color families over a three-level surface
+  stack, dual token-level theming, a chosen type system) and a component
+  grammar with a verified working scaffold: page header with chips, section
+  eyebrows, legend keys, product-surface mockups (toolbar, rails, dotted canvas
+  with SVG edges, inspector), flow strips, counter step cards, phase cards, and
+  non-goal lists. `architect` routes design proposals and product-design briefs
+  through it, and `publish-page` points bespoke raw design pages at it, so a PD
+  comes out at the grade a Claude artifact produces without manual redesign.
+  (#286)
+
 ## v0.7.2 — 2026-08-02
 
 - feat(pages): issue 90-day device credentials with explicit `pages:write`
