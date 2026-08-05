@@ -9,7 +9,7 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
-## v0.8.0 — 2026-08-05
+## v0.7.3 — 2026-08-05
 
 - docs(designer): the altitude rule — clarity outranks detail. The centerpiece
   figure carries every stage of its story at a glance, headline + centerpiece
