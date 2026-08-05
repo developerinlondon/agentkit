@@ -199,3 +199,19 @@ taste:
   # Write or update a taste when a correction lands. False keeps the folder
   # read-only — a correction is reported rather than filed.
   learning: true
+
+  # External taste sources: git repositories whose files are tastes. Ordered —
+  # a later source wins a name an earlier one also defines. A project's own
+  # .agentkit/config.yaml replaces this list rather than extending it.
+  #
+  # mode: vendored is the default and the only mode implemented: the taste
+  # skill's sync snapshots the source into .agentkit/tastes-vendor/<name>/ and
+  # pins it in .agentkit/tastes.lock, both committed, so a fresh clone reads the
+  # policy with no network. mode: reference (a per-machine cache) is deferred
+  # and declaring it is an error.
+  # sources:
+  #   - repo: git@github.com:developerinlondon/agentkit-tastes.git
+  #     ref: v2026.08.1
+  #     mode: vendored
+  #     path: tastes/          # optional subdirectory holding the taste files
+  #     name: agentkit-tastes  # optional; defaults to the repository name

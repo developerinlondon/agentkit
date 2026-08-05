@@ -101,6 +101,8 @@ export const TEST_SLICES = {
     'tests/taste/police-lanes.test.ts',
     'tests/taste/police.test.ts',
     'tests/taste/skill.test.ts',
+    'tests/taste/sources.test.ts',
+    'tests/taste/sync.test.ts',
   ],
   wip: [
     'tests/wip/plan-gate.test.ts',

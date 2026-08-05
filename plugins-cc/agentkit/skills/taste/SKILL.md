@@ -42,11 +42,58 @@ for the same `name` — two tastes are never merged into a third nobody wrote.
 | User     | `~/.agentkit/tastes/`      | no, machine-local        | personal ergonomics, every project |
 | Kit      | `rules/`                   | ships with agentkit      | universal engineering discipline   |
 
-The external layer is declared and vendored by config that lands in a later phase; until
-then the directory is simply absent, and it costs nothing to look for it and find nothing.
+The external layer holds one directory per declared source, and only a declared one is read:
+a directory under `tastes-vendor/` that no longer appears in `taste.sources` binds nothing,
+and is named as vendored-but-undeclared rather than left to look active. The next section is
+how a source gets there.
 
 `rules/` is not a taste directory and is never written by this skill. It is the floor a
 taste can override for one project.
+
+## External sources
+
+An external source is a git repository whose files are tastes — an organisation's policy that
+every repository agrees on, kept in one place instead of copy-pasted into each one.
+Subscribing is an ordinary committed config change in `taste.sources`, reviewed like any
+other; nothing arrives because a tool discovered it.
+
+```yaml
+taste:
+  sources: # ordered — a later entry wins
+    - repo: git@github.com:developerinlondon/agentkit-tastes.git
+      ref: v2026.08.1
+      mode: vendored # the default — the snapshot is committed to this repository
+      path: tastes/ # optional — the subdirectory that holds the taste files
+      name: agentkit-tastes # optional — defaults to the repository's own name
+    - repo: git@github.com:developerinlondon/business-tastes.git
+      ref: v2026.08.4 # declared second, so it wins any name the set above also defines
+```
+
+- **Order is the precedence rule.** Two sources defining `release-tier` is the feature rather
+  than a conflict: a later source wins, and the private central set is declared second
+  precisely so it overrides the public generic one. Nothing else decides it — not a filename,
+  not a date, not which one was synced most recently.
+- **A project list replaces the user list** instead of extending it. A machine-local file gets
+  no say in what a reviewed, committed declaration means.
+- **`mode: vendored` is the only mode that exists today.** The snapshot is committed to
+  `.agentkit/tastes-vendor/<name>/`, so a fresh clone with no network — a plane, a CI runner
+  with no credentials for your git host — already has the policy and reads it without
+  fetching anything. `mode: reference`, the per-machine cache, is **deferred**: declaring it
+  is an error naming the deferral, never a quiet fall back to vendoring something the owner
+  did not ask to commit.
+- **A `ref` is a plain branch, tag or commit name**, and one beginning with `-` is refused:
+  git reads options after positionals, so a ref like `--upload-pack=…` is a program git would
+  run rather than a revision it would fetch. The sync passes `--end-of-options` as well, so
+  the refusal does not depend on the validator alone. A `repo` is a URL or a path for the same
+  reason: git's `scheme::command` remote form runs a program instead of fetching, and is
+  refused at the boundary and pinned off in the fetch.
+- **`.agentkit/tastes.lock` pins each source to the commit whose contents were reviewed.** It
+  is generated in `taste.sources` order and carries the name, repository, ref, commit and the
+  date that pin was taken. The date moves only when the pin does.
+- **Never edit `.agentkit/tastes-vendor/` by hand.** The next sync regenerates it wholesale,
+  so an edit there is a change that quietly disappears. To change what a source says, change
+  it in the source's own repository; to deviate in one repository, write a project taste of
+  the same `name`, which wins outright and is visible in that repository's own diff.
 
 ## Loading
 
@@ -68,7 +115,7 @@ to argue with; a `prefer` taste is a default you may depart from if you say why.
 
 Tastes are skill-driven, and there is no CLI. You are the interface: reading a directory of
 small markdown files is something you already do, and a command would be a second way to say
-what the files already say. Three requests come up, and each is a behaviour here.
+what the files already say. Four requests come up, and each is a behaviour here.
 
 ### "Show me my tastes"
 
@@ -78,14 +125,20 @@ Resolve as under Loading, then present one row per name — the winner, never ev
 | ---------- | ---------------------------------------------------------------- |
 | `name`     | the key everything resolves on                                   |
 | `scope`    | the layer the winning file came from: project, external, or user |
+| `source`   | for an external row, which declared source it was vendored from  |
 | `strength` | `prefer` or `require`                                            |
 | `enforce`  | `advise`, `check`, or `block`                                    |
-| shadowed   | the layers holding a same-named file that lost, or nothing       |
+| shadowed   | the layers and sources holding a same-named file that lost       |
 
 Name the shadowed layers explicitly. "Your project's `release-tier` is overriding the one in
 your home directory" is usually the answer someone came for, and a table of winners alone
 hides exactly the surprise they are chasing. Give the path of any row on request, and say
 plainly when a folder is empty rather than presenting an empty table.
+
+A file the lint refuses is **named in the listing as skipped**, with what the lint said —
+never left out of it. The reasoning is `UNCHECKED`'s: a surface that goes quiet about what it
+could not read reports the same thing as a folder that never held it, and the missing row is
+usually the taste the question was about.
 
 ### "Add a taste: …"
 
@@ -98,6 +151,31 @@ Ask for what dictation did not supply rather than inventing it: the **why**, the
 apply**, and where the preference came from. `provenance` is today's date and its origin,
 never a guess. Leave `enforce` at `advise` unless the owner asked for more — the owner sets
 enforcement, and a taste does not earn `block` by being dictated.
+
+### "Sync my tastes"
+
+Run the skill's own sync. There is nothing to install and no command on the PATH:
+
+```sh
+bun <skill-dir>/scripts/sync.ts
+```
+
+It fetches each declared source at its `ref`, **lints it before anything is copied** — a
+source whose tastes the lint refuses is reported by name, with the offending files, and
+nothing enters the tree — snapshots the taste files into `.agentkit/tastes-vendor/<name>/`,
+and rewrites `.agentkit/tastes.lock`. Only those two paths are ever written, and a source
+that is no longer declared has its vendored copy removed. Files that are not tastes stay
+upstream: nothing executable ever crosses into your repository with the words. Re-running it
+when no pin moved produces no diff at all.
+
+Then land it the ordinary way — branch, merge request, review — and say what it is while you
+do: **a lock bump is a merge request whose diff is the exact text your agents will start
+reading.** Approving a version number instead of the words is approving nothing, and the
+reason to vendor at all is that the words are sitting in the diff.
+
+If the sync refuses, report what it said, unedited. A refused source is a source whose
+tastes would otherwise be skipped one by one at read time, with nobody having agreed to any
+of it.
 
 ### "Is this folder valid?"
 
@@ -205,9 +283,11 @@ Unsure defaults inward: a private taste that should have been public costs one p
 merge request, while the reverse costs a leak. **Promotion to any public set is only ever
 owner-approved.** Never publish a taste outward on your own judgment.
 
-Until the external layer ships, a correction that routes there cannot be written for the
-owner. Say where it belongs, show the file you would write, and ask whether to hold it as a
-project taste meanwhile. Do not silently downgrade it into the wrong scope.
+A correction that routes to a source is written **in that source's own repository**, not
+copied into this one — a merge request there, and every subscriber picks it up at the lock
+bump that follows. When you cannot reach that repository, say where the taste belongs, show
+the file you would write, and ask whether to hold it as a project taste meanwhile. Do not
+silently downgrade it into the wrong scope.
 
 **5. Write it, then lint it.** Name it for the topic, kebab-case and unnumbered. State the
 preference, then **why** it holds — an agent that knows the reason can tell a genuine

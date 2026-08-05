@@ -40,6 +40,7 @@ const CONVERSATIONAL_SURFACES: [string, string][] = [
   ['listing carries strength and enforce', '| `strength` |'],
   ['listing names what a scope shadowed', 'Name the shadowed layers explicitly'],
   ['an empty folder is said, not tabulated', 'rather than presenting an empty table'],
+  ['a skipped taste is named, not omitted', '**named in the listing as skipped**'],
   ['dictation is not a lesser path', 'first-class capture path, not a lesser one'],
   ['dictation runs the same sequence', 'It runs the same Learning'],
   ['dictation still lands through an MR', 'merge request for a project taste'],
@@ -51,6 +52,36 @@ const CONVERSATIONAL_SURFACES: [string, string][] = [
   ['the lint runs before the diff is shown', '**before you show anyone the diff**'],
   ['an unlinted taste is not finished', 'is not written yet'],
   ['the lint rule covers edits as well as captures', 'This holds for every write'],
+];
+
+// Phase 3's surface: what a source is, how several stack, and what a sync is
+// allowed to do. The sync script performs the mechanics; every decision around
+// it — what wins, what is never hand-edited, what a lock bump means to review —
+// lives here or nowhere.
+const EXTERNAL_SOURCES: [string, string][] = [
+  ['a source is subscribed to by committed config', 'ordinary committed config change in `taste.sources`'],
+  ['the list is ordered and a later source wins', 'a later source wins'],
+  ['a project list replaces the user list', '**A project list replaces the user list**'],
+  ['vendored is the only mode today', 'the only mode that exists today'],
+  ['reference mode is refused, not downgraded', 'an error naming the deferral'],
+  ['a fresh clone reads its policy with no network', 'already has the policy'],
+  ['a ref cannot smuggle a git option', 'a program git would'],
+  ['a repo cannot name a transport helper', 'runs a program instead of fetching'],
+  ['the lock pins the commit that was reviewed', 'the commit whose contents were reviewed'],
+  ['the pin date moves only with the pin', 'The date moves only when the pin does'],
+  ['the vendored tree is never hand-edited', 'Never edit `.agentkit/tastes-vendor/` by hand'],
+  ['a repository deviates with a project taste', 'to deviate in one repository, write a project taste'],
+  ['an undeclared vendor directory binds nothing', 'only a declared one is read'],
+  ['sync lints before it copies', '**lints it before anything is copied**'],
+  ['a refused source lands nothing at all', 'nothing enters the tree'],
+  ['sync writes those two paths and no others', 'Only those two paths are ever written'],
+  ['a dropped source loses its vendored copy', 'has its vendored copy removed'],
+  ['nothing executable is vendored', 'nothing executable ever crosses'],
+  ['an unchanged re-sync is an empty diff', 'produces no diff at all'],
+  ['a lock bump is reviewed as the text itself', 'the exact text your agents will start'],
+  ['a version number is not a review', 'Approving a version number instead of the words'],
+  ['listing names the source an external row came from', 'which declared source it was vendored from'],
+  ['a source correction is written upstream', 'copied into this one'],
 ];
 
 const skill = read('skills', 'taste', 'SKILL.md');
@@ -83,6 +114,15 @@ describe('the taste skill and its contract agree', () => {
     // opt-out lives.
     expect(skill).toContain('.agentkit/config.yaml');
     expect(skill).toContain('~/.config/agentkit/config.yaml');
+  });
+
+  // Commented rather than set: an empty sources list in the shipped example
+  // would be a declaration nobody made, and the parse above is what keeps it
+  // that way.
+  test('the example documents sources without subscribing anyone to one', () => {
+    expect(example).toContain('# sources:');
+    expect(example).toContain('mode: vendored');
+    expect(example).toContain('deferred');
   });
 
   // The hook now exists, so the honest sentence changed direction: prose that
@@ -119,10 +159,19 @@ describe('the taste skill and its contract agree', () => {
     },
   );
 
+  test.each(EXTERNAL_SOURCES)('the skill carries the external-source rule: %s', (_rule, phrase) => {
+    expect(skill.includes(phrase), `SKILL.md must say: ${phrase}`).toBe(true);
+  });
+
   // A substring binding is only as strong as its phrase is distinctive: an echo
   // elsewhere keeps it green while the paragraph it names is rewritten to say
   // the opposite. Uniqueness is what points a binding at one place.
-  test.each([...HOOK_BEHAVIOURS, ...SETTLED_BEHAVIOURS, ...CONVERSATIONAL_SURFACES])(
+  test.each([
+    ...HOOK_BEHAVIOURS,
+    ...SETTLED_BEHAVIOURS,
+    ...CONVERSATIONAL_SURFACES,
+    ...EXTERNAL_SOURCES,
+  ])(
     'the phrase bound for %s occurs exactly once in SKILL.md',
     (_behaviour, phrase) => {
       expect(
