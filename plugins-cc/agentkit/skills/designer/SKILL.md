@@ -68,7 +68,9 @@ content and a reviewer cannot tell which needed a designer.
      The eye happily passes a 3.2:1 mono pill that the contract fails.
    - **A self-measuring page converges last.** If the page states its own
      probe numbers, land the layout first and write the numbers in the final
-     pass — every fix moves the measurements it reports.
+     pass — every fix moves the measurements it reports. Numbers quoted in
+     prose rot the same way and no geometry probe catches them — re-read the
+     rendered text wherever the page talks about itself.
 
 ## The token contract
 
