@@ -132,6 +132,27 @@ describe('the name is the key', () => {
     expect(errors[0]).toContain('git/tier.md');
     expect(errors[0]).toContain('release/tier.md');
   });
+
+  // Both of these are the same collision written two ways YAML considers equal.
+  // Keying dedupe on the raw line rather than the parsed value lets either one
+  // through, and two tastes with one name is the state the folder must not reach.
+  test('a quoted name still collides — dedupe keys on the parsed value', () => {
+    const errors = lint({
+      'release/tier.md': taste(withFields({ name: '"tier"' })),
+      'git/tier.md': taste(withFields({ name: 'tier' })),
+    });
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain('duplicate');
+  });
+
+  test('a trailing comment on the name line does not hide a collision', () => {
+    const errors = lint({
+      'release/tier.md': taste(withFields({ name: 'tier # the 2026-08-05 correction' })),
+      'git/tier.md': taste(withFields({ name: 'tier' })),
+    });
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain('duplicate');
+  });
 });
 
 describe('the frontmatter contract', () => {
@@ -272,7 +293,7 @@ describe('the rule block is data, and only where it means something', () => {
     expect(errors[0]).toContain('escalate');
   });
 
-  test('a remedy carrying a command substitution is rejected', () => {
+  test('a remedy carrying a command substitution is rejected, and named as prose', () => {
     const errors = lint({
       'release-tier.md': taste(withFields({
         name: 'release-tier',
@@ -282,6 +303,60 @@ describe('the rule block is data, and only where it means something', () => {
     });
     expect(errors).toHaveLength(1);
     expect(errors[0]).toContain('rule.remedy');
+    // The message has to name the fix, not only the diagnosis: a remedy may well
+    // want to mention a command, and the author needs to know how to write one.
+    expect(errors[0]).toContain('plain prose');
+    expect(errors[0]).toContain('without backticks');
+  });
+
+  test('a remedy carrying backticks is rejected the same way', () => {
+    const errors = lint({
+      'release-tier.md': taste(withFields({
+        name: 'release-tier',
+        enforce: 'block',
+        rule: "  kind: command\n  match: 'git tag'\n  remedy: 'Run `git tag` with a patch version.'",
+      })),
+    });
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain('rule.remedy');
+  });
+
+  // format.md claims a rule carries no shell metacharacters. That claim covers
+  // the whole block or it is not true, and match is the field an author is most
+  // likely to paste a real command into.
+  test('a match carrying a command substitution is rejected', () => {
+    const errors = lint({
+      'release-tier.md': taste(withFields({
+        name: 'release-tier',
+        enforce: 'block',
+        rule: "  kind: command\n  match: 'echo $(date)'\n  remedy: Cut a patch tag.",
+      })),
+    });
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain('rule.match');
+    expect(errors[0]).toContain('substitution');
+  });
+
+  test('a match carrying backticks is rejected', () => {
+    const errors = lint({
+      'release-tier.md': taste(withFields({
+        name: 'release-tier',
+        enforce: 'block',
+        rule: "  kind: command\n  match: 'echo `date`'\n  remedy: Cut a patch tag.",
+      })),
+    });
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain('rule.match');
+  });
+
+  test('an escaped substitution in a match is accepted — it is not the literal sequence', () => {
+    expect(lint({
+      'release-tier.md': taste(withFields({
+        name: 'release-tier',
+        enforce: 'block',
+        rule: "  kind: command\n  match: 'git tag \\$\\(date\\)'\n  remedy: Cut a patch tag.",
+      })),
+    })).toEqual([]);
   });
 });
 

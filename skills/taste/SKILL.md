@@ -74,7 +74,7 @@ and a `rule` block. The body states the preference, then **why**, then **how to 
 Validate any folder you touched:
 
 ```sh
-bun skills/taste/scripts/lint.ts .agentkit/tastes
+bun <skill-dir>/scripts/lint.ts .agentkit/tastes
 ```
 
 ## What `enforce` means today

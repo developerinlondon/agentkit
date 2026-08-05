@@ -49,6 +49,25 @@ describe('the taste skill and its contract agree', () => {
     expect(skill).toContain('`block` behaves exactly like `check`');
   });
 
+  // The skill is the whole mechanism in this phase: nothing executes these rules,
+  // so a behaviour silently dropped from the prose is a behaviour that stops
+  // happening. Each entry is a decision the design settled, bound to the words
+  // that carry it.
+  test.each([
+    ['precedence resolves in one direction', 'project > external > user > kit'],
+    ['a higher scope replaces rather than merges', 'replaces the lower one'],
+    ['dedupe happens before anything is written', '**2. Dedupe before writing anything.**'],
+    ['a one-off leaves the file alone', '**The file is not touched.**'],
+    ['a durable change supersedes in place', 'Supersede the taste **in place**'],
+    ['no second file on the same topic', '`release-tier-v2.md`'],
+    ['git history is the archive, not a v2 file', 'git history is the archive'],
+    ['contradicting a require taste asks first', '**ask outright**'],
+    ['the confirm names both readings', 'one-off, or change the taste?'],
+    ['a prefer taste updates and says so', 'update it and say that you did'],
+  ])('the skill still carries the behaviour: %s', (_behaviour, phrase) => {
+    expect(skill).toContain(phrase);
+  });
+
   test('the routing heuristic keeps an unclear correction out of the public set', () => {
     expect(skill).toContain('the private central set, as the safe default');
     expect(skill).toContain('owner-approved');

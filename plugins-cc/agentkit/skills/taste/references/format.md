@@ -38,6 +38,12 @@ Every value is a string. No nesting, no lists, and no shell metacharacters — `
 environment-variable name and nothing else. A preference no pattern can capture stays at
 `enforce: check` rather than growing bespoke code.
 
+**A remedy is plain prose.** It is a sentence an agent reads, never a command anything runs, so
+name the command in words — `Cut a patch tag` rather than a backticked or `$()`-wrapped
+fragment. Both `match` and `remedy` are refused if they carry a raw `` ` `` or `$(`. An escaped
+regex like `\$\(` is fine and always was: those characters are a backslash, a dollar, a
+backslash, a paren, so the literal sequence the check looks for is not in the string at all.
+
 ## A taste in full
 
 `.agentkit/tastes/release-tier.md`, the file the release-tier correction produces:
@@ -102,7 +108,7 @@ collision even in different subdirectories, because the resolver keys on the nam
 ## Checking a folder
 
 ```sh
-bun skills/taste/scripts/lint.ts .agentkit/tastes
+bun <skill-dir>/scripts/lint.ts .agentkit/tastes
 ```
 
 It walks the directory tree, validates every `.md` file against the contract above, prints one

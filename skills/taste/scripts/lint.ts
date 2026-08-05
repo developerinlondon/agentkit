@@ -72,7 +72,7 @@ function checkEnums(front: Frontmatter): string[] {
   const errors = [
     enumError('scope', front.scope, SCOPES),
     enumError('strength', front.strength, STRENGTHS),
-    front.enforce === undefined ? undefined : enumError('enforce', front.enforce, ENFORCEMENTS),
+    enumError('enforce', front.enforce, ENFORCEMENTS),
   ];
   if (front.category !== undefined && scalar(front.category) === undefined) {
     errors.push('category must be a single value');
@@ -100,9 +100,18 @@ function checkRuleFields(rule: Frontmatter): string[] {
     } catch (error) {
       errors.push(`rule.match is not a valid regular expression: ${(error as Error).message}`);
     }
+    if (SHELL_SUBSTITUTION.test(rule.match)) {
+      errors.push(
+        'rule.match carries a command substitution — a rule is data; escape it as \\$\\( or '
+          + '\\` to match those characters literally',
+      );
+    }
   }
   if (typeof rule.remedy === 'string' && SHELL_SUBSTITUTION.test(rule.remedy)) {
-    errors.push('rule.remedy carries a command substitution — a remedy is prose, never a command');
+    errors.push(
+      'rule.remedy carries a command substitution — a remedy is plain prose; name the command '
+        + 'without backticks or $()',
+    );
   }
   if (rule.override !== undefined && !ENV_NAME.test(String(rule.override))) {
     errors.push(`rule.override: ${JSON.stringify(rule.override)} must be an environment-variable name`);
@@ -124,17 +133,29 @@ function checkRule(front: Frontmatter): string[] {
   return checkRuleFields(front.rule);
 }
 
-export function lintTaste(file: string, contents: string): string[] {
+interface Inspection {
+  name: string | undefined;
+  errors: string[];
+}
+
+function inspectTaste(file: string, contents: string): Inspection {
   const parts = FRONTMATTER.exec(contents);
-  if (parts === null) return [`${file}: no frontmatter — a taste opens with a --- block`];
+  if (parts === null) {
+    return { name: undefined, errors: ['no frontmatter — a taste opens with a --- block'] };
+  }
 
   let front: unknown;
   try {
     front = YAML.parse(parts[1] as string);
   } catch (error) {
-    return [`${file}: frontmatter does not parse: ${(error as Error).message}`];
+    return {
+      name: undefined,
+      errors: [`frontmatter does not parse: ${(error as Error).message}`],
+    };
   }
-  if (!isRecord(front)) return [`${file}: frontmatter does not parse as a mapping of fields`];
+  if (!isRecord(front)) {
+    return { name: undefined, errors: ['frontmatter does not parse as a mapping of fields'] };
+  }
 
   const errors = [
     ...checkKeys(front),
@@ -145,7 +166,11 @@ export function lintTaste(file: string, contents: string): string[] {
   if ((parts[2] as string).trim() === '') {
     errors.push('body is empty — a taste states the preference, why, and how to apply it');
   }
-  return errors.map((error) => `${file}: ${error}`);
+  return { name: scalar(front.name), errors };
+}
+
+export function lintTaste(file: string, contents: string): string[] {
+  return inspectTaste(file, contents).errors.map((error) => `${file}: ${error}`);
 }
 
 function tasteFiles(dir: string): string[] {
@@ -159,24 +184,29 @@ function tasteFiles(dir: string): string[] {
   return found;
 }
 
-function duplicateNames(files: string[], dir: string): string[] {
-  const byName = new Map<string, string[]>();
-  for (const file of files) {
-    const name = /^name:\s*(\S+)\s*$/m.exec(readFileSync(file, 'utf-8'))?.[1];
-    if (name === undefined) continue;
-    byName.set(name, [...(byName.get(name) ?? []), relative(dir, file)]);
-  }
+function duplicateNames(byName: Map<string, string[]>): string[] {
   return [...byName.entries()]
     .filter(([, paths]) => paths.length > 1)
     .map(([name, paths]) => `duplicate name ${JSON.stringify(name)}: ${paths.sort().join(', ')}`);
 }
 
 export function lintTasteDirectory(dir: string): string[] {
-  const files = tasteFiles(dir).sort();
-  const errors = files.flatMap((file) =>
-    lintTaste(relative(dir, file), readFileSync(file, 'utf-8'))
-  );
-  return [...errors, ...duplicateNames(files, dir)].sort();
+  const errors: string[] = [];
+  // Keyed on the parsed name rather than the name: line, because `"tier"` and
+  // `tier # why` are the same identity to every reader of these files, and a
+  // collision the lint cannot see is two tastes claiming one name.
+  const byName = new Map<string, string[]>();
+
+  for (const file of tasteFiles(dir).sort()) {
+    const path = relative(dir, file);
+    const inspection = inspectTaste(path, readFileSync(file, 'utf-8'));
+    errors.push(...inspection.errors.map((error) => `${path}: ${error}`));
+    if (inspection.name !== undefined) {
+      byName.set(inspection.name, [...(byName.get(inspection.name) ?? []), path]);
+    }
+  }
+
+  return [...errors, ...duplicateNames(byName)].sort();
 }
 
 export function countTastes(dir: string): number {
