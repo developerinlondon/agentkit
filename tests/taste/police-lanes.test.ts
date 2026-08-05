@@ -154,6 +154,43 @@ describe('the Claude hook lane refuses from the same data', () => {
   });
 });
 
+describe('the deadline reaches through the lane, not just the evaluator', () => {
+  const EVIL_TASTE = `---
+name: evil
+scope: project
+strength: require
+enforce: block
+rule:
+  kind: command
+  match: '(a+)+$'
+  remedy: Never fires.
+  override: AGENTKIT_EVIL
+provenance: 2026-08-05 · owner
+---
+
+A pattern that backtracks catastrophically.
+
+Why: it is the shape the evaluator has to survive.
+
+How to apply: it never matches anything in time.
+`;
+
+  // The hook's own `timeout 8` would also stop this, so the assertion is that it
+  // comes back FAST — under the evaluator's deadline plus a runtime start,
+  // nowhere near the outer ceiling. That is what proves the inner bound ran.
+  test('a pathological pattern returns in well under the outer timeout', () => {
+    const cwd = sandbox({ '.agentkit/tastes/evil.md': EVIL_TASTE });
+
+    const started = performance.now();
+    const run = runHook(`${'a'.repeat(46)}!`, cwd);
+    const elapsed = performance.now() - started;
+
+    expect(isDeny(run.stdout)).toBe(false);
+    expect(parse(run.stdout).systemMessage).toContain('evil');
+    expect(elapsed).toBeLessThan(4000);
+  });
+});
+
 describe('an unrunnable hook reports UNCHECKED rather than allowing quietly', () => {
   // A copy with no skills/ beside it: the only way to exercise the lane's own
   // fallbacks, since the repository checkout always resolves the evaluator.
@@ -229,7 +266,7 @@ describe('the OpenCode plugin lane', () => {
 
   test('refuses a matching command with the taste\'s own remedy', async () => {
     const cwd = sandbox(PROJECT);
-    expect(call(cwd, TAG_MINOR)).rejects.toThrow('BLOCKED by taste release-tier');
+    await expect(call(cwd, TAG_MINOR)).rejects.toThrow('BLOCKED by taste release-tier');
   });
 
   test('passes a command no rule matches', async () => {
@@ -244,7 +281,7 @@ describe('the OpenCode plugin lane', () => {
 
   test('an off-reading override value still refuses', async () => {
     const cwd = sandbox(PROJECT);
-    expect(call(cwd, `AGENTKIT_RELEASE_TIER=off ${TAG_MINOR}`)).rejects.toThrow(
+    await expect(call(cwd, `AGENTKIT_RELEASE_TIER=off ${TAG_MINOR}`)).rejects.toThrow(
       'does not read as a deliberate override',
     );
   });

@@ -68,6 +68,7 @@ done
 BUN="${BUN_BIN:-bun}"
 command -v "$BUN" >/dev/null 2>&1 || unchecked "bun is not on PATH"
 
+# shellcheck disable=SC2016 # jq program; dollar-prefixed names are jq variables.
 REQUEST=$(_agentkit_jq -n --arg command "$COMMAND" --arg cwd "$WORKDIR" \
 	'{command: $command, cwd: $cwd}')
 

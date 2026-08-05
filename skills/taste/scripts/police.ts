@@ -5,9 +5,11 @@ import { join } from 'node:path';
 import { type ResolvedTaste, resolveTastes } from './resolve.ts';
 
 // The rule's pattern is capped where the lint can refuse it; the subject is
-// capped here. Together they bound how long a hostile or careless regular
-// expression can backtrack before a command is let through.
+// capped here. Neither bounds backtracking: a 200-character pattern well inside
+// both caps can still take longer than the session has, so the match runs under
+// a wall-clock deadline as well.
 export const MAX_SUBJECT_LENGTH = 4000;
+export const MATCH_DEADLINE_MS = 250;
 
 const ENV_NAME = /^[A-Z][A-Z0-9_]*$/;
 const OFF_VALUES = new Set(['', '0', 'false', 'no', 'off']);
@@ -81,11 +83,49 @@ function overrideState(
   return { state: 'granted', value };
 }
 
-function matches(pattern: string, command: string): boolean {
-  try {
-    return new RegExp(pattern).test(command.slice(0, MAX_SUBJECT_LENGTH));
-  } catch {
-    return false;
+type MatchOutcome = { matched: boolean } | { skipped: string };
+
+// The deadline has to live here rather than in either adapter: the OpenCode lane
+// runs the match in the editor's own process, where a pattern that backtracks
+// takes the session with it and no outer timeout can reach.
+class BoundedMatcher {
+  private worker: Worker | undefined;
+
+  async test(pattern: string, command: string): Promise<MatchOutcome> {
+    const worker = (this.worker ??= new Worker(new URL('./match.ts', import.meta.url).href));
+    const subject = command.slice(0, MAX_SUBJECT_LENGTH);
+
+    return await new Promise<MatchOutcome>((resolve) => {
+      const timer = setTimeout(() => {
+        this.stop();
+        resolve({
+          skipped: `its rule.match did not finish within ${MATCH_DEADLINE_MS}ms — the pattern `
+            + 'backtracks catastrophically on this command. Narrow it, or keep the taste at check',
+        });
+      }, MATCH_DEADLINE_MS);
+
+      worker.onmessage = (event: MessageEvent) => {
+        clearTimeout(timer);
+        const result = event.data as { matched?: boolean; failed?: string };
+        resolve(
+          result.failed === undefined
+            ? { matched: result.matched === true }
+            : { skipped: `its rule.match could not be run: ${result.failed}` },
+        );
+      };
+      worker.onerror = (event: ErrorEvent) => {
+        clearTimeout(timer);
+        this.stop();
+        resolve({ skipped: `its rule.match could not be run: ${event.message}` });
+      };
+
+      worker.postMessage({ pattern, subject });
+    });
+  }
+
+  stop(): void {
+    this.worker?.terminate();
+    this.worker = undefined;
   }
 }
 
@@ -106,12 +146,15 @@ function overrideLine(taste: ResolvedTaste, override: Override): string {
     + `(empty, 0, false, no and off switch nothing on), so the taste still applies. ${deliberate}`;
 }
 
+// A taste that was skipped — malformed, or a pattern that outran the deadline —
+// travels with the refusal too. Otherwise the one message the agent reads says
+// enforcement happened while some of it silently did not.
 function refusal(
   taste: ResolvedTaste,
   override: Override,
   cwd: string,
   home: string,
-  warnings: string[],
+  notices: string[],
 ): string {
   const lines = [
     `BLOCKED by taste ${taste.name} (enforce: block): this command matches rule.match in `
@@ -119,7 +162,7 @@ function refusal(
     taste.rule?.remedy ?? '',
     overrideLine(taste, override),
   ];
-  if (warnings.length > 0) lines.push(`Skipped taste files: ${warnings.join(' | ')}`);
+  if (notices.length > 0) lines.push(`Also: ${notices.join(' | ')}`);
   return lines.filter((line) => line !== '').join('\n');
 }
 
@@ -127,29 +170,39 @@ function blocking(taste: ResolvedTaste): boolean {
   return taste.enforce === 'block' && taste.rule?.kind === 'command';
 }
 
-export function evaluateCommand(request: Request): Verdict {
+export async function evaluateCommand(request: Request): Promise<Verdict> {
   const home = request.home ?? homedir();
   const env = request.env ?? process.env;
   if (!tasteEnabled(request.cwd, home, env)) return { decision: 'allow', notices: [] };
 
   const { tastes, warnings } = resolveTastes(request.cwd, home);
   const notices = warnings.map((warning) => `taste skipped — ${warning}`);
+  const matcher = new BoundedMatcher();
 
-  for (const taste of tastes.filter(blocking)) {
-    if (!matches(taste.rule?.match as string, request.command)) continue;
+  try {
+    for (const taste of tastes.filter(blocking)) {
+      const outcome = await matcher.test(taste.rule?.match as string, request.command);
+      if ('skipped' in outcome) {
+        notices.push(`taste ${taste.name} was not applied — ${outcome.skipped} (${taste.path}).`);
+        continue;
+      }
+      if (!outcome.matched) continue;
 
-    const override = overrideState(taste.rule?.override, request.command, env);
-    if (override.state === 'granted') {
-      notices.push(
-        `taste ${taste.name} allowed this command: ${taste.rule?.override} is set deliberately.`,
-      );
-      continue;
+      const override = overrideState(taste.rule?.override, request.command, env);
+      if (override.state === 'granted') {
+        notices.push(
+          `taste ${taste.name} allowed this command: ${taste.rule?.override} is set deliberately.`,
+        );
+        continue;
+      }
+      return {
+        decision: 'deny',
+        reason: refusal(taste, override, request.cwd, home, notices),
+        notices,
+      };
     }
-    return {
-      decision: 'deny',
-      reason: refusal(taste, override, request.cwd, home, warnings),
-      notices,
-    };
+  } finally {
+    matcher.stop();
   }
 
   return { decision: 'allow', notices };
@@ -160,5 +213,6 @@ export function evaluateCommand(request: Request): Verdict {
 // interpolated into one.
 if (import.meta.main) {
   const request = JSON.parse(await Bun.stdin.text()) as Request;
-  console.log(JSON.stringify(evaluateCommand({ command: request.command, cwd: request.cwd })));
+  const verdict = await evaluateCommand({ command: request.command, cwd: request.cwd });
+  console.log(JSON.stringify(verdict));
 }

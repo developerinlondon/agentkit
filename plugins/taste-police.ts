@@ -13,7 +13,7 @@ interface Verdict {
   notices: string[];
 }
 
-type Evaluate = (request: { command: string; cwd: string }) => Verdict;
+type Evaluate = (request: { command: string; cwd: string }) => Promise<Verdict>;
 
 function evaluatorPath(): string | null {
   const scripts = process.env.AGENTKIT_TASTE_SCRIPTS;
@@ -74,7 +74,18 @@ export default async function tastePolice(ctx: PluginInput) {
         return;
       }
 
-      const verdict = evaluate({ command, cwd: ctx.directory });
+      let verdict: Verdict;
+      try {
+        verdict = await evaluate({ command, cwd: ctx.directory });
+      } catch (error) {
+        // A broken evaluator must not refuse every command in the session.
+        console.warn(
+          `UNCHECKED: taste-police could not evaluate this command (${(error as Error).message}), `
+            + 'so tastes at enforce: block were not applied.',
+        );
+        return;
+      }
+
       for (const notice of verdict.notices) console.warn(`taste-police: ${notice}`);
       if (verdict.decision === 'deny') throw new Error(verdict.reason);
     },

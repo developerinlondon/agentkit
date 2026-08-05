@@ -138,11 +138,14 @@ What it does at the edges, so you can answer for it:
 - **The override** is that taste's named variable, set inline on the command (`NAME=1 …`) or
   exported. Empty, `0`, `false`, `no` and `off` do not count — they warn and the taste still
   refuses, because a guard you can switch off by mistyping it is worse than none.
-- **A malformed taste** is skipped with a warning and takes nothing else down with it.
+- **A malformed taste** is skipped with a warning and takes nothing else down with it. So is a
+  pattern that outruns the match deadline — it is named, skipped, and the rest still bind.
 - **An unrunnable hook** (no `bun`, no evaluator) says `UNCHECKED` and allows. It never
   refuses on its own uncertainty, and it never goes quiet where there were tastes to read.
-- **Bounds**: `rule.match` is capped at 200 characters and only the first 4000 characters of a
-  command are examined. `references/format.md` carries the reasoning.
+- **Bounds**: `rule.match` is capped at 200 characters, only the first 4000 characters of a
+  command are examined, and the match itself is abandoned after 250ms — length is not safety,
+  since a short pattern can still backtrack forever. `references/format.md` carries the
+  reasoning.
 
 If someone asks why a `block` taste did not stop something, check those in order: the taste is
 `advise`, the pattern did not match, the override was set, the file failed the lint, or the

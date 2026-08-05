@@ -51,12 +51,18 @@ check looks for is not in it. A backtick has no such escape. It is a single char
 
 `taste-police` tests the pattern in-process against the command string; nothing is ever handed
 to a shell. A regular expression can still be made to backtrack for longer than anyone will
-wait, so both sides of the match are capped:
+wait, so the match is bounded three ways:
 
-| Bound                | Value            | What happens at the edge                                        |
-| -------------------- | ---------------- | --------------------------------------------------------------- |
-| `rule.match` length  | 200 characters   | The lint refuses the file, and the hook skips it with a warning |
-| the command examined | first 4000 chars | A pattern that would only match past that does not fire         |
+| Bound                | Value            | What happens at the edge                                         |
+| -------------------- | ---------------- | ---------------------------------------------------------------- |
+| `rule.match` length  | 200 characters   | The lint refuses the file, and the hook skips it with a warning  |
+| the command examined | first 4000 chars | A pattern that would only match past that does not fire          |
+| the match itself     | 250 milliseconds | The taste is skipped, by name, and every other taste still binds |
+
+Length is not safety: `(a+)+$` is eight characters and doubles its work for every character
+you feed it. That is why the match runs on a thread the hook can abandon — a pattern that
+outruns the deadline is treated exactly like a malformed taste, named in a warning and left
+unenforced, rather than taking the session down with it.
 
 The subject bound is the honest trade: a command long enough to hit it is a script, and a
 taste is not a way to audit one. Write the pattern against what an agent actually types.
