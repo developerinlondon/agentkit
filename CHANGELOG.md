@@ -9,6 +9,8 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+## v0.7.7 — 2026-08-05
+
 - fix(taste): `resolveTastes(cwd)` threw `TypeError: The "paths[0]" property must be of type
   string, got undefined` four frames deep in `configFiles`, because `home` had no default and
   only the fixtures ever passed one. `home` now defaults to `homedir()` on the entry points
