@@ -44,7 +44,16 @@ content and a reviewer cannot tell which needed a designer.
    ~1280 px, screenshot **both themes** (stamp `data-theme` on `<html>` to
    flip), Read the screenshots, fix, repeat until nothing clips, contrast
    holds, and both themes look designed rather than inverted. Never deliver an
-   unviewed page.
+   unviewed page. Two rules that make the look honest:
+   - **Screenshot the full height.** Read `documentElement.scrollHeight` from
+     the rendered page first and size the capture window to it — a fixed-height
+     window verifies the top of the page and silently calls the rest clean.
+   - **Measure, don't estimate.** Absolute-positioned figures (mockup edges,
+     sequence messages) depend on how text wraps in the font that actually
+     resolves. Dump the rendered nodes' `offsetLeft/Top/Width/Height` with a
+     DOM probe and derive SVG endpoints from the measured borders; in the same
+     probe assert `scrollWidth === clientWidth` on every `overflow-x` wrapper —
+     a horizontally clipped figure is invisible under `--hide-scrollbars`.
 
 ## The token contract
 
@@ -86,6 +95,8 @@ content and a reviewer cannot tell which needed a designer.
 | Ordered passes through a system                     | `.steps` counter cards, top border encoding state                                                               |
 | Enumerable facts, N items × M properties            | table with mono uppercase `th`, `.tag` state pills                                                              |
 | Delivery slices with estimates                      | `.phases` cards with `.est` pill and a `ship:` line                                                             |
+| Ordered messages between ≤6 participants            | `.seq` lane figure — CSS lifelines + offset messages, no runtime                                                |
+| Verifiable done-criteria                            | `.accept` checklist rows — these become the implementation's test targets                                       |
 | Refused scope                                       | `.nongoals` ✕ rows: bold claim + muted why                                                                      |
 | A state code the figures share                      | `.legend` key swatches, once, above the first figure using it                                                   |
 | Evidence the page rests on                          | `footer` grounding block                                                                                        |
@@ -96,13 +107,17 @@ live `status-pill`, rail listing real items, dotted-grid canvas with
 `position:absolute` nodes, and an `.edges` SVG layer (cubic béziers, marker
 arrowheads, edge labels) sized to the canvas `viewBox`. State lives in dots,
 badges, border variants; the selected node's detail appears in the inspector.
-Keep edge endpoints on node borders — recompute the path when a node moves.
+Keep side rails ≤430 px combined at a 1080 canvas so the canvas keeps ~640 px.
+Keep edge endpoints on node borders — measured from the rendered DOM (workflow
+step 5), recomputed whenever a node moves or its text rewraps.
 
 Escalate beyond the grammar when the concept outgrows it: hand-drawn
 architecture and anything with loop-backs or trust boundaries → the `diagram`
-skill (inline its SVG in a figure block); ordered message exchanges of ≥3
-participants or state machines → mermaid where the host renders it, else the
-`diagram` skill. Never ASCII art.
+skill (inline its SVG in a figure block); message exchanges of >6 participants,
+alt/loop fragments, or state machines → mermaid where the host renders it, else
+the `diagram` skill. Inventing a component above the grammar's floor is
+encouraged when the subject demands one — keep it on the page's tokens. Never
+ASCII art.
 
 ## Do not ship the templated look
 

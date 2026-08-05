@@ -171,6 +171,7 @@
   .badge.role { background: var(--surface-2); color: var(--muted); border: 1px solid var(--line-soft); }
   .edges { position: absolute; inset: 0; pointer-events: none; }
   .edges path { fill: none; stroke: var(--muted); stroke-width: 1.6; }
+  .edges marker path { fill: currentColor; stroke: none; }
   .edges path.approved { stroke: var(--gate); stroke-dasharray: 5 4; }
   .edges text { font-family: var(--mono); font-size: 9.5px; fill: var(--muted); }
 
@@ -219,6 +220,45 @@
   .step.is-new { border-top: 3px dashed var(--new); }
   .step.is-gate { border-top: 3px solid var(--gate); }
 
+  /* Sequence lanes: ordered messages between participants, no mermaid runtime.
+     Position lane names and lifelines by percentage; each .msg spans between
+     two lifelines with left/right offsets measured from the rendered page. */
+  .seq-wrap { overflow-x: auto; margin-top: 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+  .seq { min-width: 700px; padding: 16px 20px 18px; }
+  .seq-head { position: relative; height: 30px; }
+  .lane-name {
+    position: absolute; transform: translateX(-50%); white-space: nowrap;
+    font-family: var(--mono); font-size: 10.5px; padding: 3px 9px; border-radius: 6px;
+    border: 1px solid var(--line); background: var(--surface-2); color: var(--ink);
+  }
+  .lane-name.is-new { border-color: var(--new); color: var(--new); background: var(--new-soft); }
+  .lane-name.is-gate { border-color: var(--gate); color: var(--gate); background: var(--gate-soft); }
+  .seq-rows { position: relative; height: 140px; margin-top: 6px; }
+  .lifeline { position: absolute; top: 0; bottom: 0; width: 0; border-left: 1px dashed var(--line); }
+  .msg { position: absolute; height: 24px; }
+  .msg .ln { position: absolute; left: 0; right: 0; top: 17px; border-top: 1.6px solid var(--muted); }
+  .msg .lbl {
+    position: absolute; left: 50%; transform: translateX(-50%); top: 0;
+    font-family: var(--mono); font-size: 10.5px; white-space: nowrap;
+    background: var(--surface); padding: 0 8px; color: var(--ink);
+  }
+  .msg .hd { position: absolute; top: 13px; width: 0; height: 0; border-top: 5px solid transparent; border-bottom: 5px solid transparent; }
+  .msg.fwd .hd { right: -1px; border-left: 8px solid var(--muted); }
+  .msg.rev .hd { left: -1px; border-right: 8px solid var(--muted); }
+  .msg.dash .ln { border-top-style: dashed; }
+  .msg.g .ln { border-top-color: var(--gate); }
+  .msg.g .lbl { color: var(--gate); }
+  .msg.g.fwd .hd { border-left-color: var(--gate); }
+  .msg.g.rev .hd { border-right-color: var(--gate); }
+  .msg.k .ln { border-top-color: var(--ok); }
+  .msg.k .lbl { color: var(--ok); }
+  .msg.k.fwd .hd { border-left-color: var(--ok); }
+  .msg.k.rev .hd { border-right-color: var(--ok); }
+  .seq-n {
+    position: absolute; left: 0; top: 3px; transform: translateX(-100%); padding-right: 10px;
+    font-family: var(--mono); font-size: 10px; color: var(--muted); font-variant-numeric: tabular-nums;
+  }
+
   .tbl-wrap { overflow-x: auto; margin-top: 14px; }
   table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
   th { text-align: left; font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); font-weight: 600; padding: 8px 14px 8px 0; border-bottom: 1px solid var(--line); }
@@ -242,6 +282,13 @@
   .ng .x { font-family: var(--mono); color: var(--muted); flex-shrink: 0; }
   .ng b { font-weight: 650; }
   .ng span.why { color: var(--muted); }
+
+  .accept { margin-top: 14px; display: grid; gap: 11px; max-width: 82ch; }
+  .ac { display: flex; gap: 12px; align-items: baseline; font-size: 14px; line-height: 1.55; }
+  .ac .box {
+    flex-shrink: 0; width: 12px; height: 12px; border-radius: 3px;
+    border: 1.5px solid var(--gate); background: var(--gate-soft); transform: translateY(1px);
+  }
 
   footer { margin-top: 60px; border-top: 1px solid var(--line); padding-top: 16px; font-size: 12px; color: var(--muted); font-family: var(--mono); line-height: 1.7; }
 </style>
@@ -354,6 +401,24 @@
       <div class="step is-new"><b>The new piece acts.</b> What it does, per step.<span class="where">new/path · NEW</span></div>
       <div class="step is-gate"><b>The gate checks.</b> Same path as the existing flow.<span class="where">gate/path.ts</span></div>
     </div>
+
+    <div class="seq-wrap">
+      <div class="seq">
+        <div class="seq-head">
+          <span class="lane-name" style="left:12%">caller</span>
+          <span class="lane-name is-new" style="left:50%">new piece</span>
+          <span class="lane-name is-gate" style="left:88%">gate</span>
+        </div>
+        <div class="seq-rows">
+          <div class="lifeline" style="left:12%"></div>
+          <div class="lifeline" style="left:50%"></div>
+          <div class="lifeline" style="left:88%"></div>
+          <div class="msg fwd" style="left:12%; right:50%; top:8px"><span class="seq-n">01</span><span class="ln"></span><span class="lbl">request · payload</span><span class="hd"></span></div>
+          <div class="msg fwd g dash" style="left:50%; right:12%; top:52px"><span class="seq-n">02</span><span class="ln"></span><span class="lbl">check · parks durably</span><span class="hd"></span></div>
+          <div class="msg rev k" style="left:12%; right:50%; top:96px"><span class="seq-n">03</span><span class="ln"></span><span class="lbl">result · audit row</span><span class="hd"></span></div>
+        </div>
+      </div>
+    </div>
   </section>
 
   <section>
@@ -393,6 +458,14 @@
     <div class="nongoals">
       <div class="ng"><span class="x">✕</span><div><b>Not this.</b> <span class="why">Why refusing it is the better product decision, in one sentence.</span></div></div>
       <div class="ng"><span class="x">✕</span><div><b>Not this either.</b> <span class="why">Why.</span></div></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="eyebrow">07 · Acceptance</span><h2>What has to be true to call it done</h2></div>
+    <div class="accept">
+      <div class="ac"><span class="box"></span><div>A verifiable criterion, phrased so it can become a test target.</div></div>
+      <div class="ac"><span class="box"></span><div>Another criterion, one behavior each.</div></div>
     </div>
   </section>
 
