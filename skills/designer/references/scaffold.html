@@ -307,6 +307,11 @@ try {
   .fc-body p:last-child { margin-bottom: 0; }
   .fc-body b { font-weight: 650; }
 
+  /* Two-up row: a figure beside what annotates it. */
+  .pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; align-items: start; margin-top: 14px; }
+  .pair > * { margin-top: 0; }
+  @media (max-width: 860px) { .pair { grid-template-columns: 1fr; } }
+
   .phases { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; margin-top: 16px; }
   .phase { border: 1px solid var(--line); border-radius: 10px; background: var(--surface); padding: 16px 18px; }
   .phase .ph-top { display: flex; justify-content: space-between; align-items: baseline; }
@@ -505,20 +510,31 @@ try {
   <section>
     <div class="sec-head"><span class="eyebrow">05 · The artifact</span><h2>The file the convention lives in</h2></div>
     <p>One sentence saying why the file itself states the rule better than a paragraph about it.</p>
-    <div class="filecard">
-      <div class="fc-top">
-        <span class="pth">real/path/to/the-file.md</span>
-        <span class="fc-pill">scope badge</span>
-        <span class="fc-pill plain">state badge</span>
-      </div>
+    <div class="pair">
+      <div class="filecard">
+        <div class="fc-top">
+          <span class="pth">real/path/to/the-file.md</span>
+          <span class="fc-pill">scope badge</span>
+          <span class="fc-pill plain">state badge</span>
+        </div>
 <pre class="fc-src"><span class="rule">---</span>
 <span class="k">name:</span> real-name
 <span class="k">applies-to:</span> the real selector, not a placeholder
 <span class="k">enforce:</span> block
 <span class="rule">---</span></pre>
-      <div class="fc-body">
-        <p>The file's own prose, quoted as it reads on disk.</p>
-        <p><b>Why:</b> the reason that survives a reader who disagrees with the rule.</p>
+        <div class="fc-body">
+          <p>The file's own prose, quoted as it reads on disk.</p>
+          <p><b>Why:</b> the reason that survives a reader who disagrees with the rule.</p>
+        </div>
+      </div>
+
+      <div class="tbl-wrap">
+        <table>
+          <tr><th>Field</th><th>Values</th><th>What it changes</th></tr>
+          <tr><td><b>name</b></td><td>kebab-case</td><td>The identity the loader dedupes on</td></tr>
+          <tr><td><b>applies-to</b></td><td>a real selector</td><td>Which files or actions the rule binds</td></tr>
+          <tr><td><b>enforce</b></td><td>advise<br>check<br>block</td><td>How hard it binds — <code>advise</code> is the default</td></tr>
+        </table>
       </div>
     </div>
   </section>

@@ -16,10 +16,13 @@ release PR — "publish this" authorizes a release, never the tier.
   grid-built bespoke figure no longer reads as a rule violation; the rule binds wherever a
   coordinate is authored by hand. And the scaffold gains `.filecard` — an artifact rendered as
   the file it is: path header, optional badges, the file's verbatim text, the prose it carries —
-  with a grammar row routing "a file or config the page is about" to it. Verified by the skill's
-  own rules: scaffold rendered at 1280 px in both themes at the measured 2900 px scrollHeight,
-  137 painted text/ground pairs per theme clearing 4.5:1 (light min 4.85, dark min 4.51), all
-  five `overflow-x` wrappers unclipped. (#299)
+  with a grammar row routing "a file or config the page is about" to it. The scaffold demos it in
+  a `.pair` row beside the table that annotates its fields, because a narrow card alone would
+  teach an author to leave dead space next to it. Verified by the skill's own rules: scaffold
+  rendered at 1280 px in both themes at the measured 2900 px scrollHeight, 150 painted
+  text/ground pairs per theme clearing 4.5:1 (light min 4.85, dark min 4.51), all six
+  `overflow-x` wrappers unclipped, and the row collapsing to one column below its 860 px
+  breakpoint. (#299)
 
 ## v0.7.7 — 2026-08-05
 
