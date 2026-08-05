@@ -5,6 +5,12 @@ top and ships with the next tag.
 
 ## [Unreleased]
 
+- fix(designer): standalone pages carry their own persisted theme toggle. The
+  scaffold themed correctly through `prefers-color-scheme` and `data-theme`
+  overrides, but a page hosted without chrome (a product repo, a raw publish)
+  had nothing stamping `data-theme`, so viewers could never flip themes and the
+  second theme went unseen. (#288)
+
 - feat(skills): `designer` — bespoke, artifact-grade design pages. Carries the
   per-subject design method (semantic color families over a three-level surface
   stack, dual token-level theming, a chosen type system) and a component
