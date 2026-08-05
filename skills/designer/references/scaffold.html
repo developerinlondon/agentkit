@@ -208,7 +208,7 @@ try {
     background: var(--core-soft); border: 1.5px solid var(--core); font-size: 12px; line-height: 1.4;
   }
   .fbox b { display: block; font-size: 12.5px; font-weight: 650; }
-  .fbox code { background: transparent; padding: 0; font-size: 10.5px; color: var(--muted); display: block; margin-top: 2px; }
+  .fbox code { background: transparent; padding: 0; font-size: 10.5px; color: var(--muted); display: block; margin-top: 2px; overflow-wrap: anywhere; }
   .fbox.is-new { background: var(--new-soft); border-style: dashed; border-color: var(--new); }
   .fbox.is-gate { background: var(--gate-soft); border-color: var(--gate); }
   .fbox.is-ext { background: var(--surface); border-color: var(--line); }
@@ -269,7 +269,7 @@ try {
   .msg.k.fwd .hd { border-left-color: var(--ok); }
   .msg.k.rev .hd { border-right-color: var(--ok); }
   .seq-n {
-    position: absolute; left: 0; top: 3px; transform: translateX(-100%); padding-right: 10px;
+    position: absolute; left: 0; width: 34px;
     font-family: var(--mono); font-size: 10px; color: var(--muted); font-variant-numeric: tabular-nums;
   }
 
@@ -455,9 +455,12 @@ try {
           <div class="lifeline" style="left:12%"></div>
           <div class="lifeline" style="left:50%"></div>
           <div class="lifeline" style="left:88%"></div>
-          <div class="msg fwd" style="left:12%; right:50%; top:8px"><span class="seq-n">01</span><span class="ln"></span><span class="lbl">request · payload</span><span class="hd"></span></div>
-          <div class="msg fwd g dash" style="left:50%; right:12%; top:52px"><span class="seq-n">02</span><span class="ln"></span><span class="lbl">check · parks durably</span><span class="hd"></span></div>
-          <div class="msg rev k" style="left:12%; right:50%; top:96px"><span class="seq-n">03</span><span class="ln"></span><span class="lbl">result · audit row</span><span class="hd"></span></div>
+          <span class="seq-n" style="top:11px">01</span>
+          <span class="seq-n" style="top:55px">02</span>
+          <span class="seq-n" style="top:99px">03</span>
+          <div class="msg fwd" style="left:12%; right:50%; top:8px"><span class="ln"></span><span class="lbl">request · payload</span><span class="hd"></span></div>
+          <div class="msg fwd g dash" style="left:50%; right:12%; top:52px"><span class="ln"></span><span class="lbl">check · parks durably</span><span class="hd"></span></div>
+          <div class="msg rev k" style="left:12%; right:50%; top:96px"><span class="ln"></span><span class="lbl">result · audit row</span><span class="hd"></span></div>
         </div>
       </div>
     </div>
