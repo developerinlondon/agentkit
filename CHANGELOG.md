@@ -9,6 +9,28 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+- fix(taste): `resolveTastes(cwd)` threw `TypeError: The "paths[0]" property must be of type
+  string, got undefined` four frames deep in `configFiles`, because `home` had no default and
+  only the fixtures ever passed one. `home` now defaults to `homedir()` on the entry points
+  that read it — `resolveTastes` and `configFiles` — and `readSources` passes its optional
+  `home` and `env` straight through rather than carrying a second copy of the same default.
+  Fixtures still override both. (#313)
+- fix(taste): linting `.agentkit/tastes-vendor/` — the vendor root rather than one source —
+  reported `duplicate name "release-tier"` across two sources, reading the stacking feature as
+  an error while each source linted clean on its own. The linter now treats every immediate
+  subdirectory of a `tastes-vendor` root as its own dedupe scope and names every finding by
+  its source, so a name two sources both define is the override it was subscribed for. Inside
+  a single source a name in two category folders still collides, and a `.md` sitting loose at
+  the vendor root — which nothing writes and nothing reads — is refused rather than passed
+  over. (#312)
+- fix(taste): sync's git steps ran under `Bun.spawnSync`, so the 60s per-step bound had no way
+  to fail: removing it did not turn a test red, it wedged the runner, because a blocking spawn
+  holds the thread the deadline's timer would need. The steps are spawned asynchronously now
+  and the deadline is an interruptible timer — same bound, same `unreachable within Ns`
+  message, same all-or-nothing write. `syncSources` is `async` accordingly. Verified by the
+  mutation the change exists for: with the kill removed, the sync suite went red in 6s where
+  it previously had to be killed from outside after minutes. (#309)
+
 ## v0.7.6 — 2026-08-05
 
 - feat(taste): **external sources** — a taste is no longer confined to the repository it was

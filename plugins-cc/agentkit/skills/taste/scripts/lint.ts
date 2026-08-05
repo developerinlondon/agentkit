@@ -1,6 +1,6 @@
 import { YAML } from 'bun';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { basename, join, relative } from 'node:path';
+import { basename, join, relative, resolve } from 'node:path';
 
 const REQUIRED_KEYS = ['name', 'provenance', 'scope', 'strength'];
 const OPTIONAL_KEYS = ['category', 'enforce', 'rule'];
@@ -9,6 +9,7 @@ export const STRENGTHS = ['prefer', 'require'];
 export const ENFORCEMENTS = ['advise', 'check', 'block'];
 const RULE_KEYS = ['kind', 'match', 'remedy', 'override'];
 const RULE_KINDS = ['command'];
+const VENDOR_ROOT = 'tastes-vendor';
 
 // A rule is tested in-process against every command an agent runs, and a
 // regular expression can be made to backtrack for longer than anyone will wait.
@@ -202,7 +203,7 @@ function duplicateNames(byName: Map<string, string[]>): string[] {
     .map(([name, paths]) => `duplicate name ${JSON.stringify(name)}: ${paths.sort().join(', ')}`);
 }
 
-export function lintTasteDirectory(dir: string): string[] {
+export function lintTasteDirectory(dir: string, relativeTo: string = dir): string[] {
   const errors: string[] = [];
   // Keyed on the parsed name rather than the name: line, because `"tier"` and
   // `tier # why` are the same identity to every reader of these files, and a
@@ -210,7 +211,7 @@ export function lintTasteDirectory(dir: string): string[] {
   const byName = new Map<string, string[]>();
 
   for (const file of tasteFiles(dir).sort()) {
-    const path = relative(dir, file);
+    const path = relative(relativeTo, file);
     const inspection = inspectTaste(path, readFileSync(file, 'utf-8'));
     errors.push(...inspection.errors.map((error) => `${path}: ${error}`));
     if (inspection.name !== undefined) {
@@ -223,6 +224,28 @@ export function lintTasteDirectory(dir: string): string[] {
 
 export function countTastes(dir: string): number {
   return tasteFiles(dir).length;
+}
+
+// The vendored tree holds one directory per source, and a name two sources both
+// define is the stacking the sources list exists for: the later source is
+// subscribed to in order to win it. Dedupe therefore stops at the source
+// boundary here, exactly as it does when each source is linted on its own.
+export function lintTastePath(dir: string): string[] {
+  if (basename(resolve(dir)) !== VENDOR_ROOT) return lintTasteDirectory(dir);
+
+  const errors: string[] = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (entry.name.startsWith('.')) continue;
+    if (entry.isDirectory()) {
+      errors.push(...lintTasteDirectory(join(dir, entry.name), dir));
+    } else if (entry.name.endsWith('.md')) {
+      errors.push(
+        `${entry.name}: sits outside every source directory — the vendored tree holds one `
+          + 'directory per declared source, and nothing reads a taste at its root',
+      );
+    }
+  }
+  return errors.sort();
 }
 
 function fail(message: string, code: number): never {
@@ -241,7 +264,7 @@ if (import.meta.main) {
       fail(`no such directory: ${dir}`, 2);
     }
     checked += countTastes(dir);
-    errors.push(...lintTasteDirectory(dir));
+    errors.push(...lintTastePath(dir));
   }
 
   if (errors.length > 0) {

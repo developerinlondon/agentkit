@@ -19,8 +19,8 @@ function project(upstream: Remote, extra: Record<string, string> = {}): string {
   return config({ repo: upstream.url, ref: 'v1', name: 'agentkit-tastes', ...extra });
 }
 
-function sync(cwd: string) {
-  return syncSources({ cwd, home: scratch(), env: {}, today: TODAY });
+async function sync(cwd: string) {
+  return await syncSources({ cwd, home: scratch(), env: {}, today: TODAY });
 }
 
 function upstream(files: Record<string, string> = { 'release-tier.md': taste('release-tier') }) {
@@ -38,14 +38,14 @@ function lockOf(cwd: string): string {
 }
 
 describe('sync vendors a source into the working tree', () => {
-  test('the snapshot is the source\'s taste files, contents and all', () => {
+  test('the snapshot is the source\'s taste files, contents and all', async () => {
     const source = upstream({
       'release-tier.md': taste('release-tier'),
       'git/commit-style.md': taste('commit-style'),
     });
     const cwd = scratch({ '.agentkit/config.yaml': project(source) });
 
-    const result = sync(cwd);
+    const result = await sync(cwd);
 
     expect(result.errors).toEqual([]);
     expect(result.ok).toBe(true);
@@ -55,11 +55,11 @@ describe('sync vendors a source into the working tree', () => {
     });
   });
 
-  test('the lock pins the exact commit, with the repo, the ref and the date', () => {
+  test('the lock pins the exact commit, with the repo, the ref and the date', async () => {
     const source = upstream();
     const cwd = scratch({ '.agentkit/config.yaml': project(source) });
 
-    sync(cwd);
+    await sync(cwd);
 
     const line = lockOf(cwd).split('\n').find((row) => row.startsWith('agentkit-tastes'));
     expect(line?.split('\t')).toEqual([
@@ -73,32 +73,32 @@ describe('sync vendors a source into the working tree', () => {
 
   // The vendored tree is what an agent reads as policy, so nothing that is not
   // a taste rides in with it — least of all something executable.
-  test('only taste files cross the boundary', () => {
+  test('only taste files cross the boundary', async () => {
     const source = upstream({
       'release-tier.md': taste('release-tier'),
       'install.sh': '#!/bin/sh\necho pwned\n',
     });
     const cwd = scratch({ '.agentkit/config.yaml': project(source) });
 
-    sync(cwd);
+    await sync(cwd);
 
     expect(Object.keys(treeOf(vendor(cwd)))).toEqual(['release-tier.md']);
   });
 
-  test('path narrows the source to the subdirectory that holds the tastes', () => {
+  test('path narrows the source to the subdirectory that holds the tastes', async () => {
     const source = upstream({
       'README.md': '# not a taste\n',
       'tastes/release-tier.md': taste('release-tier'),
     });
     const cwd = scratch({ '.agentkit/config.yaml': project(source, { path: 'tastes' }) });
 
-    const result = sync(cwd);
+    const result = await sync(cwd);
 
     expect(result.errors).toEqual([]);
     expect(Object.keys(treeOf(vendor(cwd)))).toEqual(['release-tier.md']);
   });
 
-  test('nothing outside tastes-vendor and the lock is touched', () => {
+  test('nothing outside tastes-vendor and the lock is touched', async () => {
     const source = upstream();
     const cwd = scratch({
       '.agentkit/config.yaml': project(source),
@@ -107,7 +107,7 @@ describe('sync vendors a source into the working tree', () => {
     });
     const before = treeOf(cwd);
 
-    sync(cwd);
+    await sync(cwd);
 
     const after = treeOf(cwd);
     const touched = Object.keys({ ...before, ...after })
@@ -118,13 +118,13 @@ describe('sync vendors a source into the working tree', () => {
 });
 
 describe('a re-sync is a no-op until the upstream moves', () => {
-  test('running it twice changes not one byte', () => {
+  test('running it twice changes not one byte', async () => {
     const source = upstream();
     const cwd = scratch({ '.agentkit/config.yaml': project(source) });
 
-    sync(cwd);
+    await sync(cwd);
     const first = treeOf(cwd);
-    const second = syncSources({ cwd, home: scratch(), env: {}, today: '2026-09-01' });
+    const second = await syncSources({ cwd, home: scratch(), env: {}, today: '2026-09-01' });
 
     expect(second.errors).toEqual([]);
     expect(treeOf(cwd)).toEqual(first);
@@ -132,12 +132,12 @@ describe('a re-sync is a no-op until the upstream moves', () => {
 
   // The date says when this pin was reviewed, not when someone last ran a
   // command — a date that moved on every run would make every sync a diff.
-  test('the pin date is carried forward while the commit stands still', () => {
+  test('the pin date is carried forward while the commit stands still', async () => {
     const source = upstream();
     const cwd = scratch({ '.agentkit/config.yaml': project(source) });
 
-    sync(cwd);
-    syncSources({ cwd, home: scratch(), env: {}, today: '2026-09-01' });
+    await sync(cwd);
+    await syncSources({ cwd, home: scratch(), env: {}, today: '2026-09-01' });
 
     expect(lockOf(cwd)).toContain(TODAY);
     expect(lockOf(cwd)).not.toContain('2026-09-01');
@@ -157,27 +157,27 @@ describe('a re-sync is a no-op until the upstream moves', () => {
     source.tag('v2');
   }
 
-  test('an upstream commit moves nothing until the ref in config does', () => {
+  test('an upstream commit moves nothing until the ref in config does', async () => {
     const source = upstream(V1);
     const cwd = scratch({ '.agentkit/config.yaml': project(source) });
-    sync(cwd);
+    await sync(cwd);
     const pinned = treeOf(cwd);
 
     advance(source);
-    const result = syncSources({ cwd, home: scratch(), env: {}, today: '2026-09-01' });
+    const result = await syncSources({ cwd, home: scratch(), env: {}, today: '2026-09-01' });
 
     expect(result.errors).toEqual([]);
     expect(treeOf(cwd)).toEqual(pinned);
   });
 
-  test('bumping the ref replaces, adds and removes exactly what upstream did', () => {
+  test('bumping the ref replaces, adds and removes exactly what upstream did', async () => {
     const source = upstream(V1);
     const cwd = scratch({ '.agentkit/config.yaml': project(source) });
-    sync(cwd);
+    await sync(cwd);
 
     advance(source);
     writeFileSync(join(cwd, '.agentkit', 'config.yaml'), project(source, { ref: 'v2' }));
-    const result = syncSources({ cwd, home: scratch(), env: {}, today: '2026-09-01' });
+    const result = await syncSources({ cwd, home: scratch(), env: {}, today: '2026-09-01' });
 
     expect(result.errors).toEqual([]);
     expect(treeOf(vendor(cwd))).toEqual(V2);
@@ -192,38 +192,38 @@ describe('a source is linted before it is allowed into the tree', () => {
     'commit-style.md': taste('commit-style').replace('name: commit-style', 'name: Commit_Style'),
   };
 
-  test('an invalid taste refuses the whole source, naming the file', () => {
+  test('an invalid taste refuses the whole source, naming the file', async () => {
     const source = upstream(BROKEN);
     const cwd = scratch({ '.agentkit/config.yaml': project(source) });
 
-    const result = sync(cwd);
+    const result = await sync(cwd);
 
     expect(result.ok).toBe(false);
     expect(result.errors.join('\n')).toContain('commit-style.md');
     expect(result.errors.join('\n')).toContain('agentkit-tastes');
   });
 
-  test('and none of it lands — not even the files that were valid', () => {
+  test('and none of it lands — not even the files that were valid', async () => {
     const source = upstream(BROKEN);
     const cwd = scratch({ '.agentkit/config.yaml': project(source) });
 
-    sync(cwd);
+    await sync(cwd);
 
     expect(existsSync(vendor(cwd))).toBe(false);
     expect(existsSync(join(cwd, '.agentkit', 'tastes.lock'))).toBe(false);
   });
 
-  test('a good snapshot already in the tree survives a bad bump', () => {
+  test('a good snapshot already in the tree survives a bad bump', async () => {
     const source = upstream({ 'release-tier.md': taste('release-tier', {}, 'Cut patch releases.') });
     const cwd = scratch({ '.agentkit/config.yaml': project(source) });
-    sync(cwd);
+    await sync(cwd);
     const good = treeOf(vendor(cwd));
     const pinned = lockOf(cwd);
 
     source.commit({ 'release-tier.md': taste('release-tier').replace('name:', 'nome:') });
     source.tag('v2');
     writeFileSync(join(cwd, '.agentkit', 'config.yaml'), project(source, { ref: 'v2' }));
-    const result = syncSources({ cwd, home: scratch(), env: {}, today: '2026-09-01' });
+    const result = await syncSources({ cwd, home: scratch(), env: {}, today: '2026-09-01' });
 
     expect(result.ok).toBe(false);
     expect(treeOf(vendor(cwd))).toEqual(good);
@@ -232,18 +232,18 @@ describe('a source is linted before it is allowed into the tree', () => {
 });
 
 describe('sync answers for what it cannot do', () => {
-  test('reference mode is refused as deferred, and fetches nothing', () => {
+  test('reference mode is refused as deferred, and fetches nothing', async () => {
     const source = upstream();
     const cwd = scratch({ '.agentkit/config.yaml': project(source, { mode: 'reference' }) });
 
-    const result = sync(cwd);
+    const result = await sync(cwd);
 
     expect(result.ok).toBe(false);
     expect(result.errors.join('\n')).toContain('deferred');
     expect(existsSync(join(cwd, '.agentkit', 'tastes-vendor'))).toBe(false);
   });
 
-  test('an unreachable source is an error, not a half-written directory', () => {
+  test('an unreachable source is an error, not a half-written directory', async () => {
     const cwd = scratch({
       '.agentkit/config.yaml': config({
         repo: 'file:///nonexistent/tastes.git',
@@ -252,18 +252,18 @@ describe('sync answers for what it cannot do', () => {
       }),
     });
 
-    const result = sync(cwd);
+    const result = await sync(cwd);
 
     expect(result.ok).toBe(false);
     expect(result.errors.join('\n')).toContain('agentkit-tastes');
     expect(existsSync(vendor(cwd))).toBe(false);
   });
 
-  test('a ref that does not exist upstream names the ref', () => {
+  test('a ref that does not exist upstream names the ref', async () => {
     const source = upstream();
     const cwd = scratch({ '.agentkit/config.yaml': project(source, { ref: 'v9' }) });
 
-    const result = sync(cwd);
+    const result = await sync(cwd);
 
     expect(result.ok).toBe(false);
     expect(result.errors.join('\n')).toContain('v9');
@@ -272,7 +272,7 @@ describe('sync answers for what it cannot do', () => {
   // GIT_TERMINAL_PROMPT=0 answers a credential prompt, not a socket that
   // accepts and then says nothing — which is what an unreachable forge behind a
   // load balancer looks like. The listener here reproduces exactly that.
-  test('a host that accepts and never answers is abandoned, not waited on', () => {
+  test('a host that accepts and never answers is abandoned, not waited on', async () => {
     const server = Bun.listen({
       hostname: '127.0.0.1',
       port: 0,
@@ -288,7 +288,7 @@ describe('sync answers for what it cannot do', () => {
         }),
       });
 
-      const result = syncSources({ cwd, home: scratch(), env: {}, today: TODAY, timeoutMs: 1200 });
+      const result = await syncSources({ cwd, home: scratch(), env: {}, today: TODAY, timeoutMs: 1200 });
 
       expect(result.ok).toBe(false);
       // The message is the assertion that pins the deadline: a bound on how long
@@ -304,7 +304,7 @@ describe('sync answers for what it cannot do', () => {
 
   // git refuses the ext helper by default, so the pin is what makes the refusal
   // ours rather than the host's: this global config re-enables it.
-  test('a repo that is a shell command stays refused where git config allows it', () => {
+  test('a repo that is a shell command stays refused where git config allows it', async () => {
     const sentinel = join(scratch(), 'pwn');
     const gitconfig = join(scratch({ gitconfig: '[protocol "ext"]\n\tallow = always\n' }), 'gitconfig');
     const cwd = scratch({
@@ -318,7 +318,7 @@ describe('sync answers for what it cannot do', () => {
     process.env.GIT_CONFIG_GLOBAL = gitconfig;
 
     try {
-      const result = syncSources({ cwd, home: scratch(), env: {}, today: TODAY });
+      const result = await syncSources({ cwd, home: scratch(), env: {}, today: TODAY });
 
       expect(result.ok).toBe(false);
       expect(existsSync(sentinel)).toBe(false);
@@ -328,28 +328,28 @@ describe('sync answers for what it cannot do', () => {
     }
   });
 
-  test('no sources declared writes nothing at all, and says so', () => {
+  test('no sources declared writes nothing at all, and says so', async () => {
     const cwd = scratch({
       '.agentkit/config.yaml': 'taste:\n  enabled: true\n',
       '.agentkit/tastes-vendor/left-behind/release-tier.md': taste('release-tier'),
     });
     const before = treeOf(cwd);
 
-    const result = sync(cwd);
+    const result = await sync(cwd);
 
     expect(result.ok).toBe(true);
     expect(result.report.join('\n')).toContain('no sources');
     expect(treeOf(cwd)).toEqual(before);
   });
 
-  test('a source dropped from the config takes its vendored copy with it', () => {
+  test('a source dropped from the config takes its vendored copy with it', async () => {
     const source = upstream();
     const cwd = scratch({
       '.agentkit/config.yaml': project(source),
       '.agentkit/tastes-vendor/business-tastes/commit-style.md': taste('commit-style'),
     });
 
-    const result = sync(cwd);
+    const result = await sync(cwd);
 
     expect(existsSync(vendor(cwd, 'business-tastes'))).toBe(false);
     expect(result.report.join('\n')).toContain('business-tastes');

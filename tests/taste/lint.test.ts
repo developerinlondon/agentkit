@@ -3,7 +3,11 @@ import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { lintTasteDirectory, MAX_MATCH_LENGTH } from '../../skills/taste/scripts/lint.ts';
+import {
+  lintTasteDirectory,
+  lintTastePath,
+  MAX_MATCH_LENGTH,
+} from '../../skills/taste/scripts/lint.ts';
 
 const repoRoot = join(import.meta.dir, '..', '..');
 const linter = join(repoRoot, 'skills', 'taste', 'scripts', 'lint.ts');
@@ -152,6 +156,78 @@ describe('the name is the key', () => {
     });
     expect(errors).toHaveLength(1);
     expect(errors[0]).toContain('duplicate');
+  });
+});
+
+// One directory per source, and a name two sources both define is the stacking
+// the sources list exists for — the later one is subscribed to precisely to win
+// it. Dedupe therefore stops at the source boundary, as it already does when
+// each source is linted on its own.
+describe('the vendored tree is a stack of sources, not one folder', () => {
+  function vendorRoot(files: Record<string, string>): string {
+    const nested: Record<string, string> = {};
+    for (const [path, contents] of Object.entries(files)) nested[`tastes-vendor/${path}`] = contents;
+    return join(sandbox(nested), 'tastes-vendor');
+  }
+
+  const TIER = taste(withFields({ name: 'release-tier', scope: 'external' }));
+
+  test('the same name in two sources is the feature, not a duplicate', () => {
+    const root = vendorRoot({
+      'agentkit-tastes/release-tier.md': TIER,
+      'business-tastes/release-tier.md': TIER,
+    });
+
+    expect(lintTastePath(root)).toEqual([]);
+  });
+
+  test('a duplicate inside one source still fails, named by its source', () => {
+    const root = vendorRoot({
+      'agentkit-tastes/release-tier.md': TIER,
+      'agentkit-tastes/git/release-tier.md': TIER,
+      'business-tastes/release-tier.md': TIER,
+    });
+    const errors = lintTastePath(root);
+
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain('duplicate');
+    expect(errors[0]).toContain('agentkit-tastes/release-tier.md');
+    expect(errors[0]).toContain('agentkit-tastes/git/release-tier.md');
+  });
+
+  test('an invalid taste is still reported, with the source it came from', () => {
+    const root = vendorRoot({
+      'agentkit-tastes/release-tier.md': taste(withFields({ name: 'release-tiers' })),
+    });
+    const errors = lintTastePath(root);
+
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain('agentkit-tastes/release-tier.md');
+    expect(errors[0]).toContain('filename');
+  });
+
+  // Nothing writes one and nothing reads one, so passing it over silently would
+  // leave a file inside a linted tree that no run ever checked.
+  test('a taste loose at the root belongs to no source and is refused', () => {
+    const root = vendorRoot({
+      'agentkit-tastes/release-tier.md': TIER,
+      'stray.md': TIER,
+    });
+    const errors = lintTastePath(root);
+
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain('stray.md');
+    expect(errors[0]).toContain('source');
+  });
+
+  test('any other directory is one scope, exactly as before', () => {
+    const root = join(sandbox({
+      'tastes/release/tier.md': taste(withFields({ name: 'tier' })),
+      'tastes/git/tier.md': taste(withFields({ name: 'tier' })),
+    }), 'tastes');
+
+    expect(lintTastePath(root)).toEqual(lintTasteDirectory(root));
+    expect(lintTastePath(root)[0]).toContain('duplicate');
   });
 });
 
@@ -424,5 +500,16 @@ describe('the command-line surface', () => {
     const result = run(join(tmpdir(), 'agentkit-tastes-does-not-exist'));
     expect(result.status).toBe(2);
     expect(result.stderr).toContain('no such directory');
+  });
+
+  // This repository's own vendored tree, whose two sources both define
+  // release-tier. Pointing the linter at the root is what a human or an agent
+  // does, and it has to agree with what resolution already does with it.
+  test('this repository\'s vendor root lints clean, both sources at once', () => {
+    const result = run(join(repoRoot, '.agentkit', 'tastes-vendor'));
+
+    expect(result.stderr).toBe('');
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('tastes checked, all valid');
   });
 });

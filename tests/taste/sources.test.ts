@@ -93,6 +93,72 @@ describe('a source is declared in committed config', () => {
   });
 });
 
+// homedir() is read once, when the process starts, so a fixture home can only
+// be put in front of the default from a process that was started with it.
+describe('every entry point answers to a cwd on its own', () => {
+  const scriptsDir = join(import.meta.dir, '..', '..', 'skills', 'taste', 'scripts');
+  const HOME_FILES = {
+    '.agentkit/tastes/tone.md': taste('tone', { scope: 'user' }),
+    '.config/agentkit/config.yaml': config(source(GENERIC, { ref: 'main' })),
+  };
+
+  interface Answers {
+    tastes: string[];
+    explicit: string[];
+    sources: string[];
+    configs: string[];
+  }
+
+  function askedWithCwdAlone(cwd: string, home: string): Answers {
+    const probe = join(
+      scratch({
+        'probe.ts': [
+          `import { resolveTastes } from ${JSON.stringify(join(scriptsDir, 'resolve.ts'))};`,
+          `import { configFiles, readSources } from ${JSON.stringify(join(scriptsDir, 'sources.ts'))};`,
+          `const cwd = ${JSON.stringify(cwd)};`,
+          `const home = ${JSON.stringify(home)};`,
+          'console.log(JSON.stringify({',
+          '  tastes: resolveTastes(cwd).tastes.map((entry) => entry.name),',
+          '  explicit: resolveTastes(cwd, home).tastes.map((entry) => entry.name),',
+          '  sources: readSources(cwd).sources.map((entry) => entry.name),',
+          '  configs: configFiles(cwd),',
+          '}));',
+        ].join('\n'),
+      }),
+      'probe.ts',
+    );
+    const env = { ...process.env, HOME: home };
+    delete env.XDG_CONFIG_HOME;
+
+    const run = Bun.spawnSync({ cmd: [process.execPath, probe], env, timeout: 30_000 });
+    if (run.exitCode !== 0) {
+      throw new Error(`probe failed: ${run.stderr.toString()}${run.stdout.toString()}`);
+    }
+    return JSON.parse(run.stdout.toString()) as Answers;
+  }
+
+  test('resolveTastes reads the user layer out of the home directory', () => {
+    const answers = askedWithCwdAlone(scratch({}), scratch(HOME_FILES));
+
+    expect(answers.tastes).toEqual(['tone']);
+    expect(answers.tastes).toEqual(answers.explicit);
+  });
+
+  test('readSources reads the user config under that same home', () => {
+    expect(askedWithCwdAlone(scratch({}), scratch(HOME_FILES)).sources).toEqual(['agentkit-tastes']);
+  });
+
+  test('configFiles names the project config and the one under the home directory', () => {
+    const cwd = scratch({});
+    const home = scratch(HOME_FILES);
+
+    expect(askedWithCwdAlone(cwd, home).configs).toEqual([
+      join(cwd, '.agentkit', 'config.yaml'),
+      join(home, '.config', 'agentkit', 'config.yaml'),
+    ]);
+  });
+});
+
 describe('a declaration the resolver cannot act on is refused, by name', () => {
   function errorsFor(body: string): string {
     return declare({ '.agentkit/config.yaml': body }).errors.join('\n');
@@ -359,7 +425,7 @@ describe('external sources stack in the order they were declared', () => {
 // exist. The refusal above pins the validator; this pins the outcome, and stays
 // green while either one holds.
 describe('a source cannot make git run a program', () => {
-  test('the payload runs nothing, and lands nothing', () => {
+  test('the payload runs nothing, and lands nothing', async () => {
     const upstream = remote({ 'release-tier.md': taste('release-tier') });
     upstream.tag('v1');
     const sentinel = join(scratch(), 'pwn');
@@ -368,7 +434,7 @@ describe('a source cannot make git run a program', () => {
         + `      ref: "--upload-pack=touch ${sentinel}"\n      name: evil\n`,
     });
 
-    const result = syncSources({ cwd, home: scratch(), env: {}, today: '2026-08-05' });
+    const result = await syncSources({ cwd, home: scratch(), env: {}, today: '2026-08-05' });
 
     expect(result.ok).toBe(false);
     expect(existsSync(sentinel)).toBe(false);
