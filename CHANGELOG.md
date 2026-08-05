@@ -26,8 +26,18 @@ release PR — "publish this" authorizes a release, never the tier.
   uncertainty. Ships on both police lanes — `hooks/claude/taste-police.sh` and
   `plugins/taste-police.ts` — over one shared evaluator, so a taste cannot mean
   different things on different harnesses. `taste.enabled: false` makes it
-  inert. Listing, adding and linting a folder stay conversational in the skill:
-  no CLI. (#302)
+  inert. (#302)
+- feat(taste): managing the folder is **skill-driven, no CLI** — an owner
+  decision, recorded here because the obvious shape was a `taste list|add|lint`
+  command and there deliberately is none. `SKILL.md` carries the three surfaces
+  instead: listing resolves to one row per name (scope, strength, enforce) and
+  names the layers a scope shadowed, since the override is the answer someone is
+  usually after; a dictated taste is a first-class capture path running the same
+  dedupe, routing and merge-request discipline as a correction, asking for the
+  why rather than inventing it and earning no enforcement by being dictated; and
+  every write is linted with the skill's own `scripts/lint.ts` before the diff is
+  shown, because a taste that fails the lint is not written yet. `lint.ts` stays
+  skill-internal plumbing rather than becoming a PATH tool. (#302)
 
 ## v0.7.4 — 2026-08-05
 

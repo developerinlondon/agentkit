@@ -1,6 +1,6 @@
 import { YAML } from 'bun';
 import { describe, expect, test } from 'bun:test';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { ENFORCEMENTS, SCOPES, STRENGTHS } from '../../skills/taste/scripts/lint.ts';
 
@@ -83,6 +83,39 @@ describe('the taste skill and its contract agree', () => {
     // missing under the ten kilobytes that did not.
   ])('the skill still carries the behaviour: %s', (_behaviour, phrase) => {
     expect(skill.includes(phrase), `SKILL.md must still say: ${phrase}`).toBe(true);
+  });
+
+  // The three surfaces a CLI would have carried. The owner's decision is that
+  // the skill performs them conversationally, which makes this prose the whole
+  // implementation — a sentence dropped here is a capability that stops
+  // existing, with no compiler and no hook to notice.
+  test.each([
+    ['no command exists, deliberately', 'skill-driven, and there is no CLI'],
+    ['listing collapses to the winner', 'one row per name'],
+    ['listing carries the scope column', 'the layer the winning file came from'],
+    ['listing carries strength and enforce', '| `strength` |'],
+    ['listing names what a scope shadowed', 'Name the shadowed layers explicitly'],
+    ['an empty folder is said, not tabulated', 'rather than presenting an empty table'],
+    ['dictation is not a lesser path', 'first-class capture path, not a lesser one'],
+    ['dictation runs the same sequence', 'It runs the same Learning'],
+    ['dictation still lands through an MR', 'merge request for a project taste'],
+    ['dictation asks rather than invents', 'Ask for what dictation did not supply'],
+    ['a dictated provenance is never guessed', 'never a guess'],
+    ['dictation earns no enforcement', 'does not earn `block` by being dictated'],
+    ['learning fires on a dictated taste too', 'or when a taste is dictated'],
+    ['every write is linted', 'run `bun <skill-dir>/scripts/lint.ts` on every directory'],
+    ['the lint runs before the diff is shown', '**before you show anyone the diff**'],
+    ['an unlinted taste is not finished', 'is not written yet'],
+    ['the lint rule covers edits as well as captures', 'This holds for every write'],
+  ])('the skill carries the conversational surface: %s', (_surface, phrase) => {
+    expect(skill.includes(phrase), `SKILL.md must say: ${phrase}`).toBe(true);
+  });
+
+  // A PATH tool is the thing the owner rejected, so its absence is asserted on
+  // the tree rather than trusted to review.
+  test('no taste command ships in tools/', () => {
+    const tools = readdirSync(join(repoRoot, 'tools'));
+    expect(tools.filter((name) => name.includes('taste'))).toEqual([]);
   });
 
   test('the routing heuristic keeps an unclear correction out of the public set', () => {

@@ -64,19 +64,44 @@ Do this before your first substantive action in a repository, not after.
 Honor a loaded taste as an instruction from the owner. A `require` taste is not something
 to argue with; a `prefer` taste is a default you may depart from if you say why.
 
-## Answering questions about the folder
+## Working the folder, without a command
 
-There is no `taste` command, deliberately: reading a directory of small markdown files is
-something you already do, and a CLI would be a second way to say what the files say.
+Tastes are skill-driven, and there is no CLI. You are the interface: reading a directory of
+small markdown files is something you already do, and a command would be a second way to say
+what the files already say. Three requests come up, and each is a behaviour here.
 
-- **"What tastes are in force here?"** — resolve as above and answer with a table: name,
-  scope, `strength`, `enforce`, and the path. Say which ones a higher scope is shadowing;
-  that is usually the answer someone is actually looking for.
-- **"Add a taste that …"** — write the file yourself from the dictated preference, following
-  `references/format.md`. Ask for whatever the body needs and the frontmatter cannot guess:
-  the **why**, and how to apply it. Never invent a `provenance` — it is today's date and where
-  the preference came from.
-- **"Is this folder valid?"** — run the lint below and report what it says, unedited.
+### "Show me my tastes"
+
+Resolve as under Loading, then present one row per name — the winner, never every file:
+
+| Column     | What it holds                                                    |
+| ---------- | ---------------------------------------------------------------- |
+| `name`     | the key everything resolves on                                   |
+| `scope`    | the layer the winning file came from: project, external, or user |
+| `strength` | `prefer` or `require`                                            |
+| `enforce`  | `advise`, `check`, or `block`                                    |
+| shadowed   | the layers holding a same-named file that lost, or nothing       |
+
+Name the shadowed layers explicitly. "Your project's `release-tier` is overriding the one in
+your home directory" is usually the answer someone came for, and a table of winners alone
+hides exactly the surprise they are chasing. Give the path of any row on request, and say
+plainly when a folder is empty rather than presenting an empty table.
+
+### "Add a taste: …"
+
+A dictated taste is a first-class capture path, not a lesser one. It runs the same Learning
+sequence below — dedupe first, route to the scope that owns it, write, lint, land through a
+merge request for a project taste — with one difference: the preference is already stated, so
+there is nothing to judge about whether a correction was worth keeping.
+
+Ask for what dictation did not supply rather than inventing it: the **why**, the **how to
+apply**, and where the preference came from. `provenance` is today's date and its origin,
+never a guess. Leave `enforce` at `advise` unless the owner asked for more — the owner sets
+enforcement, and a taste does not earn `block` by being dictated.
+
+### "Is this folder valid?"
+
+Run the lint below and report what it says, unedited.
 
 ## The file format
 
@@ -126,9 +151,11 @@ hook reported `UNCHECKED`.
 Never raise `enforce` yourself. Observed violations are evidence for a proposal the owner
 merges — the diff is how it changes.
 
-## Learning: what to do when corrected
+## Learning: what to do when corrected, or asked
 
-Learning is an event. It fires when a correction arrives, and never in the background.
+Learning is an event. It fires when a correction arrives or when a taste is dictated, and
+never in the background. A dictated taste skips step 1 — the owner already decided it is
+worth keeping — and runs every step after it unchanged.
 
 **1. Is this a correction worth keeping?** It is, when the user says you did the wrong
 thing for a reason that will hold next time. A bug you introduced is not a taste. A
@@ -179,10 +206,16 @@ Until the external layer ships, a correction that routes there cannot be written
 owner. Say where it belongs, show the file you would write, and ask whether to hold it as a
 project taste meanwhile. Do not silently downgrade it into the wrong scope.
 
-**5. Write it.** Name it for the topic, kebab-case and unnumbered. State the preference,
-then **why** it holds — an agent that knows the reason can tell a genuine exception from a
-violation — then **how to apply** it at the moment it matters. Set `strength`; leave
-`enforce` at `advise` unless the owner asked for more. Run the lint.
+**5. Write it, then lint it.** Name it for the topic, kebab-case and unnumbered. State the
+preference, then **why** it holds — an agent that knows the reason can tell a genuine
+exception from a violation — then **how to apply** it at the moment it matters. Set
+`strength`; leave `enforce` at `advise` unless the owner asked for more.
+
+Then run `bun <skill-dir>/scripts/lint.ts` on every directory you touched, and fix what it
+reports **before you show anyone the diff**. A taste that fails the lint is not written yet:
+the folder is a dictionary something else reads, and at `enforce: block` an unlintable rule
+is a refusal that never fires. This holds for every write — a correction, a dictated taste,
+or an edit to one that already existed.
 
 **6. Land it.** A project taste is an ordinary committed file: branch, merge request,
 review — **never a direct commit to the default branch**, and never a file that exists only
