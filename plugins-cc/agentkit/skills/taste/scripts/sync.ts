@@ -57,22 +57,35 @@ interface GitRun {
 
 // protocol.ext.allow is pinned rather than inherited: git's own default refuses
 // the ext helper, but a host whose global config re-enabled it would run a
-// source's URL as a shell command.
-function git(cwd: string, args: string[], timeoutMs: number): GitRun {
-  const started = performance.now();
-  const result = Bun.spawnSync({
+// source's URL as a shell command. Spawned asynchronously so the deadline is a
+// timer on a running event loop: a blocking spawn holds its caller's thread,
+// leaving the bound no way to fail — drop it and an unresponsive host wedges
+// whatever is running this instead of being reported.
+async function git(cwd: string, args: string[], timeoutMs: number): Promise<GitRun> {
+  const child = Bun.spawn({
     cmd: ['git', '-c', 'advice.detachedHead=false', '-c', 'protocol.ext.allow=never', ...args],
     cwd,
     env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
-    timeout: timeoutMs,
-    killSignal: 'SIGKILL',
+    stdout: 'pipe',
+    stderr: 'pipe',
   });
-  return {
-    ok: result.exitCode === 0,
-    out: result.stdout.toString().trim(),
-    err: result.stderr.toString().trim(),
-    timedOut: result.exitCode === null && performance.now() - started >= timeoutMs,
-  };
+
+  let timedOut = false;
+  const deadline = setTimeout(() => {
+    timedOut = true;
+    child.kill('SIGKILL');
+  }, timeoutMs);
+
+  try {
+    const [out, err] = await Promise.all([
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+    ]);
+    await child.exited;
+    return { ok: child.exitCode === 0, out: out.trim(), err: err.trim(), timedOut };
+  } finally {
+    clearTimeout(deadline);
+  }
 }
 
 function firstLine(text: string): string {
@@ -84,11 +97,11 @@ function firstLine(text: string): string {
 // values that come from config — the repo and the ref — sit after
 // --end-of-options, because git reads options after positionals and would
 // otherwise run a ref of `--upload-pack=...` as a program.
-function fetchSource(
+async function fetchSource(
   source: TasteSource,
   into: string,
   timeoutMs: number,
-): { sha?: string; error?: string } {
+): Promise<{ sha?: string; error?: string }> {
   mkdirSync(into, { recursive: true });
   const steps: string[][] = [
     ['init', '--quiet'],
@@ -98,7 +111,7 @@ function fetchSource(
   ];
 
   for (const args of steps) {
-    const step = git(into, args, timeoutMs);
+    const step = await git(into, args, timeoutMs);
     if (step.timedOut) {
       return {
         error: `${source.name}: ${source.repo} was unreachable within ${
@@ -114,7 +127,7 @@ function fetchSource(
     }
   }
 
-  const head = git(into, ['rev-parse', 'FETCH_HEAD'], timeoutMs);
+  const head = await git(into, ['rev-parse', 'FETCH_HEAD'], timeoutMs);
   if (!head.ok) return { error: `${source.name}: could not resolve ${source.ref}` };
   return { sha: head.out };
 }
@@ -138,16 +151,16 @@ function lintSource(source: TasteSource, dir: string): string[] {
   return errors.map((error) => `${source.name}: ${error}`);
 }
 
-function stage(sources: readonly TasteSource[], workspace: string, timeoutMs: number): {
+async function stage(sources: readonly TasteSource[], workspace: string, timeoutMs: number): Promise<{
   staged: Staged[];
   errors: string[];
-} {
+}> {
   const staged: Staged[] = [];
   const errors: string[] = [];
 
   for (const source of sources) {
     const checkout = join(workspace, source.name);
-    const fetched = fetchSource(source, checkout, timeoutMs);
+    const fetched = await fetchSource(source, checkout, timeoutMs);
     if (fetched.sha === undefined) {
       errors.push(fetched.error as string);
       continue;
@@ -225,7 +238,7 @@ function land(cwd: string, staged: readonly Staged[], today: string): SyncResult
 // Every source is fetched and linted before anything is written, so a bad
 // source cannot leave the tree half-updated: the working-tree diff is the
 // review surface, and a partial one would be reviewed as if it were the policy.
-export function syncSources(request: SyncRequest): SyncResult {
+export async function syncSources(request: SyncRequest): Promise<SyncResult> {
   const home = request.home ?? homedir();
   const env = request.env ?? process.env;
   const today = request.today ?? new Date().toISOString().slice(0, 10);
@@ -243,7 +256,7 @@ export function syncSources(request: SyncRequest): SyncResult {
 
   const workspace = mkdtempSync(join(tmpdir(), 'agentkit-taste-sync-'));
   try {
-    const { staged, errors: refused } = stage(
+    const { staged, errors: refused } = await stage(
       sources,
       workspace,
       request.timeoutMs ?? STEP_TIMEOUT_MS,
@@ -256,7 +269,7 @@ export function syncSources(request: SyncRequest): SyncResult {
 }
 
 if (import.meta.main) {
-  const result = syncSources({ cwd: process.argv[2] ?? process.cwd() });
+  const result = await syncSources({ cwd: process.argv[2] ?? process.cwd() });
   for (const line of result.report) console.log(line);
   for (const error of result.errors) console.error(error);
   process.exit(result.ok ? 0 : 1);

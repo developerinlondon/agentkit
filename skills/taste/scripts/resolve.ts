@@ -1,4 +1,5 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { basename, join } from 'node:path';
 import { inspectTaste, scalar, tasteFiles } from './lint.ts';
 import { readSources } from './sources.ts';
@@ -149,7 +150,7 @@ function lose(winner: ResolvedTaste, loser: ResolvedTaste): void {
 // its own enforcement and nobody else's.
 export function resolveTastes(
   cwd: string,
-  home: string,
+  home: string = homedir(),
   env: Record<string, string | undefined> = process.env,
 ): Resolution {
   const winners = new Map<string, ResolvedTaste>();

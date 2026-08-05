@@ -194,6 +194,9 @@ Validate any folder you touched:
 bun <skill-dir>/scripts/lint.ts .agentkit/tastes
 ```
 
+`.agentkit/tastes-vendor/` can be handed over whole: each source under it is linted as its own
+scope, so a name two sources both define stays the stacking it is rather than a collision.
+
 ## What `enforce` means today
 
 `enforce` is the owner's setting, never a rank a taste earns by being violated.

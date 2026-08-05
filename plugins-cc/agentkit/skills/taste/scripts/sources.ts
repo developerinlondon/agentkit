@@ -1,5 +1,6 @@
 import { YAML } from 'bun';
 import { readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { scalar } from './lint.ts';
 
@@ -31,8 +32,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 export function configFiles(
   cwd: string,
-  home: string,
-  env: Record<string, string | undefined>,
+  home: string = homedir(),
+  env: Record<string, string | undefined> = process.env,
 ): string[] {
   const configHome = env.XDG_CONFIG_HOME || join(home, '.config');
   return [
@@ -183,8 +184,8 @@ function parseSources(declared: unknown, origin: string): SourceDeclaration {
 // reviewed declaration means.
 export function readSources(
   cwd: string,
-  home: string,
-  env: Record<string, string | undefined>,
+  home?: string,
+  env?: Record<string, string | undefined>,
 ): SourceDeclaration {
   for (const path of configFiles(cwd, home, env)) {
     const declared = tasteSection(path)?.sources;
