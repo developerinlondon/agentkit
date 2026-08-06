@@ -5,8 +5,3 @@ taste:
       path: tastes/
       name: public
       mode: vendored
-    - repo: git@gitlab.com:bizfoundry/core/agentkit-tastes.git
-      ref: main
-      path: tastes/
-      name: business
-      mode: vendored
