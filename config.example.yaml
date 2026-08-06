@@ -201,17 +201,29 @@ taste:
   learning: true
 
   # External taste sources: git repositories whose files are tastes. Ordered —
-  # a later source wins a name an earlier one also defines. A project's own
-  # .agentkit/config.yaml replaces this list rather than extending it.
+  # a later source wins a name an earlier one also defines.
+  #
+  # Declared here, in the machine's config, a source vendors into
+  # ~/.agentkit/tastes/external/<name>/ with ~/.agentkit/tastes.lock, and every
+  # repository on this machine reads it. Declared in a repository's own
+  # .agentkit/config.yaml it vendors into that repository and travels with the
+  # clone. Both lists apply; neither replaces the other.
   #
   # mode: vendored is the default and the only mode implemented: the taste
-  # skill's sync snapshots the source into .agentkit/tastes/external/<name>/ and
-  # pins it in .agentkit/tastes.lock, both committed, so a fresh clone reads the
-  # policy with no network. mode: reference (a per-machine cache) is deferred
-  # and declaring it is an error.
+  # skill's sync snapshots the source into <store>/tastes/external/<name>/ and
+  # pins it in the store's tastes.lock, so a fresh clone reads the policy with
+  # no network. mode: reference (a per-machine cache) is deferred and declaring
+  # it is an error.
+  #
+  # visibility says whether the source's words may be published. It is required
+  # of a source a repository vendors — the snapshot is committed there — and
+  # vendoring a private source into a public repository is refused. Here it is
+  # optional and defaults to private, because nothing declared at this level is
+  # copied into any repository.
   # sources:
   #   - repo: git@github.com:developerinlondon/agentkit-tastes.git
   #     ref: v2026.08.1
   #     mode: vendored
+  #     visibility: public     # public | private
   #     path: tastes/          # optional subdirectory holding the taste files
   #     name: agentkit-tastes  # optional; defaults to the repository name

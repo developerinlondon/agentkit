@@ -32,25 +32,28 @@ Read `taste.enabled` and `taste.learning` from `.agentkit/config.yaml`, falling 
 
 ## Where tastes live
 
-Precedence is **project > external > user > kit**. The higher scope replaces the lower one
-for the same `name` — two tastes are never merged into a third nobody wrote.
+Precedence is **project > project external > user > user external > kit**. The more specific
+location wins, and inside one location the owner's own tastes beat the ones they pulled in. The
+higher scope replaces the lower one for the same `name` — two tastes are never merged into a
+third nobody wrote.
 
-| Layer    | Path                         | In git                   | Holds                              |
-| -------- | ---------------------------- | ------------------------ | ---------------------------------- |
-| Project  | `.agentkit/tastes/`          | yes, in every clone      | what is true in this repository    |
-| External | `.agentkit/tastes/external/` | yes, a vendored snapshot | a taste repo you subscribe to      |
-| User     | `~/.agentkit/tastes/`        | no, machine-local        | personal ergonomics, every project |
-| Kit      | `rules/`                     | ships with agentkit      | universal engineering discipline   |
+| Layer            | Path                           | In git                   | Holds                                  |
+| ---------------- | ------------------------------ | ------------------------ | -------------------------------------- |
+| Project          | `.agentkit/tastes/`            | yes, in every clone      | what is true in this repository        |
+| Project external | `.agentkit/tastes/external/`   | yes, a vendored snapshot | a source this repository subscribes to |
+| User             | `~/.agentkit/tastes/`          | no, machine-local        | personal ergonomics, every project     |
+| User external    | `~/.agentkit/tastes/external/` | no, machine-local        | a source this machine subscribes to    |
+| Kit              | `rules/`                       | ships with agentkit      | universal engineering discipline       |
 
-**One tree, two origins.** The repository's own tastes sit at the root of `.agentkit/tastes/`
-and a snapshot of each declared source sits beneath it in `external/`. They are the same kind
-of file, read the same way, differing only in where they came from — which is why they are
-one folder rather than two siblings implying two concepts.
+**One tree, two origins.** In either store, the owner's own tastes sit at the root of the
+`tastes/` folder and a snapshot of each declared source sits beneath it in `external/`. They are
+the same kind of file, read the same way, differing only in where they came from — which is why
+they are one folder rather than two siblings implying two concepts.
 
 `external` is therefore reserved at the root of a tastes tree: a taste or a category directory
 of that name is refused by the lint, because that path is read by position and would be read
-as a source. Everything else at the root is the project layer, and nothing under `external/`
-is ever counted as one.
+as a source. Everything else at the root is that store's own layer, and nothing under
+`external/` is ever counted as one.
 
 The external layer holds one directory per declared source, and only a declared one is read:
 a directory under `tastes/external/` that no longer appears in `taste.sources` binds nothing,
@@ -60,12 +63,37 @@ how a source gets there.
 `rules/` is not a taste directory and is never written by this skill. It is the floor a
 taste can override for one project.
 
+## Two places to install a source
+
+A source is a git repository whose files are tastes, and where you declare it
+**decides where its snapshot lands**. That is the whole of the choice:
+
+| Declared in                      | Snapshot lands in                   | Its lock                       | Read by                           |
+| -------------------------------- | ----------------------------------- | ------------------------------ | --------------------------------- |
+| `~/.config/agentkit/config.yaml` | `~/.agentkit/tastes/external/`      | `~/.agentkit/tastes.lock`      | every repository on this machine  |
+| `<repo>/.agentkit/config.yaml`   | `<repo>/.agentkit/tastes/external/` | `<repo>/.agentkit/tastes.lock` | anyone who clones that repository |
+
+**Which do I want?**
+
+- **Machine-level**, when one owner works across many repositories and the policy is theirs
+  rather than any repository's. Declare it once and every repository picks it up — nothing is
+  copied into any of them, so nothing can leak into a public one. A private set belongs here.
+- **Repository-level**, when the policy has to travel with the clone: a team whose members never
+  configured their machines, a CI runner, an agent running in a container that is handed the
+  repository and nothing else. The snapshot is committed, so a fresh checkout with no network
+  is already carrying it.
+
+**Both may be declared, and both apply.** Each vendors into its own store, so they cannot
+collide and neither list replaces the other; the repository's sources simply resolve above the
+machine's. Two stores means two locks — one file describing both would put a machine-local pin
+in a repository's review surface, where nobody reviewing that repository can see what it is.
+
 ## External sources
 
-An external source is a git repository whose files are tastes — an organisation's policy that
-every repository agrees on, kept in one place instead of copy-pasted into each one.
-Subscribing is an ordinary committed config change in `taste.sources`, reviewed like any
-other; nothing arrives because a tool discovered it.
+An external source is an organisation's policy that every repository agrees on, kept in
+one place instead of copy-pasted into each one. Subscribing is an
+ordinary committed config change in `taste.sources`, reviewed like any other; nothing
+arrives because a tool discovered it.
 
 ```yaml
 taste:
@@ -73,20 +101,20 @@ taste:
     - repo: git@github.com:developerinlondon/agentkit-tastes.git
       ref: v2026.08.1
       mode: vendored # the default — the snapshot is committed to this repository
+      visibility: public # required here — this snapshot is committed to this repository
       path: tastes/ # optional — the subdirectory that holds the taste files
       name: agentkit-tastes # optional — defaults to the repository's own name
     - repo: git@github.com:developerinlondon/business-tastes.git
       ref: v2026.08.4 # declared second, so it wins any name the set above also defines
+      visibility: private # so this entry only vendors into a repository known to be private
 ```
 
 - **Order is the precedence rule.** Two sources defining `release-tier` is the feature rather
   than a conflict: a later source wins, and the private central set is declared second
   precisely so it overrides the public generic one. Nothing else decides it — not a filename,
   not a date, not which one was synced most recently.
-- **A project list replaces the user list** instead of extending it. A machine-local file gets
-  no say in what a reviewed, committed declaration means.
-- **`mode: vendored` is the only mode that exists today.** The snapshot is committed to
-  `.agentkit/tastes/external/<name>/`, so a fresh clone with no network — a plane, a CI runner
+- **`mode: vendored` is the only mode that exists today.** The snapshot is committed to the
+  store the source was declared for, so a fresh clone with no network — a plane, a CI runner
   with no credentials for your git host — already has the policy and reads it without
   fetching anything. `mode: reference`, the per-machine cache, is **deferred**: declaring it
   is an error naming the deferral, never a quiet fall back to vendoring something the owner
@@ -105,12 +133,45 @@ taste:
   it in the source's own repository; to deviate in one repository, write a project taste of
   the same `name`, which wins outright and is visible in that repository's own diff.
 
+### The guard on vendoring a private source
+
+Vendoring **commits a source's words** into the repository you run it in. A private set — one
+naming business repositories, hosts, handles or identities — committed into a public repository
+is a leak, and this guard exists because that happened here: the rule against it was prose, and
+prose does not stop a sync.
+
+- **`visibility: public | private` is required of a source a repository vendors.** Missing is a
+  refusal naming the key, never a default. At the machine level it is optional and defaults to
+  `private`, because nothing declared there is copied into any repository.
+- **A private source is refused entry to a public repository**, naming the source, the target
+  and the reason. The target is read from its forge: `gh` for a GitHub remote, `glab` for a
+  GitLab one.
+- **The forge is asked about `origin` by name.** Asked without a repository, both CLIs resolve
+  one from every remote by their own precedence — `gh` prefers `upstream` — so a checkout with a
+  second remote would otherwise be judged by a repository nobody named, and the verdict pinned on
+  the one that was read.
+- **It fails closed.** A target whose visibility cannot be determined — no remote, no forge CLI,
+  a CLI that errors, a host that is neither forge — is refused too. Assuming privacy on no
+  evidence is the assumption that costs a leak; the other one costs a variable.
+- **Internal is not private.** Every account on the instance can read an internal repository, so
+  for this guard it sits on the public side of the line.
+- **The machine level is gated only when it publishes.** Ordinarily nothing there reaches a forge
+  and no check runs at all. When `~/.agentkit/tastes/` sits inside a git work tree —
+  a dotfiles repository is the shape this exists for — it is a target like any other and is judged
+  the same way. Machine sources default to `private`, so this refuses by default and says how to
+  proceed: move the store out of the work tree, or declare the source `visibility: public`.
+- **The override is `AGENTKIT_TASTE_TARGET_PRIVATE=1`** on the sync command. It supplies the one
+  fact the tool could not establish — that this repository is private — and nothing else: a
+  target the forge answered _public_ for stays refused with it set, because that case is the
+  leak rather than the inconvenience. Empty, `0`, `false`, `no` and `off` are refusals here too.
+
 ## Loading
 
 Do this before your first substantive action in a repository, not after.
 
 1. List `.agentkit/tastes/` excluding `external/`, then `.agentkit/tastes/external/*/`, then
-   `~/.agentkit/tastes/`, recursing into category subdirectories.
+   `~/.agentkit/tastes/` excluding `external/`, then `~/.agentkit/tastes/external/*/`, recursing
+   into category subdirectories.
 2. Read the frontmatter of each file. Resolve by `name`: keep the copy from the highest
    scope, discard the rest. Two entries with one name is a replacement, not a conflict.
 3. **A taste that loads, loads whole.** Never a summary, never a first sentence standing in
@@ -162,14 +223,14 @@ what the files already say. Four requests come up, and each is a behaviour here.
 
 Resolve as under Loading, then present one row per name — the winner, never every file:
 
-| Column     | What it holds                                                    |
-| ---------- | ---------------------------------------------------------------- |
-| `name`     | the key everything resolves on                                   |
-| `scope`    | the layer the winning file came from: project, external, or user |
-| `source`   | for an external row, which declared source it was vendored from  |
-| `strength` | `prefer` or `require`                                            |
-| `enforce`  | `advise`, `check`, or `block`                                    |
-| shadowed   | the layers and sources holding a same-named file that lost       |
+| Column     | What it holds                                                   |
+| ---------- | --------------------------------------------------------------- |
+| `name`     | the key everything resolves on                                  |
+| `scope`    | the layer the winning file came from, all four named apart      |
+| `source`   | for an external row, which declared source it was vendored from |
+| `strength` | `prefer` or `require`                                           |
+| `enforce`  | `advise`, `check`, or `block`                                   |
+| shadowed   | the layers and sources holding a same-named file that lost      |
 
 Name the shadowed layers explicitly. "Your project's `release-tier` is overriding the one in
 your home directory" is usually the answer someone came for, and a table of winners alone
@@ -203,11 +264,16 @@ bun <skill-dir>/scripts/sync.ts
 
 It fetches each declared source at its `ref`, **lints it before anything is copied** — a
 source whose tastes the lint refuses is reported by name, with the offending files, and
-nothing enters the tree — snapshots the taste files into `.agentkit/tastes/external/<name>/`,
-and rewrites `.agentkit/tastes.lock`. Only those two paths are ever written, and a source
+nothing enters the tree — snapshots the taste files into that store's `tastes/external/<name>/`,
+and rewrites that store's `tastes.lock`. Only those two paths are ever written, and a source
 that is no longer declared has its vendored copy removed. Files that are not tastes stay
 upstream: nothing executable ever crosses into your repository with the words. Re-running it
 when no pin moved produces no diff at all.
+
+**Run inside a repository it refreshes both scopes that apply**, reporting each separately —
+the repository's sources into the repository, the machine's into your home directory. Run
+anywhere else, only the machine scope has anything to do. A scope that declares no sources is
+said to be empty rather than silently skipped, and nothing of it is written or swept.
 
 Then land it the ordinary way — branch, merge request, review — and say what it is while you
 do: **a lock bump is a merge request whose diff is the exact text your agents will start

@@ -20,3 +20,10 @@ export function externalRoot(cwd: string): string {
 export function legacyExternalRoot(cwd: string): string {
   return join(cwd, '.agentkit', LEGACY_EXTERNAL_ROOT);
 }
+
+// One lock per store, beside the tree it pins. A single file describing both
+// would put a machine-local pin in a repository's review surface, where nobody
+// reviewing that repository can see what it points at.
+export function lockPath(root: string): string {
+  return join(root, '.agentkit', 'tastes.lock');
+}

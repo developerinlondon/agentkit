@@ -9,6 +9,43 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+- feat(taste)!: **a taste source installs at the machine level or at the repository level**, and
+  both apply. Declared in `~/.config/agentkit/config.yaml` a source vendors into
+  `~/.agentkit/tastes/external/` with `~/.agentkit/tastes.lock`, and every repository on the
+  machine reads it — declare it once, nothing copied into any checkout. Declared in a
+  repository's `.agentkit/config.yaml` it keeps vendoring into that repository, which is what a
+  team, a CI runner or an agent handed only a container needs. Precedence is now **project >
+  project external > user > user external > kit**: the more specific location wins, and inside
+  one location the owner's own tastes beat the ones they pulled in. The two lists no longer
+  shadow each other, and a resolution names which of the four layers a winner came from.
+- feat(taste): **a sync run inside a repository refreshes both scopes**, reporting each
+  separately and writing each store's own lock. Run anywhere else, only the machine scope has
+  anything to do. A scope declaring no sources is said to be empty rather than swept.
+- feat(taste): **vendoring a private source into a public repository is refused.** A source
+  carries `visibility: public | private`, required of any source a repository vendors because
+  that snapshot is committed there; the target's visibility is read from its forge with `gh` or
+  `glab`. It fails closed — a target that cannot be shown to be private is refused too, and an
+  internal repository counts as public. `AGENTKIT_TASTE_TARGET_PRIVATE=1` asserts only the fact
+  the tool could not establish: a target the forge answered _public_ for stays refused with it
+  set. The machine level is gated only where it publishes — see the work-tree fix below.
+  The guard exists because the leak happened here: this public repository carried a vendored
+  copy of the owner's private business taste set, seven of whose files named business
+  identifiers. The rule against it was a `check` taste — prose, which nothing mechanical
+  enforced.
+- fix(taste): **the forge is asked about `origin` by name.** The first cut read the URL from
+  `origin` but then ran `gh repo view` with no repository, and both CLIs resolve one from _all_
+  remotes by their own precedence — `gh` puts `upstream` first. On a checkout with a second
+  remote the guard therefore judged a repository nobody named and printed the verdict against the
+  one it had read: a fork whose `upstream` is private would vendor a private source straight into
+  the public `origin`, reporting that `origin` was private. A remote URL beginning with `-` is
+  refused before a CLI sees it, the same care `taste.sources` already takes with `repo` and `ref`.
+- fix(taste): **the machine store is judged too when it sits inside a git work tree.** "Nothing is
+  published at the machine level" was asserted rather than checked, and a home directory that is
+  a dotfiles repository publishes exactly as a repository does. Outside a work tree nothing is
+  probed and nothing changes.
+- fix(taste): an override value of `' "0" '` read as _granted_ — `readOverride` unquoted before
+  trimming, so padding outside the quotes survived. It now trims, unquotes, and trims again.
+
 ## v0.7.9 — 2026-08-06
 
 - refactor(taste)!: **external sources live under `.agentkit/tastes/external/`**, not a sibling

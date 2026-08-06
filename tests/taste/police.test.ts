@@ -248,7 +248,7 @@ describe('scope resolution decides which file enforces', () => {
 
     expect((await judge(TAG_MINOR, where)).decision).toBe('allow');
     const resolved = resolveTastes(where.cwd, where.home, {}).tastes[0];
-    expect(resolved?.layer).toBe('external');
+    expect(resolved?.layer).toBe('project-external');
   });
 
   test('an absent external directory costs nothing', async () => {
@@ -397,7 +397,7 @@ describe('a malformed taste is loud, and never contagious', () => {
     // copy so the failure is real rather than mocked.
     test('a matcher that cannot start skips the taste instead of crashing', async () => {
       const scriptDir = sandbox({});
-      for (const name of ['police.ts', 'resolve.ts', 'lint.ts', 'sources.ts', 'layout.ts']) {
+      for (const name of ['police.ts', 'resolve.ts', 'lint.ts', 'sources.ts', 'layout.ts', 'override.ts']) {
         writeFileSync(
           join(scriptDir, name),
           readFileSync(join(repoRoot, 'skills', 'taste', 'scripts', name), 'utf-8'),

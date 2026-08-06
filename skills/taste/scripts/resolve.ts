@@ -3,9 +3,12 @@ import { homedir } from 'node:os';
 import { basename, join } from 'node:path';
 import { EXTERNAL_DIR, externalRoot, legacyExternalRoot, tastesRoot } from './layout.ts';
 import { inspectTaste, scalar, tasteFiles } from './lint.ts';
-import { readSources } from './sources.ts';
+import { readSources, type SourceScope, type TasteSource } from './sources.ts';
 
-export type Layer = 'project' | 'external' | 'user';
+// Two locations, and within each the owner's own files above the ones they
+// pulled in. Naming all four is what lets a listing say which store a winner
+// came from — "external shadowed external" answers nothing.
+export type Layer = 'project' | 'project-external' | 'user' | 'user-external';
 
 export interface TasteRule {
   kind: string;
@@ -50,36 +53,61 @@ function undeclared(root: string, declared: readonly string[]): string[] {
   return warnings;
 }
 
+interface Store {
+  scope: SourceScope;
+  root: string;
+  own: Layer;
+  external: Layer;
+  // The pre-`external/` location only ever existed inside a repository, so only
+  // the repository store reads it for its release of grace.
+  legacy: boolean;
+  advice: string;
+}
+
+const STORES: readonly Omit<Store, 'root'>[] = [
+  {
+    scope: 'project',
+    own: 'project',
+    external: 'project-external',
+    legacy: true,
+    advice: 'run the taste skill\'s sync and commit the snapshot',
+  },
+  {
+    scope: 'user',
+    own: 'user',
+    external: 'user-external',
+    legacy: false,
+    advice: 'run the taste skill\'s sync',
+  },
+];
+
 function external(
-  cwd: string,
-  home: string,
-  env: Record<string, string | undefined>,
+  store: Store,
+  sources: readonly TasteSource[],
 ): { dirs: Directory[]; warnings: string[] } {
-  const root = externalRoot(cwd);
-  const legacy = legacyExternalRoot(cwd);
-  const { sources, errors } = readSources(cwd, home, env);
-  const warnings = [...errors];
+  const root = externalRoot(store.root);
+  const legacy = store.legacy ? legacyExternalRoot(store.root) : undefined;
+  const warnings: string[] = [];
   const dirs: Directory[] = [];
   let moved = false;
 
   for (const source of sources) {
     const dir = join(root, source.name);
-    const before = join(legacy, source.name);
-    if (isDirectory(dir)) dirs.push({ layer: 'external', dir, source: source.name });
-    else if (isDirectory(before)) {
+    const before = legacy === undefined ? undefined : join(legacy, source.name);
+    if (isDirectory(dir)) dirs.push({ layer: store.external, dir, source: source.name });
+    else if (before !== undefined && isDirectory(before)) {
       moved = true;
-      dirs.push({ layer: 'external', dir: before, source: source.name });
+      dirs.push({ layer: store.external, dir: before, source: source.name });
     } else {
       warnings.push(
-        `${dir}: source ${source.name} is declared but not vendored — run the taste skill's sync `
-        + 'and commit the snapshot',
+        `${dir}: source ${source.name} is declared but not vendored — ${store.advice}`,
       );
     }
   }
 
   // One line, once: the old location still binds for a release, and saying so
   // per source would bury the one instruction that ends it.
-  if (moved) {
+  if (moved && legacy !== undefined) {
     warnings.push(
       `${legacy}: read from the old external location — run the taste skill's sync to move it to `
       + `${root}`,
@@ -87,31 +115,38 @@ function external(
   }
 
   const declared = sources.map((source) => source.name);
-  warnings.push(...undeclared(root, declared), ...undeclared(legacy, declared));
+  warnings.push(...undeclared(root, declared));
+  if (legacy !== undefined) warnings.push(...undeclared(legacy, declared));
 
   return { dirs, warnings };
 }
 
-// Project first, then each declared source in the order it was declared, then
-// the user layer. Position in taste.sources is the whole precedence rule inside
-// the external layer: a later source is subscribed to precisely to win.
+// The more specific location wins, and inside one location the owner's own
+// files beat the ones they pulled in. Position in taste.sources is the whole
+// precedence rule among sources: a later one is subscribed to precisely to win.
 //
-// The project layer stops at `external/`: the same files read as both would
-// give a source the precedence the repository's own tastes hold over it.
+// An own layer stops at `external/`: the same files read as both would give a
+// source the precedence the owner's own tastes hold over it.
 function tasteDirectories(
   cwd: string,
   home: string,
   env: Record<string, string | undefined>,
 ): { dirs: Directory[]; warnings: string[] } {
-  const sources = external(cwd, home, env);
-  return {
-    dirs: [
-      { layer: 'project', dir: tastesRoot(cwd), skipTop: EXTERNAL_DIR },
-      ...sources.dirs,
-      { layer: 'user', dir: tastesRoot(home), skipTop: EXTERNAL_DIR },
-    ],
-    warnings: sources.warnings,
-  };
+  const { sources, errors } = readSources(cwd, home, env);
+  const dirs: Directory[] = [];
+  const warnings = [...errors];
+
+  for (const shape of STORES) {
+    const store: Store = { ...shape, root: shape.scope === 'project' ? cwd : home };
+    const pulled = external(store, sources.filter((source) => source.scope === store.scope));
+    dirs.push(
+      { layer: store.own, dir: tastesRoot(store.root), skipTop: EXTERNAL_DIR },
+      ...pulled.dirs,
+    );
+    warnings.push(...pulled.warnings);
+  }
+
+  return { dirs, warnings };
 }
 
 function isDirectory(path: string): boolean {
@@ -208,7 +243,7 @@ export function resolveTastes(
         warnings.push(
           `${taste.path}: duplicate name ${JSON.stringify(taste.name)} — ${held.path} enforces`,
         );
-      } else if (held.layer === 'external' && taste.layer === 'external') {
+      } else if (held.layer === taste.layer) {
         lose(taste, held);
         winners.set(taste.name, taste);
       } else {

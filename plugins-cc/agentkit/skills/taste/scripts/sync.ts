@@ -15,10 +15,13 @@ import {
   externalRoot,
   LEGACY_EXTERNAL_ROOT,
   legacyExternalRoot,
+  lockPath,
 } from './layout.ts';
 import { lintTasteDirectory, tasteFiles } from './lint.ts';
 import { formatLock, type LockEntry, parseLock, pinnedOn } from './lock.ts';
-import { readSources, type TasteSource } from './sources.ts';
+import { type Run, runBounded } from './run.ts';
+import { readSources, type SourceScope, type TasteSource } from './sources.ts';
+import { guardTargets, type Target } from './vendor-guard.ts';
 
 // Per git step. GIT_TERMINAL_PROMPT=0 answers a credential prompt but not a
 // name resolution or a TCP connect that never returns, and a session must not
@@ -31,6 +34,7 @@ export interface SyncRequest {
   env?: Record<string, string | undefined>;
   today?: string;
   timeoutMs?: number;
+  probe?: (cwd: string, env: Record<string, string | undefined>) => Promise<Target>;
 }
 
 export interface SyncResult {
@@ -46,48 +50,24 @@ interface Staged {
   dir: string;
 }
 
-function lockPath(cwd: string): string {
-  return join(cwd, '.agentkit', 'tastes.lock');
-}
-
-interface GitRun {
-  ok: boolean;
-  out: string;
-  err: string;
-  timedOut: boolean;
+interface Store {
+  scope: SourceScope;
+  label: string;
+  root: string;
+  legacy: boolean;
+  sources: TasteSource[];
 }
 
 // protocol.ext.allow is pinned rather than inherited: git's own default refuses
 // the ext helper, but a host whose global config re-enabled it would run a
-// source's URL as a shell command. Spawned asynchronously so the deadline is a
-// timer on a running event loop: a blocking spawn holds its caller's thread,
-// leaving the bound no way to fail — drop it and an unresponsive host wedges
-// whatever is running this instead of being reported.
-async function git(cwd: string, args: string[], timeoutMs: number): Promise<GitRun> {
-  const child = Bun.spawn({
-    cmd: ['git', '-c', 'advice.detachedHead=false', '-c', 'protocol.ext.allow=never', ...args],
+// source's URL as a shell command.
+async function git(cwd: string, args: string[], timeoutMs: number): Promise<Run> {
+  return await runBounded(
+    ['git', '-c', 'advice.detachedHead=false', '-c', 'protocol.ext.allow=never', ...args],
     cwd,
-    env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
-    stdout: 'pipe',
-    stderr: 'pipe',
-  });
-
-  let timedOut = false;
-  const deadline = setTimeout(() => {
-    timedOut = true;
-    child.kill('SIGKILL');
-  }, timeoutMs);
-
-  try {
-    const [out, err] = await Promise.all([
-      new Response(child.stdout).text(),
-      new Response(child.stderr).text(),
-    ]);
-    await child.exited;
-    return { ok: child.exitCode === 0, out: out.trim(), err: err.trim(), timedOut };
-  } finally {
-    clearTimeout(deadline);
-  }
+    { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+    timeoutMs,
+  );
 }
 
 function firstLine(text: string): string {
@@ -198,8 +178,8 @@ function snapshot(from: string, to: string): number {
 
 // Only `external/` is swept. The taste files beside it are the owner's own, and
 // a prune that reached one would delete a taste no source ever vendored.
-function prune(cwd: string, declared: readonly string[]): string[] {
-  const root = externalRoot(cwd);
+function prune(store: Store, declared: readonly string[]): string[] {
+  const root = externalRoot(store.root);
   if (!statSync(root, { throwIfNoEntry: false })?.isDirectory()) return [];
 
   const removed: string[] = [];
@@ -225,37 +205,58 @@ function relocate(cwd: string): string[] {
   ];
 }
 
-function heldLock(cwd: string): LockEntry[] {
+function heldLock(root: string): LockEntry[] {
   try {
-    return parseLock(readFileSync(lockPath(cwd), 'utf-8'));
+    return parseLock(readFileSync(lockPath(root), 'utf-8'));
   } catch {
     return [];
   }
 }
 
-function land(cwd: string, staged: readonly Staged[], today: string): SyncResult {
-  const held = heldLock(cwd);
+function land(store: Store, staged: readonly Staged[], today: string): {
+  report: string[];
+  entries: LockEntry[];
+} {
+  if (store.sources.length === 0) {
+    return { report: ['no sources declared in taste.sources — nothing to sync'], entries: [] };
+  }
+
+  const held = heldLock(store.root);
   const report: string[] = [];
   const entries: LockEntry[] = [];
 
   for (const { source, sha, dir } of staged) {
-    const count = snapshot(dir, join(externalRoot(cwd), source.name));
+    const count = snapshot(dir, join(externalRoot(store.root), source.name));
     const pin = { name: source.name, repo: source.repo, ref: source.ref, sha };
     entries.push({ ...pin, pinned: pinnedOn(pin, held, today) });
     report.push(`${source.name} ${source.ref} ${sha.slice(0, 12)} — ${count} taste${count === 1 ? '' : 's'}`);
   }
 
-  report.push(...relocate(cwd), ...prune(cwd, staged.map(({ source }) => source.name)));
-  const lock = formatLock(entries);
-  mkdirSync(dirname(lockPath(cwd)), { recursive: true });
-  writeFileSync(lockPath(cwd), lock);
+  if (store.legacy) report.push(...relocate(store.root));
+  report.push(...prune(store, staged.map(({ source }) => source.name)));
+  mkdirSync(dirname(lockPath(store.root)), { recursive: true });
+  writeFileSync(lockPath(store.root), formatLock(entries, store.label));
 
-  return { ok: true, errors: [], report, entries };
+  return { report, entries };
 }
 
-// Every source is fetched and linted before anything is written, so a bad
-// source cannot leave the tree half-updated: the working-tree diff is the
-// review surface, and a partial one would be reviewed as if it were the policy.
+// The repository's store and the machine's, in the order they resolve. A source
+// declared in both places is two subscriptions to one upstream, kept in two
+// trees, which is why neither list has to replace the other.
+function stores(cwd: string, home: string, sources: readonly TasteSource[]): Store[] {
+  return [
+    { scope: 'project', label: 'repository', root: cwd, legacy: true, sources: [] },
+    { scope: 'user', label: 'machine', root: home, legacy: false, sources: [] },
+  ].map((store) => ({
+    ...store,
+    scope: store.scope as SourceScope,
+    sources: sources.filter((source) => source.scope === store.scope),
+  }));
+}
+
+// Every source at every scope is fetched and linted before anything is written,
+// so a bad source cannot leave a tree half-updated: the working-tree diff is
+// the review surface, and a partial one would be reviewed as if it were policy.
 export async function syncSources(request: SyncRequest): Promise<SyncResult> {
   const home = request.home ?? homedir();
   const env = request.env ?? process.env;
@@ -263,24 +264,39 @@ export async function syncSources(request: SyncRequest): Promise<SyncResult> {
   const { sources, errors } = readSources(request.cwd, home, env);
 
   if (errors.length > 0) return { ok: false, errors, report: [], entries: [] };
-  if (sources.length === 0) {
-    return {
-      ok: true,
-      errors: [],
-      report: ['no sources declared in taste.sources — nothing to sync'],
-      entries: [],
-    };
+  const scoped = stores(request.cwd, home, sources);
+
+  const guard = await guardTargets({
+    cwd: request.cwd,
+    home,
+    env,
+    project: sources.filter((source) => source.scope === 'project'),
+    machine: sources.filter((source) => source.scope === 'user'),
+    probe: request.probe,
+  });
+  if (guard.errors.length > 0) {
+    return { ok: false, errors: guard.errors, report: [], entries: [] };
   }
 
   const workspace = mkdtempSync(join(tmpdir(), 'agentkit-taste-sync-'));
   try {
-    const { staged, errors: refused } = await stage(
-      sources,
-      workspace,
-      request.timeoutMs ?? STEP_TIMEOUT_MS,
-    );
+    const staged = new Map<SourceScope, Staged[]>();
+    const refused: string[] = [];
+    for (const store of scoped) {
+      const run = await stage(store.sources, workspace, request.timeoutMs ?? STEP_TIMEOUT_MS);
+      staged.set(store.scope, run.staged);
+      refused.push(...run.errors);
+    }
     if (refused.length > 0) return { ok: false, errors: refused, report: [], entries: [] };
-    return land(request.cwd, staged, today);
+
+    const report = [...guard.report];
+    const entries: LockEntry[] = [];
+    for (const store of scoped) {
+      const landed = land(store, staged.get(store.scope) ?? [], today);
+      report.push(...landed.report.map((line) => `${store.label}: ${line}`));
+      entries.push(...landed.entries);
+    }
+    return { ok: true, errors: [], report, entries };
   } finally {
     rmSync(workspace, { recursive: true, force: true });
   }
