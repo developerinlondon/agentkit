@@ -3,9 +3,10 @@ taste:
     - repo: git@github.com:developerinlondon/agentkit-tastes.git
       ref: main
       path: tastes/
+      name: public
       mode: vendored
     - repo: git@gitlab.com:bizfoundry/core/agentkit-tastes.git
       ref: main
       path: tastes/
-      name: agentkit-tastes-central
+      name: business
       mode: vendored
