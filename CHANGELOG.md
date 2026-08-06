@@ -9,9 +9,20 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+- fix(taste): **a sync stages each scope separately, so both may declare a source of the same
+  name.** Staging was keyed on the source name alone, so a machine source and a repository
+  source sharing a name were fetched into one checkout and the second died on
+  `remote origin already exists` — taking the whole run with it, both scopes left unvendored.
+  The owner hit it running the shipped release: a machine-level `public` and this repository's
+  own `public` are two subscriptions to one upstream, which the scopes are built to allow.
+- test(taste): the GitLab arm of the visibility prober is covered in the positive direction —
+  a private `origin` beside a public `upstream` must read _private_. The public-side case
+  passes just as well when the arm asks about the wrong repository, so only this one shows the
+  URL reaching `glab` is the one being written into. The GitHub arm already had its counterpart.
+
 ## v0.7.10 — 2026-08-06
 
-- feat(taste)!: **a taste source installs at the machine level or at the repository level**, and
+- feat(taste): **a taste source installs at the machine level or at the repository level**, and
   both apply. Declared in `~/.config/agentkit/config.yaml` a source vendors into
   `~/.agentkit/tastes/external/` with `~/.agentkit/tastes.lock`, and every repository on the
   machine reads it — declare it once, nothing copied into any checkout. Declared in a
@@ -26,7 +37,9 @@ release PR — "publish this" authorizes a release, never the tier.
 - feat(taste): **vendoring a private source into a public repository is refused.** A source
   carries `visibility: public | private`, required of any source a repository vendors because
   that snapshot is committed there; the target's visibility is read from its forge with `gh` or
-  `glab`. It fails closed — a target that cannot be shown to be private is refused too, and an
+  `glab`. Upgrading: an existing repository-level source must add `visibility:` to its entry in
+  `.agentkit/config.yaml`, and a sync names the source and refuses until it does. A
+  machine-level source needs no such key, since nothing of it is committed anywhere. It fails closed — a target that cannot be shown to be private is refused too, and an
   internal repository counts as public. `AGENTKIT_TASTE_TARGET_PRIVATE=1` asserts only the fact
   the tool could not establish: a target the forge answered _public_ for stays refused with it
   set. The machine level is gated only where it publishes — see the work-tree fix below.

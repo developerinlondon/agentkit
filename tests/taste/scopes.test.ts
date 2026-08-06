@@ -335,6 +335,35 @@ describe('sync refreshes each scope into its own store', () => {
     });
   });
 
+  // Staging keyed on the source name alone gave both scopes one checkout, so
+  // the second store's fetch ran against the first store's git directory and
+  // the whole sync died. A name is only unique within the scope that declared
+  // it, which is the same reason the two stores hold separate locks.
+  test('two scopes may name a source alike, and each lands its own upstream', async () => {
+    const of = (body: string) => taste('release-tier', {}, body);
+    const at = both(
+      [source(upstream({ 'release-tier.md': of('the repository\'s own upstream') }).url, {
+        ref: 'v1',
+        name: 'shared',
+        visibility: 'public',
+      })],
+      [source(upstream({ 'release-tier.md': of('the machine\'s own upstream') }).url, {
+        ref: 'v1',
+        name: 'shared',
+      })],
+    );
+
+    const result = await at.run();
+
+    expect(result.errors).toEqual([]);
+    expect(treeOf(vendored(at.cwd, 'shared'))).toEqual({
+      'release-tier.md': of('the repository\'s own upstream'),
+    });
+    expect(treeOf(vendored(at.home, 'shared'))).toEqual({
+      'release-tier.md': of('the machine\'s own upstream'),
+    });
+  });
+
   test('a source the lint refuses at one scope leaves the other store untouched', async () => {
     const broken = upstream({
       'commit-style.md': taste('commit-style').replace('name: commit-style', 'name: Commit_Style'),
