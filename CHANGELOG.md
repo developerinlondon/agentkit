@@ -9,6 +9,8 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+## v0.7.11 — 2026-08-06
+
 - fix(taste): **a sync stages each scope separately, so both may declare a source of the same
   name.** Staging was keyed on the source name alone, so a machine source and a repository
   source sharing a name were fetched into one checkout and the second died on
