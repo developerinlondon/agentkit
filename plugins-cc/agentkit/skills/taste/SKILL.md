@@ -339,9 +339,10 @@ A preference that no kind can express stays at `enforce: check`. **A new kind is
 agentkit**, proposed and reviewed like one — never bespoke code smuggled into a taste folder.
 `references/format.md` carries each kind's fields, the three tag policies, and worked examples.
 
-**A kind this agentkit does not implement is skipped, loudly.** The lint refuses the file, and
-the hook names it, warns, and keeps enforcing every other taste — a taste written against a
-newer agentkit must not brick an older hook.
+**A kind this agentkit does not implement is skipped, loudly.** The lint refuses such a file, and
+the hook runs that same lint as it loads the folder — so the taste is dropped there, named in a
+warning that lists the kinds this agentkit does have, while every other taste keeps enforcing. A
+taste written against a newer agentkit must not brick an older hook.
 
 ### What it does at the edges, so you can answer for it
 

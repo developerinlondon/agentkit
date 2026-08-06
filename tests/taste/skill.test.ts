@@ -49,9 +49,12 @@ const FAILURE_DIRECTION: [string, string][] = [
   ['the asymmetry is deliberate, not an oversight', 'Do not "fix" this into symmetry'],
 ];
 
-// The symmetric design, asserted absent. Making the tag check refuse what it
-// cannot read is the plausible "consistency" fix, and it would refuse every tag
-// command on any repository git will not answer for.
+// The symmetric design, asserted absent — making the tag check refuse what it
+// cannot read is the plausible "consistency" fix.
+//
+// An intent marker, not a guard: it keys on two literal phrasings, so the same
+// reversal in other words passes it. The direction is enforced by the UNCHECKED
+// and silent-pass branches in tag-sequence.test.ts, not here.
 const REVERSED_SYMMETRY = [
   'fails closed like the vendoring guard',
   'refuses when the tags cannot be read',

@@ -60,9 +60,11 @@ describe('the registry is what a kind name resolves to', () => {
 });
 
 describe('a kind this agentkit does not implement', () => {
-  // The version-skew case: a taste vendored from a source whose agentkit is
-  // newer. The hook must survive it, and must say that it did not enforce it.
-  test('is skipped by the hook, loudly, rather than crashing it', async () => {
+  // The dispatch's own answer, asserted at its own level. The resolver drops
+  // such a taste before it reaches here — that path is covered end to end in
+  // police.test.ts — so what this pins is that the dispatch cannot throw if it
+  // ever does arrive.
+  test('is skipped by the dispatch rather than thrown out of it', async () => {
     const outcome = await evaluateRule('git-worktree-shape', { policy: 'whatever' }, request());
     const detail = outcome.verdict === 'skipped' ? outcome.detail : '';
 

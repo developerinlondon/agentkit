@@ -67,10 +67,10 @@ export function ruleKeys(kind: RuleKind): string[] {
   return ['kind', ...kind.required, ...kind.optional, 'remedy', 'override'];
 }
 
-// A taste written against a newer agentkit names a kind this one has never
-// heard of. It is skipped and said out loud — never a throw, because one taste
-// from the future must not take the whole hook down with it, and never silence,
-// because an enforcement that stopped happening has to be visible.
+// Depth, not the path. A taste naming a kind this agentkit lacks is already
+// dropped by resolve.ts, whose load-time lint refuses the kind and names it in a
+// warning — that is what delivers the guarantee. This branch exists because the
+// lookup can return nothing, and the answer to that must never be a throw.
 export async function evaluateRule(
   name: string,
   fields: Record<string, string>,

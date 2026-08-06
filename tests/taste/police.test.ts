@@ -8,6 +8,7 @@ import {
   MAX_SUBJECT_LENGTH,
 } from '../../skills/taste/scripts/police.ts';
 import { resolveTastes } from '../../skills/taste/scripts/resolve.ts';
+import { RULE_KINDS } from '../../skills/taste/scripts/rules/kinds.ts';
 
 const repoRoot = join(import.meta.dir, '..', '..');
 const sandboxes: string[] = [];
@@ -149,11 +150,38 @@ describe('taste-police refuses what a block rule matches', () => {
       }),
     });
 
-    // The lint refuses the kind, so the file is malformed rather than silently
-    // inert — and either way nothing is refused on its behalf.
+    // Where the version-skew guarantee is actually delivered: the lint runs
+    // again as the hook loads the folder, so the taste is dropped there. The
+    // notice has to carry enough to act on — which file, and which kinds this
+    // agentkit does implement.
     const verdict = await judge(TAG_MINOR, where);
+    const notices = verdict.notices.join('\n');
+
     expect(verdict.decision).toBe('allow');
-    expect(verdict.notices.join('\n')).toContain('release-tier.md');
+    expect(notices).toContain('release-tier.md');
+    expect(notices).toContain('rule.kind');
+    for (const kind of RULE_KINDS) expect(notices).toContain(kind);
+  });
+
+  // And the taste beside it keeps enforcing: one file from a newer agentkit
+  // must cost its own enforcement and nobody else's.
+  test('a taste of an unknown kind does not disarm the tastes around it', async () => {
+    const where = project({
+      '.agentkit/tastes/from-the-future.md': taste({
+        name: 'from-the-future',
+        scope: 'project',
+        strength: 'require',
+        enforce: 'block',
+        provenance: '2026-08-06 · a newer agentkit',
+      }, { kind: 'git-worktree-shape', policy: 'whatever', remedy: 'Do it another way.' }),
+      '.agentkit/tastes/release-tier.md': releaseTier(),
+    });
+
+    const verdict = await judge(TAG_MINOR, where);
+
+    expect(verdict.decision).toBe('deny');
+    expect(verdict.reason).toContain('release-tier');
+    expect(verdict.reason).toContain('from-the-future');
   });
 });
 

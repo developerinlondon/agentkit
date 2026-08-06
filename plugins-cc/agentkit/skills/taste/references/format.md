@@ -54,10 +54,11 @@ anything.
 A key belongs to one kind: `policy` inside a `command` rule is an unknown key, and the lint says
 so naming what that kind does carry.
 
-**An unknown kind is refused by the lint**, naming the kinds that exist. The hook treats it
-differently on purpose: it **skips that taste with a warning and keeps enforcing every other
-one**, because a taste vendored from a source running a newer agentkit must not brick an older
-hook. Upgrade agentkit, or keep the taste at `enforce: check` until you have.
+**An unknown kind is refused by the lint**, naming the kinds that exist — and the hook runs that
+same lint as it loads the folder, so at enforcement time the file is **skipped with a warning
+while every other taste keeps enforcing**, rather than taking the hook down with it. That is what
+lets a taste vendored from a source running a newer agentkit be safe to load at all. Upgrade
+agentkit, or keep the taste at `enforce: check` until you have.
 
 A preference no registered kind can express stays at `enforce: check` rather than growing
 bespoke code in someone's taste folder. A new kind is a change to agentkit, reviewed like one.
