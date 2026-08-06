@@ -9,6 +9,8 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+## v0.7.12 — 2026-08-06
+
 - feat(taste): **a rule declares a kind agentkit implements, and parameterises it** (#328). The
   rule vocabulary was one regular expression over the command string, which cannot answer a
   question about state. It is now a registry of named predicates: each kind declares the fields
