@@ -9,31 +9,21 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
-- refactor(taste)!: external sources move from `.agentkit/tastes-vendor/` to
-  `.agentkit/tastes/external/`. `vendor` was borrowed jargon, and two sibling directories said
-  there were two kinds of thing where there is one tree with two origins: the repository's own
-  tastes at the root, a snapshot of each declared source beneath it. Precedence is unchanged
-  (project > external > user > kit), and the project layer now stops at `external/` — a
-  snapshot counted as a project taste would hand a source the precedence the repository holds
-  over it. `external` becomes a reserved name at a tastes root: a taste or a category directory
-  called that is refused, with the reason. Linting `.agentkit/tastes/` in one invocation is now
-  correct — the owner's own files are one dedupe scope and each source under `external/` is its
-  own, so a name two sources both define stays the stacking `taste.sources` exists for.
-- refactor(taste): **migration, with one release of grace.** A sync finding
-  `.agentkit/tastes-vendor/` moves it under the tastes tree and says so in its report; resolve
-  and the lint read the old path meanwhile, resolve emitting a single line naming the new one.
-  The new location wins outright where both exist. Nothing outside `external/` and
-  `.agentkit/tastes.lock` is ever written, so a hand-written project taste survives a sync that
-  prunes an undeclared source.
-- perf(taste): the session loads an index, not the corpus. Loading every `require` body at
-  session start was ~5,500 tokens of standing overhead on every harness, most of it for tastes
-  the session never touched. `SKILL.md` now specifies one index line per resolved taste — name,
-  scope and source, strength, enforce, and the opening imperative, ~850 tokens for this
-  repository's 23 — with the body read on demand: when the work falls in the taste's
-  `category`, before an action a `check` or `block` taste covers, when deciding how to honor
-  one, and when someone asks. The accepted failure mode is stated where the decision is made,
-  along with its resolution: when in doubt, read the body. `enforce: block` is unaffected — the
-  hook reads the files itself, out of process, and never consults what a session loaded.
+- refactor(taste)!: **external sources live under `.agentkit/tastes/external/`**, not a sibling
+  `tastes-vendor/`. One tree with two origins — the repository's own tastes at the root, a
+  snapshot of each declared source beneath — instead of two folders implying two concepts.
+  Precedence is unchanged; the project layer now stops at `external/`, so a snapshot can never
+  take the precedence the repository holds over it.
+- refactor(taste): **`external` is reserved at a tastes root**, and linting the root in one
+  invocation is now correct: the owner's files are one dedupe scope, each source its own.
+- refactor(taste): **migration with one release of grace.** A sync finding `tastes-vendor/`
+  moves it and says so; resolve and the lint read the old path meanwhile, with one line naming
+  the new one. Nothing outside `external/` and the lock is ever written.
+- perf(taste): **the session loads an index, not the corpus.** Loading every `require` body at
+  session start cost ~5,500 tokens standing on every harness, mostly for tastes never touched;
+  an index line per taste is ~850 here. Bodies are read on demand — category touch, imminent
+  covered action, deciding how to apply, or being asked — and when in doubt. `enforce: block`
+  is unaffected: the hook reads the files itself, out of process.
 
 ## v0.7.8 — 2026-08-05
 
