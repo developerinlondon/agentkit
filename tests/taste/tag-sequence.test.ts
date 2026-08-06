@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { KindRequest, MatchOutcome } from '../../skills/taste/scripts/rules/kinds.ts';
@@ -48,6 +48,37 @@ function repo(tags: string[]): string {
   git(dir, 'add', '-A');
   git(dir, 'commit', '-q', '-m', 'one');
   for (const tag of tags) git(dir, 'tag', tag);
+  return dir;
+}
+
+// A git that fails the way we need it to. Dubious ownership needs a checkout
+// owned by another uid, which a test cannot make; what the code reads is the
+// exit status and the message, and those a stub reproduces exactly.
+function stubGit(message: string, code: number): string {
+  const dir = scratch();
+  const path = join(dir, 'git');
+  writeFileSync(path, `#!/bin/sh\nprintf '%s\\n' ${JSON.stringify(message)} >&2\nexit ${code}\n`);
+  chmodSync(path, 0o755);
+  return dir;
+}
+
+// A git that answers in the session's language unless it is asked in C — which
+// is what a translated git on a developer's machine does, and what would make
+// the sentence above unrecognisable.
+function translatedGit(): string {
+  const dir = scratch();
+  const path = join(dir, 'git');
+  writeFileSync(
+    path,
+    '#!/bin/sh\n'
+      + 'if [ "$LC_ALL" = C ]; then\n'
+      + "  printf '%s\\n' 'fatal: not a git repository (or any parent up to mount point /)' >&2\n"
+      + 'else\n'
+      + "  printf '%s\\n' 'fatal: kein Git-Repository (oder eines der übergeordneten Verzeichnisse)' >&2\n"
+      + 'fi\n'
+      + 'exit 128\n',
+  );
+  chmodSync(path, 0o755);
   return dir;
 }
 
@@ -110,6 +141,24 @@ describe('the proposed tag is read out of the command', () => {
   test('a quoted separator inside a message does not hide the tag', () => {
     expect(proposedTags('git tag -m "fixes a|b; and c" v1.2.3')).toEqual(['v1.2.3']);
   });
+
+  // The shell hands `-ma;b` to git as one argument, so the tag really is
+  // created. A quote opening partway through a word therefore has to keep that
+  // word together, exactly as a quote that opens it does.
+  test.each([
+    ['a double-quoted message attached to -m', 'git tag -m"a;b" v1.2.3'],
+    ['a single-quoted message attached to -m', "git tag -m'a|b' v1.2.3"],
+    ['an attached message carrying &&', 'git tag -m"a&&b" v1.2.3'],
+    ['an attached long-option message', 'git tag --message"a;b" v1.2.3'],
+  ])('reads the tag past %s', (_shape, command) => {
+    expect(proposedTags(command)).toEqual(['v1.2.3']);
+  });
+
+  // And the version named in the message is not the tag being cut. Reading it
+  // as one would refuse the release on the strength of its own release note.
+  test('a version mentioned inside an attached message is not proposed', () => {
+    expect(proposedTags('git tag -m"v0.8.0 fixes A; adds B" v0.7.12')).toEqual(['v0.7.12']);
+  });
 });
 
 describe('each policy names what it refuses', () => {
@@ -171,6 +220,16 @@ describe('each policy names what it refuses', () => {
     expect(judgeTag('strict-successor', 'v0.7.12', ['v0.7.9', 'v0.7.11'])).toBeUndefined();
   });
 
+  // Documented in format.md, so it is asserted here: strict-successor accepts
+  // the next patch and nothing else, which means it cannot open a new minor
+  // line even as a release candidate.
+  test('strict-successor refuses a prerelease that opens a new line', () => {
+    const finding = judgeTag('strict-successor', 'v0.8.0-rc1', ['v0.7.11']);
+
+    expect(finding).toContain('v0.8.0-rc1');
+    expect(finding).toContain('v0.7.12');
+  });
+
   test('a prerelease sorts below its release and may still graduate', () => {
     expect(judgeTag('strict-successor', 'v0.8.0', ['v0.8.0-rc1'])).toBeUndefined();
     expect(judgeTag('strict-successor', 'v0.8.0-rc2', ['v0.8.0-rc1'])).toBeUndefined();
@@ -180,6 +239,17 @@ describe('each policy names what it refuses', () => {
   test('an unknown policy refuses nothing rather than guessing one', () => {
     expect(judgeTag('whatever-comes-next', 'v0.1.1', ['v9.9.9'])).toBeUndefined();
   });
+
+  // A name off Object.prototype resolves to a function on any plain-object
+  // lookup. The lint refuses such a policy long before this, which is exactly
+  // why the guard belongs here too: the hook's safety must not rest on a check
+  // two modules away.
+  test.each([['constructor'], ['toString'], ['__proto__'], ['hasOwnProperty']])(
+    'a policy named %p is not a judge',
+    (policy) => {
+      expect(judgeTag(policy, 'v0.1.1', ['v9.9.9'])).toBeUndefined();
+    },
+  );
 });
 
 describe('the check reads the repository the command runs in', () => {
@@ -225,6 +295,46 @@ describe('the check reads the repository the command runs in', () => {
     expect(outcome.verdict === 'unchecked' && outcome.detail).toContain('git');
   });
 
+  // Only git's own "not a git repository" is evidence of that. Every other
+  // failure — dubious ownership under a CI uid, a corrupt repository, a
+  // permission error — is a guard that could not look, and must say so.
+  test.each([
+    ["fatal: detected dubious ownership in repository at '/src'", 'dubious ownership'],
+    ['fatal: cannot change to \'/src\': Permission denied', 'Permission denied'],
+    ['fatal: not a git repository: \'/src/.git\'', '/src/.git'],
+  ])('a rev-parse failure saying %p is UNCHECKED, not a silent pass', async (message, phrase) => {
+    const outcome = await evaluate({ policy: 'strict-successor' }, 'git tag v0.1.1', scratch(), {
+      env: { PATH: stubGit(message, 128) },
+    });
+
+    expect(outcome.verdict).toBe('unchecked');
+    expect(outcome.verdict === 'unchecked' && outcome.detail).toContain(phrase);
+  });
+
+  // Both phrasings git uses when discovery simply found nothing. The one it
+  // prints depends on whether the walk stopped at a mount point, so pinning
+  // only one of them would silently turn half the real cases into UNCHECKED.
+  test.each([
+    ['fatal: not a git repository (or any of the parent directories): .git'],
+    ['fatal: not a git repository (or any parent up to mount point /)'],
+  ])('git saying %p passes silently', async (message) => {
+    const outcome = await evaluate({ policy: 'strict-successor' }, 'git tag v0.1.1', scratch(), {
+      env: { PATH: stubGit(message, 128) },
+    });
+
+    expect(outcome.verdict).toBe('passes');
+  });
+
+  // Otherwise a translated git turns every directory without a repository into
+  // an UNCHECKED notice, on every tag command, for the whole session.
+  test('git is asked in C, so a translated session still reads as not-a-repository', async () => {
+    const outcome = await evaluate({ policy: 'strict-successor' }, 'git tag v0.1.1', scratch(), {
+      env: { PATH: translatedGit(), LC_ALL: 'de_DE.UTF-8', LANG: 'de_DE.UTF-8' },
+    });
+
+    expect(outcome.verdict).toBe('passes');
+  });
+
   // A missing git is not evidence that this is not a repository, so it must not
   // land on the silent pass that "not a repository" gets.
   test('git that cannot be run at all is UNCHECKED rather than a pass', async () => {
@@ -241,6 +351,21 @@ describe('the check reads the repository the command runs in', () => {
 
     expect(outcome.verdict).toBe('passes');
   });
+});
+
+describe('an unregistered policy stops the taste rather than the hook', () => {
+  test.each([['whatever-comes-next'], ['constructor']])(
+    'policy %p is skipped, by name, and the command is allowed',
+    async (policy) => {
+      const outcome = await evaluate({ policy }, 'git tag v0.1.1', repo(['v0.7.11']));
+
+      expect(outcome.verdict).toBe('skipped');
+      expect(outcome.verdict === 'skipped' && outcome.detail).toContain(policy);
+      for (const known of TAG_POLICIES) {
+        expect(outcome.verdict === 'skipped' && outcome.detail).toContain(known);
+      }
+    },
+  );
 });
 
 describe('rule.match overrides how the tag is read', () => {

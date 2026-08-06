@@ -116,6 +116,13 @@ because `v0.6.5` already is. `strict-successor` refuses both — it is for a pro
 line and nothing else. A prerelease sorts below the release it leads to, so `v0.8.0-rc1` then
 `v0.8.0` is an ascending pair under every policy.
 
+**`strict-successor` cannot open a new line, prerelease included.** On a repository at `v0.7.11`
+it refuses `v0.8.0-rc1` exactly as it refuses `v0.8.0`, saying the next tag is `v0.7.12` — the
+next patch is the only thing it accepts, and a release candidate for a new minor is not one.
+That follows from the name, but it is worth knowing before a release rather than during one: a
+project that cuts minor release candidates wants `no-backwards-in-line`, or the taste's own
+override for the one tag that opens the line.
+
 The proposed tag is read from the command in the shapes agentkit recognises: `git tag <tag>`,
 `git push <remote> <tag>` (including `refs/tags/` and `<src>:<dst>` refspecs), and
 `gh release create <tag>`. Listing, verifying and deleting are not proposals — `git tag --list`,

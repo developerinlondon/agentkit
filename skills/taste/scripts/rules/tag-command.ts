@@ -2,8 +2,10 @@ import { unquote } from '../override.ts';
 import { parseVersion } from './semver.ts';
 
 // Quoted runs are one token, so a separator inside a tag message does not end
-// the command and hide the tag that follows it.
-const TOKEN = /"[^"]*"|'[^']*'|[;&|\n]+|[^\s;&|]+/g;
+// the command and hide the tag that follows it. A quote may open partway
+// through a word — `-m"a;b"` is one argument to git, and reading it as two
+// would put the tag in a segment that no longer starts with a program name.
+const TOKEN = /(?:"[^"]*"|'[^']*'|[^\s;&|"']+)+|[;&|\n]+/g;
 const SEPARATOR = /^[;&|\n]+$/;
 const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/;
 

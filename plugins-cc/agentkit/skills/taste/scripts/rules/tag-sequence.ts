@@ -91,9 +91,12 @@ export function judgeTag(
   tag: string,
   existing: readonly string[],
 ): string | undefined {
-  const judge = POLICIES[policy];
+  // Checked against the registered names rather than by looking the key up:
+  // `constructor` and `toString` resolve to functions on any plain object, and
+  // the hook's safety must not rest on the lint two modules away.
   const version = parseVersion(tag);
-  if (judge === undefined || version === undefined) return undefined;
+  if (!TAG_POLICIES.includes(policy) || version === undefined) return undefined;
+  const judge = POLICIES[policy] as Judge;
   return judge({ text: tag, version }, knownTags(existing));
 }
 
@@ -103,18 +106,37 @@ function firstLine(text: string): string {
 
 type Tags = { names: string[] } | { unchecked: string };
 
+// The one failure that means "there is nothing here to check". Exit 128 alone
+// does not: dubious ownership under a CI uid, a permission error and a corrupt
+// repository all use it, and reading those as not-a-repository would delete the
+// guard in exactly the environments that most need it.
+// Both of git's discovery-failed phrasings, and neither of the ones it uses for
+// a repository it found but could not use.
+const NOT_A_REPOSITORY = /not a git repository \(or any /;
+
+// git is asked in C, because the sentence above is what tells a directory with
+// no repository apart from a repository that cannot be read, and a translated
+// git would answer in another language.
+function askedInC(env: Record<string, string | undefined>): Record<string, string | undefined> {
+  return { ...env, LC_ALL: 'C', LANGUAGE: 'C', LANG: 'C' };
+}
+
 // Asymmetric on purpose, and the asymmetry is the design: a directory that is
 // not a repository has no sequence to violate, so it passes silently; git that
 // cannot answer is an unread guard, so it says UNCHECKED and still allows.
 async function repositoryTags(
   cwd: string,
-  env: Record<string, string | undefined>,
+  callerEnv: Record<string, string | undefined>,
 ): Promise<Tags> {
+  const env = askedInC(callerEnv);
   const inside = await runBounded(['git', '-C', cwd, 'rev-parse', '--git-dir'], cwd, env, GIT_TIMEOUT_MS);
   if (inside.code === null || inside.timedOut) {
     return { unchecked: `git could not be run in ${cwd} — ${firstLine(inside.err)}` };
   }
-  if (!inside.ok) return { names: [] };
+  if (!inside.ok) {
+    if (NOT_A_REPOSITORY.test(inside.err)) return { names: [] };
+    return { unchecked: `git could not read the repository at ${cwd} — ${firstLine(inside.err)}` };
+  }
 
   const listed = await runBounded(['git', '-C', cwd, 'tag', '--list'], cwd, env, GIT_TIMEOUT_MS);
   if (!listed.ok) {
@@ -153,6 +175,17 @@ export const GIT_TAG_SEQUENCE: RuleKind = {
   },
 
   async evaluate(fields: Record<string, string>, request: KindRequest): Promise<KindOutcome> {
+    // The lint refuses a policy that is not registered, so reaching this means
+    // the taste was never checked. Said out loud rather than allowed quietly,
+    // for the same reason an unimplemented kind is.
+    if (!TAG_POLICIES.includes(fields.policy as string)) {
+      return {
+        verdict: 'skipped',
+        detail: `its rule.policy ${JSON.stringify(fields.policy ?? null)} is not one of `
+          + TAG_POLICIES.join(', '),
+      };
+    }
+
     const proposals = await proposalsFor(fields, request);
     if (!Array.isArray(proposals)) return { verdict: 'skipped', detail: proposals.skipped };
     if (proposals.length === 0) return { verdict: 'passes' };
