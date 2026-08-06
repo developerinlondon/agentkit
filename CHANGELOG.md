@@ -9,6 +9,8 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+## v0.7.9 — 2026-08-06
+
 - refactor(taste)!: **external sources live under `.agentkit/tastes/external/`**, not a sibling
   `tastes-vendor/`. One tree with two origins — the repository's own tastes at the root, a
   snapshot of each declared source beneath — instead of two folders implying two concepts.
