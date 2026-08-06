@@ -6,8 +6,8 @@ import { dirname, join } from 'node:path';
 import {
   lintTasteDirectory,
   lintTastePath,
-  MAX_MATCH_LENGTH,
 } from '../../skills/taste/scripts/lint.ts';
+import { MAX_MATCH_LENGTH } from '../../skills/taste/scripts/rules/pattern.ts';
 
 const repoRoot = join(import.meta.dir, '..', '..');
 const linter = join(repoRoot, 'skills', 'taste', 'scripts', 'lint.ts');
@@ -496,10 +496,11 @@ describe('the command-line surface', () => {
   }
 
   test('a clean folder exits zero and says what it checked', () => {
-    const result = run(sandbox(documentedTastes()));
+    const documented = documentedTastes();
+    const result = run(sandbox(documented));
     expect(result.stderr).toBe('');
     expect(result.status).toBe(0);
-    expect(result.stdout).toContain('1 taste');
+    expect(result.stdout).toContain(`${Object.keys(documented).length} taste`);
   });
 
   test('a violation exits non-zero and prints the message', () => {

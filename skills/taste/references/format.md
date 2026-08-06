@@ -15,7 +15,7 @@ override across scopes.
 | `provenance` | yes      | a date and where it came from              | When the preference was stated, so a stale one is visible            |
 | `category`   | no       | free text                                  | Lets a skill load only the tastes an action can touch                |
 | `enforce`    | no       | `advise` \| `check` \| `block`             | How hard it binds. Defaults to `advise`, where most tastes stay      |
-| `rule`       | no       | `kind` / `match` / `remedy` / `override`   | Only with `enforce: check` or `block`. Declarative data — never code |
+| `rule`       | no       | `kind` plus that kind's own fields         | Only with `enforce: check` or `block`. Declarative data — never code |
 
 No other top-level key is accepted. A typo is a rejection, not a silently ignored field.
 
@@ -27,16 +27,46 @@ violation is evidence for a proposal the owner merges — never an automatic pro
 Present only when `enforce` is `check` or `block`. It is data the generic `taste-police` hook
 reads; nothing in it is ever executed as a command.
 
+Three keys are the same in every rule:
+
 | Key        | Required | Value                                                                   |
 | ---------- | -------- | ----------------------------------------------------------------------- |
-| `kind`     | yes      | `command` — the action class the pattern matches                        |
-| `match`    | yes      | a regular expression that must compile, at most 200 characters          |
+| `kind`     | yes      | which check agentkit runs — one of the registered kinds below           |
 | `remedy`   | yes      | the sentence an agent is shown instead of the refused action            |
 | `override` | no       | the name of one environment variable that lets it through, deliberately |
 
 Every value is a string. No nesting, no lists, and no shell metacharacters — `override` is an
-environment-variable name and nothing else. A preference no pattern can capture stays at
-`enforce: check` rather than growing bespoke code.
+environment-variable name and nothing else.
+
+### The rule-kind registry
+
+A `kind` is a **named predicate agentkit implements**. The taste chooses which check runs and
+supplies the data it needs; the code that inspects anything is always agentkit's. That is what
+keeps a taste data rather than a program, and it is why the trust property holds: a hostile
+source can pick a check and word a refusal, so at worst it over-blocks you — it can never run
+anything.
+
+| `kind`             | Its own keys                      | What it inspects                               |
+| ------------------ | --------------------------------- | ---------------------------------------------- |
+| `command`          | `match` (required)                | the text of the command about to run           |
+| `git-tag-sequence` | `policy` (required), `match` (no) | the tags in the repository the command runs in |
+
+A key belongs to one kind: `policy` inside a `command` rule is an unknown key, and the lint says
+so naming what that kind does carry.
+
+**An unknown kind is refused by the lint**, naming the kinds that exist — and the hook runs that
+same lint as it loads the folder, so at enforcement time the file is **skipped with a warning
+while every other taste keeps enforcing**, rather than taking the hook down with it. That is what
+lets a taste vendored from a source running a newer agentkit be safe to load at all. Upgrade
+agentkit, or keep the taste at `enforce: check` until you have.
+
+A preference no registered kind can express stays at `enforce: check` rather than growing
+bespoke code in someone's taste folder. A new kind is a change to agentkit, reviewed like one.
+
+### `kind: command`
+
+`match` is a regular expression tested against the command string — at most 200 characters, and
+it must compile.
 
 **A remedy is plain prose.** It is a sentence an agent reads, never a command anything runs, so
 name the command in words — `Cut a patch tag` rather than a backticked or `$()`-wrapped
@@ -66,6 +96,56 @@ unenforced, rather than taking the session down with it.
 
 The subject bound is the honest trade: a command long enough to hit it is a script, and a
 taste is not a way to audit one. Write the pattern against what an agent actually types.
+
+### `kind: git-tag-sequence`
+
+Refuses a release tag that does not follow the tags already in the repository. A pattern cannot
+do this — the answer is not in the command string — which is what a named predicate is for.
+
+`policy` names which sequence rule applies. All three ignore any tag that is not semver, in the
+proposal and among the existing tags alike, because a tag with no version carries no order:
+
+| `policy`               | Refuses                                                                          |
+| ---------------------- | -------------------------------------------------------------------------------- |
+| `no-duplicate`         | a tag that already exists                                                        |
+| `no-backwards-in-line` | that, plus a tag lower than the highest existing tag **sharing its major.minor** |
+| `strict-successor`     | that, plus anything but the immediate next patch of the highest tag **overall**  |
+
+`no-backwards-in-line` is the one that keeps maintenance possible: on a repository at `v0.7.11`,
+`v0.6.5` is allowed because nothing on the `0.6` line is above it, while `v0.6.2` is refused
+because `v0.6.5` already is. `strict-successor` refuses both — it is for a project that cuts one
+line and nothing else. A prerelease sorts below the release it leads to, so `v0.8.0-rc1` then
+`v0.8.0` is an ascending pair under every policy.
+
+**`strict-successor` cannot open a new line, prerelease included.** On a repository at `v0.7.11`
+it refuses `v0.8.0-rc1` exactly as it refuses `v0.8.0`, saying the next tag is `v0.7.12` — the
+next patch is the only thing it accepts, and a release candidate for a new minor is not one.
+That follows from the name, but it is worth knowing before a release rather than during one: a
+project that cuts minor release candidates wants `no-backwards-in-line`, or the taste's own
+override for the one tag that opens the line.
+
+The proposed tag is read from the command in the shapes agentkit recognises: `git tag <tag>`,
+`git push <remote> <tag>` (including `refs/tags/` and `<src>:<dst>` refspecs), and
+`gh release create <tag>`. Listing, verifying and deleting are not proposals — `git tag --list`,
+`git tag -d v1.2.3` and `git push --delete` all pass. Where that reading is wrong for your
+workflow, `match` overrides it: **its first capture group is the tag**, and it is held to the
+same 200-character, must-compile, no-substitution bounds as a `command` rule.
+
+**It does not fail closed, and that is deliberate.** The vendoring guard refuses whatever it
+cannot verify, because the error it prevents is a leak that cannot be undone. This one is a
+convention guard, so the two errors are the other way round:
+
+| Situation                             | What happens                                      |
+| ------------------------------------- | ------------------------------------------------- |
+| the command proposes no semver tag    | passes, and git is never run                      |
+| the directory is not a git repository | passes silently — there is no sequence to violate |
+| the repository has no tags            | passes silently — there is nothing to be behind   |
+| git cannot be run, or cannot list     | **`UNCHECKED`, and the command is allowed**       |
+
+Failing closed here would refuse every tag command in every repository whose tags cannot be
+read, to prevent a mis-ordered tag that `git tag` itself makes trivial to delete. But a silent
+allow would be worse than either: the session would read enforcement into a guard that never
+ran. So it says `UNCHECKED`, names the taste and the reason, and lets the command through.
 
 ### What counts as using an override
 
@@ -104,6 +184,34 @@ semver alone will tag a minor for any feature-shaped diff.
 
 How to apply: propose the patch version in the release PR. If the diff looks
 minor-worthy, say so and ask — do not tag it.
+```
+
+And `.agentkit/tastes/tag-sequence.md`, the same shape with the other kind — no pattern, because
+what it checks is not in the command:
+
+```markdown
+---
+name: tag-sequence
+scope: project
+category: release
+strength: require
+enforce: block
+rule:
+  kind: git-tag-sequence
+  policy: no-backwards-in-line
+  remedy: Read the tags first and cut the next patch on the line you are releasing.
+  override: AGENTKIT_TAG_SEQUENCE
+provenance: 2026-08-06 · issue 328
+---
+
+A release tag goes forwards on its own line. A lower line is maintenance and is
+fine; a tag below one that already exists on the same line is not.
+
+Why: version numbers are read as a sequence by everything downstream — a
+backwards tag makes "latest" mean two different commits.
+
+How to apply: list the tags before tagging. If the tag you want is already
+there, or is behind one on its line, pick the next patch instead.
 ```
 
 ## The source contract

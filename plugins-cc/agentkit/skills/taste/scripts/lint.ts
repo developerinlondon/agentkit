@@ -2,31 +2,24 @@ import { YAML } from 'bun';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { basename, join, relative, resolve } from 'node:path';
 import { EXTERNAL_DIR, LEGACY_EXTERNAL_ROOT } from './layout.ts';
+import { type RuleKind, ruleKeys, ruleKind, RULE_KINDS } from './rules/kinds.ts';
+import { carriesSubstitution } from './rules/pattern.ts';
 
 const REQUIRED_KEYS = ['name', 'provenance', 'scope', 'strength'];
 const OPTIONAL_KEYS = ['category', 'enforce', 'rule'];
 export const SCOPES = ['project', 'external', 'user'];
 export const STRENGTHS = ['prefer', 'require'];
 export const ENFORCEMENTS = ['advise', 'check', 'block'];
-const RULE_KEYS = ['kind', 'match', 'remedy', 'override'];
-const RULE_KINDS = ['command'];
 
 // `external` is read by position, not by name: it is the one directory at a
 // tastes root that a sync writes and the resolver treats as a stack of sources.
 const RESERVED = `${JSON.stringify(EXTERNAL_DIR)} is reserved — it names the subtree holding the `
   + 'snapshot of each declared source, at the root of a tastes tree and nowhere else';
 
-// A rule is tested in-process against every command an agent runs, and a
-// regular expression can be made to backtrack for longer than anyone will wait.
-// The subject is bounded where the matching happens (police.ts); the pattern is
-// bounded here, so an unrunnable rule fails the lint rather than a session.
-export const MAX_MATCH_LENGTH = 200;
-
 // Unnumbered as well as kebab: position carries no meaning in a taste folder, so
 // a leading number is a record's habit leaking into a dictionary.
 const NAME = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 const ENV_NAME = /^[A-Z][A-Z0-9_]*$/;
-const SHELL_SUBSTITUTION = /\$\(|`/;
 const FRONTMATTER = /^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/;
 
 type Frontmatter = Record<string, unknown>;
@@ -93,40 +86,45 @@ function checkEnums(front: Frontmatter): string[] {
   return errors.filter((error): error is string => error !== undefined);
 }
 
-function checkRuleFields(rule: Frontmatter): string[] {
-  const errors: string[] = [];
-  const unknown = Object.keys(rule).filter((key) => !RULE_KEYS.includes(key)).sort();
-  if (unknown.length > 0) {
-    errors.push(`unknown rule key: ${unknown.join(', ')} — a rule carries ${RULE_KEYS.join(', ')}`);
+// The kind decides which keys mean anything, so an unknown kind names the ones
+// agentkit implements instead of judging the rest of the block against a
+// vocabulary nobody chose.
+function checkKind(rule: Frontmatter, kind: RuleKind | undefined): string[] {
+  if (typeof rule.kind !== 'string') return [];
+  if (kind === undefined) {
+    return [`rule.kind: ${JSON.stringify(rule.kind)} is not one of ${RULE_KINDS.join(', ')}`];
   }
-  for (const key of ['kind', 'match', 'remedy']) {
+  const keys = ruleKeys(kind);
+  const unknown = Object.keys(rule).filter((key) => !keys.includes(key)).sort();
+  if (unknown.length === 0) return [];
+  return [
+    `unknown rule key: ${unknown.join(', ')} — a rule of kind ${kind.name} carries `
+      + keys.join(', '),
+  ];
+}
+
+// Every value in the block is a string, which is what makes a rule data rather
+// than structure. Which strings have to be there is the kind's business.
+function stringFields(rule: Frontmatter): Record<string, string> {
+  const fields: Record<string, string> = {};
+  for (const [key, value] of Object.entries(rule)) {
+    if (typeof value === 'string') fields[key] = value;
+  }
+  return fields;
+}
+
+function checkRuleFields(rule: Frontmatter): string[] {
+  const kind = typeof rule.kind === 'string' ? ruleKind(rule.kind) : undefined;
+  const errors = checkKind(rule, kind);
+
+  for (const key of ['kind', 'remedy', ...(kind?.required ?? [])]) {
     if (typeof rule[key] !== 'string') {
       errors.push(`rule.${key} must be a string — the rule is data, not structure`);
     }
   }
-  if (typeof rule.kind === 'string' && !RULE_KINDS.includes(rule.kind)) {
-    errors.push(`rule.kind: ${JSON.stringify(rule.kind)} is not one of ${RULE_KINDS.join(', ')}`);
-  }
-  if (typeof rule.match === 'string') {
-    if (rule.match.length > MAX_MATCH_LENGTH) {
-      errors.push(
-        `rule.match is ${rule.match.length} characters — the cap is ${MAX_MATCH_LENGTH}, because `
-          + 'the hook runs it against every command. Narrow the pattern, or keep the taste at check.',
-      );
-    }
-    try {
-      new RegExp(rule.match);
-    } catch (error) {
-      errors.push(`rule.match is not a valid regular expression: ${(error as Error).message}`);
-    }
-    if (SHELL_SUBSTITUTION.test(rule.match)) {
-      errors.push(
-        'rule.match carries a command substitution — a rule is data; escape it as \\$\\( to '
-          + 'match those characters literally. A backtick cannot appear in a match at all.',
-      );
-    }
-  }
-  if (typeof rule.remedy === 'string' && SHELL_SUBSTITUTION.test(rule.remedy)) {
+  if (kind !== undefined) errors.push(...kind.validate(stringFields(rule)));
+
+  if (typeof rule.remedy === 'string' && carriesSubstitution(rule.remedy)) {
     errors.push(
       'rule.remedy carries a command substitution — a remedy is plain prose; name the command '
         + 'without backticks or $()',
@@ -148,7 +146,10 @@ function checkRule(front: Frontmatter): string[] {
     return ['enforce: block needs a rule — taste-police would have nothing to read'];
   }
   if (!hasRule) return [];
-  if (!isRecord(front.rule)) return ['rule must be a block of kind, match, remedy, override'];
+  if (!isRecord(front.rule)) {
+    return [`rule must be a block of kind, remedy, override and what the kind requires — the `
+      + `kinds are ${RULE_KINDS.join(', ')}`];
+  }
   return checkRuleFields(front.rule);
 }
 

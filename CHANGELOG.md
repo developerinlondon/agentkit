@@ -9,6 +9,26 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+- feat(taste): **a rule declares a kind agentkit implements, and parameterises it** (#328). The
+  rule vocabulary was one regular expression over the command string, which cannot answer a
+  question about state. It is now a registry of named predicates: each kind declares the fields
+  it needs, the validation the lint runs, and the evaluator the hook runs. `kind: command` is
+  the first entry with exactly its previous behaviour. An unknown kind is refused by the lint
+  naming the kinds that exist, and **skipped with a warning by the hook** rather than crashing
+  it, so a taste vendored from a source on a newer agentkit cannot brick an older one. Taste
+  data still executes nothing: a hostile source can pick a check and word a refusal, and at
+  worst over-block you.
+- feat(taste): **`kind: git-tag-sequence` refuses a release tag that does not follow the tags
+  already in the repository** (#328). `policy` picks the ordering — `no-duplicate`,
+  `no-backwards-in-line` (a tag below the highest on its own major.minor line, so v0.6.5 while
+  v0.7.11 exists stays a legitimate maintenance release), or `strict-successor` (only the
+  immediate next patch of the highest tag). Non-semver tags are ignored throughout. The
+  proposed tag is read from `git tag`, `git push` and `gh release create`; `match` overrides
+  that reading, its first capture group being the tag. It deliberately does **not** fail closed
+  like the vendoring guard: outside a repository or with no tags there is nothing to check and
+  the command passes silently, and where git cannot answer it reports `UNCHECKED` and allows —
+  never a silent allow. The reasoning for the asymmetry is in the skill, bound to tests.
+
 ## v0.7.11 — 2026-08-06
 
 - fix(taste): **a sync stages each scope separately, so both may declare a source of the same

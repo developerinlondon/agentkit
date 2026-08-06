@@ -3,6 +3,8 @@ import { describe, expect, test } from 'bun:test';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { ENFORCEMENTS, SCOPES, STRENGTHS } from '../../skills/taste/scripts/lint.ts';
+import { RULE_KINDS as REGISTERED_KINDS } from '../../skills/taste/scripts/rules/kinds.ts';
+import { TAG_POLICIES } from '../../skills/taste/scripts/rules/tag-sequence.ts';
 import { VISIBILITIES } from '../../skills/taste/scripts/sources.ts';
 import { TARGET_PRIVATE_OVERRIDE } from '../../skills/taste/scripts/visibility.ts';
 
@@ -20,6 +22,42 @@ const HOOK_BEHAVIOURS: [string, string][] = [
   ['a malformed taste is not contagious', 'takes nothing else down with it'],
   ['an unrunnable hook allows', 'refuses on its own uncertainty'],
   ['the bounds are stated', '200 characters'],
+];
+
+// The rule-kind registry, said in the words an owner is answered with. The
+// vocabulary is the product decision here: what a taste may ask for is agentkit
+// code, and prose that blurred that would invite the next kind to arrive as
+// data in someone's folder.
+const RULE_KINDS: [string, string][] = [
+  ['the vocabulary is extended by agentkit, not by a taste', 'enforcement vocabulary is extensible by agentkit'],
+  ['a kind names a check agentkit implements', 'names a check agentkit implements'],
+  ['the trust property is why it is data', 'a hostile source can at worst over-block you'],
+  ['a new kind is a change to agentkit', 'A preference that no kind can express stays at'],
+  ['an unimplemented kind is skipped rather than fatal', 'is skipped, loudly'],
+  ['version skew must not disable an older hook', 'must not brick an older hook'],
+  ['a check that cannot look says so per taste', 'for that one taste and allows'],
+  ['silence would be read as enforcement', 'read enforcement into a guard that never ran'],
+];
+
+// The asymmetry with the vendoring guard, and the reason for it. Written down
+// because the next reader's instinct is to make the two match.
+const FAILURE_DIRECTION: [string, string][] = [
+  ['vendoring fails closed because a leak is final', '**Vendoring fails closed.**'],
+  ['a rule kind fails open and reports', '**A rule kind fails open, and says so.**'],
+  ['nothing to check is not a failure', 'nothing to check is not a failure at all'],
+  ['the direction follows which error is recoverable', 'fails towards whichever error is'],
+  ['the asymmetry is deliberate, not an oversight', 'Do not "fix" this into symmetry'],
+];
+
+// The symmetric design, asserted absent — making the tag check refuse what it
+// cannot read is the plausible "consistency" fix.
+//
+// An intent marker, not a guard: it keys on two literal phrasings, so the same
+// reversal in other words passes it. The direction is enforced by the UNCHECKED
+// and silent-pass branches in tag-sequence.test.ts, not here.
+const REVERSED_SYMMETRY = [
+  'fails closed like the vendoring guard',
+  'refuses when the tags cannot be read',
 ];
 
 const SETTLED_BEHAVIOURS: [string, string][] = [
@@ -236,6 +274,34 @@ describe('the taste skill and its contract agree', () => {
   // so a behaviour silently dropped from the prose is a behaviour that stops
   // happening. Each entry is a decision the design settled, bound to the words
   // that carry it.
+  test.each(RULE_KINDS)('the skill carries the rule-kind rule: %s', (_rule, phrase) => {
+    expect(skill.includes(phrase), `SKILL.md must say: ${phrase}`).toBe(true);
+  });
+
+  test.each(FAILURE_DIRECTION)('the skill carries the failure direction: %s', (_rule, phrase) => {
+    expect(skill.includes(phrase), `SKILL.md must say: ${phrase}`).toBe(true);
+  });
+
+  test.each(REVERSED_SYMMETRY)('the skill does not make the two guards symmetric: %s', (phrase) => {
+    expect(
+      skill.includes(phrase),
+      `SKILL.md must not say ${JSON.stringify(phrase)} — a rule kind reports UNCHECKED and allows, `
+        + 'and matching it to the vendoring guard would refuse every tag command in a repository '
+        + 'whose tags cannot be read',
+    ).toBe(false);
+  });
+
+  // Every kind the registry implements has to be documented where an owner
+  // writes a rule, or the vocabulary is only discoverable by reading the code.
+  test('the format reference documents every registered kind and tag policy', () => {
+    for (const kind of REGISTERED_KINDS) {
+      expect(reference, `format.md documents kind ${kind}`).toContain(`\`${kind}\``);
+    }
+    for (const policy of TAG_POLICIES) {
+      expect(reference, `format.md documents policy ${policy}`).toContain(`\`${policy}\``);
+    }
+  });
+
   test.each(SETTLED_BEHAVIOURS)('the skill still carries the behaviour: %s', (_behaviour, phrase) => {
     expect(skill.includes(phrase), `SKILL.md must still say: ${phrase}`).toBe(true);
   });
@@ -307,7 +373,7 @@ describe('the taste skill and its contract agree', () => {
   // A phrase split across a line break would bind nothing: the file it is read
   // from is hard-wrapped, and `textWrap: maintain` leaves the author's breaks
   // exactly where they fell.
-  test.each([...LAYOUT, ...LOADING_STRATEGY, ...INSTALL_MODES, ...VENDOR_GUARD])(
+  test.each([...LAYOUT, ...LOADING_STRATEGY, ...INSTALL_MODES, ...VENDOR_GUARD, ...RULE_KINDS, ...FAILURE_DIRECTION])(
     'the phrase bound for %s sits on one line',
     (_rule, phrase) => {
       expect(phrase.includes('\n')).toBe(false);
@@ -320,6 +386,8 @@ describe('the taste skill and its contract agree', () => {
   // the opposite. Uniqueness is what points a binding at one place.
   test.each([
     ...HOOK_BEHAVIOURS,
+    ...RULE_KINDS,
+    ...FAILURE_DIRECTION,
     ...SETTLED_BEHAVIOURS,
     ...CONVERSATIONAL_SURFACES,
     ...EXTERNAL_SOURCES,

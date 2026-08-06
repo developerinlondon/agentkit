@@ -1,6 +1,7 @@
 import { homedir } from 'node:os';
 import { offValueLine, type Override, readOverride, unquote } from './override.ts';
-import { type ResolvedTaste, resolveTastes } from './resolve.ts';
+import { type ResolvedTaste, resolveTastes, type TasteRule } from './resolve.ts';
+import { evaluateRule, type MatchOutcome } from './rules/kinds.ts';
 import { configFiles, tasteSection } from './sources.ts';
 
 // The rule's pattern is capped where the lint can refuse it; the subject is
@@ -54,15 +55,13 @@ function overrideState(
   return readOverride(assignedInline(command, name) ?? env[name]);
 }
 
-type MatchOutcome = { matched: boolean } | { skipped: string };
-
 // The deadline has to live here rather than in either adapter: the OpenCode lane
 // runs the match in the editor's own process, where a pattern that backtracks
 // takes the session with it and no outer timeout can reach.
 class BoundedMatcher {
   private worker: Worker | undefined;
 
-  async test(pattern: string, command: string): Promise<MatchOutcome> {
+  async test(pattern: string, command: string, capture?: boolean): Promise<MatchOutcome> {
     const worker = (this.worker ??= new Worker(new URL('./match.ts', import.meta.url).href));
     const subject = command.slice(0, MAX_SUBJECT_LENGTH);
 
@@ -77,10 +76,10 @@ class BoundedMatcher {
 
       worker.onmessage = (event: MessageEvent) => {
         clearTimeout(timer);
-        const result = event.data as { matched?: boolean; failed?: string };
+        const result = event.data as { matched?: boolean; captures?: string[]; failed?: string };
         resolve(
           result.failed === undefined
-            ? { matched: result.matched === true }
+            ? { matched: result.matched === true, captures: result.captures ?? [] }
             : { skipped: `its rule.match could not be run: ${result.failed}` },
         );
       };
@@ -90,7 +89,7 @@ class BoundedMatcher {
         resolve({ skipped: `its rule.match could not be run: ${event.message}` });
       };
 
-      worker.postMessage({ pattern, subject });
+      worker.postMessage({ pattern, subject, capture: capture === true });
     });
   }
 
@@ -121,13 +120,14 @@ function overrideLine(taste: ResolvedTaste, override: Override): string {
 // enforcement happened while some of it silently did not.
 function refusal(
   taste: ResolvedTaste,
+  finding: string,
   override: Override,
   cwd: string,
   home: string,
   notices: string[],
 ): string {
   const lines = [
-    `BLOCKED by taste ${taste.name} (enforce: block): this command matches rule.match in `
+    `BLOCKED by taste ${taste.name} (enforce: block): ${finding} in `
       + `${displayPath(taste.path, cwd, home)}.`,
     taste.rule?.remedy ?? '',
     overrideLine(taste, override),
@@ -137,7 +137,7 @@ function refusal(
 }
 
 function blocking(taste: ResolvedTaste): boolean {
-  return taste.enforce === 'block' && taste.rule?.kind === 'command';
+  return taste.enforce === 'block' && taste.rule !== undefined;
 }
 
 export async function evaluateCommand(request: Request): Promise<Verdict> {
@@ -151,23 +151,39 @@ export async function evaluateCommand(request: Request): Promise<Verdict> {
 
   try {
     for (const taste of tastes.filter(blocking)) {
-      const outcome = await matcher.test(taste.rule?.match as string, request.command);
-      if ('skipped' in outcome) {
-        notices.push(`taste ${taste.name} was not applied — ${outcome.skipped} (${taste.path}).`);
+      const rule = taste.rule as TasteRule;
+      const outcome = await evaluateRule(rule.kind, rule.fields, {
+        command: request.command,
+        cwd: request.cwd,
+        env,
+        match: (pattern, capture) => matcher.test(pattern, request.command, capture),
+      });
+
+      if (outcome.verdict === 'skipped') {
+        notices.push(`taste ${taste.name} was not applied — ${outcome.detail} (${taste.path}).`);
         continue;
       }
-      if (!outcome.matched) continue;
+      // Allowed, and said so. A guard that could not read the state it needed
+      // is not a guard that found nothing.
+      if (outcome.verdict === 'unchecked') {
+        notices.push(
+          `UNCHECKED: taste ${taste.name} could not check this command — ${outcome.detail}. `
+            + `The command was allowed (${taste.path}).`,
+        );
+        continue;
+      }
+      if (outcome.verdict === 'passes') continue;
 
-      const override = overrideState(taste.rule?.override, request.command, env);
+      const override = overrideState(rule.override, request.command, env);
       if (override.state === 'granted') {
         notices.push(
-          `taste ${taste.name} allowed this command: ${taste.rule?.override} is set deliberately.`,
+          `taste ${taste.name} allowed this command: ${rule.override} is set deliberately.`,
         );
         continue;
       }
       return {
         decision: 'deny',
-        reason: refusal(taste, override, request.cwd, home, notices),
+        reason: refusal(taste, outcome.finding, override, request.cwd, home, notices),
         notices,
       };
     }

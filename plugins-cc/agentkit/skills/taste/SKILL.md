@@ -318,11 +318,33 @@ is read the same way, for one release of grace.
 
 `block` is carried out by one generic hook — `taste-police`, in the core kit, on every harness
 agentkit installs to. It resolves the same folders this skill does, takes the tastes at
-`enforce: block` whose `rule` the lint accepts, and tests `rule.match` against the command in
+`enforce: block` whose `rule` the lint accepts, and runs that rule's kind against the command in
 process. Nothing in a taste is ever executed. Adding a blocking taste changes no code
 anywhere: it is a file.
 
-What it does at the edges, so you can answer for it:
+### What a rule can check: the kinds
+
+**The enforcement vocabulary is extensible by agentkit and parameterised by tastes.** A
+`rule.kind` names a check agentkit implements; the taste supplies the data it runs on and the
+words it refuses with. The taste never carries the code, which is the whole reason a taste from
+somewhere else is safe to load: **a hostile source can at worst over-block you**, because
+picking a check and wording a refusal is all a taste can do.
+
+| `kind`             | The taste supplies                     | agentkit inspects                     |
+| ------------------ | -------------------------------------- | ------------------------------------- |
+| `command`          | `match`, a regular expression          | the text of the command about to run  |
+| `git-tag-sequence` | `policy`, one of three named orderings | the tags in the repository it runs in |
+
+A preference that no kind can express stays at `enforce: check`. **A new kind is a change to
+agentkit**, proposed and reviewed like one — never bespoke code smuggled into a taste folder.
+`references/format.md` carries each kind's fields, the three tag policies, and worked examples.
+
+**A kind this agentkit does not implement is skipped, loudly.** The lint refuses such a file, and
+the hook runs that same lint as it loads the folder — so the taste is dropped there, named in a
+warning that lists the kinds this agentkit does have, while every other taste keeps enforcing. A
+taste written against a newer agentkit must not brick an older hook.
+
+### What it does at the edges, so you can answer for it
 
 - **Refusal** names the taste, its file, its own `remedy`, and its own `override`.
 - **The override** is that taste's named variable, set inline on the command (`NAME=1 …`) or
@@ -332,14 +354,33 @@ What it does at the edges, so you can answer for it:
   pattern that outruns the match deadline — it is named, skipped, and the rest still bind.
 - **An unrunnable hook** (no `bun`, no evaluator) says `UNCHECKED` and allows. It never
   refuses on its own uncertainty, and it never goes quiet where there were tastes to read.
+- **A check that cannot read what it needs** says `UNCHECKED` for that one taste and allows the
+  command — `git-tag-sequence` where git will not answer, for instance. Silence there would be
+  worse than either verdict: the session would read enforcement into a guard that never ran.
 - **Bounds**: `rule.match` is capped at 200 characters, only the first 4000 characters of a
   command are examined, and the match itself is abandoned after 250ms — length is not safety,
   since a short pattern can still backtrack forever. `references/format.md` carries the
   reasoning.
 
+### Why this does not fail closed, when the vendoring guard does
+
+The two guards sit on opposite sides of one question — what does the tool do when it cannot see?
+— and they answer differently because **the cost of each mistake is different**:
+
+- **Vendoring fails closed.** A private source wrongly let into a public repository is words
+  published under someone's name, and no later commit takes them back. Refusing costs one
+  environment variable.
+- **A rule kind fails open, and says so.** Refusing every tag command in a repository whose tags
+  cannot be read would cost real work, to prevent a mis-ordered tag that `git tag -d` undoes in
+  a second. And **nothing to check is not a failure at all**: outside a git repository, or in one
+  with no tags, `git-tag-sequence` passes silently, because there is no sequence to violate.
+
+Do not "fix" this into symmetry. The rule is that a guard fails towards whichever error is
+recoverable, and it is `UNCHECKED` — never a silent allow — whenever it could not look.
+
 If someone asks why a `block` taste did not stop something, check those in order: the taste is
-`advise`, the pattern did not match, the override was set, the file failed the lint, or the
-hook reported `UNCHECKED`.
+`advise`, the rule did not fire, the override was set, the file failed the lint, the kind is one
+this agentkit does not implement, or the hook reported `UNCHECKED`.
 
 Never raise `enforce` yourself. Observed violations are evidence for a proposal the owner
 merges — the diff is how it changes.
