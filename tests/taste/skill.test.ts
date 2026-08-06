@@ -69,7 +69,7 @@ const EXTERNAL_SOURCES: [string, string][] = [
   ['a repo cannot name a transport helper', 'runs a program instead of fetching'],
   ['the lock pins the commit that was reviewed', 'the commit whose contents were reviewed'],
   ['the pin date moves only with the pin', 'The date moves only when the pin does'],
-  ['the vendored tree is never hand-edited', 'Never edit `.agentkit/tastes-vendor/` by hand'],
+  ['the vendored tree is never hand-edited', 'Never edit `.agentkit/tastes/external/` by hand'],
   ['a repository deviates with a project taste', 'to deviate in one repository, write a project taste'],
   ['an undeclared vendor directory binds nothing', 'only a declared one is read'],
   ['sync lints before it copies', '**lints it before anything is copied**'],
@@ -82,6 +82,49 @@ const EXTERNAL_SOURCES: [string, string][] = [
   ['a version number is not a review', 'Approving a version number instead of the words'],
   ['listing names the source an external row came from', 'which declared source it was vendored from'],
   ['a source correction is written upstream', 'copied into this one'],
+];
+
+// One folder with two origins, rather than two folders implying two concepts.
+// Where a file sits decides which layer it lands in, so the prose that says
+// where things sit is the prose an agent resolves by.
+const LAYOUT: [string, string][] = [
+  ['the tastes folder holds both origins', '**One tree, two origins.**'],
+  ['a source is snapshotted beneath it, not beside it', 'sits beneath it in `external/`'],
+  ['external is reserved at the tastes root', '`external` is therefore reserved'],
+  ['nothing under external is a project taste', 'is ever counted as one'],
+  ['the tastes root is linted in one invocation', 'the repository\'s own tastes are one scope'],
+  ['the old location keeps working for one release', 'for one release of grace'],
+];
+
+// Loading is whole-file, and the reason is the one that decides it: an
+// abridged taste is acted on with confidence, and "read the body when it
+// matters" is a prose discipline of exactly the kind this repository has
+// already watched get routed around.
+const LOADING_STRATEGY: [string, string][] = [
+  ['a taste that loads, loads whole', '**A taste that loads, loads whole.**'],
+  ['no summary and no first-sentence stand-in', 'Never a summary, never a first sentence'],
+  ['a partial preference is the worse failure', 'A partial preference is worse than an absent one'],
+  ['read-it-later is a prose discipline', 'is a **prose'],
+  ['instructions alone get routed around', 'demonstrably routed around'],
+  ['the one-MR cap is the evidence', 'bypassed eleven times'],
+  ['abridging repeats the failure tastes exist to fix', 'the failure the system was built to fix'],
+  ['selection is structural rather than lossy', '**structural, not lossy**'],
+  ['filtering picks which, never how much', 'Filtering decides which tastes load'],
+  ['category is what a filter reads', 'Filter by `category` against the work in front of you'],
+  ['check, block and require survive every filter', '**Regardless of category, always load**'],
+  ['a filtered load is declared, not implied', 'say plainly that you filtered'],
+  ['blocking enforcement is unaffected', '`enforce: block` is unaffected by any of this'],
+  ['filtering never changes what stops you', 'never what stops it'],
+];
+
+// The design this replaced, asserted absent rather than trusted to review. It
+// was on this branch once and read plausibly; a future edit that reintroduces
+// the vocabulary is reintroducing the failure mode, not rephrasing.
+const REVERSED_DESIGN = [
+  'Keep an index, not the corpus',
+  'index line',
+  'When in doubt, read the body',
+  'Category touch',
 ];
 
 const skill = read('skills', 'taste', 'SKILL.md');
@@ -163,6 +206,36 @@ describe('the taste skill and its contract agree', () => {
     expect(skill.includes(phrase), `SKILL.md must say: ${phrase}`).toBe(true);
   });
 
+  test.each(LAYOUT)('the skill carries the layout rule: %s', (_rule, phrase) => {
+    expect(skill.includes(phrase), `SKILL.md must say: ${phrase}`).toBe(true);
+  });
+
+  // Every session pays for the loading strategy, and nothing but this prose
+  // performs it: a clause dropped here is a habit that stops happening, with no
+  // hook and no compiler to notice.
+  test.each(LOADING_STRATEGY)('the skill carries the loading rule: %s', (_rule, phrase) => {
+    expect(skill.includes(phrase), `SKILL.md must say: ${phrase}`).toBe(true);
+  });
+
+  test.each(REVERSED_DESIGN)('the skill no longer offers a taste in summary: %s', (phrase) => {
+    expect(
+      skill.includes(phrase),
+      `SKILL.md must not say ${JSON.stringify(phrase)} — a taste loads whole, and this is the `
+        + 'vocabulary of the abridged-loading design that was reversed',
+    ).toBe(false);
+  });
+
+  // A phrase split across a line break would bind nothing: the file it is read
+  // from is hard-wrapped, and `textWrap: maintain` leaves the author's breaks
+  // exactly where they fell.
+  test.each([...LAYOUT, ...LOADING_STRATEGY])(
+    'the phrase bound for %s sits on one line',
+    (_rule, phrase) => {
+      expect(phrase.includes('\n')).toBe(false);
+      expect(skill.split('\n').some((line) => line.includes(phrase))).toBe(true);
+    },
+  );
+
   // A substring binding is only as strong as its phrase is distinctive: an echo
   // elsewhere keeps it green while the paragraph it names is rewritten to say
   // the opposite. Uniqueness is what points a binding at one place.
@@ -171,6 +244,8 @@ describe('the taste skill and its contract agree', () => {
     ...SETTLED_BEHAVIOURS,
     ...CONVERSATIONAL_SURFACES,
     ...EXTERNAL_SOURCES,
+    ...LAYOUT,
+    ...LOADING_STRATEGY,
   ])(
     'the phrase bound for %s occurs exactly once in SKILL.md',
     (_behaviour, phrase) => {

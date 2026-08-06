@@ -311,8 +311,8 @@ function blocking(name: string, remedy: string): string {
 describe('external sources stack in the order they were declared', () => {
   const vendored = {
     '.agentkit/config.yaml': BOTH,
-    '.agentkit/tastes-vendor/agentkit-tastes/release-tier.md': taste('release-tier'),
-    '.agentkit/tastes-vendor/business-tastes/commit-style.md': taste('commit-style'),
+    '.agentkit/tastes/external/agentkit-tastes/release-tier.md': taste('release-tier'),
+    '.agentkit/tastes/external/business-tastes/commit-style.md': taste('commit-style'),
   };
 
   test('every declared source contributes its tastes', () => {
@@ -335,8 +335,8 @@ describe('external sources stack in the order they were declared', () => {
   test('a later source wins the same name against an earlier one', () => {
     const { cwd, home } = where({
       '.agentkit/config.yaml': BOTH,
-      '.agentkit/tastes-vendor/agentkit-tastes/release-tier.md': taste('release-tier', {}, 'generic'),
-      '.agentkit/tastes-vendor/business-tastes/release-tier.md': taste('release-tier', {}, 'central'),
+      '.agentkit/tastes/external/agentkit-tastes/release-tier.md': taste('release-tier', {}, 'generic'),
+      '.agentkit/tastes/external/business-tastes/release-tier.md': taste('release-tier', {}, 'central'),
     });
     const resolved = resolveTastes(cwd, home, {}).tastes;
 
@@ -347,8 +347,8 @@ describe('external sources stack in the order they were declared', () => {
 
   test('reversing the declaration reverses the winner, and nothing else does', () => {
     const files = {
-      '.agentkit/tastes-vendor/agentkit-tastes/release-tier.md': taste('release-tier'),
-      '.agentkit/tastes-vendor/business-tastes/release-tier.md': taste('release-tier'),
+      '.agentkit/tastes/external/agentkit-tastes/release-tier.md': taste('release-tier'),
+      '.agentkit/tastes/external/business-tastes/release-tier.md': taste('release-tier'),
     };
     const reversed = config(
       source(CENTRAL, { ref: 'v2026.08.4' }),
@@ -365,8 +365,8 @@ describe('external sources stack in the order they were declared', () => {
     const { cwd, home } = where({
       '.agentkit/config.yaml': BOTH,
       '.agentkit/tastes/release-tier.md': taste('release-tier', { scope: 'project' }),
-      '.agentkit/tastes-vendor/agentkit-tastes/release-tier.md': taste('release-tier'),
-      '.agentkit/tastes-vendor/business-tastes/commit-style.md': taste('commit-style'),
+      '.agentkit/tastes/external/agentkit-tastes/release-tier.md': taste('release-tier'),
+      '.agentkit/tastes/external/business-tastes/commit-style.md': taste('commit-style'),
     }, {
       '.agentkit/tastes/release-tier.md': taste('release-tier', { scope: 'user' }),
       '.agentkit/tastes/commit-style.md': taste('commit-style', { scope: 'user' }),
@@ -380,11 +380,11 @@ describe('external sources stack in the order they were declared', () => {
     expect(tastes.find((entry) => entry.name === 'commit-style')?.layer).toBe('external');
   });
 
-  test('an undeclared vendor directory is inert, and said out loud', () => {
+  test('an undeclared source directory is inert, and said out loud', () => {
     const { cwd, home } = where({
       '.agentkit/config.yaml': config(source(GENERIC, { ref: 'main' })),
-      '.agentkit/tastes-vendor/agentkit-tastes/release-tier.md': taste('release-tier'),
-      '.agentkit/tastes-vendor/stowaway/commit-style.md': taste('commit-style'),
+      '.agentkit/tastes/external/agentkit-tastes/release-tier.md': taste('release-tier'),
+      '.agentkit/tastes/external/stowaway/commit-style.md': taste('commit-style'),
     });
     const { tastes, warnings } = resolveTastes(cwd, home, {});
 
@@ -411,8 +411,8 @@ describe('external sources stack in the order they were declared', () => {
   test('two files with one name inside a single source is that source being broken', () => {
     const { cwd, home } = where({
       '.agentkit/config.yaml': config(source(GENERIC, { ref: 'main' })),
-      '.agentkit/tastes-vendor/agentkit-tastes/release-tier.md': taste('release-tier'),
-      '.agentkit/tastes-vendor/agentkit-tastes/git/release-tier.md': taste('release-tier'),
+      '.agentkit/tastes/external/agentkit-tastes/release-tier.md': taste('release-tier'),
+      '.agentkit/tastes/external/agentkit-tastes/git/release-tier.md': taste('release-tier'),
     });
 
     expect(resolveTastes(cwd, home, {}).warnings.join('\n')).toContain('duplicate name');
@@ -438,7 +438,7 @@ describe('a source cannot make git run a program', () => {
 
     expect(result.ok).toBe(false);
     expect(existsSync(sentinel)).toBe(false);
-    expect(existsSync(join(cwd, '.agentkit', 'tastes-vendor'))).toBe(false);
+    expect(existsSync(join(cwd, '.agentkit', 'tastes', 'external'))).toBe(false);
     expect(existsSync(join(cwd, '.agentkit', 'tastes.lock'))).toBe(false);
   });
 });
@@ -451,7 +451,7 @@ describe('a fresh clone with no network reads its policy anyway', () => {
   const offline = {
     '.agentkit/config.yaml': config(source(UNREACHABLE, { ref: 'v1', name: 'agentkit-tastes' })),
     '.agentkit/tastes.lock': 'agentkit-tastes\t' + UNREACHABLE + '\tv1\tdeadbeef\t2026-08-05\n',
-    '.agentkit/tastes-vendor/agentkit-tastes/release-tier.md': blocking(
+    '.agentkit/tastes/external/agentkit-tastes/release-tier.md': blocking(
       'release-tier',
       'Cut a patch tag.',
     ),
@@ -471,6 +471,6 @@ describe('a fresh clone with no network reads its policy anyway', () => {
 
     expect(verdict.decision).toBe('deny');
     expect(verdict.reason).toContain('Cut a patch tag.');
-    expect(verdict.reason).toContain('tastes-vendor/agentkit-tastes/release-tier.md');
+    expect(verdict.reason).toContain('tastes/external/agentkit-tastes/release-tier.md');
   });
 });

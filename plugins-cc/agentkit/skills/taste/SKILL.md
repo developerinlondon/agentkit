@@ -35,15 +35,25 @@ Read `taste.enabled` and `taste.learning` from `.agentkit/config.yaml`, falling 
 Precedence is **project > external > user > kit**. The higher scope replaces the lower one
 for the same `name` — two tastes are never merged into a third nobody wrote.
 
-| Layer    | Path                       | In git                   | Holds                              |
-| -------- | -------------------------- | ------------------------ | ---------------------------------- |
-| Project  | `.agentkit/tastes/`        | yes, in every clone      | what is true in this repository    |
-| External | `.agentkit/tastes-vendor/` | yes, a vendored snapshot | a taste repo you subscribe to      |
-| User     | `~/.agentkit/tastes/`      | no, machine-local        | personal ergonomics, every project |
-| Kit      | `rules/`                   | ships with agentkit      | universal engineering discipline   |
+| Layer    | Path                         | In git                   | Holds                              |
+| -------- | ---------------------------- | ------------------------ | ---------------------------------- |
+| Project  | `.agentkit/tastes/`          | yes, in every clone      | what is true in this repository    |
+| External | `.agentkit/tastes/external/` | yes, a vendored snapshot | a taste repo you subscribe to      |
+| User     | `~/.agentkit/tastes/`        | no, machine-local        | personal ergonomics, every project |
+| Kit      | `rules/`                     | ships with agentkit      | universal engineering discipline   |
+
+**One tree, two origins.** The repository's own tastes sit at the root of `.agentkit/tastes/`
+and a snapshot of each declared source sits beneath it in `external/`. They are the same kind
+of file, read the same way, differing only in where they came from — which is why they are
+one folder rather than two siblings implying two concepts.
+
+`external` is therefore reserved at the root of a tastes tree: a taste or a category directory
+of that name is refused by the lint, because that path is read by position and would be read
+as a source. Everything else at the root is the project layer, and nothing under `external/`
+is ever counted as one.
 
 The external layer holds one directory per declared source, and only a declared one is read:
-a directory under `tastes-vendor/` that no longer appears in `taste.sources` binds nothing,
+a directory under `tastes/external/` that no longer appears in `taste.sources` binds nothing,
 and is named as vendored-but-undeclared rather than left to look active. The next section is
 how a source gets there.
 
@@ -76,7 +86,7 @@ taste:
 - **A project list replaces the user list** instead of extending it. A machine-local file gets
   no say in what a reviewed, committed declaration means.
 - **`mode: vendored` is the only mode that exists today.** The snapshot is committed to
-  `.agentkit/tastes-vendor/<name>/`, so a fresh clone with no network — a plane, a CI runner
+  `.agentkit/tastes/external/<name>/`, so a fresh clone with no network — a plane, a CI runner
   with no credentials for your git host — already has the policy and reads it without
   fetching anything. `mode: reference`, the per-machine cache, is **deferred**: declaring it
   is an error naming the deferral, never a quiet fall back to vendoring something the owner
@@ -90,7 +100,7 @@ taste:
 - **`.agentkit/tastes.lock` pins each source to the commit whose contents were reviewed.** It
   is generated in `taste.sources` order and carries the name, repository, ref, commit and the
   date that pin was taken. The date moves only when the pin does.
-- **Never edit `.agentkit/tastes-vendor/` by hand.** The next sync regenerates it wholesale,
+- **Never edit `.agentkit/tastes/external/` by hand.** The next sync regenerates it wholesale,
   so an edit there is a change that quietly disappears. To change what a source says, change
   it in the source's own repository; to deviate in one repository, write a project taste of
   the same `name`, which wins outright and is visible in that repository's own diff.
@@ -99,14 +109,45 @@ taste:
 
 Do this before your first substantive action in a repository, not after.
 
-1. List `.agentkit/tastes/`, `.agentkit/tastes-vendor/*/`, and `~/.agentkit/tastes/`,
-   recursing into category subdirectories.
+1. List `.agentkit/tastes/` excluding `external/`, then `.agentkit/tastes/external/*/`, then
+   `~/.agentkit/tastes/`, recursing into category subdirectories.
 2. Read the frontmatter of each file. Resolve by `name`: keep the copy from the highest
    scope, discard the rest. Two entries with one name is a replacement, not a conflict.
-3. Load the **body** of every `require` taste, and of every taste whose `category` touches
-   what you are about to do. For a large set, frontmatter alone is the index — pull a body
-   when the work reaches it, and say which tastes you loaded if asked.
+3. **A taste that loads, loads whole.** Never a summary, never a first sentence standing in
+   for the rest of the file. A taste is a short file by construction, and a whole folder of
+   them is a few thousand tokens — the cost that would justify abridging one is not there.
 4. Note every taste at `enforce: check` and what it covers. You re-read those later.
+
+### Why never a summary
+
+A partial preference is worse than an absent one, because it is acted on with confidence.
+The imperative fits on one line; the exceptions, the reason, and the how-to-apply do not,
+and those are most of what a taste is for. An agent holding only the opening line cannot
+know which of the three it is missing, so it does not know to go looking.
+
+The alternative — hold a one-line summary, open the file when it matters — is a **prose
+discipline**, and this repository already carries the evidence on those: _"Instructions alone
+are demonstrably routed around: a working one-MR cap was bypassed eleven times by simply
+never opening an MR."_ Tastes exist because standing instructions decay under load. Building
+the taste system's own loading on "the agent will remember to open the file" would repeat,
+at the core of the system, the failure the system was built to fix.
+
+### Selecting, when the folder is large
+
+Selection is **structural, not lossy**. Filtering decides which tastes load, and it never
+decides how much of one loads:
+
+- Filter by `category` against the work in front of you.
+- **Regardless of category, always load** every taste at `enforce: check` or `enforce: block`,
+  and every taste at `strength: require`. Those cost the most to miss, so they are never what
+  a filter drops.
+
+Say which tastes you loaded when asked, and say plainly that you filtered rather than letting
+a short list imply the folder was small.
+
+`enforce: block` is unaffected by any of this. The `taste-police` hook reads the taste files
+off disk itself, in its own process, on the command it is judging; it never consults what a
+session loaded. Filtering changes what an agent knows before it acts, never what stops it.
 
 Honor a loaded taste as an instruction from the owner. A `require` taste is not something
 to argue with; a `prefer` taste is a default you may depart from if you say why.
@@ -162,7 +203,7 @@ bun <skill-dir>/scripts/sync.ts
 
 It fetches each declared source at its `ref`, **lints it before anything is copied** — a
 source whose tastes the lint refuses is reported by name, with the offending files, and
-nothing enters the tree — snapshots the taste files into `.agentkit/tastes-vendor/<name>/`,
+nothing enters the tree — snapshots the taste files into `.agentkit/tastes/external/<name>/`,
 and rewrites `.agentkit/tastes.lock`. Only those two paths are ever written, and a source
 that is no longer declared has its vendored copy removed. Files that are not tastes stay
 upstream: nothing executable ever crosses into your repository with the words. Re-running it
@@ -194,8 +235,10 @@ Validate any folder you touched:
 bun <skill-dir>/scripts/lint.ts .agentkit/tastes
 ```
 
-`.agentkit/tastes-vendor/` can be handed over whole: each source under it is linted as its own
-scope, so a name two sources both define stays the stacking it is rather than a collision.
+`.agentkit/tastes/` can be handed over whole: the repository's own tastes are one scope and
+each source under `external/` is linted as its own, so a name two sources both define stays the
+stacking it is rather than a collision. A tree still at the old `.agentkit/tastes-vendor/` path
+is read the same way, for one release of grace.
 
 ## What `enforce` means today
 

@@ -163,17 +163,17 @@ describe('the name is the key', () => {
 // the sources list exists for — the later one is subscribed to precisely to win
 // it. Dedupe therefore stops at the source boundary, as it already does when
 // each source is linted on its own.
-describe('the vendored tree is a stack of sources, not one folder', () => {
-  function vendorRoot(files: Record<string, string>): string {
+describe('the external tree is a stack of sources, not one folder', () => {
+  function externalRoot(files: Record<string, string>, root = 'external'): string {
     const nested: Record<string, string> = {};
-    for (const [path, contents] of Object.entries(files)) nested[`tastes-vendor/${path}`] = contents;
-    return join(sandbox(nested), 'tastes-vendor');
+    for (const [path, contents] of Object.entries(files)) nested[`${root}/${path}`] = contents;
+    return join(sandbox(nested), root);
   }
 
   const TIER = taste(withFields({ name: 'release-tier', scope: 'external' }));
 
   test('the same name in two sources is the feature, not a duplicate', () => {
-    const root = vendorRoot({
+    const root = externalRoot({
       'agentkit-tastes/release-tier.md': TIER,
       'business-tastes/release-tier.md': TIER,
     });
@@ -182,7 +182,7 @@ describe('the vendored tree is a stack of sources, not one folder', () => {
   });
 
   test('a duplicate inside one source still fails, named by its source', () => {
-    const root = vendorRoot({
+    const root = externalRoot({
       'agentkit-tastes/release-tier.md': TIER,
       'agentkit-tastes/git/release-tier.md': TIER,
       'business-tastes/release-tier.md': TIER,
@@ -196,7 +196,7 @@ describe('the vendored tree is a stack of sources, not one folder', () => {
   });
 
   test('an invalid taste is still reported, with the source it came from', () => {
-    const root = vendorRoot({
+    const root = externalRoot({
       'agentkit-tastes/release-tier.md': taste(withFields({ name: 'release-tiers' })),
     });
     const errors = lintTastePath(root);
@@ -209,7 +209,7 @@ describe('the vendored tree is a stack of sources, not one folder', () => {
   // Nothing writes one and nothing reads one, so passing it over silently would
   // leave a file inside a linted tree that no run ever checked.
   test('a taste loose at the root belongs to no source and is refused', () => {
-    const root = vendorRoot({
+    const root = externalRoot({
       'agentkit-tastes/release-tier.md': TIER,
       'stray.md': TIER,
     });
@@ -218,6 +218,18 @@ describe('the vendored tree is a stack of sources, not one folder', () => {
     expect(errors).toHaveLength(1);
     expect(errors[0]).toContain('stray.md');
     expect(errors[0]).toContain('source');
+  });
+
+  // One release of grace: a clone that predates the move still has its snapshot
+  // at the old root, and pointing the linter at it must not read the whole tree
+  // as one scope — which is the reading that turns two sources into a duplicate.
+  test('the old tastes-vendor root is still read as a stack of sources', () => {
+    const root = externalRoot({
+      'agentkit-tastes/release-tier.md': TIER,
+      'business-tastes/release-tier.md': TIER,
+    }, 'tastes-vendor');
+
+    expect(lintTastePath(root)).toEqual([]);
   });
 
   test('any other directory is one scope, exactly as before', () => {
@@ -502,11 +514,11 @@ describe('the command-line surface', () => {
     expect(result.stderr).toContain('no such directory');
   });
 
-  // This repository's own vendored tree, whose two sources both define
+  // This repository's own tastes root, whose two sources both define
   // release-tier. Pointing the linter at the root is what a human or an agent
   // does, and it has to agree with what resolution already does with it.
-  test('this repository\'s vendor root lints clean, both sources at once', () => {
-    const result = run(join(repoRoot, '.agentkit', 'tastes-vendor'));
+  test('this repository\'s tastes root lints clean, both sources at once', () => {
+    const result = run(join(repoRoot, '.agentkit', 'tastes'));
 
     expect(result.stderr).toBe('');
     expect(result.status).toBe(0);
