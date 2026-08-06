@@ -113,39 +113,41 @@ Do this before your first substantive action in a repository, not after.
    `~/.agentkit/tastes/`, recursing into category subdirectories.
 2. Read the frontmatter of each file. Resolve by `name`: keep the copy from the highest
    scope, discard the rest. Two entries with one name is a replacement, not a conflict.
-3. **Keep an index, not the corpus.** What stays in the session is one line per resolved
-   taste: its `name`, its scope — and its source, for an external one — its `strength`, its
-   `enforce`, and the taste's opening sentence, which is the imperative the rest of the file
-   explains. Nothing else is loaded yet.
+3. **A taste that loads, loads whole.** Never a summary, never a first sentence standing in
+   for the rest of the file. A taste is a short file by construction, and a whole folder of
+   them is a few thousand tokens — the cost that would justify abridging one is not there.
 4. Note every taste at `enforce: check` and what it covers. You re-read those later.
 
-An index line is a few dozen tokens; a body is a few hundred. Loading every body is
-affordable at five tastes and is a standing tax on every session at fifty, paid mostly for
-tastes the session never touches. The index is what makes a large folder cost nothing to
-carry.
+### Why never a summary
 
-### Reading a body
+A partial preference is worse than an absent one, because it is acted on with confidence.
+The imperative fits on one line; the exceptions, the reason, and the how-to-apply do not,
+and those are most of what a taste is for. An agent holding only the opening line cannot
+know which of the three it is missing, so it does not know to go looking.
 
-Read the file itself — never act off the index line alone — at any of these:
+The alternative — hold a one-line summary, open the file when it matters — is a **prose
+discipline**, and this repository already carries the evidence on those: _"Instructions alone
+are demonstrably routed around: a working one-MR cap was bypassed eleven times by simply
+never opening an MR."_ Tastes exist because standing instructions decay under load. Building
+the taste system's own loading on "the agent will remember to open the file" would repeat,
+at the core of the system, the failure the system was built to fix.
 
-- **Category touch** — the work in front of you falls in that taste's `category`.
-- **Imminent action** — you are about to do something a `check` or `block` taste covers.
-- **Applying it** — you are deciding _how_ to honor a taste, not merely that it applies.
-- **Asked about** — someone asks what a taste says, or why an agent behaved a certain way.
+### Selecting, when the folder is large
 
-**When in doubt, read the body.** This strategy trades one failure mode against another,
-and the one it accepts is acting on an index line where the body would have changed the
-action — the imperative fits on a line, but the exceptions, the reasoning and the how-to-apply
-do not, and those are most of what a taste is for. Reading a body you did not need costs a
-few hundred tokens. Skipping one you did costs the work.
+Selection is **structural, not lossy**. Filtering decides which tastes load, and it never
+decides how much of one loads:
 
-Say which bodies you read when asked, and never present an index line as though you had read
-the file.
+- Filter by `category` against the work in front of you.
+- **Regardless of category, always load** every taste at `enforce: check` or `enforce: block`,
+  and every taste at `strength: require`. Those cost the most to miss, so they are never what
+  a filter drops.
 
-**`enforce: block` is untouched by this.** The `taste-police` hook reads the taste files off
-disk itself, in its own process, on the command it is judging; it never consults what a
-session loaded. Holding an index weakens no enforcement — it changes only what an agent knows
-before it is stopped.
+Say which tastes you loaded when asked, and say plainly that you filtered rather than letting
+a short list imply the folder was small.
+
+`enforce: block` is unaffected by any of this. The `taste-police` hook reads the taste files
+off disk itself, in its own process, on the command it is judging; it never consults what a
+session loaded. Filtering changes what an agent knows before it acts, never what stops it.
 
 Honor a loaded taste as an instruction from the owner. A `require` taste is not something
 to argue with; a `prefer` taste is a default you may depart from if you say why.

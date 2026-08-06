@@ -19,11 +19,15 @@ release PR — "publish this" authorizes a release, never the tier.
 - refactor(taste): **migration with one release of grace.** A sync finding `tastes-vendor/`
   moves it and says so; resolve and the lint read the old path meanwhile, with one line naming
   the new one. Nothing outside `external/` and the lock is ever written.
-- perf(taste): **the session loads an index, not the corpus.** Loading every `require` body at
-  session start cost ~5,500 tokens standing on every harness, mostly for tastes never touched;
-  an index line per taste is ~850 here. Bodies are read on demand — category touch, imminent
-  covered action, deciding how to apply, or being asked — and when in doubt. `enforce: block`
-  is unaffected: the hook reads the files itself, out of process.
+- docs(taste): **a taste that loads, loads whole** — never a summary, never a first sentence
+  standing in for the file. A partial preference is worse than an absent one, because it is
+  acted on with confidence. "Hold a summary, open the file when it matters" is a prose
+  discipline, and this repository has already watched one of those get routed around; the
+  taste system cannot be built on the failure it exists to fix.
+- docs(taste): **selection is structural, not lossy.** Where a folder is large enough to
+  matter, filter by `category` — and load every `check`, `block` and `require` taste whatever
+  its category. Filtering decides which tastes load, never how much of one loads.
+  `enforce: block` is unaffected either way: the hook reads the files itself, out of process.
 
 ## v0.7.8 — 2026-08-05
 

@@ -96,22 +96,35 @@ const LAYOUT: [string, string][] = [
   ['the old location keeps working for one release', 'for one release of grace'],
 ];
 
-// The load-bearing trade of the loading strategy: an index scales, a corpus
-// does not, and the failure the index accepts has to be stated where the agent
-// making that call will read it — not left as an efficiency claim.
+// Loading is whole-file, and the reason is the one that decides it: an
+// abridged taste is acted on with confidence, and "read the body when it
+// matters" is a prose discipline of exactly the kind this repository has
+// already watched get routed around.
 const LOADING_STRATEGY: [string, string][] = [
-  ['the session keeps an index, not every body', '**Keep an index, not the corpus.**'],
-  ['an index line carries the taste\'s imperative', 'which is the imperative the rest of the file'],
-  ['loading every body is a standing tax', 'a standing tax on every session at fifty'],
-  ['a body is read when the work touches its category', '**Category touch**'],
-  ['a body is read before an action it covers', '**Imminent action**'],
-  ['a body is read when deciding how to honor it', '**Applying it**'],
-  ['a body is read when someone asks about it', '**Asked about**'],
-  ['doubt resolves toward reading the body', '**When in doubt, read the body.**'],
-  ['the failure it trades against is stated', 'acting on an index line where the body'],
-  ['an index line is never passed off as the file', 'never present an index line as though you had read'],
-  ['blocking enforcement is unaffected', '**`enforce: block` is untouched by this.**'],
-  ['an index weakens no enforcement', 'Holding an index weakens no enforcement'],
+  ['a taste that loads, loads whole', '**A taste that loads, loads whole.**'],
+  ['no summary and no first-sentence stand-in', 'Never a summary, never a first sentence'],
+  ['a partial preference is the worse failure', 'A partial preference is worse than an absent one'],
+  ['read-it-later is a prose discipline', 'is a **prose'],
+  ['instructions alone get routed around', 'demonstrably routed around'],
+  ['the one-MR cap is the evidence', 'bypassed eleven times'],
+  ['abridging repeats the failure tastes exist to fix', 'the failure the system was built to fix'],
+  ['selection is structural rather than lossy', '**structural, not lossy**'],
+  ['filtering picks which, never how much', 'Filtering decides which tastes load'],
+  ['category is what a filter reads', 'Filter by `category` against the work in front of you'],
+  ['check, block and require survive every filter', '**Regardless of category, always load**'],
+  ['a filtered load is declared, not implied', 'say plainly that you filtered'],
+  ['blocking enforcement is unaffected', '`enforce: block` is unaffected by any of this'],
+  ['filtering never changes what stops you', 'never what stops it'],
+];
+
+// The design this replaced, asserted absent rather than trusted to review. It
+// was on this branch once and read plausibly; a future edit that reintroduces
+// the vocabulary is reintroducing the failure mode, not rephrasing.
+const REVERSED_DESIGN = [
+  'Keep an index, not the corpus',
+  'index line',
+  'When in doubt, read the body',
+  'Category touch',
 ];
 
 const skill = read('skills', 'taste', 'SKILL.md');
@@ -202,6 +215,14 @@ describe('the taste skill and its contract agree', () => {
   // hook and no compiler to notice.
   test.each(LOADING_STRATEGY)('the skill carries the loading rule: %s', (_rule, phrase) => {
     expect(skill.includes(phrase), `SKILL.md must say: ${phrase}`).toBe(true);
+  });
+
+  test.each(REVERSED_DESIGN)('the skill no longer offers a taste in summary: %s', (phrase) => {
+    expect(
+      skill.includes(phrase),
+      `SKILL.md must not say ${JSON.stringify(phrase)} — a taste loads whole, and this is the `
+        + 'vocabulary of the abridged-loading design that was reversed',
+    ).toBe(false);
   });
 
   // A phrase split across a line break would bind nothing: the file it is read
