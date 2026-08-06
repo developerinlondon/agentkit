@@ -1,4 +1,5 @@
 import { homedir } from 'node:os';
+import { offValueLine, type Override, readOverride, unquote } from './override.ts';
 import { type ResolvedTaste, resolveTastes } from './resolve.ts';
 import { configFiles, tasteSection } from './sources.ts';
 
@@ -10,7 +11,6 @@ export const MAX_SUBJECT_LENGTH = 4000;
 export const MATCH_DEADLINE_MS = 250;
 
 const ENV_NAME = /^[A-Z][A-Z0-9_]*$/;
-const OFF_VALUES = new Set(['', '0', 'false', 'no', 'off']);
 
 export interface Verdict {
   decision: 'allow' | 'deny';
@@ -37,15 +37,6 @@ function tasteEnabled(
   return true;
 }
 
-type Override =
-  | { state: 'absent' }
-  | { state: 'granted'; value: string }
-  | { state: 'off'; value: string };
-
-function unquote(value: string): string {
-  return value.replace(/^(['"])(.*)\1$/, '$2');
-}
-
 // An inline assignment never reaches the hook's own environment, so the text of
 // the command is where a deliberate, visible override actually lives. Same
 // treatment as the branch WIP cap in hooks/claude/git-police.sh.
@@ -60,12 +51,7 @@ function overrideState(
   env: Record<string, string | undefined>,
 ): Override {
   if (name === undefined || !ENV_NAME.test(name)) return { state: 'absent' };
-  const inline = assignedInline(command, name);
-  const raw = inline ?? env[name];
-  if (raw === undefined) return { state: 'absent' };
-  const value = unquote(raw).trim();
-  if (OFF_VALUES.has(value.toLowerCase())) return { state: 'off', value: raw };
-  return { state: 'granted', value };
+  return readOverride(assignedInline(command, name) ?? env[name]);
 }
 
 type MatchOutcome = { matched: boolean } | { skipped: string };
@@ -127,8 +113,7 @@ function overrideLine(taste: ResolvedTaste, override: Override): string {
   }
   const deliberate = `Override, when this is deliberate: prefix the command with ${name}=1.`;
   if (override.state !== 'off') return deliberate;
-  return `${name}=${JSON.stringify(override.value)} does not read as a deliberate override `
-    + `(empty, 0, false, no and off switch nothing on), so the taste still applies. ${deliberate}`;
+  return `${offValueLine(name, override.value)}, so the taste still applies. ${deliberate}`;
 }
 
 // A taste that was skipped — malformed, or a pattern that outran the deadline —

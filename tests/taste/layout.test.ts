@@ -4,22 +4,12 @@ import { join } from 'node:path';
 import { lintTastePath } from '../../skills/taste/scripts/lint.ts';
 import { resolveTastes } from '../../skills/taste/scripts/resolve.ts';
 import { syncSources } from '../../skills/taste/scripts/sync.ts';
-import { remote, removeScratch, scratch, taste, treeOf } from './fixtures.ts';
+import { config, remote, removeScratch, scratch, source, taste, treeOf } from './fixtures.ts';
 
 afterEach(removeScratch);
 
 const GENERIC = 'git@github.com:developerinlondon/agentkit-tastes.git';
 const CENTRAL = 'git@github.com:developerinlondon/business-tastes.git';
-
-function source(repo: string, extra: Record<string, string> = {}): string {
-  const lines = [`    - repo: ${repo}`];
-  for (const [key, value] of Object.entries(extra)) lines.push(`      ${key}: ${value}`);
-  return lines.join('\n');
-}
-
-function config(...sources: string[]): string {
-  return `taste:\n  sources:\n${sources.join('\n')}\n`;
-}
 
 const ONE = config(source(GENERIC, { ref: 'v2026.08.1' }));
 const BOTH = config(
@@ -48,7 +38,7 @@ describe('external sources are a subtree of the tastes folder', () => {
     const { tastes } = resolveTastes(cwd, home, {});
 
     expect(tastes.map((entry) => entry.name)).toEqual(['release-tier']);
-    expect(tastes[0]?.layer).toBe('external');
+    expect(tastes[0]?.layer).toBe('project-external');
     expect(tastes[0]?.source).toBe('agentkit-tastes');
   });
 
@@ -66,7 +56,7 @@ describe('external sources are a subtree of the tastes folder', () => {
 
     expect(tastes.filter((entry) => entry.layer === 'project').map((entry) => entry.name))
       .toEqual(['own-rule']);
-    expect(tastes.filter((entry) => entry.layer === 'external').map((entry) => entry.name))
+    expect(tastes.filter((entry) => entry.layer === 'project-external').map((entry) => entry.name))
       .toEqual(['commit-style', 'release-tier']);
   });
 
@@ -80,7 +70,7 @@ describe('external sources are a subtree of the tastes folder', () => {
 
     expect(tastes).toHaveLength(1);
     expect(tastes[0]?.layer).toBe('project');
-    expect(tastes[0]?.shadows).toEqual(['external']);
+    expect(tastes[0]?.shadows).toEqual(['project-external']);
   });
 
   test('a category directory of the owner\'s own is read as project, not as a source', () => {
@@ -197,7 +187,7 @@ describe('a tree still at the old tastes-vendor location', () => {
     const { tastes, warnings } = resolveTastes(cwd, home, {});
 
     expect(tastes.map((entry) => entry.name)).toEqual(['release-tier']);
-    expect(tastes[0]?.layer).toBe('external');
+    expect(tastes[0]?.layer).toBe('project-external');
     expect(warnings.join('\n')).toContain('.agentkit/tastes/external');
     expect(warnings.filter((warning) => warning.includes('tastes-vendor'))).toHaveLength(1);
   });
@@ -222,7 +212,7 @@ describe('a tree still at the old tastes-vendor location', () => {
     upstream.tag('v1');
     const cwd = scratch({
       '.agentkit/config.yaml': config(
-        source(upstream.url, { ref: 'v1', name: 'agentkit-tastes' }),
+        source(upstream.url, { ref: 'v1', name: 'agentkit-tastes', visibility: 'public' }),
       ),
       '.agentkit/tastes-vendor/agentkit-tastes/release-tier.md': taste('release-tier'),
     });
@@ -248,7 +238,7 @@ describe('sync writes under external/ and nowhere else in the tastes tree', () =
     const own = project('own-rule');
     const cwd = scratch({
       '.agentkit/config.yaml': config(
-        source(upstream.url, { ref: 'v1', name: 'agentkit-tastes' }),
+        source(upstream.url, { ref: 'v1', name: 'agentkit-tastes', visibility: 'public' }),
       ),
       '.agentkit/tastes/own-rule.md': own,
       '.agentkit/tastes/git/branch-names.md': project('branch-names'),

@@ -106,6 +106,34 @@ How to apply: propose the patch version in the release PR. If the diff looks
 minor-worthy, say so and ask — do not tag it.
 ```
 
+## The source contract
+
+A source is declared in `taste.sources`, in a repository's `.agentkit/config.yaml` or the
+machine's `~/.config/agentkit/config.yaml`. Both lists apply and each vendors into its own store.
+
+| Key          | Required                | Value                                                                   |
+| ------------ | ----------------------- | ----------------------------------------------------------------------- |
+| `repo`       | yes                     | a git URL or path — never git's `scheme::command` transport-helper form |
+| `ref`        | yes                     | a plain branch, tag or commit; one beginning with `-` is a git option   |
+| `visibility` | for a repository's list | `public` \| `private` — whether these words may be published            |
+| `mode`       | no                      | `vendored`, the default and the only mode; `reference` is deferred      |
+| `path`       | no                      | a relative subdirectory of the source that holds the taste files        |
+| `name`       | no                      | the directory it vendors into; defaults to the repository's own name    |
+
+`visibility` is what a vendoring is judged against, because vendoring **commits the source's
+words** into the repository it runs in:
+
+- **Required of a source a repository vendors.** Missing is a refusal naming the key. On the
+  machine's list it is optional and defaults to `private`, since nothing there is committed
+  anywhere.
+- **`private` is refused entry to a public repository**, and refused just as firmly when the
+  target's visibility cannot be read at all — no remote, no `gh` or `glab`, a forge that errors.
+  A repository that cannot be shown to be private is treated as public.
+- **`internal` on a forge is not private**: every account on that instance can read it.
+- **`AGENTKIT_TASTE_TARGET_PRIVATE=1`** on the sync command asserts the one fact the tool could
+  not establish. It does not overrule a forge that answered, and empty, `0`, `false`, `no` and
+  `off` do not switch it on.
+
 ## Body shape
 
 Three parts, in this order. A taste missing the last two is a slogan: the agent that reads it

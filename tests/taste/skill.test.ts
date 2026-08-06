@@ -3,6 +3,8 @@ import { describe, expect, test } from 'bun:test';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { ENFORCEMENTS, SCOPES, STRENGTHS } from '../../skills/taste/scripts/lint.ts';
+import { VISIBILITIES } from '../../skills/taste/scripts/sources.ts';
+import { TARGET_PRIVATE_OVERRIDE } from '../../skills/taste/scripts/visibility.ts';
 
 const repoRoot = join(import.meta.dir, '..', '..');
 
@@ -21,7 +23,7 @@ const HOOK_BEHAVIOURS: [string, string][] = [
 ];
 
 const SETTLED_BEHAVIOURS: [string, string][] = [
-  ['precedence resolves in one direction', 'project > external > user > kit'],
+  ['precedence resolves in one direction', 'project > project external > user > user external > kit'],
   ['a higher scope replaces rather than merges', 'replaces the lower one'],
   ['dedupe happens before anything is written', '**2. Dedupe before writing anything.**'],
   ['a one-off leaves the file alone', '**The file is not touched.**'],
@@ -61,7 +63,6 @@ const CONVERSATIONAL_SURFACES: [string, string][] = [
 const EXTERNAL_SOURCES: [string, string][] = [
   ['a source is subscribed to by committed config', 'ordinary committed config change in `taste.sources`'],
   ['the list is ordered and a later source wins', 'a later source wins'],
-  ['a project list replaces the user list', '**A project list replaces the user list**'],
   ['vendored is the only mode today', 'the only mode that exists today'],
   ['reference mode is refused, not downgraded', 'an error naming the deferral'],
   ['a fresh clone reads its policy with no network', 'already has the policy'],
@@ -96,6 +97,42 @@ const LAYOUT: [string, string][] = [
   ['the old location keeps working for one release', 'for one release of grace'],
 ];
 
+// Two install modes, both product features. Which one an owner wants is a
+// decision the skill has to be able to answer, and the answer is this prose:
+// nothing else in the tree says what a scope is for.
+const INSTALL_MODES: [string, string][] = [
+  ['where a source is declared decides where it lands', '**decides where its snapshot lands**'],
+  ['machine-level is declared once for every repository', 'every repository picks it up'],
+  ['nothing machine-level can reach a public repository', 'so nothing can leak into a public one'],
+  ['a private set belongs at the machine level', 'A private set belongs here'],
+  ['repository-level travels with the clone', 'the policy has to travel with the clone'],
+  ['a container agent is why repository-level exists', 'an agent running in a container'],
+  ['both scopes may be declared and both apply', '**Both may be declared, and both apply.**'],
+  ['neither list replaces the other', 'neither list replaces the other'],
+  ['two stores carry two locks', 'Two stores means two locks'],
+  ['the more specific location wins', 'The more specific'],
+  ['an owner\'s own beats what they pulled in', 'beat the ones they pulled in'],
+  ['sync refreshes both scopes that apply', 'refreshes both scopes that apply'],
+  ['outside a repository only the machine scope runs', 'only the machine scope has anything to do'],
+];
+
+// The guard, and the incident that produced it. Every clause here is a
+// refusal the code performs; prose that drifted from one would answer for the
+// wrong tool.
+const VENDOR_GUARD: [string, string][] = [
+  ['vendoring publishes the source\'s words', 'commits a source\'s words'],
+  ['the leak is named as the reason', 'prose does not stop a sync'],
+  ['visibility is required of a repository\'s source', 'required of a source a repository vendors'],
+  ['a private source cannot enter a public repository', 'refused entry to a public repository'],
+  ['the target is read from its forge', '`gh` for a GitHub remote'],
+  ['an undeterminable target is refused too', '**It fails closed.**'],
+  ['internal is on the public side', '**Internal is not private.**'],
+  ['the machine level is not gated', 'Nothing is gated at the machine level'],
+  ['the override is named', 'AGENTKIT_TASTE_TARGET_PRIVATE=1'],
+  ['the override supplies only what was unknown', 'stays refused with it set'],
+  ['off-reading values do not grant it', 'are refusals here too'],
+];
+
 // Loading is whole-file, and the reason is the one that decides it: an
 // abridged taste is acted on with confidence, and "read the body when it
 // matters" is a prose discipline of exactly the kind this repository has
@@ -125,6 +162,15 @@ const REVERSED_DESIGN = [
   'index line',
   'When in doubt, read the body',
   'Category touch',
+];
+
+// The single-store design, asserted absent for the same reason. Both sentences
+// were true and reasonable while a machine declaration vendored into whatever
+// repository you happened to be in; restoring either would restore a scope that
+// goes silent the moment another one is declared.
+const REVERSED_SCOPES = [
+  'A project list replaces the user list',
+  'project > external > user > kit',
 ];
 
 const skill = read('skills', 'taste', 'SKILL.md');
@@ -210,6 +256,28 @@ describe('the taste skill and its contract agree', () => {
     expect(skill.includes(phrase), `SKILL.md must say: ${phrase}`).toBe(true);
   });
 
+  test.each(INSTALL_MODES)('the skill carries the install mode: %s', (_mode, phrase) => {
+    expect(skill.includes(phrase), `SKILL.md must say: ${phrase}`).toBe(true);
+  });
+
+  test.each(VENDOR_GUARD)('the skill carries the vendoring guard: %s', (_rule, phrase) => {
+    expect(skill.includes(phrase), `SKILL.md must say: ${phrase}`).toBe(true);
+  });
+
+  // The refusal an owner meets is performed by vendor-guard.ts and explained
+  // here, so the two have to name the same variable.
+  test('the override the skill names is the one the guard reads', () => {
+    expect(skill).toContain(TARGET_PRIVATE_OVERRIDE);
+    expect(reference).toContain(TARGET_PRIVATE_OVERRIDE);
+  });
+
+  test('the format reference documents both visibility values', () => {
+    for (const value of VISIBILITIES) {
+      expect(reference, `format.md documents visibility: ${value}`).toContain(`\`${value}\``);
+    }
+    expect(reference).toContain('visibility');
+  });
+
   // Every session pays for the loading strategy, and nothing but this prose
   // performs it: a clause dropped here is a habit that stops happening, with no
   // hook and no compiler to notice.
@@ -225,10 +293,18 @@ describe('the taste skill and its contract agree', () => {
     ).toBe(false);
   });
 
+  test.each(REVERSED_SCOPES)('the skill no longer has one scope shadow the other: %s', (phrase) => {
+    expect(
+      skill.includes(phrase),
+      `SKILL.md must not say ${JSON.stringify(phrase)} — both scopes apply and each vendors into `
+        + 'its own store, and this is the vocabulary of the single-store design that was reversed',
+    ).toBe(false);
+  });
+
   // A phrase split across a line break would bind nothing: the file it is read
   // from is hard-wrapped, and `textWrap: maintain` leaves the author's breaks
   // exactly where they fell.
-  test.each([...LAYOUT, ...LOADING_STRATEGY])(
+  test.each([...LAYOUT, ...LOADING_STRATEGY, ...INSTALL_MODES, ...VENDOR_GUARD])(
     'the phrase bound for %s sits on one line',
     (_rule, phrase) => {
       expect(phrase.includes('\n')).toBe(false);
@@ -246,6 +322,8 @@ describe('the taste skill and its contract agree', () => {
     ...EXTERNAL_SOURCES,
     ...LAYOUT,
     ...LOADING_STRATEGY,
+    ...INSTALL_MODES,
+    ...VENDOR_GUARD,
   ])(
     'the phrase bound for %s occurs exactly once in SKILL.md',
     (_behaviour, phrase) => {

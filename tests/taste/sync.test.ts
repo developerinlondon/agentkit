@@ -8,7 +8,11 @@ afterEach(removeScratch);
 
 const TODAY = '2026-08-05';
 
-function config(source: Record<string, string>): string {
+// These exercise the fetch, the lint and the lock. The guard on what a source
+// may be vendored into is visibility.test.ts's subject, so every source here
+// declares the value that never asks anything of the forge.
+function config(declared: Record<string, string>): string {
+  const source = { visibility: 'public', ...declared };
   const [first, ...rest] = Object.entries(source);
   const head = `    - ${first?.[0]}: ${first?.[1]}`;
   const tail = rest.map(([key, value]) => `      ${key}: ${value}`);

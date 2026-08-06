@@ -5,7 +5,7 @@ import { evaluateCommand } from '../../skills/taste/scripts/police.ts';
 import { resolveTastes } from '../../skills/taste/scripts/resolve.ts';
 import { readSources } from '../../skills/taste/scripts/sources.ts';
 import { syncSources } from '../../skills/taste/scripts/sync.ts';
-import { remote, removeScratch, scratch, taste } from './fixtures.ts';
+import { remote, removeScratch, scratch, source, taste } from './fixtures.ts';
 
 afterEach(removeScratch);
 
@@ -14,12 +14,6 @@ const CENTRAL = 'git@github.com:developerinlondon/business-tastes.git';
 
 function config(...sources: string[]): string {
   return `taste:\n  enabled: true\n  sources:\n${sources.join('\n')}\n`;
-}
-
-function source(repo: string, extra: Record<string, string> = {}): string {
-  const lines = [`    - repo: ${repo}`];
-  for (const [key, value] of Object.entries(extra)) lines.push(`      ${key}: ${value}`);
-  return lines.join('\n');
 }
 
 const BOTH = config(
@@ -83,13 +77,15 @@ describe('a source is declared in committed config', () => {
     expect(sources.map((entry) => entry.name)).toEqual(['business-tastes']);
   });
 
-  test('a project list replaces the user list rather than appending to it', () => {
+  // The lists used to shadow each other because both vendored into the same
+  // directory. They vendor into separate stores now, so neither has to lose.
+  test('a project list stands alongside the user list rather than replacing it', () => {
     const { sources } = declare(
       { '.agentkit/config.yaml': config(source(GENERIC, { ref: 'main' })) },
       { '.config/agentkit/config.yaml': config(source(CENTRAL, { ref: 'main' })) },
     );
 
-    expect(sources.map((entry) => entry.name)).toEqual(['agentkit-tastes']);
+    expect(sources.map((entry) => entry.name)).toEqual(['agentkit-tastes', 'business-tastes']);
   });
 });
 
@@ -320,7 +316,7 @@ describe('external sources stack in the order they were declared', () => {
     const { tastes } = resolveTastes(cwd, home, {});
 
     expect(tastes.map((entry) => entry.name)).toEqual(['commit-style', 'release-tier']);
-    expect(tastes.every((entry) => entry.layer === 'external')).toBe(true);
+    expect(tastes.every((entry) => entry.layer === 'project-external')).toBe(true);
   });
 
   test('the winning external taste names the source it came from', () => {
@@ -375,9 +371,9 @@ describe('external sources stack in the order they were declared', () => {
     const tier = tastes.find((entry) => entry.name === 'release-tier');
 
     expect(tier?.layer).toBe('project');
-    expect(tier?.shadows).toEqual(['external', 'user']);
+    expect(tier?.shadows).toEqual(['project-external', 'user']);
     expect(tier?.shadowedSources).toEqual(['agentkit-tastes']);
-    expect(tastes.find((entry) => entry.name === 'commit-style')?.layer).toBe('external');
+    expect(tastes.find((entry) => entry.name === 'commit-style')?.layer).toBe('project-external');
   });
 
   test('an undeclared source directory is inert, and said out loud', () => {
@@ -431,7 +427,7 @@ describe('a source cannot make git run a program', () => {
     const sentinel = join(scratch(), 'pwn');
     const cwd = scratch({
       '.agentkit/config.yaml': `taste:\n  sources:\n    - repo: ${upstream.url}\n`
-        + `      ref: "--upload-pack=touch ${sentinel}"\n      name: evil\n`,
+        + `      ref: "--upload-pack=touch ${sentinel}"\n      name: evil\n      visibility: public\n`,
     });
 
     const result = await syncSources({ cwd, home: scratch(), env: {}, today: '2026-08-05' });

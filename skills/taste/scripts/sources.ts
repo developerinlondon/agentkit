@@ -4,12 +4,23 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { scalar } from './lint.ts';
 
+// Where a source was declared, which decides where its snapshot lands: a
+// repository's own config vendors into that repository, the machine's config
+// into the owner's home directory. Nothing about a machine-level source is ever
+// copied into a checkout.
+export type SourceScope = 'project' | 'user';
+
+export type SourceVisibility = 'public' | 'private';
+
 export interface TasteSource {
   name: string;
   repo: string;
   ref: string;
   path?: string;
   mode: 'vendored';
+  scope: SourceScope;
+  origin: string;
+  visibility?: SourceVisibility;
 }
 
 export interface SourceDeclaration {
@@ -17,7 +28,8 @@ export interface SourceDeclaration {
   errors: string[];
 }
 
-export const SOURCE_KEYS = ['name', 'repo', 'ref', 'path', 'mode'];
+export const SOURCE_KEYS = ['name', 'repo', 'ref', 'path', 'mode', 'visibility'];
+export const VISIBILITIES: SourceVisibility[] = ['public', 'private'];
 const MODES = ['vendored', 'reference'];
 // The name keys a directory under .agentkit/tastes/external/, so it is a plain
 // directory name or it is refused: a source must not be able to choose where in
@@ -41,6 +53,10 @@ export function configFiles(
     join(configHome, 'agentkit', 'config.yaml'),
   ];
 }
+
+// The order configFiles is written in, named: the first entry is the
+// repository's own config, the second the machine's.
+export const CONFIG_SCOPES: SourceScope[] = ['project', 'user'];
 
 export function tasteSection(path: string): Record<string, unknown> | undefined {
   let parsed: unknown;
@@ -109,10 +125,21 @@ function checkMode(mode: string, at: string): string[] {
   return [`${at}: mode: ${JSON.stringify(mode)} is not one of ${MODES.join(', ')}`];
 }
 
+// Absent is not an error here: at the machine scope the key is optional, and at
+// the repository scope it is the vendoring that refuses, naming what it needs.
+// A value that is neither word is always wrong.
+function checkVisibility(visibility: string | undefined, at: string): string[] {
+  if (visibility === undefined || VISIBILITIES.includes(visibility as SourceVisibility)) return [];
+  return [
+    `${at}: visibility ${JSON.stringify(visibility)} is not one of ${VISIBILITIES.join(', ')}`,
+  ];
+}
+
 function readSource(
   entry: unknown,
   index: number,
   origin: string,
+  scope: SourceScope,
 ): { source?: TasteSource; errors: string[] } {
   const at = `${origin}: taste.sources[${index}]`;
   if (!isRecord(entry)) {
@@ -124,9 +151,11 @@ function readSource(
   const ref = scalar(entry.ref);
   const mode = scalar(entry.mode) ?? 'vendored';
   const path = scalar(entry.path);
+  const visibility = scalar(entry.visibility);
   const name = scalar(entry.name) ?? (repo === undefined ? undefined : defaultName(repo));
 
   const errors = [
+    ...checkVisibility(visibility, at),
     ...(unknown.length > 0
       ? [`${at}: unknown source key: ${unknown.join(', ')} — a source carries ${
         SOURCE_KEYS.join(', ')
@@ -149,10 +178,26 @@ function readSource(
   if (errors.length > 0 || repo === undefined || ref === undefined || name === undefined) {
     return { errors };
   }
-  return { source: { name, repo, ref, path, mode: 'vendored' }, errors: [] };
+  return {
+    source: {
+      name,
+      repo,
+      ref,
+      path,
+      mode: 'vendored',
+      scope,
+      origin,
+      // Nothing of a machine-level source is ever committed anywhere, so the
+      // safe reading is free: it defaults to the one that would refuse if this
+      // source were ever moved into a repository.
+      visibility: (visibility as SourceVisibility | undefined)
+        ?? (scope === 'user' ? 'private' : undefined),
+    },
+    errors: [],
+  };
 }
 
-function parseSources(declared: unknown, origin: string): SourceDeclaration {
+function parseSources(declared: unknown, origin: string, scope: SourceScope): SourceDeclaration {
   if (!Array.isArray(declared)) {
     return { sources: [], errors: [`${origin}: taste.sources must be a list of sources`] };
   }
@@ -162,7 +207,7 @@ function parseSources(declared: unknown, origin: string): SourceDeclaration {
   const seen = new Set<string>();
 
   for (const [index, entry] of declared.entries()) {
-    const read = readSource(entry, index, origin);
+    const read = readSource(entry, index, origin, scope);
     errors.push(...read.errors);
     if (read.source === undefined) continue;
     if (seen.has(read.source.name)) {
@@ -179,17 +224,25 @@ function parseSources(declared: unknown, origin: string): SourceDeclaration {
   return { sources, errors };
 }
 
-// The project's list replaces the user's rather than extending it: two lists
-// that concatenate would give a machine-local file a say in what a committed,
-// reviewed declaration means.
+// Both lists apply, and each vendors into its own store: the repository's into
+// the checkout, the machine's into the owner's home directory. They cannot
+// collide, so neither has to replace the other — the repository's are simply
+// read first, which is the whole of the precedence between them.
 export function readSources(
   cwd: string,
   home?: string,
   env?: Record<string, string | undefined>,
 ): SourceDeclaration {
-  for (const path of configFiles(cwd, home, env)) {
+  const sources: TasteSource[] = [];
+  const errors: string[] = [];
+
+  for (const [index, path] of configFiles(cwd, home, env).entries()) {
     const declared = tasteSection(path)?.sources;
-    if (declared !== undefined) return parseSources(declared, path);
+    if (declared === undefined) continue;
+    const read = parseSources(declared, path, CONFIG_SCOPES[index] as SourceScope);
+    sources.push(...read.sources);
+    errors.push(...read.errors);
   }
-  return { sources: [], errors: [] };
+
+  return { sources, errors };
 }

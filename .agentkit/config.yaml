@@ -5,3 +5,4 @@ taste:
       path: tastes/
       name: public
       mode: vendored
+      visibility: public
