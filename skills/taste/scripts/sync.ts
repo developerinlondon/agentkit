@@ -268,8 +268,10 @@ export async function syncSources(request: SyncRequest): Promise<SyncResult> {
 
   const guard = await guardTargets({
     cwd: request.cwd,
+    home,
     env,
-    sources: sources.filter((source) => source.scope === 'project'),
+    project: sources.filter((source) => source.scope === 'project'),
+    machine: sources.filter((source) => source.scope === 'user'),
     probe: request.probe,
   });
   if (guard.errors.length > 0) {

@@ -12,9 +12,12 @@ export function unquote(value: string): string {
 // An override you can switch off by mistyping it is worse than none: the owner
 // believes the guard is on. Empty, 0, false, no and off are therefore refusals
 // that say so, never a quiet grant and never a quiet block.
+// Trimmed on both sides of the unquote: a shell that passed ` "0" ` through
+// leaves padding outside the quotes and inside them, and reading either as a
+// grant turns a typo into a switched-off guard.
 export function readOverride(raw: string | undefined): Override {
   if (raw === undefined) return { state: 'absent' };
-  const value = unquote(raw).trim();
+  const value = unquote(raw.trim()).trim();
   if (OFF_VALUES.has(value.toLowerCase())) return { state: 'off', value: raw };
   return { state: 'granted', value };
 }

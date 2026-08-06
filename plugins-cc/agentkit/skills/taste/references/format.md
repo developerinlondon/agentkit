@@ -130,6 +130,11 @@ words** into the repository it runs in:
   target's visibility cannot be read at all — no remote, no `gh` or `glab`, a forge that errors.
   A repository that cannot be shown to be private is treated as public.
 - **`internal` on a forge is not private**: every account on that instance can read it.
+- **The forge is asked about the URL of `origin`.** Asked without one, `gh` and `glab` resolve a
+  repository from all remotes by their own precedence, which answers about a different repository
+  than the one whose URL was read.
+- **The machine's own store is judged too when it sits inside a git work tree** — a dotfiles
+  repository. Outside one it publishes nothing and no check runs.
 - **`AGENTKIT_TASTE_TARGET_PRIVATE=1`** on the sync command asserts the one fact the tool could
   not establish. It does not overrule a forge that answered, and empty, `0`, `false`, `no` and
   `off` do not switch it on.

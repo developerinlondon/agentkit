@@ -7,7 +7,16 @@ import {
   TARGET_PRIVATE_OVERRIDE,
   type Target,
 } from '../../skills/taste/scripts/visibility.ts';
-import { config, type Remote, remote, removeScratch, scratch, source, taste } from './fixtures.ts';
+import {
+  config,
+  type Remote,
+  remote,
+  removeScratch,
+  scratch,
+  source,
+  taste,
+  writeFiles,
+} from './fixtures.ts';
 
 afterEach(removeScratch);
 
@@ -62,6 +71,48 @@ function vendoredInto(root: string, name = 'business'): string {
 
 const PRIVATE = { ref: 'v1', name: 'business', visibility: 'private' };
 const PUBLIC = { ref: 'v1', name: 'business', visibility: 'public' };
+
+// PATH is the whole fixture: the prober finds exactly the forge CLI this
+// directory holds, so "not installed" is a real absence rather than a stub
+// pretending to be one. Git is wrapped because it must keep working while gh
+// and glab do not exist.
+function checkoutWith(remotes: [string, string][], cli: Record<string, string> = {}) {
+  const bin = scratch({});
+  const scripts = { git: `#!/bin/sh\nexec ${Bun.which('git')} "$@"\n`, ...cli };
+  for (const [name, script] of Object.entries(scripts)) {
+    const path = join(bin, name);
+    writeFileSync(path, script);
+    chmodSync(path, 0o755);
+  }
+  const cwd = scratch({ 'README.md': '# target\n' });
+  Bun.spawnSync({ cmd: ['git', 'init', '-q', '-b', 'main'], cwd });
+  for (const [name, url] of remotes) {
+    Bun.spawnSync({ cmd: ['git', 'remote', 'add', name, url], cwd });
+  }
+  return { cwd, env: { PATH: bin } };
+}
+
+// Modelled on what the real CLIs do rather than on failing when misused: asked
+// with a repository it answers about that one, and asked without it resolves
+// from the remotes by gh's own precedence, which puts `upstream` above
+// `origin`. A stub that errored on a missing argument would pass a
+// implementation that reads the wrong repository as long as it read *some*
+// argument; this one returns the wrong answer, exactly as gh does.
+const FORGE_LIKE = [
+  '#!/bin/sh',
+  'target=""',
+  'for arg in "$@"; do',
+  '  case "$arg" in *://*|*@*:*) target="$arg" ;; esac',
+  'done',
+  'if [ -z "$target" ]; then',
+  '  target=$(git remote get-url upstream 2>/dev/null || git remote get-url origin 2>/dev/null)',
+  'fi',
+].join('\n');
+
+const GH_LIKE = `${FORGE_LIKE}\ncase "$target" in *private*) echo PRIVATE ;; *) echo PUBLIC ;; esac\n`;
+const GLAB_LIKE = `${FORGE_LIKE}\ncase "$target" in`
+  + ' *private*) printf \'{"visibility":"private"}\\n\' ;;'
+  + ' *) printf \'{"visibility":"public"}\\n\' ;; esac\n';
 
 describe('a private source is refused entry to a public repository', () => {
   test('the vendoring is refused, and nothing at all is written', async () => {
@@ -143,7 +194,9 @@ describe('a target whose visibility cannot be determined is refused', () => {
 
   // A guard that can be switched off by mistyping its escape hatch is worse
   // than no guard: the owner believes it is on.
-  test.each(['', '0', 'false', 'no', 'off', 'FALSE'])(
+  // A shell leaves padding outside the quotes and inside them, and every one of
+  // these is a person who believes they switched the guard off.
+  test.each(['', '0', 'false', 'no', 'off', 'FALSE', ' "0" ', "  '0'", '"off"', ' no ', "'false' "])(
     'the override set to %p still refuses',
     async (value) => {
       const attempt = await vendor(PRIVATE, target('unknown'), {
@@ -222,6 +275,162 @@ describe('a machine-level vendoring is not gated on any repository', () => {
   });
 });
 
+// A checkout has more than one remote all the time — a fork with `upstream`, a
+// mirror, a fetch-only backup — and both CLIs, asked without a repository,
+// resolve one by their own precedence rather than from `origin`. The verdict
+// then belongs to a repository nobody asked about, and it is attributed to the
+// one that was read.
+describe('the forge is asked about the repository being written into', () => {
+  const TWO_REMOTES: [string, string][] = [
+    ['origin', 'git@github.com:owner/public-site.git'],
+    ['upstream', 'git@github.com:owner/private-notes.git'],
+  ];
+
+  test('a second remote cannot answer for the checkout the snapshot lands in', async () => {
+    const at = checkoutWith(TWO_REMOTES, { gh: GH_LIKE });
+    const read = await repoVisibility(at.cwd, at.env);
+
+    expect(read.visibility).toBe('public');
+    expect(read.detail).toContain('public-site');
+    expect(read.detail).not.toContain('private-notes');
+  });
+
+  test('the same holds on gitlab, where glab resolves its own way too', async () => {
+    const at = checkoutWith([
+      ['origin', 'git@gitlab.com:group/public-site.git'],
+      ['upstream', 'git@gitlab.com:group/private-notes.git'],
+    ], { glab: GLAB_LIKE });
+
+    expect((await repoVisibility(at.cwd, at.env)).visibility).toBe('public');
+  });
+
+  // The leak this reopened: origin public, a private repo on another remote,
+  // and a private source vendored into the public checkout because the forge
+  // had been asked about the wrong one.
+  async function repoSync(at: { cwd: string; env: Record<string, string | undefined> }) {
+    writeFiles(at.cwd, { '.agentkit/config.yaml': config(source(upstream().url, PRIVATE)) });
+    return await syncSources({ cwd: at.cwd, home: scratch({}), env: at.env, today: TODAY });
+  }
+
+  test('a private source is refused in a two-remote checkout, and nothing is written', async () => {
+    const at = checkoutWith(TWO_REMOTES, { gh: GH_LIKE });
+
+    const result = await repoSync(at);
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.join('\n')).toContain('public-site');
+    expect(existsSync(vendoredInto(at.cwd))).toBe(false);
+    expect(existsSync(join(at.cwd, '.agentkit', 'tastes.lock'))).toBe(false);
+  });
+
+  test('a private target on origin still vendors, whatever the other remote is', async () => {
+    const at = checkoutWith([
+      ['origin', 'git@github.com:owner/private-notes.git'],
+      ['upstream', 'git@github.com:owner/public-site.git'],
+    ], { gh: GH_LIKE });
+
+    const result = await repoSync(at);
+
+    expect(result.errors).toEqual([]);
+    expect(existsSync(vendoredInto(at.cwd))).toBe(true);
+  });
+
+  test('a remote url that reads as an option is refused before a CLI sees it', async () => {
+    const at = checkoutWith([], { gh: GH_LIKE });
+    Bun.spawnSync({ cmd: ['git', 'config', 'remote.origin.url', '--upload-pack=id'], cwd: at.cwd });
+    const read = await repoVisibility(at.cwd, at.env);
+
+    expect(read.visibility).toBe('unknown');
+    expect(read.detail).toContain('option');
+  });
+});
+
+// The machine store publishes nothing — until the directory holding it is
+// itself a git checkout, which a dotfiles repository makes ordinary. Then it is
+// a repository like any other, and a machine source defaults to private.
+describe('the machine store is gated when it sits inside a work tree', () => {
+  async function machineSync(home: string, env: Record<string, string | undefined>, declared = PRIVATE) {
+    writeFiles(home, {
+      '.config/agentkit/config.yaml': config(source(upstream().url, declared)),
+    });
+    return await syncSources({ cwd: scratch({}), home, env, today: TODAY });
+  }
+
+  test('a home that is no git checkout vendors, and the forge is never asked', async () => {
+    const asked = { forge: false };
+    const home = scratch({});
+    writeFiles(home, {
+      '.config/agentkit/config.yaml': config(source(upstream().url, PRIVATE)),
+    });
+
+    const result = await syncSources({
+      cwd: scratch({}),
+      home,
+      env: {},
+      today: TODAY,
+      probe: async () => {
+        asked.forge = true;
+        return { visibility: 'public', detail: 'should never be reached' };
+      },
+    });
+
+    expect(result.errors).toEqual([]);
+    expect(asked.forge).toBe(false);
+    expect(existsSync(vendoredInto(home))).toBe(true);
+  });
+
+  test('a home inside a public work tree refuses the private default', async () => {
+    const at = checkoutWith([['origin', 'git@github.com:owner/public-site.git']], { gh: GH_LIKE });
+
+    const result = await machineSync(at.cwd, at.env, { ref: 'v1', name: 'business' });
+
+    expect(result.ok).toBe(false);
+    expect(existsSync(vendoredInto(at.cwd))).toBe(false);
+  });
+
+  test('the refusal names the store, the work tree and the way out', async () => {
+    const at = checkoutWith([['origin', 'git@github.com:owner/public-site.git']], { gh: GH_LIKE });
+
+    const refusal = (await machineSync(at.cwd, at.env)).errors.join('\n');
+
+    expect(refusal).toContain('machine store');
+    expect(refusal).toContain(at.cwd);
+    expect(refusal).toContain('public-site');
+    expect(refusal).toContain('Move the machine store out of that work tree');
+  });
+
+  test('a home inside a private work tree vendors', async () => {
+    const at = checkoutWith([['origin', 'git@github.com:owner/private-notes.git']], { gh: GH_LIKE });
+
+    const result = await machineSync(at.cwd, at.env);
+
+    expect(result.errors).toEqual([]);
+    expect(existsSync(vendoredInto(at.cwd))).toBe(true);
+  });
+
+  test('a work tree with no forge answer refuses, and the override lets it through', async () => {
+    const bare = checkoutWith([['origin', 'git@github.com:owner/x.git']]);
+    const allowed = checkoutWith([['origin', 'git@github.com:owner/x.git']]);
+
+    expect((await machineSync(bare.cwd, bare.env)).ok).toBe(false);
+    expect(
+      (await machineSync(allowed.cwd, {
+        ...allowed.env,
+        [TARGET_PRIVATE_OVERRIDE]: '1',
+      })).errors,
+    ).toEqual([]);
+  });
+
+  test('a machine source declared public vendors into a public work tree', async () => {
+    const at = checkoutWith([['origin', 'git@github.com:owner/public-site.git']], { gh: GH_LIKE });
+
+    const result = await machineSync(at.cwd, at.env, PUBLIC);
+
+    expect(result.errors).toEqual([]);
+    expect(existsSync(vendoredInto(at.cwd))).toBe(true);
+  });
+});
+
 // The prober against the shape it is deployed in: a real git checkout with a
 // real remote, and the forge CLI answering on PATH.
 describe('the target repository is read from the forge', () => {
@@ -230,19 +439,7 @@ describe('the target repository is read from the forge', () => {
   // pretending to be one. Git is wrapped because it must keep working while
   // gh and glab do not exist.
   function checkout(remoteUrl: string, cli: Record<string, string> = {}) {
-    const bin = scratch({});
-    const scripts = { git: `#!/bin/sh\nexec ${Bun.which('git')} "$@"\n`, ...cli };
-    for (const [name, script] of Object.entries(scripts)) {
-      const path = join(bin, name);
-      writeFileSync(path, script);
-      chmodSync(path, 0o755);
-    }
-    const cwd = scratch({ 'README.md': '# target\n' });
-    Bun.spawnSync({ cmd: ['git', 'init', '-q', '-b', 'main'], cwd });
-    if (remoteUrl !== '') {
-      Bun.spawnSync({ cmd: ['git', 'remote', 'add', 'origin', remoteUrl], cwd });
-    }
-    return { cwd, env: { PATH: bin } };
+    return checkoutWith(remoteUrl === '' ? [] : [['origin', remoteUrl]], cli);
   }
 
   function gh(visibility: string): Record<string, string> {

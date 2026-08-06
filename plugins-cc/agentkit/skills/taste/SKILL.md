@@ -146,13 +146,20 @@ prose does not stop a sync.
 - **A private source is refused entry to a public repository**, naming the source, the target
   and the reason. The target is read from its forge: `gh` for a GitHub remote, `glab` for a
   GitLab one.
+- **The forge is asked about `origin` by name.** Asked without a repository, both CLIs resolve
+  one from every remote by their own precedence — `gh` prefers `upstream` — so a checkout with a
+  second remote would otherwise be judged by a repository nobody named, and the verdict pinned on
+  the one that was read.
 - **It fails closed.** A target whose visibility cannot be determined — no remote, no forge CLI,
   a CLI that errors, a host that is neither forge — is refused too. Assuming privacy on no
   evidence is the assumption that costs a leak; the other one costs a variable.
 - **Internal is not private.** Every account on the instance can read an internal repository, so
   for this guard it sits on the public side of the line.
-- **Nothing is gated at the machine level**, because nothing is published: the snapshot lands in
-  `~/.agentkit/tastes/` and is committed nowhere.
+- **The machine level is gated only when it publishes.** Ordinarily nothing there reaches a forge
+  and no check runs at all. When `~/.agentkit/tastes/` sits inside a git work tree —
+  a dotfiles repository is the shape this exists for — it is a target like any other and is judged
+  the same way. Machine sources default to `private`, so this refuses by default and says how to
+  proceed: move the store out of the work tree, or declare the source `visibility: public`.
 - **The override is `AGENTKIT_TASTE_TARGET_PRIVATE=1`** on the sync command. It supplies the one
   fact the tool could not establish — that this repository is private — and nothing else: a
   target the forge answered _public_ for stays refused with it set, because that case is the

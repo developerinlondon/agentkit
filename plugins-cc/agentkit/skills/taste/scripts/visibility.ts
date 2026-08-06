@@ -15,9 +15,12 @@ export const TARGET_PRIVATE_OVERRIDE = 'AGENTKIT_TASTE_TARGET_PRIVATE';
 
 export const FORGE_TIMEOUT_MS = 20_000;
 
+// Asked without a URL, both CLIs pick a repository from every remote by their
+// own precedence — gh prefers `upstream` over `origin` — and answer about one
+// the caller never read. The URL is therefore always passed.
 interface Forge {
   cli: string;
-  args: string[];
+  args(url: string): string[];
   read(out: string): Visibility;
 }
 
@@ -33,13 +36,13 @@ function named(word: string): Visibility {
 
 const GITHUB: Forge = {
   cli: 'gh',
-  args: ['repo', 'view', '--json', 'visibility', '--jq', '.visibility'],
+  args: (url: string) => ['repo', 'view', url, '--json', 'visibility', '--jq', '.visibility'],
   read: named,
 };
 
 const GITLAB: Forge = {
   cli: 'glab',
-  args: ['repo', 'view', '-F', 'json'],
+  args: (url: string) => ['repo', 'view', url, '-F', 'json'],
   read(out: string): Visibility {
     try {
       const project = JSON.parse(out) as { visibility?: unknown };
@@ -49,6 +52,22 @@ const GITLAB: Forge = {
     }
   },
 };
+
+// Where a store's snapshot would land if the tree around it were pushed.
+// Nothing outside a work tree can reach a forge, so nothing there is published.
+export async function containingWorkTree(
+  path: string,
+  env: Record<string, string | undefined> = process.env,
+  timeoutMs: number = FORGE_TIMEOUT_MS,
+): Promise<string | undefined> {
+  const top = await runBounded(
+    ['git', '-C', path, 'rev-parse', '--show-toplevel'],
+    path,
+    env,
+    timeoutMs,
+  );
+  return top.ok && top.out !== '' ? top.out.split('\n')[0]?.trim() : undefined;
+}
 
 function hostOf(url: string): string {
   const scp = /^[^/]*@([^:/]+):/.exec(url);
@@ -86,6 +105,14 @@ export async function repoVisibility(
   }
 
   const url = firstLine(origin.out);
+  if (url.startsWith('-')) {
+    return {
+      visibility: 'unknown',
+      detail: `origin ${JSON.stringify(url)} begins with "-", which a forge CLI reads as an `
+        + 'option rather than a repository',
+    };
+  }
+
   const forge = forgeFor(url);
   if (forge === undefined) {
     return {
@@ -94,7 +121,7 @@ export async function repoVisibility(
     };
   }
 
-  const view = await runBounded([forge.cli, ...forge.args], cwd, env, timeoutMs);
+  const view = await runBounded([forge.cli, ...forge.args(url)], cwd, env, timeoutMs);
   if (!view.ok) {
     return {
       visibility: 'unknown',
