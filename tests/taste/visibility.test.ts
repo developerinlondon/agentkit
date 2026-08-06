@@ -335,6 +335,21 @@ describe('the forge is asked about the repository being written into', () => {
     expect(existsSync(vendoredInto(at.cwd))).toBe(true);
   });
 
+  // The direction the public-side pair cannot catch: an arm that answers about
+  // anything other than origin still reads "public" when origin is public, so
+  // only a private origin proves the URL reaching glab is the one being read.
+  test('a private origin reads as private on gitlab, whatever the other remote is', async () => {
+    const at = checkoutWith([
+      ['origin', 'git@gitlab.com:group/private-notes.git'],
+      ['upstream', 'git@gitlab.com:group/public-site.git'],
+    ], { glab: GLAB_LIKE });
+
+    const read = await repoVisibility(at.cwd, at.env);
+
+    expect(read.visibility).toBe('private');
+    expect(read.detail).toContain('private-notes');
+  });
+
   test('a remote url that reads as an option is refused before a CLI sees it', async () => {
     const at = checkoutWith([], { gh: GH_LIKE });
     Bun.spawnSync({ cmd: ['git', 'config', 'remote.origin.url', '--upload-pack=id'], cwd: at.cwd });

@@ -133,15 +133,18 @@ function lintSource(source: TasteSource, dir: string): string[] {
   return errors.map((error) => `${source.name}: ${error}`);
 }
 
-async function stage(sources: readonly TasteSource[], workspace: string, timeoutMs: number): Promise<{
+// Staged under the declaring scope: a source name is unique only within its own
+// store, so one checkout keyed on the name would fetch the machine's source
+// onto the repository's.
+async function stage(store: Store, workspace: string, timeoutMs: number): Promise<{
   staged: Staged[];
   errors: string[];
 }> {
   const staged: Staged[] = [];
   const errors: string[] = [];
 
-  for (const source of sources) {
-    const checkout = join(workspace, source.name);
+  for (const source of store.sources) {
+    const checkout = join(workspace, store.scope, source.name);
     const fetched = await fetchSource(source, checkout, timeoutMs);
     if (fetched.sha === undefined) {
       errors.push(fetched.error as string);
@@ -283,7 +286,7 @@ export async function syncSources(request: SyncRequest): Promise<SyncResult> {
     const staged = new Map<SourceScope, Staged[]>();
     const refused: string[] = [];
     for (const store of scoped) {
-      const run = await stage(store.sources, workspace, request.timeoutMs ?? STEP_TIMEOUT_MS);
+      const run = await stage(store, workspace, request.timeoutMs ?? STEP_TIMEOUT_MS);
       staged.set(store.scope, run.staged);
       refused.push(...run.errors);
     }
