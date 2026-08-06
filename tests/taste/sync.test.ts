@@ -30,7 +30,7 @@ function upstream(files: Record<string, string> = { 'release-tier.md': taste('re
 }
 
 function vendor(cwd: string, name = 'agentkit-tastes'): string {
-  return join(cwd, '.agentkit', 'tastes-vendor', name);
+  return join(cwd, '.agentkit', 'tastes', 'external', name);
 }
 
 function lockOf(cwd: string): string {
@@ -98,7 +98,7 @@ describe('sync vendors a source into the working tree', () => {
     expect(Object.keys(treeOf(vendor(cwd)))).toEqual(['release-tier.md']);
   });
 
-  test('nothing outside tastes-vendor and the lock is touched', async () => {
+  test('nothing outside the external tree and the lock is touched', async () => {
     const source = upstream();
     const cwd = scratch({
       '.agentkit/config.yaml': project(source),
@@ -113,7 +113,10 @@ describe('sync vendors a source into the working tree', () => {
     const touched = Object.keys({ ...before, ...after })
       .filter((path) => before[path] !== after[path])
       .sort();
-    expect(touched).toEqual(['.agentkit/tastes-vendor/agentkit-tastes/release-tier.md', '.agentkit/tastes.lock']);
+    expect(touched).toEqual([
+      '.agentkit/tastes.lock',
+      '.agentkit/tastes/external/agentkit-tastes/release-tier.md',
+    ]);
   });
 });
 
@@ -240,7 +243,7 @@ describe('sync answers for what it cannot do', () => {
 
     expect(result.ok).toBe(false);
     expect(result.errors.join('\n')).toContain('deferred');
-    expect(existsSync(join(cwd, '.agentkit', 'tastes-vendor'))).toBe(false);
+    expect(existsSync(join(cwd, '.agentkit', 'tastes', 'external'))).toBe(false);
   });
 
   test('an unreachable source is an error, not a half-written directory', async () => {
@@ -331,7 +334,7 @@ describe('sync answers for what it cannot do', () => {
   test('no sources declared writes nothing at all, and says so', async () => {
     const cwd = scratch({
       '.agentkit/config.yaml': 'taste:\n  enabled: true\n',
-      '.agentkit/tastes-vendor/left-behind/release-tier.md': taste('release-tier'),
+      '.agentkit/tastes/external/left-behind/release-tier.md': taste('release-tier'),
     });
     const before = treeOf(cwd);
 
@@ -342,11 +345,11 @@ describe('sync answers for what it cannot do', () => {
     expect(treeOf(cwd)).toEqual(before);
   });
 
-  test('a source dropped from the config takes its vendored copy with it', async () => {
+  test('a source dropped from the config takes its snapshot with it', async () => {
     const source = upstream();
     const cwd = scratch({
       '.agentkit/config.yaml': project(source),
-      '.agentkit/tastes-vendor/business-tastes/commit-style.md': taste('commit-style'),
+      '.agentkit/tastes/external/business-tastes/commit-style.md': taste('commit-style'),
     });
 
     const result = await sync(cwd);

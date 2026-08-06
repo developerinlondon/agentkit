@@ -47,6 +47,7 @@ function loadEvaluator(): Promise<Evaluate | null> {
 function tastesPresent(cwd: string): boolean {
   return [
     join(cwd, '.agentkit', 'tastes'),
+    // The pre-move external root, still bound for one release of grace.
     join(cwd, '.agentkit', 'tastes-vendor'),
     join(homedir(), '.agentkit', 'tastes'),
   ].some((dir) => existsSync(dir));

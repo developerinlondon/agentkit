@@ -10,6 +10,12 @@ import {
 } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
+import {
+  EXTERNAL_DIR,
+  externalRoot,
+  LEGACY_EXTERNAL_ROOT,
+  legacyExternalRoot,
+} from './layout.ts';
 import { lintTasteDirectory, tasteFiles } from './lint.ts';
 import { formatLock, type LockEntry, parseLock, pinnedOn } from './lock.ts';
 import { readSources, type TasteSource } from './sources.ts';
@@ -38,10 +44,6 @@ interface Staged {
   source: TasteSource;
   sha: string;
   dir: string;
-}
-
-function vendorRoot(cwd: string): string {
-  return join(cwd, '.agentkit', 'tastes-vendor');
 }
 
 function lockPath(cwd: string): string {
@@ -194,17 +196,33 @@ function snapshot(from: string, to: string): number {
   return files.length;
 }
 
+// Only `external/` is swept. The taste files beside it are the owner's own, and
+// a prune that reached one would delete a taste no source ever vendored.
 function prune(cwd: string, declared: readonly string[]): string[] {
-  const root = vendorRoot(cwd);
+  const root = externalRoot(cwd);
   if (!statSync(root, { throwIfNoEntry: false })?.isDirectory()) return [];
 
   const removed: string[] = [];
   for (const entry of readdirSync(root, { withFileTypes: true })) {
     if (!entry.isDirectory() || declared.includes(entry.name)) continue;
     rmSync(join(root, entry.name), { recursive: true, force: true });
-    removed.push(`removed .agentkit/tastes-vendor/${entry.name} — no longer declared`);
+    removed.push(`removed .agentkit/tastes/${EXTERNAL_DIR}/${entry.name} — no longer declared`);
   }
   return removed;
+}
+
+// Every declared source has just been re-snapshotted from its pinned ref, so the
+// old root holds nothing the new one lacks: dropping it is the move. Done after
+// the writes, so an interrupted sync leaves the tree that still binds intact.
+function relocate(cwd: string): string[] {
+  const legacy = legacyExternalRoot(cwd);
+  if (!statSync(legacy, { throwIfNoEntry: false })?.isDirectory()) return [];
+
+  rmSync(legacy, { recursive: true, force: true });
+  return [
+    `moved .agentkit/${LEGACY_EXTERNAL_ROOT}/ to .agentkit/tastes/${EXTERNAL_DIR}/ — external `
+    + 'sources now live under the tastes tree they are read with',
+  ];
 }
 
 function heldLock(cwd: string): LockEntry[] {
@@ -221,13 +239,13 @@ function land(cwd: string, staged: readonly Staged[], today: string): SyncResult
   const entries: LockEntry[] = [];
 
   for (const { source, sha, dir } of staged) {
-    const count = snapshot(dir, join(vendorRoot(cwd), source.name));
+    const count = snapshot(dir, join(externalRoot(cwd), source.name));
     const pin = { name: source.name, repo: source.repo, ref: source.ref, sha };
     entries.push({ ...pin, pinned: pinnedOn(pin, held, today) });
     report.push(`${source.name} ${source.ref} ${sha.slice(0, 12)} — ${count} taste${count === 1 ? '' : 's'}`);
   }
 
-  report.push(...prune(cwd, staged.map(({ source }) => source.name)));
+  report.push(...relocate(cwd), ...prune(cwd, staged.map(({ source }) => source.name)));
   const lock = formatLock(entries);
   mkdirSync(dirname(lockPath(cwd)), { recursive: true });
   writeFileSync(lockPath(cwd), lock);

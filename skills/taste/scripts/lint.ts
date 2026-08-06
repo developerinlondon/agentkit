@@ -1,6 +1,7 @@
 import { YAML } from 'bun';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { basename, join, relative, resolve } from 'node:path';
+import { EXTERNAL_DIR, LEGACY_EXTERNAL_ROOT } from './layout.ts';
 
 const REQUIRED_KEYS = ['name', 'provenance', 'scope', 'strength'];
 const OPTIONAL_KEYS = ['category', 'enforce', 'rule'];
@@ -9,7 +10,11 @@ export const STRENGTHS = ['prefer', 'require'];
 export const ENFORCEMENTS = ['advise', 'check', 'block'];
 const RULE_KEYS = ['kind', 'match', 'remedy', 'override'];
 const RULE_KINDS = ['command'];
-const VENDOR_ROOT = 'tastes-vendor';
+
+// `external` is read by position, not by name: it is the one directory at a
+// tastes root that a sync writes and the resolver treats as a stack of sources.
+const RESERVED = `${JSON.stringify(EXTERNAL_DIR)} is reserved — it names the subtree holding the `
+  + 'snapshot of each declared source, at the root of a tastes tree and nowhere else';
 
 // A rule is tested in-process against every command an agent runs, and a
 // regular expression can be made to backtrack for longer than anyone will wait.
@@ -72,6 +77,7 @@ function checkName(front: Frontmatter, file: string): string[] {
   if (name !== stem) {
     return [`name: ${JSON.stringify(name)} does not match the filename — rename one of them`];
   }
+  if (name === EXTERNAL_DIR) return [`name: ${RESERVED}. Name the taste for its topic instead.`];
   return [];
 }
 
@@ -186,13 +192,30 @@ export function inspectTaste(file: string, contents: string): Inspection {
   return { name: scalar(front.name), errors, front };
 }
 
-export function tasteFiles(dir: string): string[] {
+// `skipTop` applies to the top level only: it is how the owner's own tastes are
+// read without the external subtree sitting at the same root coming with them.
+export function tasteFiles(dir: string, skipTop?: string): string[] {
   const found: string[] = [];
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    if (entry.name.startsWith('.')) continue;
+    if (entry.name.startsWith('.') || entry.name === skipTop) continue;
     const path = join(dir, entry.name);
     if (entry.isDirectory()) found.push(...tasteFiles(path));
     else if (entry.name.endsWith('.md')) found.push(path);
+  }
+  return found;
+}
+
+// A directory named `external` anywhere but the root it is read at looks like a
+// stack of sources and is read by nothing. Named rather than walked past: a
+// folder inside a linted tree that no run ever checks is the failure the lint
+// exists to prevent.
+function reservedDirectories(dir: string, relativeTo: string, skipTop?: string): string[] {
+  const found: string[] = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (!entry.isDirectory() || entry.name.startsWith('.') || entry.name === skipTop) continue;
+    const path = join(dir, entry.name);
+    if (entry.name === EXTERNAL_DIR) found.push(`${relative(relativeTo, path)}: ${RESERVED}`);
+    else found.push(...reservedDirectories(path, relativeTo));
   }
   return found;
 }
@@ -203,14 +226,18 @@ function duplicateNames(byName: Map<string, string[]>): string[] {
     .map(([name, paths]) => `duplicate name ${JSON.stringify(name)}: ${paths.sort().join(', ')}`);
 }
 
-export function lintTasteDirectory(dir: string, relativeTo: string = dir): string[] {
-  const errors: string[] = [];
+export function lintTasteDirectory(
+  dir: string,
+  relativeTo: string = dir,
+  skipTop?: string,
+): string[] {
+  const errors = reservedDirectories(dir, relativeTo, skipTop);
   // Keyed on the parsed name rather than the name: line, because `"tier"` and
   // `tier # why` are the same identity to every reader of these files, and a
   // collision the lint cannot see is two tastes claiming one name.
   const byName = new Map<string, string[]>();
 
-  for (const file of tasteFiles(dir).sort()) {
+  for (const file of tasteFiles(dir, skipTop).sort()) {
     const path = relative(relativeTo, file);
     const inspection = inspectTaste(path, readFileSync(file, 'utf-8'));
     errors.push(...inspection.errors.map((error) => `${path}: ${error}`));
@@ -226,25 +253,41 @@ export function countTastes(dir: string): number {
   return tasteFiles(dir).length;
 }
 
-// The vendored tree holds one directory per source, and a name two sources both
+// The external tree holds one directory per source, and a name two sources both
 // define is the stacking the sources list exists for: the later source is
 // subscribed to in order to win it. Dedupe therefore stops at the source
 // boundary here, exactly as it does when each source is linted on its own.
-export function lintTastePath(dir: string): string[] {
-  if (basename(resolve(dir)) !== VENDOR_ROOT) return lintTasteDirectory(dir);
-
+function lintExternalRoot(root: string, relativeTo: string = root): string[] {
   const errors: string[] = [];
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+  for (const entry of readdirSync(root, { withFileTypes: true })) {
     if (entry.name.startsWith('.')) continue;
+    const path = join(root, entry.name);
     if (entry.isDirectory()) {
-      errors.push(...lintTasteDirectory(join(dir, entry.name), dir));
+      errors.push(...lintTasteDirectory(path, relativeTo));
     } else if (entry.name.endsWith('.md')) {
       errors.push(
-        `${entry.name}: sits outside every source directory — the vendored tree holds one `
-          + 'directory per declared source, and nothing reads a taste at its root',
+        `${relative(relativeTo, path)}: sits outside every source directory — the external tree `
+          + 'holds one directory per declared source, and nothing reads a taste at its root',
       );
     }
   }
+  return errors.sort();
+}
+
+function isDirectory(path: string): boolean {
+  return statSync(path, { throwIfNoEntry: false })?.isDirectory() ?? false;
+}
+
+// A tastes root handed over whole is the invocation the skill asks for, so it
+// has to be the correct one: the owner's own files are one dedupe scope, and
+// `external/` beneath them is delegated a source at a time.
+export function lintTastePath(dir: string): string[] {
+  const base = basename(resolve(dir));
+  if (base === EXTERNAL_DIR || base === LEGACY_EXTERNAL_ROOT) return lintExternalRoot(dir);
+
+  const errors = lintTasteDirectory(dir, dir, EXTERNAL_DIR);
+  const external = join(dir, EXTERNAL_DIR);
+  if (isDirectory(external)) errors.push(...lintExternalRoot(external, dir));
   return errors.sort();
 }
 

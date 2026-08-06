@@ -205,7 +205,7 @@ taste:
   # .agentkit/config.yaml replaces this list rather than extending it.
   #
   # mode: vendored is the default and the only mode implemented: the taste
-  # skill's sync snapshots the source into .agentkit/tastes-vendor/<name>/ and
+  # skill's sync snapshots the source into .agentkit/tastes/external/<name>/ and
   # pins it in .agentkit/tastes.lock, both committed, so a fresh clone reads the
   # policy with no network. mode: reference (a per-machine cache) is deferred
   # and declaring it is an error.

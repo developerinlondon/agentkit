@@ -69,7 +69,7 @@ const EXTERNAL_SOURCES: [string, string][] = [
   ['a repo cannot name a transport helper', 'runs a program instead of fetching'],
   ['the lock pins the commit that was reviewed', 'the commit whose contents were reviewed'],
   ['the pin date moves only with the pin', 'The date moves only when the pin does'],
-  ['the vendored tree is never hand-edited', 'Never edit `.agentkit/tastes-vendor/` by hand'],
+  ['the vendored tree is never hand-edited', 'Never edit `.agentkit/tastes/external/` by hand'],
   ['a repository deviates with a project taste', 'to deviate in one repository, write a project taste'],
   ['an undeclared vendor directory binds nothing', 'only a declared one is read'],
   ['sync lints before it copies', '**lints it before anything is copied**'],
@@ -82,6 +82,36 @@ const EXTERNAL_SOURCES: [string, string][] = [
   ['a version number is not a review', 'Approving a version number instead of the words'],
   ['listing names the source an external row came from', 'which declared source it was vendored from'],
   ['a source correction is written upstream', 'copied into this one'],
+];
+
+// One folder with two origins, rather than two folders implying two concepts.
+// Where a file sits decides which layer it lands in, so the prose that says
+// where things sit is the prose an agent resolves by.
+const LAYOUT: [string, string][] = [
+  ['the tastes folder holds both origins', '**One tree, two origins.**'],
+  ['a source is snapshotted beneath it, not beside it', 'sits beneath it in `external/`'],
+  ['external is reserved at the tastes root', '`external` is therefore reserved'],
+  ['nothing under external is a project taste', 'is ever counted as one'],
+  ['the tastes root is linted in one invocation', 'the repository\'s own tastes are one scope'],
+  ['the old location keeps working for one release', 'for one release of grace'],
+];
+
+// The load-bearing trade of the loading strategy: an index scales, a corpus
+// does not, and the failure the index accepts has to be stated where the agent
+// making that call will read it — not left as an efficiency claim.
+const LOADING_STRATEGY: [string, string][] = [
+  ['the session keeps an index, not every body', '**Keep an index, not the corpus.**'],
+  ['an index line carries the taste\'s imperative', 'which is the imperative the rest of the file'],
+  ['loading every body is a standing tax', 'a standing tax on every session at fifty'],
+  ['a body is read when the work touches its category', '**Category touch**'],
+  ['a body is read before an action it covers', '**Imminent action**'],
+  ['a body is read when deciding how to honor it', '**Applying it**'],
+  ['a body is read when someone asks about it', '**Asked about**'],
+  ['doubt resolves toward reading the body', '**When in doubt, read the body.**'],
+  ['the failure it trades against is stated', 'acting on an index line where the body'],
+  ['an index line is never passed off as the file', 'never present an index line as though you had read'],
+  ['blocking enforcement is unaffected', '**`enforce: block` is untouched by this.**'],
+  ['an index weakens no enforcement', 'Holding an index weakens no enforcement'],
 ];
 
 const skill = read('skills', 'taste', 'SKILL.md');
@@ -163,6 +193,28 @@ describe('the taste skill and its contract agree', () => {
     expect(skill.includes(phrase), `SKILL.md must say: ${phrase}`).toBe(true);
   });
 
+  test.each(LAYOUT)('the skill carries the layout rule: %s', (_rule, phrase) => {
+    expect(skill.includes(phrase), `SKILL.md must say: ${phrase}`).toBe(true);
+  });
+
+  // Every session pays for the loading strategy, and nothing but this prose
+  // performs it: a clause dropped here is a habit that stops happening, with no
+  // hook and no compiler to notice.
+  test.each(LOADING_STRATEGY)('the skill carries the loading rule: %s', (_rule, phrase) => {
+    expect(skill.includes(phrase), `SKILL.md must say: ${phrase}`).toBe(true);
+  });
+
+  // A phrase split across a line break would bind nothing: the file it is read
+  // from is hard-wrapped, and `textWrap: maintain` leaves the author's breaks
+  // exactly where they fell.
+  test.each([...LAYOUT, ...LOADING_STRATEGY])(
+    'the phrase bound for %s sits on one line',
+    (_rule, phrase) => {
+      expect(phrase.includes('\n')).toBe(false);
+      expect(skill.split('\n').some((line) => line.includes(phrase))).toBe(true);
+    },
+  );
+
   // A substring binding is only as strong as its phrase is distinctive: an echo
   // elsewhere keeps it green while the paragraph it names is rewritten to say
   // the opposite. Uniqueness is what points a binding at one place.
@@ -171,6 +223,8 @@ describe('the taste skill and its contract agree', () => {
     ...SETTLED_BEHAVIOURS,
     ...CONVERSATIONAL_SURFACES,
     ...EXTERNAL_SOURCES,
+    ...LAYOUT,
+    ...LOADING_STRATEGY,
   ])(
     'the phrase bound for %s occurs exactly once in SKILL.md',
     (_behaviour, phrase) => {

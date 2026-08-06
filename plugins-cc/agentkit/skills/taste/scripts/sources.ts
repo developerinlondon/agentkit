@@ -19,7 +19,7 @@ export interface SourceDeclaration {
 
 export const SOURCE_KEYS = ['name', 'repo', 'ref', 'path', 'mode'];
 const MODES = ['vendored', 'reference'];
-// The name keys a directory under .agentkit/tastes-vendor/, so it is a plain
+// The name keys a directory under .agentkit/tastes/external/, so it is a plain
 // directory name or it is refused: a source must not be able to choose where in
 // the checkout its files land.
 const SOURCE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
@@ -62,7 +62,7 @@ function checkName(name: string, at: string): string[] {
   if (SOURCE_NAME.test(name) && !name.includes('..')) return [];
   return [
     `${at}: name ${JSON.stringify(name)} must be a plain directory name — it keys `
-    + '.agentkit/tastes-vendor/, and a source does not choose where in the checkout it lands',
+    + '.agentkit/tastes/external/, and a source does not choose where in the checkout it lands',
   ];
 }
 
@@ -167,7 +167,7 @@ function parseSources(declared: unknown, origin: string): SourceDeclaration {
     if (read.source === undefined) continue;
     if (seen.has(read.source.name)) {
       errors.push(
-        `${origin}: duplicate source name ${JSON.stringify(read.source.name)} — the vendor `
+        `${origin}: duplicate source name ${JSON.stringify(read.source.name)} — the external `
         + 'directory is keyed on it. Give one of them an explicit name.',
       );
       continue;

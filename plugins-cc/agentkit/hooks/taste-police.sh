@@ -29,6 +29,8 @@ advise() {
 	exit 0
 }
 
+# .agentkit/tastes covers the sources under it; tastes-vendor is the pre-move
+# external root, still bound for one release of grace.
 tastes_present() {
 	local dir
 	for dir in "$WORKDIR/.agentkit/tastes" "$WORKDIR/.agentkit/tastes-vendor" \

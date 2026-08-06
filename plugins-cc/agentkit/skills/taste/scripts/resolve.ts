@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, join } from 'node:path';
+import { EXTERNAL_DIR, externalRoot, legacyExternalRoot, tastesRoot } from './layout.ts';
 import { inspectTaste, scalar, tasteFiles } from './lint.ts';
 import { readSources } from './sources.ts';
 
@@ -35,22 +36,40 @@ interface Directory {
   layer: Layer;
   dir: string;
   source?: string;
+  skipTop?: string;
 }
 
-function vendored(
+function undeclared(root: string, declared: readonly string[]): string[] {
+  const warnings: string[] = [];
+  for (const entry of isDirectory(root) ? readdirSync(root, { withFileTypes: true }) : []) {
+    if (!entry.isDirectory() || declared.includes(entry.name)) continue;
+    warnings.push(
+      `${join(root, entry.name)}: vendored but not declared in taste.sources — nothing reads it`,
+    );
+  }
+  return warnings;
+}
+
+function external(
   cwd: string,
   home: string,
   env: Record<string, string | undefined>,
 ): { dirs: Directory[]; warnings: string[] } {
-  const root = join(cwd, '.agentkit', 'tastes-vendor');
+  const root = externalRoot(cwd);
+  const legacy = legacyExternalRoot(cwd);
   const { sources, errors } = readSources(cwd, home, env);
   const warnings = [...errors];
   const dirs: Directory[] = [];
+  let moved = false;
 
   for (const source of sources) {
     const dir = join(root, source.name);
+    const before = join(legacy, source.name);
     if (isDirectory(dir)) dirs.push({ layer: 'external', dir, source: source.name });
-    else {
+    else if (isDirectory(before)) {
+      moved = true;
+      dirs.push({ layer: 'external', dir: before, source: source.name });
+    } else {
       warnings.push(
         `${dir}: source ${source.name} is declared but not vendored — run the taste skill's sync `
         + 'and commit the snapshot',
@@ -58,13 +77,17 @@ function vendored(
     }
   }
 
-  const declared = sources.map((source) => source.name);
-  for (const entry of isDirectory(root) ? readdirSync(root, { withFileTypes: true }) : []) {
-    if (!entry.isDirectory() || declared.includes(entry.name)) continue;
+  // One line, once: the old location still binds for a release, and saying so
+  // per source would bury the one instruction that ends it.
+  if (moved) {
     warnings.push(
-      `${join(root, entry.name)}: vendored but not declared in taste.sources — nothing reads it`,
+      `${legacy}: read from the old external location — run the taste skill's sync to move it to `
+      + `${root}`,
     );
   }
+
+  const declared = sources.map((source) => source.name);
+  warnings.push(...undeclared(root, declared), ...undeclared(legacy, declared));
 
   return { dirs, warnings };
 }
@@ -72,19 +95,22 @@ function vendored(
 // Project first, then each declared source in the order it was declared, then
 // the user layer. Position in taste.sources is the whole precedence rule inside
 // the external layer: a later source is subscribed to precisely to win.
+//
+// The project layer stops at `external/`: the same files read as both would
+// give a source the precedence the repository's own tastes hold over it.
 function tasteDirectories(
   cwd: string,
   home: string,
   env: Record<string, string | undefined>,
 ): { dirs: Directory[]; warnings: string[] } {
-  const external = vendored(cwd, home, env);
+  const sources = external(cwd, home, env);
   return {
     dirs: [
-      { layer: 'project', dir: join(cwd, '.agentkit', 'tastes') },
-      ...external.dirs,
-      { layer: 'user', dir: join(home, '.agentkit', 'tastes') },
+      { layer: 'project', dir: tastesRoot(cwd), skipTop: EXTERNAL_DIR },
+      ...sources.dirs,
+      { layer: 'user', dir: tastesRoot(home), skipTop: EXTERNAL_DIR },
     ],
-    warnings: external.warnings,
+    warnings: sources.warnings,
   };
 }
 
@@ -161,7 +187,7 @@ export function resolveTastes(
 
     let files: string[];
     try {
-      files = tasteFiles(where.dir).sort();
+      files = tasteFiles(where.dir, where.skipTop).sort();
     } catch (error) {
       warnings.push(`${where.dir}: unreadable — ${(error as Error).message}`);
       continue;
