@@ -9,6 +9,8 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+## v0.7.10 — 2026-08-06
+
 - feat(taste)!: **a taste source installs at the machine level or at the repository level**, and
   both apply. Declared in `~/.config/agentkit/config.yaml` a source vendors into
   `~/.agentkit/tastes/external/` with `~/.agentkit/tastes.lock`, and every repository on the
