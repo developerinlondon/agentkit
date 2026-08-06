@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import {
@@ -45,6 +45,7 @@ const BODY = [
 interface Rule {
   kind?: string;
   match?: string;
+  policy?: string;
   remedy?: string;
   override?: string;
 }
@@ -397,12 +398,11 @@ describe('a malformed taste is loud, and never contagious', () => {
     // copy so the failure is real rather than mocked.
     test('a matcher that cannot start skips the taste instead of crashing', async () => {
       const scriptDir = sandbox({});
-      for (const name of ['police.ts', 'resolve.ts', 'lint.ts', 'sources.ts', 'layout.ts', 'override.ts']) {
-        writeFileSync(
-          join(scriptDir, name),
-          readFileSync(join(repoRoot, 'skills', 'taste', 'scripts', name), 'utf-8'),
-        );
-      }
+      // Everything the evaluator imports, copied whole except the one thread it
+      // matches on. Enumerating the modules instead would make this test fail
+      // the day another one is added, rather than the day the skip breaks.
+      cpSync(join(repoRoot, 'skills', 'taste', 'scripts'), scriptDir, { recursive: true });
+      rmSync(join(scriptDir, 'match.ts'), { force: true });
       const where = project({ '.agentkit/tastes/release-tier.md': releaseTier() });
 
       const broken = await import(join(scriptDir, 'police.ts')) as {
@@ -477,5 +477,116 @@ describe('taste.enabled switches the whole hook off', () => {
   test('the user config applies when the repository says nothing', async () => {
     const where = project(files, { '.config/agentkit/config.yaml': 'taste:\n  enabled: false\n' });
     expect((await judge(TAG_MINOR, where)).decision).toBe('allow');
+  });
+});
+
+// The second kind, through the whole hook: a taste file on disk, a real
+// repository with real tags, and the same refusal machinery the first kind
+// uses. What differs is only that the finding comes from git state rather than
+// from the command string.
+describe('a git-tag-sequence taste refuses out of the repository\'s own tags', () => {
+  function tagSequence(policy: string, override = 'AGENTKIT_TAG_SEQUENCE'): string {
+    return taste({
+      name: 'tag-sequence',
+      scope: 'project',
+      strength: 'require',
+      enforce: 'block',
+      provenance: '2026-08-06 · session correction',
+    }, {
+      kind: 'git-tag-sequence',
+      policy,
+      remedy: 'Read the existing tags and cut the next patch on that line.',
+      override,
+    });
+  }
+
+  function git(dir: string, ...args: string[]): void {
+    Bun.spawnSync({
+      cmd: ['git', ...args],
+      cwd: dir,
+      env: {
+        ...process.env,
+        GIT_AUTHOR_NAME: 'fixture',
+        GIT_AUTHOR_EMAIL: 'fixture@example.invalid',
+        GIT_COMMITTER_NAME: 'fixture',
+        GIT_COMMITTER_EMAIL: 'fixture@example.invalid',
+      },
+    });
+  }
+
+  function tagged(tags: string[], policy = 'no-backwards-in-line') {
+    const where = project({ '.agentkit/tastes/tag-sequence.md': tagSequence(policy) });
+    writeFileSync(join(where.cwd, 'file.txt'), 'contents');
+    git(where.cwd, 'init', '-q', '-b', 'main');
+    git(where.cwd, 'add', '-A');
+    git(where.cwd, 'commit', '-q', '-m', 'one');
+    for (const tag of tags) git(where.cwd, 'tag', tag);
+    return where;
+  }
+
+  test('a backwards tag is refused with this taste\'s own remedy and override', async () => {
+    const where = tagged(['v0.6.2', 'v0.6.5', 'v0.7.11']);
+    const verdict = await judge('git tag v0.6.3', where);
+
+    expect(verdict.decision).toBe('deny');
+    expect(verdict.reason).toContain('BLOCKED by taste tag-sequence');
+    expect(verdict.reason).toContain('v0.6.5');
+    expect(verdict.reason).toContain('Read the existing tags');
+    expect(verdict.reason).toContain('AGENTKIT_TAG_SEQUENCE');
+  });
+
+  test('a maintenance tag on a lower line passes', async () => {
+    const where = tagged(['v0.6.5', 'v0.7.11']);
+
+    expect((await judge('git tag v0.6.6', where)).decision).toBe('allow');
+  });
+
+  // Mutating the guard's INPUT rather than the guard: same command, same hook,
+  // different tags in the repository. If this still denied, the refusal above
+  // came from something other than the tags.
+  test('removing the tag it was behind removes the refusal', async () => {
+    const where = tagged(['v0.7.11']);
+
+    expect((await judge('git tag v0.6.3', where)).decision).toBe('allow');
+  });
+
+  test('the policy is the taste\'s, not the tool\'s', async () => {
+    const strict = tagged(['v0.6.5', 'v0.7.11'], 'strict-successor');
+
+    expect((await judge('git tag v0.6.6', strict)).decision).toBe('deny');
+  });
+
+  test('the override lets one tag through, deliberately', async () => {
+    const where = tagged(['v0.6.5']);
+    const verdict = await judge('AGENTKIT_TAG_SEQUENCE=1 git tag v0.6.3', where);
+
+    expect(verdict.decision).toBe('allow');
+    expect(verdict.notices.join('\n')).toContain('AGENTKIT_TAG_SEQUENCE');
+  });
+
+  test('a repository whose tags cannot be read allows, and says UNCHECKED', async () => {
+    const where = tagged(['v0.7.11']);
+    writeFileSync(join(where.cwd, '.git', 'packed-refs'), 'this file is not a ref database\n');
+    const verdict = await judge('git tag v0.1.1', where);
+
+    expect(verdict.decision).toBe('allow');
+    expect(verdict.notices.join('\n')).toContain('UNCHECKED');
+    expect(verdict.notices.join('\n')).toContain('tag-sequence');
+  });
+
+  test('a directory that is not a repository allows silently', async () => {
+    const where = project({ '.agentkit/tastes/tag-sequence.md': tagSequence('strict-successor') });
+    const verdict = await judge('git tag v0.1.1', where);
+
+    expect(verdict.decision).toBe('allow');
+    expect(verdict.notices).toEqual([]);
+  });
+
+  test('a command that proposes no tag is untouched', async () => {
+    const where = tagged(['v0.7.11']);
+    const verdict = await judge('git push origin main', where);
+
+    expect(verdict.decision).toBe('allow');
+    expect(verdict.notices).toEqual([]);
   });
 });

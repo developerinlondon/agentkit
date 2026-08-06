@@ -3,6 +3,10 @@ export interface Run {
   out: string;
   err: string;
   timedOut: boolean;
+  // null when the process never started at all. A caller that treats a failing
+  // exit code as an answer needs to tell that apart from a missing program,
+  // which is no answer.
+  code: number | null;
 }
 
 // Spawned asynchronously so the deadline is a timer on a running event loop: a
@@ -20,7 +24,7 @@ export async function runBounded(
   try {
     child = Bun.spawn({ cmd, cwd, env, stdout: 'pipe', stderr: 'pipe' });
   } catch (error) {
-    return { ok: false, out: '', err: (error as Error).message, timedOut: false };
+    return { ok: false, out: '', err: (error as Error).message, timedOut: false, code: null };
   }
 
   let timedOut = false;
@@ -35,7 +39,13 @@ export async function runBounded(
       new Response(child.stderr).text(),
     ]);
     await child.exited;
-    return { ok: child.exitCode === 0, out: out.trim(), err: err.trim(), timedOut };
+    return {
+      ok: child.exitCode === 0,
+      out: out.trim(),
+      err: err.trim(),
+      timedOut,
+      code: child.exitCode,
+    };
   } finally {
     clearTimeout(deadline);
   }

@@ -12,9 +12,12 @@ export type Layer = 'project' | 'project-external' | 'user' | 'user-external';
 
 export interface TasteRule {
   kind: string;
-  match: string;
   remedy: string;
   override?: string;
+  // Everything else in the block, kind by kind: `match` for a command rule,
+  // `policy` for a tag-sequence one. The resolver stays out of the vocabulary
+  // so a kind can be added without it learning anything.
+  fields: Record<string, string>;
 }
 
 export interface ResolvedTaste {
@@ -156,12 +159,17 @@ function isDirectory(path: string): boolean {
 function readRule(front: Record<string, unknown>): TasteRule | undefined {
   const rule = front.rule;
   if (typeof rule !== 'object' || rule === null || Array.isArray(rule)) return undefined;
-  const fields = rule as Record<string, unknown>;
-  const kind = scalar(fields.kind);
-  const match = scalar(fields.match);
-  const remedy = scalar(fields.remedy);
-  if (kind === undefined || match === undefined || remedy === undefined) return undefined;
-  return { kind, match, remedy, override: scalar(fields.override) };
+  const block = rule as Record<string, unknown>;
+  const kind = scalar(block.kind);
+  const remedy = scalar(block.remedy);
+  if (kind === undefined || remedy === undefined) return undefined;
+
+  const fields: Record<string, string> = {};
+  for (const [key, value] of Object.entries(block)) {
+    const text = scalar(value);
+    if (text !== undefined) fields[key] = text;
+  }
+  return { kind, remedy, override: scalar(block.override), fields };
 }
 
 function load(path: string, where: Directory): { taste?: ResolvedTaste; warning?: string } {

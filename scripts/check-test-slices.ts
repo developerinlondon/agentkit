@@ -97,6 +97,7 @@ export const TEST_SLICES = {
   ],
   session: ['tests/session/agent-session.test.ts', 'tests/session/install-session-slice.test.ts'],
   taste: [
+    'tests/taste/kinds.test.ts',
     'tests/taste/layout.test.ts',
     'tests/taste/lint.test.ts',
     'tests/taste/police-lanes.test.ts',
@@ -105,6 +106,7 @@ export const TEST_SLICES = {
     'tests/taste/skill.test.ts',
     'tests/taste/sources.test.ts',
     'tests/taste/sync.test.ts',
+    'tests/taste/tag-sequence.test.ts',
     'tests/taste/visibility.test.ts',
   ],
   wip: [
