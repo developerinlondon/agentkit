@@ -159,6 +159,39 @@ describe('the proposed tag is read out of the command', () => {
   test('a version mentioned inside an attached message is not proposed', () => {
     expect(proposedTags('git tag -m"v0.8.0 fixes A; adds B" v0.7.12')).toEqual(['v0.7.12']);
   });
+
+  // A backslash is how a shell keeps the next character out of the grammar, so
+  // it has to keep it out of this one too — an escaped quote does not close the
+  // message, and an escaped separator does not end the command.
+  test.each([
+    ['an escaped quote inside a quoted message', 'git tag -m "a\\"b; c" v1.2.3'],
+    ['an escaped quote inside an attached message', 'git tag -m"a\\"b; c" v1.2.3'],
+    ['an escaped separator outside any quotes', 'git tag -m a\\;b v1.2.3'],
+    ['an escaped quote then a real one', 'git tag -m "a\\" b" v1.2.3'],
+  ])('reads the tag past %s', (_shape, command) => {
+    expect(proposedTags(command)).toEqual(['v1.2.3']);
+  });
+
+  test('a version inside an escaped-quote message is still not the tag', () => {
+    expect(proposedTags('git tag -m "v0.8.0 \\"quoted\\"; more" v0.7.12')).toEqual(['v0.7.12']);
+  });
+
+  // The option consumed a word that happens to parse as a version. Reading it
+  // as a proposal refuses a legitimate release on the strength of its own
+  // message, so the value has to be stepped over.
+  test.each([
+    ['a bare message value', 'git tag -m v0.8.0 v0.7.12'],
+    ['a bare long-option value', 'git tag --message v0.8.0 v0.7.12'],
+    ['a push option value', 'git push origin --receive-pack v0.8.0 v0.7.12'],
+    ['a forge release note value', 'gh release create v0.7.12 --notes v0.8.0'],
+  ])('steps over %s', (_shape, command) => {
+    expect(proposedTags(command)).toEqual(['v0.7.12']);
+  });
+
+  // An attached value is self-contained, so nothing after it may be skipped.
+  test('an attached option value does not swallow the tag after it', () => {
+    expect(proposedTags('git tag --message=v0.8.0 v0.7.12')).toEqual(['v0.7.12']);
+  });
 });
 
 describe('each policy names what it refuses', () => {

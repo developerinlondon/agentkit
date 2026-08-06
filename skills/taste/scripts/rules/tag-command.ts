@@ -1,11 +1,13 @@
 import { unquote } from '../override.ts';
 import { parseVersion } from './semver.ts';
 
-// Quoted runs are one token, so a separator inside a tag message does not end
-// the command and hide the tag that follows it. A quote may open partway
-// through a word — `-m"a;b"` is one argument to git, and reading it as two
-// would put the tag in a segment that no longer starts with a program name.
-const TOKEN = /(?:"[^"]*"|'[^']*'|[^\s;&|"']+)+|[;&|\n]+/g;
+// Quoted and escaped runs are one token: a separator inside a tag message must
+// not end the command and hide the tag after it, and a quote may open partway
+// through a word — `-m"a;b"` is one argument to git.
+// The double-quoted arm is unrolled rather than `(?:\\.|[^"\\])*`, which matches
+// the same language but backtracks through every position of an unterminated
+// quote — and this runs in the hook's own process, with no deadline around it.
+const TOKEN = /(?:"[^"\\]*(?:\\.[^"\\]*)*"|'[^']*'|\\.|[^\s;&|"'\\]+)+|[;&|\n]+/g;
 const SEPARATOR = /^[;&|\n]+$/;
 const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/;
 
