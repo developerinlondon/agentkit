@@ -3,8 +3,8 @@ name: uninstall
 description: >-
   Remove AgentKit, or one of its skill kits, without hand-deleting files. Covers
   `install.sh --uninstall` for a global or project install, what it reverts inside
-  configs the user owns, what it deliberately leaves alone, and how kit removal
-  differs between opt-in and consent-gated kits. Use when asked to uninstall
+  configs the user owns, what it deliberately leaves alone, and how deselecting
+  one optional kit removes its managed artifacts. Use when asked to uninstall
   AgentKit, remove a kit, undo the installer, or clean a machine of it.
 ---
 
@@ -25,26 +25,25 @@ a machine that never had AgentKit on it.
 
 ## Removing one kit
 
-Kit removal is not uniform, and the difference matters before you promise a user
-anything.
+`--without <kit>` removes that kit's AgentKit-managed artifacts on the same run.
 
-| Kit                                     | `install.sh --global --without <kit>`                                  |
-| --------------------------------------- | ---------------------------------------------------------------------- |
-| `adversarial-review`, `advisory-review` | Fully removed — skills, hooks, `settings.json` entries, tools, prompts |
-| `memory`, `product`                     | De-selected only; installed skills and hooks stay and keep updating    |
+| Kit                                     | `install.sh --global --without <kit>`                                    |
+| --------------------------------------- | ------------------------------------------------------------------------ |
+| `adversarial-review`, `advisory-review` | Removes managed instructions, skills, hooks, tools, prompts, and plugins |
+| `memory`, `product`                     | Removes managed skills, hooks, settings entries, prompts, and plugins    |
 
-The consent-gated kits are removed because presence without a recorded selection is
-not consent. An ordinary kit is deliberately left on disk: dropping it would take a
-skill away from somebody mid-use. So `--without memory` changes what a future
-install writes, not what is on the machine right now.
-
-To actually get an ordinary kit off a machine, uninstall and reinstall the set you
-want — the uninstall clears the remembered selection with everything else:
+The selected kit set is the active installed set. Keeping a deselected skill on disk
+would leave it discoverable and auto-triggerable, so presence without a recorded
+selection is not enough to keep any optional kit. `core` cannot be deselected.
 
 ```sh
-./install.sh --global --uninstall
-./install.sh --global --with product      # memory is gone, product is back
+./install.sh --global --without memory
+./install.sh --global --with memory       # select and install it again later
 ```
+
+The installer reconciles only artifacts it owns. It preserves unrelated skills,
+hooks, prompts and plugins, and reports a real user-owned skill directory rather
+than deleting it from a client integration.
 
 ## What `--uninstall` removes
 

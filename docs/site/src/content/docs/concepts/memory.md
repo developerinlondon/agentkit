@@ -34,10 +34,9 @@ Two rules protect the vault's future: no secrets in notes, ever — a vault may 
 synced beyond one machine — and all skill or vault changes land as diffs a human reviews, never as
 silent self-modification.
 
-Like every non-explicit kit, deselecting it later (`--without memory`) stops future installs but
-leaves already-installed skills _and_ hooks in place — the hooks stay silent no-ops wherever no
-vault exists. To get them off the machine, uninstall and reinstall without the kit
-(`install.sh --global --uninstall`, then a plain `install.sh --global`).
+Like every optional kit, deselecting it later (`--without memory`) removes the AgentKit-managed
+skills, hooks, settings entries, prompts, and plugin on that install. A later bare install keeps it
+absent until `--with memory` selects it again.
 
 The kit is opt-in:
 

@@ -103,7 +103,9 @@ const kitPluginState = (ids: string[]) =>
   JSON.stringify(ids.map((id) => ({ id, scope: 'user', enabled: true })));
 
 function runKitPluginInstall(selectedKits: string, productAlreadyInstalled = false) {
-  const ids = ['agentkit@agentkit', 'agentkit-product@agentkit'];
+  const ids = selectedKits.includes('product')
+    ? ['agentkit@agentkit', 'agentkit-product@agentkit']
+    : ['agentkit@agentkit'];
   return runPluginInstall(
     false,
     false,
@@ -205,13 +207,23 @@ describe('Claude plugin install lifecycle', () => {
     expect(calls).toContain('plugin install agentkit-product@agentkit');
   });
 
-  test('updates an installed kit plugin the current flags did not select', () => {
-    const { calls, result } = runKitPluginInstall('core', true);
+  test('uninstalls an installed kit plugin the current flags did not select', () => {
+    const { calls, result } = runPluginInstall(
+      false,
+      false,
+      0,
+      kitPluginState(['agentkit@agentkit', 'third-party@elsewhere']),
+      0,
+      'core',
+      kitPluginState(['agentkit-product@agentkit', 'third-party@elsewhere']),
+    );
     expect(result.status, result.stderr).toBe(0);
-    // Same promise as a retained skill: an upgrade must not abandon what the
-    // user already has installed.
-    expect(calls).toContain('plugin update agentkit-product@agentkit');
+    expect(calls).toContain('plugin uninstall agentkit-product@agentkit');
+    expect(calls).not.toContain('plugin update agentkit-product@agentkit');
     expect(calls).not.toContain('plugin install agentkit-product@agentkit');
+    expect(calls.filter((call) => call.startsWith('plugin uninstall'))).toEqual([
+      'plugin uninstall agentkit-product@agentkit',
+    ]);
   });
 
   // The plugin id is the one artifact named after a kit, so renaming a kit strands

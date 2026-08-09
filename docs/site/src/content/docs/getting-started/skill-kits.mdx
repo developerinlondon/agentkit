@@ -52,7 +52,7 @@ The shims go through `bootstrap.sh` and `install.sh` unchanged, so the recorded 
 consent semantics are identical to typing `--with <id>` yourself. Explicit kits deliberately have
 no shim — their consent story is a literal, typed `--with`.
 
-## Explicit kits are consent-gated
+## Explicit kits require literal selection
 
 A kit marked `explicit` in the manifest behaves differently from a merely optional one, and the
 difference is the whole point:
@@ -60,11 +60,11 @@ difference is the whole point:
 - The interactive wizard never offers it. A `y` at a prompt is too easy to give without reading
   what it wires in.
 - `--all` does not include it.
-- When a run does **not** select it, the installer **removes** its previously installed skills,
-  hooks, tools and prompt wiring.
+- Only a literal `--with <kit>` or a remembered prior literal selection keeps it selected.
 
-That last rule is deliberate: presence without recorded selection is not consent. Finding the
-merge gate on disk is not evidence that anybody chose to be gated.
+Removal is deliberately consistent across every optional kit: when a run does **not** select one,
+the installer removes its AgentKit-managed artifacts. Presence without recorded selection is not
+selection, and a discoverable skill can still be auto-triggered by a harness.
 
 A remembered selection still counts as selected, so a bare `install.sh --global` after
 `--with adversarial-review` **keeps** it. To take it away, drop it explicitly:
@@ -77,7 +77,7 @@ Observed removal on that run — the skill, both hooks, both tools, the Codex pr
 wiring, the `CLAUDE.md` prompt block and the OpenCode `instructions[]` entry all go:
 
 ```text
-[skills] Removing (explicit kit 'adversarial-review' not selected): adversarial-review
+[skills] Removing (kit 'adversarial-review' not selected): adversarial-review
 [claude] Removed prompt block (evidence-gated-review.md): …/.claude/CLAUDE.md
 [opencode] Removed global prompt: …/.config/opencode/opencode.json
 [claude] Removing hook (adversarial-review kit not selected): review-police.sh
@@ -96,10 +96,9 @@ A global install records the chosen kits in `~/.agentkit/kits`, so a later bare
 `install.sh --global` upgrades the same set with no flags to re-pass. `--with` adds to that set
 rather than replacing it; `--without <kit>` drops one.
 
-Deleting a line stops the kit being **selected**. For a normal optional kit it never deletes
-files already on disk — an already-installed skill from an unselected kit is still refreshed,
-and the installer says so. (An explicit kit is the exception above: deselecting it removes its
-artifacts.)
+Deleting a line deselects the kit. The next install removes that kit's AgentKit-managed artifacts
+from the canonical skill tree and client integrations. It does not remove unrelated user-managed
+skills, prompts, hooks, or plugins.
 
 An unknown kit name left in that file is reported on stderr and ignored, not taken as a
 selection.
