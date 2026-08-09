@@ -11,13 +11,13 @@ and the marker blocks it writes into files you also own.
 
 ## What a second run does
 
-| Class                                   | On re-run                                |
-| --------------------------------------- | ---------------------------------------- |
-| skills, rules, tools, hooks, plugins    | overwritten unconditionally              |
-| shell profile, client configs           | marker-guarded, never duplicated         |
-| `~/.config/agentkit/config.yaml`        | preserved — seeded once, then left alone |
-| artifacts unsupported on this platform  | actively removed                         |
-| artifacts of an unselected explicit kit | actively removed                         |
+| Class                                    | On re-run                                |
+| ---------------------------------------- | ---------------------------------------- |
+| skills, rules, tools, hooks, plugins     | overwritten unconditionally              |
+| shell profile, client configs            | marker-guarded, never duplicated         |
+| `~/.config/agentkit/config.yaml`         | preserved — seeded once, then left alone |
+| artifacts unsupported on this platform   | actively removed                         |
+| artifacts of any unselected optional kit | actively removed                         |
 
 :::caution[Local edits inside an installed skill are destroyed on upgrade]
 An existing skill directory is removed and re-copied. Edit the clone, not the install.
@@ -25,14 +25,13 @@ An existing skill directory is removed and re-copied. Edit the clone, not the in
 
 Two more details:
 
-- **Deselecting an ordinary kit never deletes anything.** An already-installed skill from an
-  unselected kit is still refreshed, and the installer says so. Deselection changes what is
-  chosen, never what is on disk, so an upgrade never removes a skill you are using.
-- **An unselected explicit kit is the exception.** `advisory-review` and `adversarial-review` are
-  consent-gated: when one is not selected, its hooks, tools, skills and prompt wiring are removed.
-  Presence without recorded selection is not consent. In particular, upgrading from a version where
-  `review-discipline.md` was core removes that instruction on the next plain install — pass
-  `--with advisory-review` to keep it.
+- **Selection is the installed set.** Deselecting `memory`, `product`, or either review kit removes
+  its AgentKit-managed skills, hooks, tools, prompts, settings entries, and plugins. Otherwise a
+  harness could continue to discover and auto-trigger a workflow the user removed.
+- **Explicit controls how a kit is selected, not how it is removed.** `advisory-review` and
+  `adversarial-review` are never offered by the picker or included by `--all`; only a literal
+  `--with` selects them. Like every optional kit, a remembered selection keeps them installed and
+  `--without` removes them.
 
 Config files carrying your own content are guarded by markers or predicates, so re-runs do not
 duplicate blocks. In `CLAUDE.md` those markers look like
@@ -46,18 +45,17 @@ in `CLAUDE.md` and 5 entries in the OpenCode `instructions[]` array rather than 
 
 ## Removing one kit
 
-`--without <kit>` drops a kit from the selection and from the remembered set, but what that
-does on disk depends on the kind of kit:
+`--without <kit>` drops a kit from the selection and remembered set, then removes that kit's
+AgentKit-managed artifacts:
 
-| Kit                                     | `install.sh --global --without <kit>`                                  |
-| --------------------------------------- | ---------------------------------------------------------------------- |
-| `adversarial-review`, `advisory-review` | Fully removed — skills, hooks, `settings.json` entries, tools, prompts |
-| `memory`, `product`                     | De-selected only; installed skills and hooks stay and keep updating    |
+| Kit                                     | `install.sh --global --without <kit>`                                    |
+| --------------------------------------- | ------------------------------------------------------------------------ |
+| `adversarial-review`, `advisory-review` | Removes managed instructions, skills, hooks, tools, prompts, and plugins |
+| `memory`, `product`                     | Removes managed skills, hooks, settings entries, prompts, and plugins    |
 
-That asymmetry is the same rule as above: a consent-gated kit goes when consent is withdrawn,
-an ordinary one is never taken out from under someone using it. To get an ordinary kit off a
-machine, uninstall and reinstall the set you want — the uninstall clears the remembered
-selection along with everything else.
+Real directories and plugins that AgentKit does not own remain untouched. A real directory using
+the same name as an AgentKit skill is reported instead of deleted from a client skill directory;
+the canonical `~/.agentkit/skills` tree remains installer-owned and is reconciled exactly.
 
 ## Removing all of it
 

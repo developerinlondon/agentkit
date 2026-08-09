@@ -29,14 +29,14 @@ Options:
                        Kits marked `explicit` in skills/KITS
                        (advisory-review, adversarial-review) are never offered by
                        that prompt and are excluded from --all: only a literal
-                       --with installs them, and when one is not selected the
-                       installer REMOVES its previously installed hooks, tools,
-                       skills, and prompt wiring.
+                       --with installs them. Every optional kit, explicit or
+                       prompted, is removed from managed install locations when
+                       it is not selected.
   --no-prompt          Never ask about optional kits, even on a terminal.
                        AGENTKIT_SKIP_PROMPT=1 and a non-empty CI do the same.
   --without <kit>      Drop a kit from the selection and from the remembered
-                       set (repeatable). Skills already installed are left in
-                       place; `core` cannot be dropped.
+                       set (repeatable), removing its managed artifacts on this
+                       install. `core` cannot be dropped.
   --all                Install every declared skill kit. A global install
                        remembers the chosen kits in ~/.agentkit/kits, so a
                        later bare `install.sh --global` upgrades the same set
@@ -231,7 +231,7 @@ write_version_stamp() {
 
 kits_state_header() {
 	echo "# Skill kits chosen at install time; a bare install.sh --global keeps them."
-	echo "# Delete a line to stop installing that kit (installed skills are left alone)."
+	echo "# Deleting a line deselects and removes that kit on the next install."
 }
 
 inherit_retired_kit_state() {
@@ -502,27 +502,18 @@ install_skills() {
 		local target="$dest/$skill_name"
 		kit="$(skill_kit "$skill_name")"
 
-		# An unselected kit that is already installed is still refreshed:
-		# dropping it on upgrade would silently take a skill away from someone
-		# who is using it, and leaving it unupdated rots it instead. Explicit
-		# kits invert that: they are consent-gated, and presence without a
-		# recorded selection is not consent — remove them.
+		# The persisted selection is the active set. Retaining a deselected skill
+		# keeps it discoverable and lets harnesses auto-trigger a workflow the
+		# user removed. Only this canonical AgentKit-owned tree is reconciled;
+		# unrelated skills in client directories are left alone below.
 		if ! kit_selected "$kit"; then
-			if kit_explicit "$kit"; then
-				if [[ -e "$target" ]]; then
-					echo "[skills] Removing (explicit kit '$kit' not selected): $skill_name"
-					rm -rf "$target"
-				else
-					echo "[skills] Skipping (explicit kit '$kit' — add --with $kit): $skill_name"
-				fi
-				continue
-			fi
-			if [[ -e "$target" ]]; then
-				echo "[skills] Keeping installed (kit '$kit' not selected): $skill_name"
+			if [[ -e "$target" || -L "$target" ]]; then
+				echo "[skills] Removing (kit '$kit' not selected): $skill_name"
+				rm -rf "$target"
 			else
 				echo "[skills] Skipping (kit '$kit' — add --with $kit): $skill_name"
-				continue
 			fi
+			continue
 		fi
 
 		if [[ -d "$target" && ! -L "$target" ]]; then
@@ -1037,27 +1028,20 @@ install_claude_hooks() {
 		local owning_kit
 		owning_kit="$(hook_kit "$name")"
 		if [[ "$owning_kit" != core ]] && ! kit_selected "$owning_kit"; then
-			if kit_explicit "$owning_kit"; then
-				if command -v jq &>/dev/null; then
-					if [[ -e "$install_dir/$name" || -L "$install_dir/$name" ]]; then
-						echo "[claude] Removing hook ($owning_kit kit not selected): $name"
-						rm -f "$install_dir/$name"
-					fi
-					if [[ "$hooks_dir" != "$install_dir" && (-e "$hooks_dir/$name" || -L "$hooks_dir/$name") ]]; then
-						rm -f "$hooks_dir/$name"
-					fi
-					continue
-				fi
-				if [[ ! -e "$install_dir/$name" && ! -L "$install_dir/$name" ]]; then
-					continue
-				fi
-				echo "[claude] WARNING: jq missing — keeping $name so its settings.json entries stay functional." >&2
-			elif [[ ! -e "$install_dir/$name" && ! -L "$install_dir/$name" ]]; then
-				# Mirror install_skills: an installed non-explicit kit stays
-				# refreshed, a never-installed one is skipped.
+			if [[ ! -e "$install_dir/$name" && ! -L "$install_dir/$name" ]]; then
 				echo "[claude] Skipping hook (kit '$owning_kit' — add --with $owning_kit): $name"
 				continue
 			fi
+			if ! command -v jq &>/dev/null; then
+				echo "[claude] ERROR: jq is required to remove deselected $owning_kit hook wiring safely: $name" >&2
+				return 1
+			fi
+			echo "[claude] Removing hook ($owning_kit kit not selected): $name"
+			rm -f "$install_dir/$name"
+			if [[ "$hooks_dir" != "$install_dir" && (-e "$hooks_dir/$name" || -L "$hooks_dir/$name") ]]; then
+				rm -f "$hooks_dir/$name"
+			fi
+			continue
 		fi
 
 		if [[ -f "$install_dir/$name" && ! -L "$install_dir/$name" ]]; then
@@ -1136,9 +1120,8 @@ merge_claude_settings() {
 	kit_selected adversarial-review || review_selected=false
 
 	# The memory strip list derives from hook_kit so it cannot drift from
-	# ownership. Wiring follows the scripts: selected, or already installed —
-	# non-explicit kits keep their installed hooks like install_skills keeps
-	# their skills, so the settings must keep matching them.
+	# ownership. Wiring follows the selected set exactly; deselected scripts
+	# were removed above before this canonical settings merge.
 	local memory_hooks_json hook_name
 	memory_hooks_json="$(for hook_file in "$REPO_DIR"/hooks/claude/*.sh; do
 		hook_name="$(basename "$hook_file")"
@@ -1147,16 +1130,7 @@ merge_claude_settings() {
 		fi
 	done | jq -R . | jq -s .)"
 	local memory_wired=false
-	if kit_selected memory; then
-		memory_wired=true
-	else
-		for hook_name in $(printf '%s' "$memory_hooks_json" | jq -r '.[]'); do
-			if [[ -e "$hooks_dir/$hook_name" || -L "$hooks_dir/$hook_name" ]]; then
-				memory_wired=true
-				break
-			fi
-		done
-	fi
+	kit_selected memory && memory_wired=true
 
 	local hooks_json
 	hooks_json=$(jq --arg dir "$hooks_dir" \
@@ -1495,17 +1469,13 @@ install_codex_skills() {
 		kit="$(skill_kit "$name")"
 
 		if ! kit_selected "$kit"; then
-			if kit_explicit "$kit"; then
-				if [[ -f "$target" ]]; then
-					echo "[codex] Removing prompt (explicit kit '$kit' not selected): $name.md"
-					rm -f "$target"
-				fi
-				continue
-			fi
-			if [[ ! -f "$target" ]]; then
+			if [[ -f "$target" || -L "$target" ]]; then
+				echo "[codex] Removing prompt (kit '$kit' not selected): $name.md"
+				rm -f "$target"
+			else
 				echo "[codex] Skipping prompt (kit '$kit' — add --with $kit): $name.md"
-				continue
 			fi
+			continue
 		fi
 
 		if [[ -f "$target" ]]; then
@@ -1528,18 +1498,14 @@ plugin_is_installed() {
 		jq -e --arg id "$1" '.[] | select(.id == $id and .scope == "user")' >/dev/null
 }
 
-# An unselected kit whose plugin is already installed is still updated — the
-# plugin-mode counterpart of keeping an already-installed skill.
 claude_plugin_targets() {
-	local installed="$1" kit id
+	local kit
 	for kit in $(declared_kits); do
 		# Skills are the whole payload of a kit plugin, so a kit with none
 		# publishes none — asking to install it fails the whole run.
 		kit_has_skills "$kit" || continue
-		id="$(kit_plugin_id "$kit")@agentkit"
-		if kit_selected "$kit" || plugin_is_installed "$id" "$installed"; then
-			printf '%s\n' "$id"
-		fi
+		kit_selected "$kit" || continue
+		printf '%s@agentkit\n' "$(kit_plugin_id "$kit")"
 	done
 }
 
@@ -1575,6 +1541,21 @@ remove_retired_claude_plugins() {
 	done
 }
 
+remove_deselected_claude_plugins() {
+	local installed="$1" kit id
+	for kit in $(declared_kits); do
+		kit_selected "$kit" && continue
+		kit_has_skills "$kit" || continue
+		id="$(kit_plugin_id "$kit")@agentkit"
+		plugin_is_installed "$id" "$installed" || continue
+		echo "[claude] Uninstalling deselected plugin: $id"
+		if ! claude plugin uninstall "$id"; then
+			echo "[claude] ERROR: failed to uninstall deselected $id." >&2
+			return 1
+		fi
+	done
+}
+
 install_claude_plugin() {
 	if ! command -v claude &>/dev/null; then
 		echo "[claude] WARNING: claude CLI not found — cannot install the plugin."
@@ -1605,13 +1586,13 @@ install_claude_plugin() {
 	fi
 
 	remove_retired_claude_plugins "$installed_plugins"
+	remove_deselected_claude_plugins "$installed_plugins" || return 1
 
 	local targets plugin_id
-	targets="$(claude_plugin_targets "$installed_plugins")"
+	targets="$(claude_plugin_targets)"
 	for plugin_id in $targets; do
 		ensure_claude_plugin "$plugin_id" "$installed_plugins" || return 1
 	done
-
 	local ready_plugins
 	if ! ready_plugins="$(claude plugin list --json)"; then
 		echo "[claude] ERROR: could not verify the installed Claude plugin." >&2
@@ -1625,6 +1606,16 @@ install_claude_plugin() {
 		if ! printf '%s' "$ready_plugins" | jq -e --arg id "$plugin_id" \
 			'.[] | select(.id == $id and .scope == "user" and .enabled == true)' >/dev/null; then
 			echo "[claude] ERROR: $plugin_id is not enabled after installation or update." >&2
+			return 1
+		fi
+	done
+	local kit
+	for kit in $(declared_kits); do
+		kit_selected "$kit" && continue
+		kit_has_skills "$kit" || continue
+		plugin_id="$(kit_plugin_id "$kit")@agentkit"
+		if plugin_is_installed "$plugin_id" "$ready_plugins"; then
+			echo "[claude] ERROR: deselected $plugin_id remains installed." >&2
 			return 1
 		fi
 	done
@@ -2200,7 +2191,7 @@ if [[ "$GLOBAL" == true ]]; then
 	for skill_dir in "$REPO_DIR"/skills/*/; do
 		skill_name="$(basename "$skill_dir")"
 		skill_kit_name="$(skill_kit "$skill_name")"
-		if kit_explicit "$skill_kit_name" && ! kit_selected "$skill_kit_name"; then
+		if ! kit_selected "$skill_kit_name"; then
 			for client_skills in "$HOME/.agents/skills" "$HOME/.claude/skills" "$HOME/.grok/skills"; do
 				if [[ -e "$client_skills/$skill_name" && ! -L "$client_skills/$skill_name" ]]; then
 					echo "[skills] WARNING: leaving $client_skills/$skill_name in place (not installed by this installer); remove it manually if unwanted." >&2

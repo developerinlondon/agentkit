@@ -403,7 +403,7 @@
       "name": "uninstall",
       "kit": "core",
       "explicit": false,
-      "description": "Remove AgentKit, or one of its skill kits, without hand-deleting files. Covers `install.sh --uninstall` for a global or project install, what it reverts inside configs the user owns, what it deliberately leaves alone, and how kit removal differs between opt-in and consent-gated kits. Use when asked to uninstall AgentKit, remove a kit, undo the installer, or clean a machine of it."
+      "description": "Remove AgentKit, or one of its skill kits, without hand-deleting files. Covers `install.sh --uninstall` for a global or project install, what it reverts inside configs the user owns, what it deliberately leaves alone, and how deselecting one optional kit removes its managed artifacts. Use when asked to uninstall AgentKit, remove a kit, undo the installer, or clean a machine of it."
     },
     {
       "name": "wip",

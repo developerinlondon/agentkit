@@ -96,12 +96,13 @@ describe('skill kit selection', () => {
     }
   }, globalInstallTimeoutMs);
 
-  test('an upgrade keeps and refreshes an already-installed product skill', () => {
+  test('an upgrade removes a product skill that is no longer selected', () => {
     const home = mkdtempSync(join(tmpdir(), 'agentkit-kits-'));
 
     try {
-      // Someone who installed before the split has these; taking them away on
-      // upgrade — or leaving them frozen at the old content — is a regression.
+      // Someone who installed before kit selection has this without a recorded
+      // opt-in. Presence is not a selection: leaving it discoverable keeps the
+      // optional workflow active.
       const installed = canonSkill(home, 'product-review');
       mkdirSync(installed, { recursive: true });
       writeFileSync(join(installed, 'SKILL.md'), '# stale\n');
@@ -109,13 +110,10 @@ describe('skill kit selection', () => {
       const result = install(home);
       expect(result.status, result.stderr).toBe(0);
 
-      expect(readFileSync(join(installed, 'SKILL.md'), 'utf-8')).toBe(
-        readFileSync(join(repoRoot, 'skills', 'product-review', 'SKILL.md'), 'utf-8'),
-      );
+      expect(existsSync(installed)).toBe(false);
       expect(result.stdout).toContain(
-        "[skills] Keeping installed (kit 'product' not selected): product-review",
+        "[skills] Removing (kit 'product' not selected): product-review",
       );
-      // Retention is per-skill: the one that was never installed stays out.
       expect(existsSync(canonSkill(home, 'product-intelligence'))).toBe(false);
     } finally {
       rmSync(home, { force: true, recursive: true });
@@ -304,18 +302,22 @@ describe('skill kit selection', () => {
     }
   }, globalInstallTimeoutMs * 2);
 
-  test('dropping a kit from the persisted file stops selecting it', () => {
+  test('dropping kits from the persisted file removes their managed artifacts', () => {
     const home = mkdtempSync(join(tmpdir(), 'agentkit-kits-'));
 
     try {
-      expect(install(home, ['--with', 'product']).status).toBe(0);
+      expect(install(home, ['--with', 'product', '--with', 'memory']).status).toBe(0);
       writeFileSync(join(home, '.agentkit', 'kits'), '');
 
       const upgrade = install(home);
       expect(upgrade.status, upgrade.stderr).toBe(0);
       expect(upgrade.stdout).toContain('Skill kits:    core\n');
-      expect(upgrade.stdout).toContain(
-        "[skills] Keeping installed (kit 'product' not selected): product-review",
+      expect(existsSync(canonSkill(home, 'product-review'))).toBe(false);
+      expect(existsSync(canonSkill(home, 'reflect'))).toBe(false);
+      expect(existsSync(join(home, '.codex', 'prompts', 'product-review.md'))).toBe(false);
+      expect(existsSync(join(home, '.claude', 'hooks', 'brain-inject.sh'))).toBe(false);
+      expect(readFileSync(join(home, '.claude', 'settings.json'), 'utf-8')).not.toContain(
+        'brain-inject.sh',
       );
     } finally {
       rmSync(home, { force: true, recursive: true });
@@ -383,20 +385,30 @@ describe('skill kit selection', () => {
 
     try {
       expect(install(home, ['--with', 'product']).status).toBe(0);
+      const userSkill = join(home, '.claude', 'skills', 'user-owned');
+      mkdirSync(userSkill, { recursive: true });
+      writeFileSync(join(userSkill, 'SKILL.md'), '# user owned\n');
 
       const dropped = install(home, ['--without', 'product']);
       expect(dropped.status, dropped.stderr).toBe(0);
       expect(dropped.stdout).toContain('Skill kits:    core\n');
       expect(readFileSync(join(home, '.agentkit', 'kits'), 'utf-8')).not.toContain('product');
 
-      // Deselection changes what is chosen, never what is on disk: the
-      // installer removes nothing it previously installed.
       expect(dropped.stdout).toContain(
-        "[skills] Keeping installed (kit 'product' not selected): product-review",
+        "[skills] Removing (kit 'product' not selected): product-review",
       );
+      expect(existsSync(canonSkill(home, 'product-review'))).toBe(false);
+      expect(existsSync(join(home, '.claude', 'skills', 'product-review'))).toBe(false);
+      expect(existsSync(join(home, '.codex', 'prompts', 'product-review.md'))).toBe(false);
+      expect(existsSync(join(canonSkill(home, 'code-quality'), 'SKILL.md'))).toBe(true);
+      expect(readFileSync(join(userSkill, 'SKILL.md'), 'utf-8')).toBe('# user owned\n');
       // It sticks: the next bare upgrade does not resurrect it.
       const after = install(home);
       expect(after.stdout).toContain('Skill kits:    core\n');
+      expect(existsSync(canonSkill(home, 'product-review'))).toBe(false);
+      expect(readFileSync(join(home, '.agentkit', 'kits'), 'utf-8')).toContain(
+        'removes that kit on the next install',
+      );
     } finally {
       rmSync(home, { force: true, recursive: true });
     }

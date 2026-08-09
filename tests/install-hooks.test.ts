@@ -225,7 +225,7 @@ describe('Claude Code and Codex hook wiring', () => {
     }
   }, globalInstallTimeoutMs);
 
-  test('deselecting the memory kit keeps installed brain hooks and their wiring', () => {
+  test('deselecting the memory kit removes installed brain hooks and their wiring', () => {
     const home = mkdtempSync(join(tmpdir(), 'agentkit-hooks-'));
     const claudeDir = join(home, '.claude');
 
@@ -235,17 +235,13 @@ describe('Claude Code and Codex hook wiring', () => {
       result = runGlobalInstall(home, {}, ['--without', 'memory']);
       expect(result.status, result.stderr.toString()).toBe(0);
 
-      // Mirrors install_skills: dropping a non-explicit kit stops future
-      // installs, but never takes an installed hook — or its settings entry,
-      // which would otherwise go stale against the still-present script —
-      // away from someone using it.
       const settings = installedSettings(claudeDir);
-      expect(commandNames(settings.hooks.PostToolUse[0].hooks)).toContain('brain-index.sh');
+      expect(commandNames(settings.hooks.PostToolUse[0].hooks)).not.toContain('brain-index.sh');
       expect(
         settings.hooks.SessionStart.flatMap((kit: any) => commandNames(kit.hooks)),
-      ).toContain('brain-inject.sh');
+      ).not.toContain('brain-inject.sh');
       for (const name of ['brain-inject.sh', 'brain-index.sh']) {
-        expect(existsSync(join(claudeDir, 'hooks', name)), name).toBe(true);
+        expect(existsSync(join(claudeDir, 'hooks', name)), name).toBe(false);
       }
     } finally {
       rmSync(home, { force: true, recursive: true });
