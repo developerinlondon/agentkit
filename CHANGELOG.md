@@ -9,6 +9,14 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+## v0.7.13 — 2026-08-09
+
+- fix(installer): **the remembered kit selection is now the active installed set.** Deselecting
+  `product`, `memory`, or either review kit removes its AgentKit-managed skills, hooks, settings
+  wiring, prompts, tools, and Claude plugin instead of leaving the optional workflow discoverable
+  indefinitely. Canonical AgentKit artifacts are reconciled exactly; unrelated user-owned client
+  skill directories and third-party plugins remain untouched.
+
 ## v0.7.12 — 2026-08-06
 
 - feat(taste): **a rule declares a kind agentkit implements, and parameterises it** (#328). The
