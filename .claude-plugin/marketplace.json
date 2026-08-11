@@ -42,6 +42,12 @@
       "version": "0.3.1"
     },
     {
+      "name": "agentkit-clickup",
+      "source": "./plugins-cc/agentkit-clickup",
+      "description": "ClickUp task and sprint lifecycle for teams that track work in ClickUp",
+      "version": "0.3.1"
+    },
+    {
       "name": "agentkit-adversarial-review",
       "source": "./plugins-cc/agentkit-adversarial-review",
       "description": "Adversarial review: independent refutation lane + evidence records + hard merge gate (explicit opt-in)",

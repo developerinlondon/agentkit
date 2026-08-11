@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin.json",
+  "name": "agentkit-clickup",
+  "version": "0.3.1",
+  "description": "ClickUp task and sprint lifecycle for teams that track work in ClickUp",
+  "author": {
+    "name": "developerinlondon",
+    "url": "https://github.com/developerinlondon"
+  },
+  "skills": "./skills/"
+}
