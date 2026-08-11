@@ -1,5 +1,83 @@
 import { deviceTokensForUser, invitesForUserPages, pagesForUser } from "./accounts.js";
-import { escapeHtml } from "./ui.js";
+import { escapeHtml, MARK, shell } from "./ui.js";
+
+function day(seconds) {
+  return new Date(seconds * 1000).toISOString().slice(0, 10);
+}
+
+function shareRow(page) {
+  const on = Boolean(page.share_token_hash);
+  const slug = escapeHtml(page.slug);
+  return `<div class="row">
+    <span class="grant">${on ? "Anyone with the link" : "Link sharing is off"}
+      <span class="how">${on ? "no sign-in needed" : "only invited people can open it"}</span></span>
+    <form method="post" action="/api/pages/${slug}/share">
+      <input type="hidden" name="enabled" value="${on ? "false" : "true"}">
+      <button class="${on ? "quiet" : ""}">${on ? "Turn off" : "Create a link"}</button>
+    </form>
+  </div>`;
+}
+
+function inviteRow(slug, email) {
+  return `<div class="row">
+    <span class="grant">Access: ${escapeHtml(email)}
+      <span class="how">signs in to open it</span></span>
+    <form method="post" action="/api/pages/${escapeHtml(slug)}/invites/remove">
+      <input type="hidden" name="email" value="${escapeHtml(email)}">
+      <button class="quiet">Remove</button>
+    </form>
+  </div>`;
+}
+
+function pageCard(env, page, invites) {
+  const slug = escapeHtml(page.slug);
+  const open = `/access?return_to=${encodeURIComponent(`${env.PAGES_URL}/${page.slug}`)}`;
+  const shared = Boolean(page.share_token_hash);
+  return `<article class="card">
+    <div class="card-head">
+      <h2><a href="${open}">${escapeHtml(page.title || page.slug)}</a></h2>
+      <span class="pill${shared ? " on" : ""}">${shared ? "Shared by link" : "Private"}</span>
+    </div>
+    <p class="meta"><code>${slug}</code> &middot; updated ${day(page.updated_at)}</p>
+    <div class="ledger">
+      <div class="row">
+        <span class="grant">You <span class="how">owner</span></span>
+      </div>
+      ${invites.map((invite) => inviteRow(page.slug, invite.email)).join("")}
+      ${shareRow(page)}
+    </div>
+    <form class="invite" method="post" action="/api/pages/${slug}/invites">
+      <input type="email" name="email" required placeholder="name@example.com"
+        aria-label="Give someone access to ${slug} by email">
+      <button class="primary">Give access</button>
+    </form>
+  </article>`;
+}
+
+function deviceCard(device) {
+  const used = device.last_used_at ? `last used ${day(device.last_used_at)}` : "never used";
+  return `<article class="card">
+    <div class="card-head">
+      <h2>${escapeHtml(device.name)}</h2>
+      <span class="pill">${used}</span>
+    </div>
+    <p class="meta"><code>${escapeHtml(device.scopes)}</code> &middot; expires ${day(device.expires_at)}</p>
+    <div class="ledger">
+      <div class="row">
+        <span class="grant">Can publish to your account
+          <span class="how">until you revoke it</span></span>
+        <form method="post" action="/api/devices/${escapeHtml(device.token_hash)}/revoke">
+          <button class="quiet">Revoke</button>
+        </form>
+      </div>
+    </div>
+  </article>`;
+}
+
+function section(title, count, cards, blank) {
+  return `<h2 class="label">${title}<span class="count">${count}</span></h2>
+    ${cards || `<div class="blank">${blank}</div>`}`;
+}
 
 export async function dashboard(env, user) {
   const [pages, invites, devices] = await Promise.all([
@@ -7,39 +85,30 @@ export async function dashboard(env, user) {
     invitesForUserPages(env, user.id),
     deviceTokensForUser(env, user.id),
   ]);
-  const invitesByPage = Map.groupBy(invites, (invite) => invite.page_slug);
-  const cards = pages.map((page) => `
-    <article>
-      <h2><a href="/access?return_to=${encodeURIComponent(`${env.PAGES_URL}/${page.slug}`)}">${escapeHtml(page.title || page.slug)}</a></h2>
-      <p><code>${escapeHtml(page.slug)}</code> · private${page.share_token_hash ? " · sharing on" : ""}</p>
-      ${(invitesByPage.get(page.slug) || []).map((invite) =>
-        `<p>Access: ${escapeHtml(invite.email)}</p>`).join("")}
-      <form method="post" action="/api/pages/${escapeHtml(page.slug)}/share">
-        <input type="hidden" name="enabled" value="${page.share_token_hash ? "false" : "true"}">
-        <button>${page.share_token_hash ? "Turn sharing off" : "Create sharing link"}</button>
-      </form>
-      <form method="post" action="/api/pages/${escapeHtml(page.slug)}/invites">
-        <label>Invite by Assay email <input type="email" name="email" required></label>
-        <button>Invite</button>
-      </form>
-      <form method="post" action="/api/pages/${escapeHtml(page.slug)}/invites/remove">
-        <label>Remove email access <input type="email" name="email" required></label>
-        <button>Remove</button>
-      </form>
-    </article>`).join("");
-  const deviceCards = devices.map((device) => `
-    <li><strong>${escapeHtml(device.name)}</strong>${device.last_used_at ? " · active" : " · unused"}
-      · ${escapeHtml(device.scopes)} · expires ${escapeHtml(new Date(device.expires_at * 1000).toISOString().slice(0, 10))}
-      <form method="post" action="/api/devices/${escapeHtml(device.token_hash)}/revoke">
-        <button>Revoke</button>
-      </form>
-    </li>`).join("");
-  return `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width">
-<title>AgentKit Pages</title><style>
-body{font:16px system-ui;max-width:58rem;margin:3rem auto;padding:0 1rem;background:#fafafa;color:#18181b}
-header{display:flex;justify-content:space-between;align-items:center}article{background:white;padding:1.25rem;margin:1rem 0;border:1px solid #ddd;border-radius:12px}
-form{display:inline-flex;gap:.5rem;margin:.5rem .5rem 0 0}button,input{font:inherit;padding:.5rem}a{color:#4338ca}
-</style><header><div><h1>Your pages</h1><p>Signed in as ${escapeHtml(user.email)}</p></div><form method="post" action="/logout"><button>Sign out</button></form></header>
-${cards || "<p>You have not published a page yet.</p>"}
-<section><h2>Publishing devices</h2><ul>${deviceCards || "<li>No publishing devices.</li>"}</ul></section>`;
+  const byPage = Map.groupBy(invites, (invite) => invite.page_slug);
+  const body = `<header class="top">
+      <span class="brand" style="color:var(--accent)">${MARK}<b style="color:var(--text)">agentkit pages</b></span>
+      <span class="who">Signed in as <span class="mono">${escapeHtml(user.email)}</span>
+        <form method="post" action="/logout" style="display:inline-flex;margin-left:.6rem">
+          <button>Sign out</button></form></span>
+    </header>
+    ${
+    section(
+      "Pages",
+      pages.length,
+      pages.map((page) => pageCard(env, page, byPage.get(page.slug) || [])).join(""),
+      `<p>Nothing published yet.</p><p class="note">Your agent publishes one for you.</p>
+       <code>PUT /api/pages/&lt;slug&gt;</code>`,
+    )
+  }
+    ${
+    section(
+      "Publishing devices",
+      devices.length,
+      devices.map(deviceCard).join(""),
+      `<p>No device can publish to this account.</p>
+       <p class="note">Connect one at <code>/device</code>.</p>`,
+    )
+  }`;
+  return shell("AgentKit Pages", body);
 }
