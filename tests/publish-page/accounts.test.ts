@@ -617,9 +617,31 @@ describe('private access and sharing', () => {
     const response = await worker.fetch(signedIn(`${ACCOUNT_URL}/dashboard`), setup.env);
 
     expect(response.headers.get('content-security-policy')).toContain("form-action 'self'");
+    // Under `no-referrer` a browser sends `Origin: null` on a same-origin form
+    // POST, which the check below then rejects — every control 403s in a real
+    // browser while every test that sets the header by hand still passes.
+    expect(response.headers.get('referrer-policy')).toBe('same-origin');
     const body = await response.text();
     expect(body).toContain('/api/pages/private-page/invites/remove');
     expect(body).toContain('value="other@example.com"');
+  });
+
+  test('an opaque origin cannot drive a dashboard control', async () => {
+    const setup = await accountEnv();
+    expect((await worker.fetch(publish('device-a'), setup.env)).status).toBe(200);
+    const response = await worker.fetch(
+      new Request(`${ACCOUNT_URL}/api/pages/private-page/share`, {
+        method: 'POST',
+        headers: {
+          cookie: 'agentkit_session=session-a',
+          origin: 'null',
+          'content-type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({ enabled: 'true' }),
+      }),
+      setup.env,
+    );
+    expect(response.status).toBe(403);
   });
 
   test('the dashboard share form displays the new one-time link', async () => {

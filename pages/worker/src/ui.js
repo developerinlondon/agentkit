@@ -1,7 +1,12 @@
+// `no-referrer` is not available here, however much the account UI would like
+// it: a browser serialises the Origin of a form POST to the string `null`
+// under that policy, so the same-origin check rejects every control on the
+// page. `same-origin` still sends no referrer off-site, and an attacker's
+// cross-origin POST still arrives with an origin that is not ours.
 export const UI_HEADERS = {
   "content-type": "text/html; charset=utf-8",
   "x-content-type-options": "nosniff",
-  "referrer-policy": "no-referrer",
+  "referrer-policy": "same-origin",
   "content-security-policy":
     "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'; form-action 'self'; base-uri 'none'",
 };
