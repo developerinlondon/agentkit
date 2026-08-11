@@ -17,7 +17,7 @@ import {
 import { dashboard } from "./dashboard.js";
 import { approveDevice, devicePage, pollDevice, startDevice } from "./devices.js";
 import { completeLogin, startLogin } from "./oidc.js";
-import { escapeHtml, UI_HEADERS } from "./ui.js";
+import { escapeHtml, shell, UI_HEADERS } from "./ui.js";
 
 const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,63}(\/[a-z0-9][a-z0-9-]{0,63}){0,3}$/;
 const MAX_PAGE_BYTES = 5 * 1024 * 1024;
@@ -326,10 +326,13 @@ async function handleShare(request, env, slug) {
   if (!request.headers.get("content-type")?.startsWith("application/json")) {
     if (token) {
       const url = `${env.PAGES_URL}/${slug}?share=${token}`;
-      return html(200, `<!doctype html><meta charset="utf-8"><title>Sharing link</title>
-<body style="font:16px system-ui;max-width:42rem;margin:4rem auto;padding:1rem"><h1>Sharing is on</h1>
-<p>This link is shown once. Anyone who has it can read this page until you turn sharing off.</p>
-<p><a href="${escapeHtml(url)}">${escapeHtml(url)}</a></p><p><a href="/dashboard">Back to dashboard</a></p></body>`, UI_HEADERS);
+      return html(200, shell("Sharing link", `<h2 class="label">Sharing link</h2>
+<article class="card"><div class="card-head"><h2>Copy this now</h2>
+<span class="pill on">Shown once</span></div>
+<p class="meta">Anyone with this link can read <code>${escapeHtml(slug)}</code> without signing in,
+until you turn sharing off.</p>
+<a class="link-out mono" href="${escapeHtml(url)}">${escapeHtml(url)}</a></article>
+<p class="note"><a href="/dashboard">Back to your pages</a></p>`), UI_HEADERS);
     }
     return new Response(null, { status: 303, headers: { location: "/dashboard" } });
   }

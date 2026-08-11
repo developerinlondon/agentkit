@@ -611,10 +611,15 @@ describe('private access and sharing', () => {
   test('dashboard controls can submit only to the same origin', async () => {
     const setup = await accountEnv();
     expect((await worker.fetch(publish('device-a'), setup.env)).status).toBe(200);
+    // Revoke renders per granted email: with no grants there is nothing to revoke.
+    const grant = accountPost(`${ACCOUNT_URL}/api/pages/private-page/invites`, { email: 'other@example.com' });
+    expect((await worker.fetch(grant, setup.env)).status).toBe(200);
     const response = await worker.fetch(signedIn(`${ACCOUNT_URL}/dashboard`), setup.env);
 
     expect(response.headers.get('content-security-policy')).toContain("form-action 'self'");
-    expect(await response.text()).toContain('/api/pages/private-page/invites/remove');
+    const body = await response.text();
+    expect(body).toContain('/api/pages/private-page/invites/remove');
+    expect(body).toContain('value="other@example.com"');
   });
 
   test('the dashboard share form displays the new one-time link', async () => {
