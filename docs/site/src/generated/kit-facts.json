@@ -257,6 +257,11 @@
       "explicit": true
     },
     {
+      "id": "clickup",
+      "description": "ClickUp task and sprint lifecycle for teams that track work in ClickUp",
+      "explicit": false
+    },
+    {
       "id": "core",
       "description": "Enforcement, planning, and workflow skills for everyday use",
       "explicit": false
@@ -290,6 +295,12 @@
       "kit": "core",
       "explicit": false,
       "description": "Proposal-first development workflow with commit hygiene and decision authority rules. Enforces: propose before modifying, atomic commits, no force flags, warnings-as-errors. Use for any project where AI agents are primary developers and need guardrails."
+    },
+    {
+      "name": "clickup-task-lifecycle",
+      "kit": "clickup",
+      "explicit": false,
+      "description": "Task-first workflow and lifecycle hygiene for teams tracking work in ClickUp: every piece of work runs against a task, statuses stay current on every touch, branches and PRs reference the task without relying on auto-close, and tasks close with a verification note. Applies only in repositories configured with agentkit.clickup.* git config, so it stays inert everywhere else. Triggers: starting tracked work in a ClickUp-backed repo, updating task status, sprint planning, linking a branch or PR to a task, closing a task."
     },
     {
       "name": "code-quality",

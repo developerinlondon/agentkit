@@ -154,6 +154,22 @@ describe('skill kit selection', () => {
     }
   }, globalInstallTimeoutMs);
 
+  // A tracker-specific kit must cost nothing to anyone who does not use that
+  // tracker: the skill file never lands unless the kit is asked for by name.
+  test('the clickup kit stays out of a default install and lands with --with', () => {
+    const home = mkdtempSync(join(tmpdir(), 'agentkit-kits-'));
+
+    try {
+      expect(install(home).status).toBe(0);
+      expect(existsSync(canonSkill(home, 'clickup-task-lifecycle'))).toBe(false);
+
+      expect(install(home, ['--with', 'clickup']).status).toBe(0);
+      expect(existsSync(join(canonSkill(home, 'clickup-task-lifecycle'), 'SKILL.md'))).toBe(true);
+    } finally {
+      rmSync(home, { force: true, recursive: true });
+    }
+  }, globalInstallTimeoutMs);
+
   test('a literal --with installs an explicit kit; deselecting it removes the skills', () => {
     const home = mkdtempSync(join(tmpdir(), 'agentkit-kits-'));
 

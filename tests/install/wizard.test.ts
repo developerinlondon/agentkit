@@ -562,7 +562,7 @@ describe('installer skill-kit wizard', () => {
     const home = mkdtempSync(join(tmpdir(), 'agentkit-wizard-'));
 
     try {
-      expect(installOnTty(home, '\n').status).toBe(0);
+      expect(installOnTty(home, '\n'.repeat(promptedKitCount)).status).toBe(0);
       // Declining writes a kits file with no kits in it. Read as "nothing
       // remembered" rather than "core only", that file would re-ask forever.
       expect(readFileSync(join(home, '.agentkit', 'kits'), 'utf-8')).not.toContain('product');

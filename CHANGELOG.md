@@ -9,6 +9,14 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+- feat(skills): **`clickup-task-lifecycle`, in a new opt-in `clickup` kit.** Task-first workflow
+  hygiene for teams tracking work in ClickUp: status current on every touch, closure notes before
+  closing, sprints modelled as Lists rather than invented custom fields, and KPIs in custom fields
+  or Goals rather than prose. Two gates keep it out of everyone else's way — the kit is opt-in
+  (`--with clickup`), and the skill reads `agentkit.clickup.list` from per-repo git config and
+  stays inert where that is unset, so one machine can carry it for ClickUp repos while GitLab or
+  GitHub repos on the same machine never see it.
+
 ## v0.7.13 — 2026-08-09
 
 - fix(installer): **the remembered kit selection is now the active installed set.** Deselecting
