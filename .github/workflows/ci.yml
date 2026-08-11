@@ -61,9 +61,9 @@ jobs:
             echo 'fork pull request: hosted macOS only'
           elif online=$(gh api "repos/$GITHUB_REPOSITORY/actions/runners?per_page=100" \
               --jq '[.runners[] | select(.status=="online" and .busy==false)
-                     | select((["self-hosted","macOS","ARM64","rentamac"] - [.labels[].name]) | length == 0)] | length') \
+                     | select((["self-hosted","macOS","ARM64"] - [.labels[].name]) | length == 0)] | length') \
             && [ "${online:-0}" -gt 0 ]; then
-            mac='["self-hosted","macOS","ARM64","rentamac"]'
+            mac='["self-hosted","macOS","ARM64"]'
             echo "self-hosted macOS available ($online idle)"
           else
             echo 'no idle self-hosted macOS runner: falling back to hosted'
