@@ -307,3 +307,28 @@ nav a[href$="/docs/"]:first-child {
 .content td:first-child > code {
 	white-space: nowrap;
 }
+
+/* Hextra tints callouts per type from its own palette. Ground them on the
+   design system instead, keeping the type distinction in the left rule. */
+.content div[class*="hx:bg-blue-100"],
+.content div[class*="hx:bg-yellow-100"],
+.content div[class*="hx:bg-red-100"],
+.content div[class*="hx:bg-orange-100"],
+.content div[class*="hx:bg-gray-100"] {
+	background: var(--panel);
+	color: var(--ink-dim);
+	border: 1px solid var(--rule);
+}
+
+.content div[class*="hx:bg-blue-100"] {
+	border-inline-start: 2px solid var(--signal);
+}
+
+.content div[class*="hx:bg-yellow-100"],
+.content div[class*="hx:bg-orange-100"] {
+	border-inline-start: 2px solid var(--fill);
+}
+
+.content div[class*="hx:bg-red-100"] {
+	border-inline-start: 2px solid var(--deny);
+}
