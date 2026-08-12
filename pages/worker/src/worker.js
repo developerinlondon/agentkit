@@ -17,7 +17,7 @@ import {
 import { dashboard } from "./dashboard.js";
 import { approveDevice, devicePage, pollDevice, startDevice } from "./devices.js";
 import { completeLogin, startLogin } from "./oidc.js";
-import { escapeHtml, shell, UI_HEADERS } from "./ui.js";
+import { UI_HEADERS } from "./ui.js";
 
 const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,63}(\/[a-z0-9][a-z0-9-]{0,63}){0,3}$/;
 const MAX_PAGE_BYTES = 5 * 1024 * 1024;
@@ -312,6 +312,28 @@ function sameOrigin(request) {
   return request.headers.get("origin") === new URL(request.url).origin;
 }
 
+const FLASH_COOKIE = "agentkit_share";
+
+function flashCookie(value, maxAge) {
+  return `${FLASH_COOKIE}=${encodeURIComponent(value)}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAge}`;
+}
+
+// Reads the one-shot sharing link back out, so the dashboard can render it
+// once and the next request has nothing left to leak.
+function takeShareFlash(request, env) {
+  const raw = (request.headers.get("cookie") || "")
+    .split(";").map((part) => part.trim())
+    .find((part) => part.startsWith(`${FLASH_COOKIE}=`));
+  if (!raw) return null;
+  const value = decodeURIComponent(raw.slice(FLASH_COOKIE.length + 1));
+  const separator = value.indexOf("|");
+  if (separator < 1) return null;
+  const slug = value.slice(0, separator);
+  const token = value.slice(separator + 1);
+  if (!SLUG_RE.test(slug) || !token) return null;
+  return { slug, url: `${env.PAGES_URL}/${slug}?share=${token}` };
+}
+
 async function requestBody(request) {
   if (request.headers.get("content-type")?.startsWith("application/json")) return request.json();
   return Object.fromEntries(await request.formData());
@@ -324,17 +346,12 @@ async function handleShare(request, env, slug) {
   const enabled = body.enabled === true || body.enabled === "true";
   const token = await setShareLink(env, slug, enabled);
   if (!request.headers.get("content-type")?.startsWith("application/json")) {
-    if (token) {
-      const url = `${env.PAGES_URL}/${slug}?share=${token}`;
-      return html(200, shell("Sharing link", `<h2 class="label">Sharing link</h2>
-<article class="card"><div class="card-head"><h2>Copy this now</h2>
-<span class="pill on">Shown once</span></div>
-<p class="meta">Anyone with this link can read <code>${escapeHtml(slug)}</code> without signing in,
-until you turn sharing off.</p>
-<a class="link-out mono" href="${escapeHtml(url)}">${escapeHtml(url)}</a></article>
-<p class="note"><a href="/dashboard">Back to your pages</a></p>`), UI_HEADERS);
-    }
-    return new Response(null, { status: 303, headers: { location: "/dashboard" } });
+    // The link is handed back through a one-shot cookie rather than the URL:
+    // the dashboard can then show it in place, and the token stays out of the
+    // address bar, browser history and any referrer.
+    const headers = { location: "/dashboard" };
+    if (token) headers["set-cookie"] = flashCookie(`${slug}|${token}`, 120);
+    return new Response(null, { status: 303, headers });
   }
   const url = token ? `${env.PAGES_URL}/${slug}?share=${token}` : null;
   return Response.json({ ok: true, enabled, url });
@@ -531,7 +548,11 @@ async function handleAccountRequest(request, env, path) {
         headers: { location: "/login?return_to=%2Fdashboard" },
       });
     }
-    return html(200, await dashboard(env, user), UI_HEADERS);
+    const flash = takeShareFlash(request, env);
+    const headers = flash
+      ? { ...UI_HEADERS, "set-cookie": flashCookie("", 0) }
+      : UI_HEADERS;
+    return html(200, await dashboard(env, user, flash), headers);
   }
   if (request.method !== "GET" && request.method !== "HEAD") {
     return new Response("method not allowed\n", { status: 405 });

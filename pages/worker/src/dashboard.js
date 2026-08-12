@@ -29,17 +29,29 @@ function inviteRow(slug, email) {
   </div>`;
 }
 
-function pageCard(env, page, invites) {
+function revealRow(url) {
+  return `<div class="row reveal">
+    <span class="grant"><strong>Your sharing link</strong>
+      <span class="how">shown once — copy it now</span>
+      <a class="link-out mono" href="${escapeHtml(url)}">${escapeHtml(url)}</a></span>
+  </div>`;
+}
+
+function pageCard(env, page, invites, flash) {
   const slug = escapeHtml(page.slug);
-  const open = `/access?return_to=${encodeURIComponent(`${env.PAGES_URL}/${page.slug}`)}`;
+  const address = `${env.PAGES_URL}/${page.slug}`;
+  const open = `/access?return_to=${encodeURIComponent(address)}`;
   const shared = Boolean(page.share_token_hash);
   return `<article class="card">
     <div class="card-head">
       <h2><a href="${open}">${escapeHtml(page.title || page.slug)}</a></h2>
       <span class="pill${shared ? " on" : ""}">${shared ? "Shared by link" : "Private"}</span>
     </div>
-    <p class="meta"><code>${slug}</code> &middot; updated ${day(page.updated_at)}</p>
+    <p class="meta"><a class="mono addr" href="${escapeHtml(open)}">${
+    escapeHtml(address.replace(/^https:\/\//, ""))
+  }</a> &middot; updated ${day(page.updated_at)}</p>
     <div class="ledger">
+      ${flash ? revealRow(flash.url) : ""}
       <div class="row">
         <span class="grant">You <span class="how">owner</span></span>
       </div>
@@ -79,7 +91,7 @@ function section(title, count, cards, blank) {
     ${cards || `<div class="blank">${blank}</div>`}`;
 }
 
-export async function dashboard(env, user) {
+export async function dashboard(env, user, flash = null) {
   const [pages, invites, devices] = await Promise.all([
     pagesForUser(env, user.id),
     invitesForUserPages(env, user.id),
@@ -96,7 +108,9 @@ export async function dashboard(env, user) {
     section(
       "Pages",
       pages.length,
-      pages.map((page) => pageCard(env, page, byPage.get(page.slug) || [])).join(""),
+      pages.map((page) =>
+        pageCard(env, page, byPage.get(page.slug) || [], flash?.slug === page.slug ? flash : null)
+      ).join(""),
       `<p>Nothing published yet.</p><p class="note">Your agent publishes one for you.</p>
        <code>PUT /api/pages/&lt;slug&gt;</code>`,
     )

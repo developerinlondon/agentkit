@@ -660,8 +660,22 @@ describe('private access and sharing', () => {
       setup.env,
     );
 
-    expect(response.status).toBe(200);
-    expect(await response.text()).toContain('https://pages.agentkit.sbs/private-page?share=');
+    // The link comes back through a one-shot cookie and is rendered on the
+    // dashboard itself, so the token never reaches the address bar or history.
+    expect(response.status).toBe(303);
+    const flash = response.headers.get('set-cookie') ?? '';
+    expect(flash).toContain('agentkit_share=');
+    expect(flash).toContain('HttpOnly');
+
+    const dashboardResponse = await worker.fetch(
+      new Request(`${ACCOUNT_URL}/dashboard`, {
+        headers: { cookie: `agentkit_session=session-a; ${flash.split(';')[0]}` },
+      }),
+      setup.env,
+    );
+    expect(await dashboardResponse.text()).toContain('https://pages.agentkit.sbs/private-page?share=');
+    // Cleared on the way out, so a reload cannot show it a second time.
+    expect(dashboardResponse.headers.get('set-cookie')).toContain('Max-Age=0');
   });
 
   test('a cross-origin request cannot change sharing', async () => {
