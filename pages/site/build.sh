@@ -62,9 +62,7 @@ meta() { # meta <key> <file>
 # Only the leading metadata block is build input. A `<!--@…-->` line further
 # down belongs to the author, most likely a page documenting this format.
 strip_meta() {
-	awk 'head && /^[[:space:]]*<!--@/ { next }
-	     head && /^[[:space:]]*$/ { next }
-	     { head = 0; print }' head=1 "$1"
+	awk 'head && /^[[:space:]]*(<!--@|$)/ { next } { head = 0; print }' head=1 "$1"
 }
 
 fail() { echo "build: $*" >&2; exit 1; }
@@ -120,7 +118,7 @@ check_no_external() {
 
 	hit=$(grep -oE 'href=("[^"]*"|'\''[^'\'']*'\'')' "$f" \
 		| grep -E 'https?:|//' \
-		| grep -vE 'href=.https://(github\.com|raw\.githubusercontent\.com|pages\.agentkit\.sbs)/' || true)
+		| grep -vE 'href=.https://(github\.com|raw\.githubusercontent\.com|agentkit\.sbs|pages\.agentkit\.sbs|account\.agentkit\.sbs)/' || true)
 	[[ -z "$hit" ]] || fail "$f: unexpected off-site href: $hit"
 }
 
