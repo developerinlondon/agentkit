@@ -1,0 +1,569 @@
+{
+  "units": [
+    {
+      "name": "coding",
+      "mechanisms": [
+        "hook",
+        "plugin",
+        "codexPolicy"
+      ],
+      "claudePlugins": [
+        "agentkit"
+      ]
+    },
+    {
+      "name": "comment",
+      "mechanisms": [
+        "hook",
+        "plugin"
+      ],
+      "claudePlugins": [
+        "agentkit"
+      ]
+    },
+    {
+      "name": "delegation",
+      "mechanisms": [
+        "codexPolicy"
+      ],
+      "claudePlugins": []
+    },
+    {
+      "name": "format",
+      "mechanisms": [
+        "hook",
+        "plugin"
+      ],
+      "claudePlugins": [
+        "agentkit"
+      ]
+    },
+    {
+      "name": "git",
+      "mechanisms": [
+        "hook",
+        "plugin",
+        "codexPolicy"
+      ],
+      "claudePlugins": [
+        "agentkit"
+      ]
+    },
+    {
+      "name": "issue",
+      "mechanisms": [
+        "hook"
+      ],
+      "claudePlugins": [
+        "agentkit"
+      ]
+    },
+    {
+      "name": "kubectl",
+      "mechanisms": [
+        "hook",
+        "plugin",
+        "codexPolicy"
+      ],
+      "claudePlugins": [
+        "agentkit"
+      ]
+    },
+    {
+      "name": "mr",
+      "mechanisms": [
+        "hook"
+      ],
+      "claudePlugins": [
+        "agentkit"
+      ]
+    },
+    {
+      "name": "pages",
+      "mechanisms": [
+        "hook"
+      ],
+      "claudePlugins": [
+        "agentkit"
+      ]
+    },
+    {
+      "name": "pkg",
+      "mechanisms": [
+        "hook",
+        "plugin",
+        "codexPolicy"
+      ],
+      "claudePlugins": [
+        "agentkit"
+      ]
+    },
+    {
+      "name": "plan",
+      "mechanisms": [
+        "hook"
+      ],
+      "claudePlugins": [
+        "agentkit"
+      ]
+    },
+    {
+      "name": "resource",
+      "mechanisms": [
+        "hook",
+        "plugin",
+        "codexPolicy"
+      ],
+      "claudePlugins": [
+        "agentkit"
+      ]
+    },
+    {
+      "name": "review",
+      "mechanisms": [
+        "hook"
+      ],
+      "claudePlugins": [
+        "agentkit-adversarial-review"
+      ]
+    },
+    {
+      "name": "taste",
+      "mechanisms": [
+        "hook",
+        "plugin"
+      ],
+      "claudePlugins": [
+        "agentkit"
+      ]
+    },
+    {
+      "name": "version",
+      "mechanisms": [
+        "plugin"
+      ],
+      "claudePlugins": []
+    }
+  ],
+  "wiring": [
+    {
+      "unit": "coding",
+      "event": "PostToolUse",
+      "matcher": "Edit|Write",
+      "timeout": 15,
+      "failClosedBudget": null
+    },
+    {
+      "unit": "comment",
+      "event": "PostToolUse",
+      "matcher": "Edit|Write",
+      "timeout": 15,
+      "failClosedBudget": null
+    },
+    {
+      "unit": "format",
+      "event": "PostToolUse",
+      "matcher": "Edit|Write",
+      "timeout": 15,
+      "failClosedBudget": null
+    },
+    {
+      "unit": "git",
+      "event": "PreToolUse",
+      "matcher": "Bash",
+      "timeout": 20,
+      "failClosedBudget": null
+    },
+    {
+      "unit": "issue",
+      "event": "PreToolUse",
+      "matcher": "Bash",
+      "timeout": 10,
+      "failClosedBudget": null
+    },
+    {
+      "unit": "kubectl",
+      "event": "PreToolUse",
+      "matcher": "Bash",
+      "timeout": 10,
+      "failClosedBudget": null
+    },
+    {
+      "unit": "mr",
+      "event": "PreToolUse",
+      "matcher": "Bash",
+      "timeout": 15,
+      "failClosedBudget": null
+    },
+    {
+      "unit": "pages",
+      "event": "PreToolUse",
+      "matcher": "Bash",
+      "timeout": 10,
+      "failClosedBudget": null
+    },
+    {
+      "unit": "pkg",
+      "event": "PreToolUse",
+      "matcher": "Bash",
+      "timeout": 10,
+      "failClosedBudget": null
+    },
+    {
+      "unit": "plan",
+      "event": "PreToolUse",
+      "matcher": "Edit|Write",
+      "timeout": 15,
+      "failClosedBudget": null
+    },
+    {
+      "unit": "resource",
+      "event": "PreToolUse",
+      "matcher": "Bash",
+      "timeout": 10,
+      "failClosedBudget": null
+    },
+    {
+      "unit": "review",
+      "event": "PreToolUse",
+      "matcher": ".*[Mm]erge.*",
+      "timeout": 60,
+      "failClosedBudget": 45
+    },
+    {
+      "unit": "review",
+      "event": "PreToolUse",
+      "matcher": "Bash",
+      "timeout": 60,
+      "failClosedBudget": 45
+    },
+    {
+      "unit": "taste",
+      "event": "PreToolUse",
+      "matcher": "Bash",
+      "timeout": 15,
+      "failClosedBudget": null
+    }
+  ],
+  "kits": [
+    {
+      "id": "adversarial-review",
+      "description": "Adversarial review: independent refutation lane + evidence records + hard merge gate (explicit opt-in)",
+      "explicit": true
+    },
+    {
+      "id": "advisory-review",
+      "description": "Advisory review: one non-authoring reviewer pass per substantive change, as an always-loaded instruction (explicit opt-in)",
+      "explicit": true
+    },
+    {
+      "id": "clickup",
+      "description": "ClickUp task and sprint lifecycle for teams that track work in ClickUp",
+      "explicit": false
+    },
+    {
+      "id": "core",
+      "description": "Enforcement, planning, and workflow skills for everyday use",
+      "explicit": false
+    },
+    {
+      "id": "memory",
+      "description": "Persistent brain vault with a learning loop: reflect, meditate, ruminate",
+      "explicit": false
+    },
+    {
+      "id": "product",
+      "description": "Product-model skills: evidence-backed briefs and product review",
+      "explicit": false
+    }
+  ],
+  "skills": [
+    {
+      "name": "adversarial-review",
+      "kit": "adversarial-review",
+      "explicit": true,
+      "description": "Falsify a proposed plan or implementation with independent traces, concrete failing inputs, claims verification, scope re-derivation, and lifecycle analysis. Use for non-trivial code review, plan refutation, security or reliability changes, bug fixes, merge-gate evidence, and any request to adversarially review or prove a change wrong."
+    },
+    {
+      "name": "architect",
+      "kit": "core",
+      "explicit": false,
+      "description": "Study a system and produce living architecture documentation — explanatory pages with high-quality diagrams. Use AUTOMATICALLY when the user asks to document, explain, map, or review an architecture (\"how does this system work\", \"architecture diagram of this repo\", \"create/refresh the design docs\"), or to keep architecture pages current after changes. Orchestrates the diagram and publish-page skills."
+    },
+    {
+      "name": "autonomous-workflow",
+      "kit": "core",
+      "explicit": false,
+      "description": "Proposal-first development workflow with commit hygiene and decision authority rules. Enforces: propose before modifying, atomic commits, no force flags, warnings-as-errors. Use for any project where AI agents are primary developers and need guardrails."
+    },
+    {
+      "name": "clickup-task-lifecycle",
+      "kit": "clickup",
+      "explicit": false,
+      "description": "Task-first workflow and lifecycle hygiene for teams tracking work in ClickUp: every piece of work runs against a task, statuses stay current on every touch, branches and PRs reference the task without relying on auto-close, and tasks close with a verification note. Applies only in repositories configured with agentkit.clickup.* git config, so it stays inert everywhere else. Triggers: starting tracked work in a ClickUp-backed repo, updating task status, sprint planning, linking a branch or PR to a task, closing a task."
+    },
+    {
+      "name": "code-quality",
+      "kit": "core",
+      "explicit": false,
+      "description": "Code quality standards: warnings-as-errors, no underscore prefixes for unused vars, mandatory test coverage. Apply to any TypeScript, JavaScript, Rust, or Python project. Triggers: code review, linting, writing new functions, refactoring."
+    },
+    {
+      "name": "designer",
+      "kit": "core",
+      "explicit": false,
+      "description": "Design and build bespoke, self-contained HTML pages at artifact grade — design docs, product design briefs (PDs), proposals, reports with UI mockups. Use AUTOMATICALLY whenever a page's visual quality is part of the deliverable (\"make it polished\", \"design doc as a page\", \"like a Claude artifact\"), whenever authoring a design/proposal page in a product repo, and whenever a document needs a product-surface mockup, flow strip, or phase cards. Produces the HTML; publish-page or a product repo hosts it."
+    },
+    {
+      "name": "diagram",
+      "kit": "core",
+      "explicit": false,
+      "description": "Craft high-quality hand-drawn-style diagrams (Excalidraw JSON rendered to self-contained SVG). Use AUTOMATICALLY when the user asks to visualize, draw, diagram, or sketch anything — system architectures, workflows, protocols, timelines, comparisons, mental models — or when a task needs a visual that outclasses mermaid/box kits. Renders headlessly at generation time; output embeds anywhere HTML or markdown does."
+    },
+    {
+      "name": "documentation",
+      "kit": "core",
+      "explicit": false,
+      "description": "Documentation standards: surface-aware diagrams (Mermaid where markdown renders, ASCII for terminals and diffs), structured plan format, compact tables for comparisons. Use when writing docs, plans, READMEs, or architecture documents in any project."
+    },
+    {
+      "name": "github-issue-lifecycle",
+      "kit": "core",
+      "explicit": false,
+      "description": "Issue-first workflow and lifecycle hygiene for GitHub: every piece of work runs against an issue, Projects v2 status stays current on every touch, PRs reference issues without triggering auto-close, and issues close with a verification note. GitHub counterpart of gitlab-issue-lifecycle. Triggers: starting tracked work, updating issue/project status, closing issues, referencing issues from PRs."
+    },
+    {
+      "name": "gitlab-issue-lifecycle",
+      "kit": "core",
+      "explicit": false,
+      "description": "Issue-first workflow and lifecycle hygiene for GitLab: every piece of work runs against an issue, work-item statuses stay current on every touch, MRs reference issues without auto-closing, and issues close with a verification note. Complements issue-raiser (which covers researching and writing a new issue). Triggers: starting tracked work, updating issue status, linking issues to epics, closing issues, referencing issues from MRs."
+    },
+    {
+      "name": "gitops-master",
+      "kit": "core",
+      "explicit": false,
+      "description": "GitOps operations master for ArgoCD + Kargo. Diagnose stuck stages, verify deployments, manage promotions, configure verification and retry. Triggers: 'stage stuck', 'sync failed', 'promote', 'verify stage', 'kargo', 'argocd', 'gitops', 'pipeline', 'freight'"
+    },
+    {
+      "name": "issue-raiser",
+      "kit": "core",
+      "explicit": false,
+      "description": "Raises well-structured GitLab issues with root cause analysis, proposed solutions, and correct assignees based on git history. Adapts to any GitLab instance and project conventions automatically. Triggers: raising issues, reporting bugs, creating tickets, filing defects, feature requests, refactoring proposals."
+    },
+    {
+      "name": "meditate",
+      "kit": "memory",
+      "explicit": false,
+      "description": "Audit and evolve the project's brain vault — prune stale or low-value notes, surface unstated principles hiding across entries, and cross-check skills against the vault for missed structural enforcement. Run periodically, after the vault has accumulated content. Triggers: \"meditate\", \"audit the brain\"."
+    },
+    {
+      "name": "product-intelligence",
+      "kit": "product",
+      "explicit": false,
+      "description": "Build an evidence-backed product brief from a website, a repository, or supplied documents. Every material claim lands in an auditable evidence ledger with a verbatim quote; contradictions are recorded, never smoothed over. Use when asked to research, profile, or write a brief about a product — including this one. Refuses to pad thin evidence into a confident story."
+    },
+    {
+      "name": "product-review",
+      "kit": "product",
+      "explicit": false,
+      "description": "Review a product the way a user meets it — build it, run it, use it — instead of reading a diff. Consumes .agentkit/product.yaml; refuses and asks when it is missing rather than guessing. Use alongside diff review, never instead of it."
+    },
+    {
+      "name": "project-planning",
+      "kit": "core",
+      "explicit": false,
+      "description": "Structured project planning: break down a new project idea into plan files covering architecture, file structure, and implementation roadmap. Triggers: 'new project', 'plan a feature', 'break down', 'architecture', 'roadmap', 'design a system'."
+    },
+    {
+      "name": "publish-page",
+      "kit": "core",
+      "explicit": false,
+      "description": "Publish content as a live web page with a stable URL (AgentKit Pages, self-hosted artifacts). Use AUTOMATICALLY whenever the user asks to publish/share/host a page, make an artifact/report/dashboard/slide deck/design doc viewable in a browser, or when rich formatted output would clearly beat chat text. Also triggers on \"make a page\", \"put this on a page\", \"publish this\", \"as a deck/slides\", \"share a link\". Renders markdown or HTML through themes and returns the live URL."
+    },
+    {
+      "name": "reflect",
+      "kit": "memory",
+      "explicit": false,
+      "description": "Persist learnings from the current session into the project's brain vault — after mistakes, corrections, or notable codebase discoveries, or when wrapping up. Structural enforcement beats notes: route recurring lessons into hooks, lint rules, or skill edits instead. Triggers: \"reflect\", \"remember this\"."
+    },
+    {
+      "name": "resource-safe-execution",
+      "kit": "core",
+      "explicit": false,
+      "description": "Apply Linux-only deterministic systemd cgroup limits with bounded-run to resource-intensive developer commands. Use for dependency installation or upgrades, compilers, typechecks, builds, test suites, linters, Playwright or browser work, code generation, Cargo, Go, and pytest, especially on shared or production-adjacent Linux hosts where an unbounded process could disrupt Kubernetes, ingress, tunnels, or other services."
+    },
+    {
+      "name": "ruminate",
+      "kit": "memory",
+      "explicit": false,
+      "description": "Mine past Claude Code conversations for corrections, preferences, and knowledge that never reached the brain vault. Complements reflect (current session) and meditate (vault audit). Good for bootstrapping a vault from existing history. Triggers: \"ruminate\", \"mine my history\"."
+    },
+    {
+      "name": "taste",
+      "kit": "core",
+      "explicit": false,
+      "description": "Load and maintain tastes — one small markdown file per convention, committed to the repository it governs or kept in your home directory, telling every harness how this owner wants work done. Load them before acting, re-read a `check` taste immediately before an action it covers, and capture a correction as a taste instead of losing it. Triggers: \"from now on\", \"always/never do X\", \"that is not how I want it\", any correction that is a preference rather than a bug, and any question about where a convention lives or why an agent behaves a certain way."
+    },
+    {
+      "name": "test-driven-development",
+      "kit": "core",
+      "explicit": false,
+      "description": "Enforces strict Test-Driven Development (TDD) workflow: RED-GREEN-REFACTOR cycle. Tests MUST be written BEFORE implementation. Every change starts with a failing test. Applies to any language (Rust, TypeScript, Python, Go, etc.). Triggers: writing new features, fixing bugs, adding endpoints, refactoring, any code change."
+    },
+    {
+      "name": "uninstall",
+      "kit": "core",
+      "explicit": false,
+      "description": "Remove AgentKit, or one of its skill kits, without hand-deleting files. Covers `install.sh --uninstall` for a global or project install, what it reverts inside configs the user owns, what it deliberately leaves alone, and how deselecting one optional kit removes its managed artifacts. Use when asked to uninstall AgentKit, remove a kit, undo the installer, or clean a machine of it."
+    },
+    {
+      "name": "wip",
+      "kit": "core",
+      "explicit": false,
+      "description": "Report what was started and not finished in a repository — unmerged branches, dirty worktrees, open merge requests and what holds them, open issues you filed, and plans whose own gaps section still lists untracked work. Read-only; it changes nothing. Use when asked \"what is half done\", \"what did I leave unfinished\", \"what is still open\", \"status of my work\", \"anything abandoned\", before picking up work after a break, and before calling a plan finished."
+    }
+  ],
+  "tools": [
+    "agent-session",
+    "bounded-run",
+    "fix-ascii-boxes.py",
+    "plan-gate",
+    "review-gate",
+    "review-profile",
+    "wip"
+  ],
+  "toolDetails": [
+    {
+      "name": "agent-session",
+      "platforms": [
+        "linux"
+      ]
+    },
+    {
+      "name": "bounded-run",
+      "platforms": [
+        "linux"
+      ]
+    },
+    {
+      "name": "fix-ascii-boxes.py",
+      "platforms": [
+        "portable"
+      ]
+    },
+    {
+      "name": "plan-gate",
+      "platforms": [
+        "portable"
+      ]
+    },
+    {
+      "name": "review-gate",
+      "platforms": [
+        "portable"
+      ]
+    },
+    {
+      "name": "review-profile",
+      "platforms": [
+        "portable"
+      ]
+    },
+    {
+      "name": "wip",
+      "platforms": [
+        "portable"
+      ]
+    }
+  ],
+  "rules": [
+    {
+      "name": "coding-standards",
+      "file": "rules/coding-standards.md",
+      "globs": "**/*.{ts,tsx,js,jsx,py,rb,go,rs,java,kt,cs,cpp,c,h,hpp,swift,scala,vue,svelte}"
+    },
+    {
+      "name": "comment-discipline",
+      "file": "rules/comment-discipline.md",
+      "globs": "**/*.{ts,tsx,js,jsx,py,rb,go,rs,java,kt,cs,cpp,c,h,hpp,swift,scala,vue,svelte,sh,bash,yaml,yml,toml,Dockerfile,Dockerfile.*}"
+    },
+    {
+      "name": "consent-protocol",
+      "file": "rules/consent-protocol.md",
+      "globs": "[\"**/*\"]"
+    },
+    {
+      "name": "credential-bootstrap",
+      "file": "rules/credential-bootstrap.md",
+      "globs": "[\"gitops/**/*.yaml\", \"gitops/**/*.yml\"]"
+    },
+    {
+      "name": "issue-tracking",
+      "file": "rules/issue-tracking.md",
+      "globs": "**/*"
+    }
+  ],
+  "instructions": [
+    {
+      "name": "anti-glaze",
+      "file": "instructions/anti-glaze.md",
+      "globs": null
+    },
+    {
+      "name": "coding-discipline",
+      "file": "instructions/coding-discipline.md",
+      "globs": null
+    },
+    {
+      "name": "collaboration-visibility",
+      "file": "instructions/collaboration-visibility.md",
+      "globs": null
+    },
+    {
+      "name": "evidence-gated-review",
+      "file": "instructions/evidence-gated-review.md",
+      "globs": null
+    },
+    {
+      "name": "resource-safety",
+      "file": "instructions/resource-safety.md",
+      "globs": null
+    },
+    {
+      "name": "review-discipline",
+      "file": "instructions/review-discipline.md",
+      "globs": null
+    }
+  ],
+  "plugins": [
+    "coding-police.ts",
+    "comment-police.ts",
+    "format-police.ts",
+    "git-police.ts",
+    "kubectl-police.ts",
+    "pkg-police.ts",
+    "resource-police.ts",
+    "taste-police.ts",
+    "version-police.ts"
+  ],
+  "codexPolicies": [
+    "coding-police.rules",
+    "delegation-police.rules",
+    "git-police.rules",
+    "kubectl-police.rules",
+    "pkg-police.rules",
+    "resource-police.rules"
+  ],
+  "counts": {
+    "units": 15,
+    "skills": 24,
+    "coreSkills": 17,
+    "kits": 6,
+    "tools": 7,
+    "rules": 5,
+    "instructions": 6,
+    "plugins": 9,
+    "codexPolicies": 6,
+    "wiring": 14
+  }
+}

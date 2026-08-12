@@ -1,0 +1,18 @@
+{{- $facts := hugo.Data.agentkit -}}
+{{- $kit := .Get "kit" -}}
+<div class="hx:overflow-x-auto">
+<table>
+  <thead><tr><th>Skill</th><th>Install</th><th>What it is for</th></tr></thead>
+  <tbody>
+  {{- range $facts.skills }}
+    {{- if or (not $kit) (eq .kit $kit) }}
+    <tr>
+      <td><code>{{ .name }}</code></td>
+      <td>{{ if eq .kit "core" }}always{{ else if .explicit }}<code>--with {{ .kit }}</code> only{{ else }}<code>--with {{ .kit }}</code>{{ end }}</td>
+      <td>{{ .description | markdownify }}</td>
+    </tr>
+    {{- end }}
+  {{- end }}
+  </tbody>
+</table>
+</div>

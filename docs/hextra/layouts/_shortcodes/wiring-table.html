@@ -1,0 +1,22 @@
+{{- $facts := hugo.Data.agentkit -}}
+{{- $event := .Get "event" -}}
+<div class="hx:overflow-x-auto">
+<table>
+  <thead><tr>
+    <th>Hook</th><th>Event</th><th>Matcher</th><th>Timeout</th><th>Fail-closed budget</th>
+  </tr></thead>
+  <tbody>
+  {{- range $facts.wiring }}
+    {{- if or (not $event) (eq .event $event) }}
+    <tr>
+      <td><code>{{ .unit }}-police.sh</code></td>
+      <td><code>{{ .event }}</code></td>
+      <td><code>{{ with .matcher }}{{ . }}{{ else }}(all){{ end }}</code></td>
+      <td>{{ .timeout }}s</td>
+      <td>{{ with .failClosedBudget }}{{ . }}s{{ else }}—{{ end }}</td>
+    </tr>
+    {{- end }}
+  {{- end }}
+  </tbody>
+</table>
+</div>
