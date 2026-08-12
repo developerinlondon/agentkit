@@ -34,10 +34,11 @@ ledger's verbatim quotes and the findings into one page-ready
 `brief-page.html` (derived, never committed), which publish-page puts on a URL:
 
 ```sh
-bun skills/product-intelligence/scripts/render.ts <dir>
-bun skills/publish-page/publish.ts --name <slug> --file <dir>/brief-page.html \
-  --title "<subject>: what the evidence says"
+bun <skill-dir>/scripts/render.ts <dir>
 ```
+
+Then publish `<dir>/brief-page.html` through the **publish-page** skill, passing
+`--title "<subject>: what the evidence says"`.
 
 The render is HTML rather than markdown because a crawled quote must reach the
 reader as the source wrote it: escaping into markdown cannot say "literal"
@@ -49,10 +50,11 @@ page that is not markdown has no heading for publish-page to lift.
 For a walked-through presentation rather than a page to read, add `--deck`:
 
 ```sh
-bun skills/product-intelligence/scripts/render.ts <dir> --deck
-bun skills/publish-page/publish.ts --name <slug> --file <dir>/brief-deck.md \
-  --template deck --title "<subject>"
+bun <skill-dir>/scripts/render.ts <dir> --deck
 ```
+
+Then publish `<dir>/brief-deck.md` through the **publish-page** skill with
+`--template deck --title "<subject>"`.
 
 It writes `brief-deck.md` in the publish-page deck grammar — a title slide
 with the claim counts, then one idea per slide across the brief's sections and
