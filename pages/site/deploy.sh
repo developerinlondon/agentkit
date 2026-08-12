@@ -4,6 +4,7 @@ cd "$(dirname "$0")"
 TOKEN_FILE="${AGENTKIT_SITE_TOKEN_FILE:-$HOME/.config/agentkit/site-token}"
 ENDPOINT="${AGENTKIT_SITE_ENDPOINT:-https://agentkit.sbs}"
 SITE_URL="${AGENTKIT_SITE_URL:-https://agentkit.sbs}"
+PAGES_URL="${AGENTKIT_PAGES_SITE_URL:-https://pages.agentkit.sbs}"
 [[ -f "$TOKEN_FILE" ]] || { echo "deploy: site token missing at $TOKEN_FILE" >&2; exit 1; }
 
 ./build.sh
@@ -40,10 +41,18 @@ while IFS= read -r page; do
 	rel=${page#site/}
 	if [[ "$rel" == index.html ]]; then
 		slug=_site
-		path=
+		url="$SITE_URL/"
+	elif [[ "$rel" == pages-index/index.html ]]; then
+		# The pages origin has its own front door, served from its own slug
+		# rather than a path under the marketing site. Without this case the
+		# transform below would file it at agentkit.sbs/pages-index, and
+		# pages.agentkit.sbs would keep serving whatever was uploaded by hand.
+		slug=_pages-index
+		url="$PAGES_URL/"
 	else
 		path=${rel%/index.html}
 		slug="_site/$path"
+		url="$SITE_URL/$path"
 	fi
 
 	if ! body=$(curl -sS --fail-with-body -X PUT \
@@ -53,8 +62,8 @@ while IFS= read -r page; do
 		exit 1
 	fi
 
-	echo "deployed: $SITE_URL/$path"
-	urls+=("$SITE_URL/$path")
+	echo "deployed: $url"
+	urls+=("$url")
 	deployed=$((deployed + 1))
 	# Root last, deliberately rather than by sort accident: if the walk dies
 	# part-way the front page still points at the previous, coherent set.
