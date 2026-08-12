@@ -5,8 +5,28 @@ sidebar:
   order: 2
 ---
 
-Write markdown, publish it through a theme, get a stable URL. Republishing the same `--name`
-updates the same page.
+Write markdown, publish it through a theme, get a stable URL.
+
+## Ask your agent
+
+This is the path you will actually use. The skill is written to be driven by an agent rather than
+typed: it chooses the name, the template and the title itself, publishes, loads the result in both
+themes to check the render, and hands back the URL.
+
+```text
+Publish this as a page.
+Publish the Q3 roadmap as a deck.
+Take the auth flow page down.
+```
+
+Nothing to decide up front, and nothing to remember afterwards: the address is derived from the
+name the agent chose, so "update that page" republishes over the same URL instead of leaving a
+second copy behind.
+
+## What runs underneath
+
+Reach for the command yourself when you are scripting it, or when you want a particular name or a
+readable address.
 
 The skill ships a `package.json`, so the installer already ran `bun install` in it — and its build
 script, if it has one. That only happens when a usable `bun` was on `PATH` at install time; if it
