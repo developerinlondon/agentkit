@@ -77,9 +77,15 @@ code, .mono, input {
 }
 .card-head h2 { margin: 0; font-size: 1.0625rem; font-weight: 600; letter-spacing: -0.01em; }
 .card-head h2 a { color: inherit; text-decoration: none; }
-.card-head h2 a:hover { text-decoration: underline; text-underline-offset: 3px; }
+.card-head h2 a:hover { color: var(--accent); }
 .meta { margin: .3rem 0 0; font-size: .8125rem; color: var(--muted); }
-.meta .mono { color: var(--muted); }
+.meta .addr { color: var(--accent); text-decoration: none; overflow-wrap: anywhere; }
+.meta .addr:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+/* The sharing link is minted once and never stored in the clear, so it is
+   handed back in place rather than on a page the reader has to come back from. */
+.row.reveal { background: var(--accent-quiet); border-radius: 8px; padding: .7rem .75rem; margin: .5rem 0; }
+.row.reveal .link-out { margin-top: .35rem; }
 
 .pill {
   font-size: .6875rem; font-weight: 600; letter-spacing: .04em;
