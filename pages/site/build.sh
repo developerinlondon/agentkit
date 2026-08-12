@@ -62,9 +62,7 @@ meta() { # meta <key> <file>
 # Only the leading metadata block is build input. A `<!--@…-->` line further
 # down belongs to the author, most likely a page documenting this format.
 strip_meta() {
-	awk 'head && /^[[:space:]]*<!--@/ { next }
-	     head && /^[[:space:]]*$/ { next }
-	     { head = 0; print }' head=1 "$1"
+	awk 'head && /^[[:space:]]*(<!--@|$)/ { next } { head = 0; print }' head=1 "$1"
 }
 
 fail() { echo "build: $*" >&2; exit 1; }
