@@ -55,9 +55,11 @@ export function versionList(current: string, published: string[]): Version[] {
   if (!now) return [];
   return [
     { slug: now.slug, label: `v${now.slug} (latest)`, current: true },
+    // Said plainly, because an archive is the site as it was: it carries the
+    // styling of whatever built it and labels itself the latest of its day.
     ...archivesFor(current, published).map((e) => ({
       slug: e.slug,
-      label: `v${e.slug}`,
+      label: `v${e.slug} (archived)`,
       current: false,
     })),
   ];
