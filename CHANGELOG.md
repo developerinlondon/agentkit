@@ -9,6 +9,20 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+## v0.7.16 — 2026-08-13
+
+- feat(docs): **the documentation has its own host, `docs.agentkit.sbs`.** The worker serves it
+  from the same keyspace by prefixing the path, which leaves that host read-only by construction.
+  The marketing host refuses `/docs/*` rather than serving it with root-relative assets it cannot
+  resolve.
+- fix(docs): **an archived version had lost its stylesheet.** It was published as a copy of the
+  `/docs/` build, so it referenced a content-hashed asset name that the next release replaced. An
+  archive is now built against its own base URL and is self-contained. Version history restarts on
+  the new host.
+- fix(docs): the version picker offers **every patch of the current minor**, not only older minors —
+  the release you shipped last week is the one most likely to be wanted back. It is styled rather
+  than left as the platform control.
+
 ## v0.7.15 — 2026-08-13
 
 - feat(docs): **kits and harnesses are first-class sections.** Kits moved out of Getting started,
