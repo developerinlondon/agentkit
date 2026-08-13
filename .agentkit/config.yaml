@@ -1,8 +1,9 @@
-taste:
-  sources: # ordered — a later entry wins any name an earlier one also defines
-    - repo: git@github.com:developerinlondon/agentkit-tastes.git
-      ref: main
-      path: tastes/
-      name: public
-      mode: vendored
-      visibility: public
+brain:
+  taste:
+    sources: # ordered — a later entry wins any name an earlier one also defines
+      - repo: git@github.com:developerinlondon/agentkit-tastes.git
+        ref: main
+        path: tastes/
+        name: public
+        mode: vendored
+        visibility: public
