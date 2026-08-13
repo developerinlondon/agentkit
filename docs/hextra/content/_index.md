@@ -4,21 +4,22 @@ layout: hextra-home
 ---
 
 {{< hextra/hero-badge >}}
-  <div class="hx:w-2 hx:h-2 hx:rounded-none hx:bg-primary-400"></div>
-  <span>Four harnesses, one canon</span>
+
+<div class="hx:w-2 hx:h-2 hx:rounded-none hx:bg-primary-400"></div>
+  <span>Claude Code · Codex CLI · OpenCode · Grok CLI</span>
 {{< /hextra/hero-badge >}}
 
 <div class="hx:mt-6 hx:mb-6">
 {{< hextra/hero-headline >}}
-  Instructions are advice.&nbsp;<br class="hx:sm:block hx:hidden" />Advice is skippable.
+  Standards your coding&nbsp;<br class="hx:sm:block hx:hidden" />agents cannot skip
 {{< /hextra/hero-headline >}}
 </div>
 
 <div class="hx:mb-12">
 {{< hextra/hero-subtitle >}}
-  agentkit makes working discipline executable: a hook that refuses at the tool&nbsp;<br class="hx:sm:block hx:hidden" />
-  call, a gate that denies the merge, a runner that makes exceeding a memory&nbsp;<br class="hx:sm:block hx:hidden" />
-  limit impossible. None of it depends on the agent remembering.
+  Written rules depend on an agent choosing to follow them. agentkit compiles yours&nbsp;<br class="hx:sm:block hx:hidden" />
+  into hooks that refuse, gates that deny, and runners that cap — installed once,&nbsp;<br class="hx:sm:block hx:hidden" />
+  enforced identically in every harness you use.
 {{< /hextra/hero-subtitle >}}
 </div>
 
@@ -29,34 +30,10 @@ layout: hextra-home
 <div class="hx:mt-12"></div>
 
 {{< hextra/feature-grid >}}
-  {{< hextra/feature-card
-    title="Refusal, not advice"
-    subtitle="Police units compiled into each harness's native extension mechanism. A force push, a `--no-verify`, an AI-attribution trailer, an unbounded build — refused at the tool call, with the legitimate override named in the message."
-    link="guide/concepts/hooks/"
-  >}}
-  {{< hextra/feature-card
-    title="One canon, symlink fans"
-    subtitle="One copy under `~/.agentkit`, then per-name links into OpenCode, Claude Code, Codex CLI and Grok CLI. Skills you installed from anywhere else survive every upgrade untouched."
-    link="guide/start/what-lands-where/"
-  >}}
-  {{< hextra/feature-card
-    title="Honest boundaries"
-    subtitle="A guard you wrongly believe in is worse than no guard. Every limit is written down where the feature is: what it reaches, what it cannot see, and what it does when it cannot run."
-    link="guide/concepts/boundaries/"
-  >}}
-  {{< hextra/feature-card
-    title="Containment on Linux"
-    subtitle="`bounded-run` puts heavy work in a systemd scope with hard memory and CPU limits, and fails closed if its cgroup slice is missing. The limit is in the kernel, not in a prompt."
-    link="guide/concepts/containment/"
-  >}}
-  {{< hextra/feature-card
-    title="A gate with teeth"
-    subtitle="An opt-in review lane where the merge is denied unless a review record matches the commit under review. Stale approval becomes mechanically impossible to merge past."
-    link="guide/concepts/review/"
-  >}}
-  {{< hextra/feature-card
-    title="Reference built from the tree"
-    subtitle="Every table on this site is generated from the repository it documents. A unit added, removed or rewired changes the page in the same commit, or the build fails."
-    link="reference/"
-  >}}
+{{< hextra/feature-card title="Refusal, not advice" link="guide/concepts/hooks/" subtitle="A force push, a `--no-verify`, an unbounded build — refused at the tool call, with the legitimate override named in the refusal." >}}
+{{< hextra/feature-card title="Install once, every agent" link="guide/start/what-lands-where/" subtitle="One copy under `~/.agentkit`, linked into each harness. Skills you installed from anywhere else survive every upgrade untouched." >}}
+{{< hextra/feature-card title="Honest boundaries" link="guide/concepts/boundaries/" subtitle="A guard you wrongly believe in is worse than none. Every limit states what it reaches, what it cannot see, and what it does when it cannot run." >}}
+{{< hextra/feature-card title="Limits the kernel holds" link="guide/concepts/containment/" subtitle="`bounded-run` caps memory and CPU in a systemd scope and fails closed when its slice is missing, so the ceiling is not a suggestion." >}}
+{{< hextra/feature-card title="A gate with teeth" link="guide/concepts/review/" subtitle="An opt-in lane that denies the merge unless a review record matches the exact commit under review. Stale approval cannot slip past." >}}
+{{< hextra/feature-card title="Reference built from the tree" link="reference/" subtitle="Every table on this site is generated from the repository it documents. Add or rewire a unit and the page changes with it, or the build fails." >}}
 {{< /hextra/feature-grid >}}

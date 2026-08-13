@@ -11,9 +11,12 @@
 
 <div class="ak-navbar-controls">
   {{- if gt (len $versions) 1 -}}
+  {{- /* The current docs are wherever this build is served from, so its option
+         follows the baseURL; an archive is always at its own published path. */ -}}
   <select class="ak-version-picker" aria-label="Documentation version">
     {{- range $versions }}
-    <option value="{{ .path }}"{{ if eq .path "/docs/" }} selected{{ end }}>{{ .label }}</option>
+    {{- $href := cond .current site.BaseURL (printf "/docs/%s/" .slug) }}
+    <option value="{{ $href }}"{{ if .current }} selected{{ end }}>{{ .label }}</option>
     {{- end }}
   </select>
   {{- end -}}
