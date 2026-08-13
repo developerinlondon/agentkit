@@ -19,9 +19,22 @@ STRIPPED=$(echo "$COMMAND" |
 	sed -E "s/\"([^\"\\\\]|\\\\.)*\"/\"\"/g" |
 	sed -E "s/'[^']*'/''/g")
 
-if ! echo "$STRIPPED" | grep -qiE '\b(gh|glab)[[:space:]]+issue[[:space:]]+create\b'; then
-	exit 0
-fi
+is_creation() {
+	echo "$STRIPPED" | grep -qiE '\b(gh|glab)[[:space:]]+issue[[:space:]]+create\b' && return 0
+
+	echo "$STRIPPED" | grep -qiE '\b(gh|glab)[[:space:]]+api\b' || return 1
+	echo "$STRIPPED" | grep -qiE '(--method|-X)[[:space:]=]+POST\b' || return 1
+
+	# STRIPPED has emptied the quoted URL, so the path is read from the original,
+	# truncated at the first body flag: an issues URL quoted inside a description
+	# is not itself a creation.
+	url_part=$(echo "$COMMAND" |
+		sed -E 's/[[:space:]](--field|--raw-field|-f|--input|--body|--body-file|--description-file)[[:space:]=].*//')
+	# Trailing segment only — /issues/7/notes and /issues_statistics create nothing.
+	echo "$url_part" | grep -qE '/issues([^/[:alnum:]_]|$)'
+}
+
+is_creation || exit 0
 
 deny() {
 	agentkit_deny_json "$1"
