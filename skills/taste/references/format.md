@@ -243,7 +243,7 @@ words** into the repository it runs in:
   than the one whose URL was read.
 - **The machine's own store is judged too when it sits inside a git work tree** — a dotfiles
   repository. Outside one it publishes nothing and no check runs.
-- **`AGENTKIT_TASTE_TARGET_PRIVATE=1`** on the sync command asserts the one fact the tool could
+- **`AGENTKIT_TARGET_PRIVATE=1`** on the sync command asserts the one fact the tool could
   not establish. It does not overrule a forge that answered, and empty, `0`, `false`, `no` and
   `off` do not switch it on.
 

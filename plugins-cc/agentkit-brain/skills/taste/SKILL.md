@@ -160,7 +160,7 @@ prose does not stop a sync.
   a dotfiles repository is the shape this exists for — it is a target like any other and is judged
   the same way. Machine sources default to `private`, so this refuses by default and says how to
   proceed: move the store out of the work tree, or declare the source `visibility: public`.
-- **The override is `AGENTKIT_TASTE_TARGET_PRIVATE=1`** on the sync command. It supplies the one
+- **The override is `AGENTKIT_TARGET_PRIVATE=1`** on the sync command. It supplies the one
   fact the tool could not establish — that this repository is private — and nothing else: a
   target the forge answered _public_ for stays refused with it set, because that case is the
   leak rather than the inconvenience. Empty, `0`, `false`, `no` and `off` are refusals here too.
