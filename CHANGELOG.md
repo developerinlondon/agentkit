@@ -9,6 +9,19 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+## v0.7.14 — 2026-08-13
+
+- feat(docs): **the documentation site is now Hugo and Hextra.** The Astro build, its archive
+  builder and its deploy script are gone; `/docs/` is the Hextra build, published by the same
+  upload path as before. The docs job went from eight to nine minutes to under a minute, because
+  a full site build is now about a fifth of a second rather than half a minute.
+- feat(docs): **one-click theme toggle and a version picker in the navbar.** The theme control is
+  a single button rather than a three-option menu, and a release now publishes to
+  `/docs/<version>/` as well as `/docs/`, so readers can move between versions.
+- change(docs): **version history starts here.** Twenty-one published archives were removed rather
+  than carried forward: each was built by the previous generator, labelled itself the latest of its
+  day, and documented a pre-release product.
+
 - feat(skills): **`clickup-task-lifecycle`, in a new opt-in `clickup` kit.** Task-first workflow
   hygiene for teams tracking work in ClickUp: status current on every touch, closure notes before
   closing, sprints modelled as Lists rather than invented custom fields, and KPIs in custom fields
