@@ -31,6 +31,13 @@ disk="$(cd "$brain_dir" && find . -name '*.md' ! -name 'index.md' -type f \
 
 dirs="$(awk -F/ 'NF>1{print $1}' <<<"$disk" | sort -u)"
 
+# The index is injected into every session, so one line per note grows it without
+# bound. Past this, a section is summarised rather than listed. 0 disables.
+max_per_section="${AGENTKIT_BRAIN_INDEX_MAX_PER_SECTION:-20}"
+case "$max_per_section" in
+'' | *[!0-9]*) max_per_section=20 ;;
+esac
+
 tmp="$(mktemp "$brain_dir/.index-rebuild.XXXXXX")"
 trap 'rm -f "$tmp"' EXIT
 {
@@ -39,6 +46,14 @@ trap 'rm -f "$tmp"' EXIT
 		[[ -n "$section" ]] || continue
 		first="$(printf '%s' "${section:0:1}" | LC_ALL=C tr '[:lower:]' '[:upper:]')"
 		printf '\n## %s%s\n' "$first" "${section:1}"
+		count=0
+		while IFS= read -r f; do
+			case "$f" in "$section"/*) count=$((count + 1)) ;; esac
+		done <<<"$disk"
+		if [[ "$max_per_section" -gt 0 && "$count" -gt "$max_per_section" ]]; then
+			printf -- '- %s notes — `ls brain/%s/` then read what matches\n' "$count" "$section"
+			continue
+		fi
 		while IFS= read -r f; do
 			case "$f" in "$section"/*) echo "- [[$f]]" ;; esac
 		done <<<"$disk"

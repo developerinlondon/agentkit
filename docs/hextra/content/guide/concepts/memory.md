@@ -15,12 +15,19 @@ Opt-in. `--with memory`, or `curl -fsSL https://raw.githubusercontent.com/develo
 `brain/` at the project root — an Obsidian-compatible tree of markdown notes with a `brain/index.md`
 of bare `[[wikilinks]]`. Two small hooks do the plumbing:
 
-| Hook | Event | Does |
-| --- | --- | --- |
-| `brain-inject.sh` | `SessionStart` (startup, resume) | prints the index so the agent knows what knowledge exists |
-| `brain-index.sh` | `PostToolUse` (Edit, Write) | deterministically rebuilds the index after any write inside `brain/` |
+| Hook              | Event                            | Does                                                                 |
+| ----------------- | -------------------------------- | -------------------------------------------------------------------- |
+| `brain-inject.sh` | `SessionStart` (startup, resume) | prints the index so the agent knows what knowledge exists            |
+| `brain-index.sh`  | `PostToolUse` (Edit, Write)      | deterministically rebuilds the index after any write inside `brain/` |
 
 Both are silent no-ops in projects without a vault, so the kit is safe to install globally.
+
+The index is injected into every session, so it must not grow with the vault. Once a section holds
+more than 20 notes it is summarised as a count and an `ls` hint rather than listed note by note,
+which keeps the index proportional to the number of sections instead of the size of the vault. Set
+`AGENTKIT_BRAIN_INDEX_MAX_PER_SECTION` to change the threshold, or `0` to always list everything.
+Summarised sections stay reachable — the agent is told to `ls` the directory and read what matches,
+which is how a self-describing note name earns its keep.
 
 ## The loop
 
