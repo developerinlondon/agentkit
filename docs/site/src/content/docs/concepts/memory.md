@@ -14,6 +14,13 @@ markdown notes with a `brain/index.md` of bare `[[wikilinks]]`. Two small hooks 
 `brain-index.sh` deterministically rebuilds the index after any write inside `brain/`. Both are
 silent no-ops in projects without a vault, so the kit is safe to install globally.
 
+The index is injected into every session, so it must not grow with the vault. Once a section
+holds more than 20 notes it is summarised as a count and an `ls` hint instead of listed note by
+note, which keeps the index proportional to the number of sections rather than the size of the
+vault. Set `AGENTKIT_BRAIN_INDEX_MAX_PER_SECTION` to change the threshold, or `0` to always list
+everything. Summarised sections stay reachable — the agent is told to `ls` the directory and read
+what matches, which is how a self-describing note name earns its keep.
+
 Three skills form the loop:
 
 - **reflect** runs at session end or after a correction. It scans the conversation for mistakes,

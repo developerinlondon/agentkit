@@ -39,6 +39,63 @@ function vaultProject(): string {
 }
 
 describe('brain-index.sh', () => {
+  function bigVault(noteCount: number): string {
+    const dir = mkdtempSync(join(tmpdir(), 'brain-cap-'));
+    mkdirSync(join(dir, 'brain', 'big'), { recursive: true });
+    mkdirSync(join(dir, 'brain', 'small'), { recursive: true });
+    writeFileSync(join(dir, 'brain', 'index.md'), '# Brain\n');
+    for (let i = 0; i < noteCount; i++) {
+      writeFileSync(join(dir, 'brain', 'big', `n${i}.md`), 'note\n');
+    }
+    writeFileSync(join(dir, 'brain', 'small', 'one.md'), 'note\n');
+    return dir;
+  }
+
+  function rebuild(dir: string, cap?: string) {
+    const env: Record<string, string> = { ...process.env, CLAUDE_PROJECT_DIR: dir };
+    if (cap !== undefined) env.AGENTKIT_BRAIN_INDEX_MAX_PER_SECTION = cap;
+    spawnSync('bash', [indexHook], {
+      encoding: 'utf8',
+      input: writePayload(join(dir, 'brain', 'small', 'one.md')),
+      env,
+    });
+    return readFileSync(join(dir, 'brain', 'index.md'), 'utf8');
+  }
+
+  // The index is injected into every session. One line per note makes it grow
+  // without bound, which is the defect this cap exists to prevent.
+  test('summarises a section past the cap and leaves small sections listed', () => {
+    const dir = bigVault(25);
+    try {
+      const index = rebuild(dir);
+      expect(index).toContain('- 25 notes — `ls brain/big/`');
+      expect(index).not.toContain('[[big/n0]]');
+      expect(index).toContain('[[small/one]]');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('cap is configurable and 0 disables it', () => {
+    const dir = bigVault(25);
+    try {
+      expect(rebuild(dir, '30')).toContain('[[big/n0]]');
+      expect(rebuild(dir, '5')).toContain('- 25 notes —');
+      expect(rebuild(dir, '0')).toContain('[[big/n0]]');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('a non-numeric cap falls back to the default rather than disabling it', () => {
+    const dir = bigVault(25);
+    try {
+      expect(rebuild(dir, 'abc')).toContain('- 25 notes —');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test('rebuilds the index grouped by directory with standalone files under Other', () => {
     const dir = vaultProject();
     try {
