@@ -27,12 +27,19 @@ external_sources() {
 	done
 }
 
-printf 'Memory vault index — read the relevant files before acting:\n'
+# A vault that holds only vendored sources has no index of its own, and those
+# sources are the whole reason it is there — so the body is built first and the
+# heading printed only if some vault had something to say.
+body=""
 while IFS=$'\t' read -r scope dir; do
 	[[ -n "$dir" ]] || continue
 	index="$dir/index.md"
-	[[ -f "$index" ]] || continue
-	printf '\n## %s vault (%s)\n\n' "$scope" "$dir"
-	cat "$index"
-	external_sources "$dir"
+	sources="$(external_sources "$dir")"
+	[[ -f "$index" || -n "$sources" ]] || continue
+	body+=$'\n'"## $scope vault ($dir)"$'\n\n'
+	if [[ -f "$index" ]]; then body+="$(cat "$index")"$'\n'; fi
+	if [[ -n "$sources" ]]; then body+="$sources"$'\n'; fi
 done <<<"$vaults"
+
+[[ -n "$body" ]] || exit 0
+printf 'Memory vault index — read the relevant files before acting:\n%s' "$body"

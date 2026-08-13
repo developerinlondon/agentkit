@@ -228,6 +228,23 @@ describe('memory-inject.sh', () => {
     }
   });
 
+  // A repository that declares sources and writes no notes of its own has a
+  // vault with no index in it. The sources are still the whole reason it exists.
+  test('names a source in a vault that holds nothing else', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'memory-external-only-'));
+    try {
+      mkdirSync(join(dir, 'memory', 'external', 'knowledge'), { recursive: true });
+      writeFileSync(join(dir, 'memory', 'external', 'knowledge', 'runbook.md'), 'note\n');
+      const run = runHook(injectHook, dir);
+
+      expect(run.status, run.stderr).toBe(0);
+      expect(run.stdout).toContain('knowledge');
+      expect(run.stdout).toContain('1 note');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test('says nothing about external sources when a vault has none', () => {
     const dir = vaultProject();
     try {
