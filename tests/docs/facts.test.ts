@@ -5,7 +5,6 @@ import { dirname, join, relative } from 'node:path';
 import {
   collectFacts,
   collectWiring,
-  committedFacts,
   pluginHookDrift,
   serialise,
   spliceReadme,
