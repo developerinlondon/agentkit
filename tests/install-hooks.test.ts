@@ -25,8 +25,8 @@ const globalInstallTimeoutMs = 60_000;
 // The review gate is an explicit opt-in kit: nothing installs it implicitly.
 const WITH_REVIEW = ['--with', 'adversarial-review'];
 // Full canonical parity needs every hook-owning kit selected.
-const WITH_ALL_HOOK_KITS = [...WITH_REVIEW, '--with', 'memory'];
-const WITH_MEMORY = ['--with', 'memory'];
+const WITH_ALL_HOOK_KITS = [...WITH_REVIEW, '--with', 'brain'];
+const WITH_MEMORY = ['--with', 'brain'];
 // Hook wiring is what these pin, not dependency fetching. The real bun-install
 // path is exercised once, by the first test in tests/install-prompt.test.ts.
 const skipSkillDeps = { AGENTKIT_SKIP_SKILL_DEPS: '1' };
@@ -104,10 +104,10 @@ describe('Claude Code and Codex hook wiring', () => {
       // Named explicitly so deleting one from the canonical file fails here.
       expect(commandNames(settings.hooks.PreToolUse[0].hooks)).toContain('review-police.sh');
       expect(commandNames(settings.hooks.PostToolUse[0].hooks)).toContain('comment-police.sh');
-      expect(commandNames(settings.hooks.PostToolUse[0].hooks)).toContain('brain-index.sh');
+      expect(commandNames(settings.hooks.PostToolUse[0].hooks)).toContain('memory-index.sh');
       expect(
         settings.hooks.SessionStart.flatMap((kit: any) => commandNames(kit.hooks)),
-      ).toContain('brain-inject.sh');
+      ).toContain('memory-inject.sh');
 
       const codexDir = join(home, '.codex');
       const codexHooks = JSON.parse(readFileSync(join(codexDir, 'hooks.json'), 'utf-8'));
@@ -145,7 +145,7 @@ describe('Claude Code and Codex hook wiring', () => {
 
       // The canonical file carries the whole wiring; a default install ships it
       // minus the kit-owned hooks: the review gate leaves the Bash kit and takes
-      // the merge-shaped matcher kit with it, the brain hooks leave PostToolUse
+      // the merge-shaped matcher kit with it, the memory hooks leave PostToolUse
       // and take the SessionStart kit with them. The write-gate kit is core and
       // stays.
       expect(canonical.hooks.PreToolUse).toHaveLength(3);
@@ -153,16 +153,16 @@ describe('Claude Code and Codex hook wiring', () => {
       expect(commandNames(settings.hooks.PreToolUse[1].hooks)).toEqual(['plan-police.sh']);
       expect(commandNames(settings.hooks.PreToolUse[0].hooks)).toEqual(
         commandNames(canonical.hooks.PreToolUse[0].hooks).filter(
-          (name) => name !== 'review-police.sh',
+          (name) => name !== 'review-police.sh' && name !== 'taste-police.sh',
         ),
       );
       expect(commandNames(settings.hooks.PostToolUse[0].hooks)).toEqual(
         commandNames(canonical.hooks.PostToolUse[0].hooks).filter(
-          (name) => name !== 'brain-index.sh',
+          (name) => name !== 'memory-index.sh',
         ),
       );
-      // The update-notice kit is core and stays; only the brain-inject kit
-      // leaves with the memory kit.
+      // The update-notice kit is core and stays; only the memory-inject kit
+      // leaves with the brain kit.
       expect(canonical.hooks.SessionStart).toHaveLength(2);
       expect(settings.hooks.SessionStart).toHaveLength(1);
       expect(commandNames(settings.hooks.SessionStart[0].hooks)).toEqual(['update-notice.sh']);
@@ -179,8 +179,8 @@ describe('Claude Code and Codex hook wiring', () => {
       for (const path of [
         join(claudeDir, 'hooks', 'review-police.sh'),
         join(claudeDir, 'hooks', 'fail-closed-hook.sh'),
-        join(claudeDir, 'hooks', 'brain-inject.sh'),
-        join(claudeDir, 'hooks', 'brain-index.sh'),
+        join(claudeDir, 'hooks', 'memory-inject.sh'),
+        join(claudeDir, 'hooks', 'memory-index.sh'),
         join(claudeDir, 'tools', 'review-gate'),
         join(claudeDir, 'tools', 'review-profile'),
         join(home, '.codex', 'hooks.json'),
@@ -196,7 +196,7 @@ describe('Claude Code and Codex hook wiring', () => {
     }
   }, globalInstallTimeoutMs);
 
-  test('--with memory wires the brain hooks without the review gate', () => {
+  test('--with brain wires the memory hooks without the review gate', () => {
     const home = mkdtempSync(join(tmpdir(), 'agentkit-hooks-'));
     const claudeDir = join(home, '.claude');
 
@@ -205,9 +205,9 @@ describe('Claude Code and Codex hook wiring', () => {
       expect(result.status, result.stderr.toString()).toBe(0);
       const settings = installedSettings(claudeDir);
 
-      expect(commandNames(settings.hooks.PostToolUse[0].hooks)).toContain('brain-index.sh');
+      expect(commandNames(settings.hooks.PostToolUse[0].hooks)).toContain('memory-index.sh');
       expect(settings.hooks.SessionStart).toHaveLength(2);
-      expect(commandNames(settings.hooks.SessionStart[1].hooks)).toEqual(['brain-inject.sh']);
+      expect(commandNames(settings.hooks.SessionStart[1].hooks)).toEqual(['memory-inject.sh']);
       for (const kits of Object.values<any>(settings.hooks)) {
         for (const kit of kits) {
           for (const entry of kit.hooks) {
@@ -215,7 +215,7 @@ describe('Claude Code and Codex hook wiring', () => {
           }
         }
       }
-      for (const name of ['brain-inject.sh', 'brain-index.sh']) {
+      for (const name of ['memory-inject.sh', 'memory-index.sh']) {
         const path = join(claudeDir, 'hooks', name);
         expect(existsSync(path), path).toBe(true);
         expect(statSync(path).mode & 0o111, path).not.toBe(0);
@@ -225,22 +225,22 @@ describe('Claude Code and Codex hook wiring', () => {
     }
   }, globalInstallTimeoutMs);
 
-  test('deselecting the memory kit removes installed brain hooks and their wiring', () => {
+  test('deselecting the brain kit removes installed brain hooks and their wiring', () => {
     const home = mkdtempSync(join(tmpdir(), 'agentkit-hooks-'));
     const claudeDir = join(home, '.claude');
 
     try {
       let result = runGlobalInstall(home, {}, WITH_MEMORY);
       expect(result.status, result.stderr.toString()).toBe(0);
-      result = runGlobalInstall(home, {}, ['--without', 'memory']);
+      result = runGlobalInstall(home, {}, ['--without', 'brain']);
       expect(result.status, result.stderr.toString()).toBe(0);
 
       const settings = installedSettings(claudeDir);
-      expect(commandNames(settings.hooks.PostToolUse[0].hooks)).not.toContain('brain-index.sh');
+      expect(commandNames(settings.hooks.PostToolUse[0].hooks)).not.toContain('memory-index.sh');
       expect(
         settings.hooks.SessionStart.flatMap((kit: any) => commandNames(kit.hooks)),
-      ).not.toContain('brain-inject.sh');
-      for (const name of ['brain-inject.sh', 'brain-index.sh']) {
+      ).not.toContain('memory-inject.sh');
+      for (const name of ['memory-inject.sh', 'memory-index.sh']) {
         expect(existsSync(join(claudeDir, 'hooks', name)), name).toBe(false);
       }
     } finally {

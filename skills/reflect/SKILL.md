@@ -18,7 +18,7 @@ a future session's behaviour.
 If `brain/` does not exist at the project root, seed it first by copying this
 skill's `references/starter-vault/` directory to `brain/` (the starter index and
 principles). The vault is an Obsidian-compatible tree: `brain/index.md` (bare
-`[[wikilink]]` index, rebuilt automatically by the `brain-index` hook) plus one
+`[[wikilink]]` index, rebuilt automatically by the `memory-index` hook) plus one
 topic per file.
 
 ## Process

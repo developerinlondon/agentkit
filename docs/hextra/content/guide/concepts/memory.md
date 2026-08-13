@@ -17,8 +17,8 @@ of bare `[[wikilinks]]`. Two small hooks do the plumbing:
 
 | Hook              | Event                            | Does                                                                 |
 | ----------------- | -------------------------------- | -------------------------------------------------------------------- |
-| `brain-inject.sh` | `SessionStart` (startup, resume) | prints the index so the agent knows what knowledge exists            |
-| `brain-index.sh`  | `PostToolUse` (Edit, Write)      | deterministically rebuilds the index after any write inside `brain/` |
+| `memory-inject.sh` | `SessionStart` (startup, resume) | prints the index so the agent knows what knowledge exists            |
+| `memory-index.sh`  | `PostToolUse` (Edit, Write)      | deterministically rebuilds the index after any write inside `brain/` |
 
 Both are silent no-ops in projects without a vault, so the kit is safe to install globally.
 

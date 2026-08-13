@@ -106,9 +106,9 @@
           },
           {
             "type": "command",
-            "command": "$HOME/.claude/hooks/brain-index.sh",
+            "command": "$HOME/.claude/hooks/memory-index.sh",
             "timeout": 10,
-            "statusMessage": "brain-index: syncing the vault index..."
+            "statusMessage": "memory-index: syncing the vault index..."
           }
         ]
       }
@@ -153,7 +153,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$HOME/.claude/hooks/brain-inject.sh",
+            "command": "$HOME/.claude/hooks/memory-inject.sh",
             "timeout": 10
           }
         ]

@@ -13,7 +13,7 @@ repository can require **more** than the machine config, and never less.
 | Scope         | File                                  | Wins on                                                  |
 | ------------- | ------------------------------------- | -------------------------------------------------------- |
 | machine       | `~/.config/agentkit/config.yaml`      | thresholds, defaults, which units are enabled            |
-| repository    | `<repo>/.agentkit/config.yaml`        | `review`, `wip`, `taste` sections                        |
+| repository    | `<repo>/.agentkit/config.yaml`        | `review`, `wip`, `brain` sections                        |
 | target commit | `<repo>/.agentkit/review-policy.json` | the merge gate — cannot be weakened by either file above |
 
 ## `review`
@@ -148,21 +148,37 @@ A Jira-style `PROJ-123` is deliberately absent from the default `issue-refs`: no
 it from a hex digest or a UTF-8 label, and a wrong "tracked" loses the gap silently.
 {{< /callout >}}
 
-## `taste`
+## `brain`
 
-| Key        | Type | Default |
-| ---------- | ---- | ------- |
-| `enabled`  | bool | `true`  |
-| `learning` | bool | `true`  |
-| `sources`  | list | `[]`    |
+Ships in the `brain` kit (`--with brain`). Two units under one banner: **memory** is what is true
+(additive — every note listed), **taste** is what to do (replacement — a higher scope wins a name
+outright). They share a scope ladder, never a store. External sources are taste-only today; memory gains them next.
 
-`enabled: false` makes both the skill and the hook inert. `learning: false` keeps the folder
-read-only — a correction is reported rather than filed.
+| Key               | Type | Default |
+| ----------------- | ---- | ------- |
+| `memory.enabled`  | bool | `true`  |
+| `memory.learning` | bool | `true`  |
+| `taste.enabled`   | bool | `true`  |
+| `taste.learning`  | bool | `true`  |
+| `taste.sources`   | list | `[]`    |
+
+`enabled: false` makes that unit inert — nothing read, nothing written. `learning: false` keeps its
+store read-only: a learning or correction is reported rather than filed.
+
+Each unit reads two vaults, the repository's and the operator's, so knowledge that belongs to you
+rather than to any one repository has somewhere to live:
+
+| Unit   | Repository                 | User                  |
+| ------ | -------------------------- | --------------------- |
+| memory | `<repo>/memory/`           | `~/.agentkit/memory/` |
+| taste  | `<repo>/.agentkit/tastes/` | `~/.agentkit/tastes/` |
 
 Each source takes `repo`, `ref`, `mode` (only `vendored` is implemented; declaring `reference` is an
 error), `visibility` (`public` or `private`), and optionally `path` and `name`. `visibility` is
 **required** of a source a repository vendors, and vendoring a private source into a public
-repository is refused. See [tastes](/guide/concepts/tastes/).
+repository is refused. A vendored source is re-snapshotted from its pinned ref on every sync, so it
+is read-only in practice — which is how a human-authored knowledgebase is pulled in without a
+separate mechanism. See [tastes](/guide/concepts/tastes/).
 
 ## Kill switches
 

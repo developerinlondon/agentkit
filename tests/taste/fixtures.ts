@@ -40,13 +40,13 @@ export function taste(name: string, extra: Record<string, string> = {}, body?: s
 }
 
 export function source(repo: string, extra: Record<string, string> = {}): string {
-  const lines = [`    - repo: ${repo}`];
-  for (const [key, value] of Object.entries(extra)) lines.push(`      ${key}: ${value}`);
+  const lines = [`      - repo: ${repo}`];
+  for (const [key, value] of Object.entries(extra)) lines.push(`        ${key}: ${value}`);
   return lines.join('\n');
 }
 
 export function config(...sources: string[]): string {
-  return `taste:\n  sources:\n${sources.join('\n')}\n`;
+  return `brain:\n  taste:\n    sources:\n${sources.join('\n')}\n`;
 }
 
 function git(dir: string, ...args: string[]): string {

@@ -216,7 +216,7 @@ there, or is behind one on its line, pick the next patch instead.
 
 ## The source contract
 
-A source is declared in `taste.sources`, in a repository's `.agentkit/config.yaml` or the
+A source is declared in `brain.taste.sources`, in a repository's `.agentkit/config.yaml` or the
 machine's `~/.config/agentkit/config.yaml`. Both lists apply and each vendors into its own store.
 
 | Key          | Required                | Value                                                                   |
@@ -275,7 +275,7 @@ split: would these clauses ever change independently? If yes, they are separate 
 ```
 
 The files at the root are this repository's own. `external/` holds one directory per source
-declared in `taste.sources`, written only by the skill's sync — one tree with two origins, not
+declared in `brain.taste.sources`, written only by the skill's sync — one tree with two origins, not
 two folders. `external` is reserved for exactly that: a taste or a category directory of that
 name is refused, because the path is read by position rather than by what it is called.
 
@@ -300,6 +300,6 @@ line per violation, and exits non-zero if there was any. Run it on a taste you h
 in CI on a repository whose `.agentkit/tastes/` is committed.
 
 The root can be handed over whole. Names must be unique among the repository's own tastes and
-unique within each source, but a name two sources both define is the stacking `taste.sources`
+unique within each source, but a name two sources both define is the stacking `brain.taste.sources`
 exists for rather than a collision, so the run scopes dedupe accordingly instead of demanding
 one invocation per directory.

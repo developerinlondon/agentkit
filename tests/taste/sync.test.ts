@@ -16,7 +16,7 @@ function config(declared: Record<string, string>): string {
   const [first, ...rest] = Object.entries(source);
   const head = `    - ${first?.[0]}: ${first?.[1]}`;
   const tail = rest.map(([key, value]) => `      ${key}: ${value}`);
-  return `taste:\n  sources:\n${[head, ...tail].join('\n')}\n`;
+  return `brain:\n  taste:\n    sources:\n${[head, ...tail].join('\n')}\n`;
 }
 
 function project(upstream: Remote, extra: Record<string, string> = {}): string {
@@ -337,7 +337,7 @@ describe('sync answers for what it cannot do', () => {
 
   test('no sources declared writes nothing at all, and says so', async () => {
     const cwd = scratch({
-      '.agentkit/config.yaml': 'taste:\n  enabled: true\n',
+      '.agentkit/config.yaml': 'brain:\n  taste:\n    enabled: true\n',
       '.agentkit/tastes/external/left-behind/release-tier.md': taste('release-tier'),
     });
     const before = treeOf(cwd);

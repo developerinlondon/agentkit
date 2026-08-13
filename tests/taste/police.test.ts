@@ -270,8 +270,8 @@ describe('scope resolution decides which file enforces', () => {
       provenance: '2026-08-05 · vendored policy',
     });
     const where = project({
-      '.agentkit/config.yaml': 'taste:\n  sources:\n    - repo: https://example.invalid/org.git\n'
-        + '      ref: v1\n      name: org\n',
+      '.agentkit/config.yaml': 'brain:\n  taste:\n    sources:\n      - repo: https://example.invalid/org.git\n'
+        + '        ref: v1\n        name: org\n',
       '.agentkit/tastes/external/org/release-tier.md': external,
     }, userBlocks);
 
@@ -482,12 +482,12 @@ describe('taste.enabled switches the whole hook off', () => {
   });
 
   test('taste.enabled: true enforces', async () => {
-    const where = project({ ...files, '.agentkit/config.yaml': 'taste:\n  enabled: true\n' });
+    const where = project({ ...files, '.agentkit/config.yaml': 'brain:\n  taste:\n    enabled: true\n' });
     expect((await judge(TAG_MINOR, where)).decision).toBe('deny');
   });
 
   test('taste.enabled: false makes it inert', async () => {
-    const where = project({ ...files, '.agentkit/config.yaml': 'taste:\n  enabled: false\n' });
+    const where = project({ ...files, '.agentkit/config.yaml': 'brain:\n  taste:\n    enabled: false\n' });
     const verdict = await judge(TAG_MINOR, where);
 
     expect(verdict.decision).toBe('allow');
@@ -496,14 +496,14 @@ describe('taste.enabled switches the whole hook off', () => {
 
   test('the repository config overrides the user one', async () => {
     const where = project(
-      { ...files, '.agentkit/config.yaml': 'taste:\n  enabled: true\n' },
-      { '.config/agentkit/config.yaml': 'taste:\n  enabled: false\n' },
+      { ...files, '.agentkit/config.yaml': 'brain:\n  taste:\n    enabled: true\n' },
+      { '.config/agentkit/config.yaml': 'brain:\n  taste:\n    enabled: false\n' },
     );
     expect((await judge(TAG_MINOR, where)).decision).toBe('deny');
   });
 
   test('the user config applies when the repository says nothing', async () => {
-    const where = project(files, { '.config/agentkit/config.yaml': 'taste:\n  enabled: false\n' });
+    const where = project(files, { '.config/agentkit/config.yaml': 'brain:\n  taste:\n    enabled: false\n' });
     expect((await judge(TAG_MINOR, where)).decision).toBe('allow');
   });
 });

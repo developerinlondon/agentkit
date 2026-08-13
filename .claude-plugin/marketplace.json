@@ -30,9 +30,9 @@
       "version": "0.1.0"
     },
     {
-      "name": "agentkit-memory",
-      "source": "./plugins-cc/agentkit-memory",
-      "description": "Persistent brain vault with a learning loop: reflect, meditate, ruminate",
+      "name": "agentkit-brain",
+      "source": "./plugins-cc/agentkit-brain",
+      "description": "What the agent knows and how it works: memory (a learning vault) plus taste (conventions)",
       "version": "0.3.1"
     },
     {

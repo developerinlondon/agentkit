@@ -99,7 +99,7 @@ const CONVERSATIONAL_SURFACES: [string, string][] = [
 // it — what wins, what is never hand-edited, what a lock bump means to review —
 // lives here or nowhere.
 const EXTERNAL_SOURCES: [string, string][] = [
-  ['a source is subscribed to by committed config', 'ordinary committed config change in `taste.sources`'],
+  ['a source is subscribed to by committed config', 'ordinary committed config change in `brain.taste.sources`'],
   ['the list is ordered and a later source wins', 'a later source wins'],
   ['vendored is the only mode today', 'the only mode that exists today'],
   ['reference mode is refused, not downgraded', 'an error naming the deferral'],
@@ -235,10 +235,14 @@ describe('the taste skill and its contract agree', () => {
   });
 
   test('the config keys the skill reads ship in config.example.yaml, both on', () => {
-    const config = YAML.parse(example) as { taste?: Record<string, unknown> };
-    expect(config.taste).toEqual({ enabled: true, learning: true });
-    expect(skill).toContain('taste.enabled');
-    expect(skill).toContain('taste.learning');
+    const config = YAML.parse(example) as {
+      brain?: { taste?: Record<string, unknown>; memory?: Record<string, unknown> };
+    };
+    expect(config.brain?.taste).toEqual({ enabled: true, learning: true });
+    // Both units ship under the banner, so a reader of one finds the other.
+    expect(config.brain?.memory).toEqual({ enabled: true, learning: true });
+    expect(skill).toContain('brain.taste.enabled');
+    expect(skill).toContain('brain.taste.learning');
     // Both ends of the fallback chain: a skill that read only the user config
     // would ignore the repository's own settings, which is where a project's
     // opt-out lives.
