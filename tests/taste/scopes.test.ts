@@ -121,7 +121,7 @@ describe('a repository list and a machine list both apply', () => {
   });
 
   test('a machine source needs no visibility key — nothing of it is ever committed', () => {
-    const { errors } = declared('taste:\n  enabled: true\n', config(source(CENTRAL, { ref: 'v1' })));
+    const { errors } = declared('brain:\n  taste:\n    enabled: true\n', config(source(CENTRAL, { ref: 'v1' })));
 
     expect(errors).toEqual([]);
   });

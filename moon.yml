@@ -151,10 +151,10 @@ fileGroups:
     - "tests/test-slices.test.ts"
 
   memoryInputs:
-    - "hooks/claude/brain-index.sh"
-    - "hooks/claude/brain-inject.sh"
+    - "hooks/claude/memory-index.sh"
+    - "hooks/claude/memory-inject.sh"
     - "hooks/claude/lib/**/*"
-    - "plugins-cc/agentkit-memory/**/*"
+    - "plugins-cc/agentkit-brain/**/*"
     - "skills/meditate/**/*"
     - "skills/reflect/**/*"
     - "skills/ruminate/**/*"

@@ -13,7 +13,7 @@ const GENERIC = 'git@github.com:developerinlondon/agentkit-tastes.git';
 const CENTRAL = 'git@github.com:developerinlondon/business-tastes.git';
 
 function config(...sources: string[]): string {
-  return `taste:\n  enabled: true\n  sources:\n${sources.join('\n')}\n`;
+  return `brain:\n  taste:\n    enabled: true\n    sources:\n${sources.join('\n')}\n`;
 }
 
 const BOTH = config(
@@ -63,7 +63,7 @@ describe('a source is declared in committed config', () => {
   });
 
   test('no sources key at all is not an error — it is the common repository', () => {
-    const { sources, errors } = declare({ '.agentkit/config.yaml': 'taste:\n  enabled: true\n' });
+    const { sources, errors } = declare({ '.agentkit/config.yaml': 'brain:\n  taste:\n    enabled: true\n' });
 
     expect(sources).toEqual([]);
     expect(errors).toEqual([]);
@@ -187,7 +187,7 @@ describe('a declaration the resolver cannot act on is refused, by name', () => {
   });
 
   test('a source without a repo is refused, naming its position', () => {
-    expect(errorsFor('taste:\n  sources:\n    - ref: main\n')).toContain('sources[0]');
+    expect(errorsFor('brain:\n  taste:\n    sources:\n      - ref: main\n')).toContain('sources[0]');
   });
 
   test('an unknown source key is refused rather than ignored', () => {
@@ -286,7 +286,7 @@ describe('a declaration the resolver cannot act on is refused, by name', () => {
   });
 
   test('sources that are not a list are refused', () => {
-    expect(errorsFor('taste:\n  sources: agentkit-tastes\n')).toContain('list');
+    expect(errorsFor('brain:\n  taste:\n    sources: agentkit-tastes\n')).toContain('list');
   });
 });
 
@@ -426,8 +426,8 @@ describe('a source cannot make git run a program', () => {
     upstream.tag('v1');
     const sentinel = join(scratch(), 'pwn');
     const cwd = scratch({
-      '.agentkit/config.yaml': `taste:\n  sources:\n    - repo: ${upstream.url}\n`
-        + `      ref: "--upload-pack=touch ${sentinel}"\n      name: evil\n      visibility: public\n`,
+      '.agentkit/config.yaml': `brain:\n  taste:\n    sources:\n      - repo: ${upstream.url}\n`
+        + `        ref: "--upload-pack=touch ${sentinel}"\n        name: evil\n        visibility: public\n`,
     });
 
     const result = await syncSources({ cwd, home: scratch(), env: {}, today: '2026-08-05' });

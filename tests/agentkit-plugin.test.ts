@@ -34,7 +34,7 @@ const filesUnder = (dir: string, prefix = ''): string[] =>
 const repoRoot = join(import.meta.dir, '..');
 const pluginDir = join(repoRoot, 'plugins-cc', 'agentkit');
 const reviewPluginDir = join(repoRoot, 'plugins-cc', 'agentkit-adversarial-review');
-const memoryPluginDir = join(repoRoot, 'plugins-cc', 'agentkit-memory');
+const memoryPluginDir = join(repoRoot, 'plugins-cc', 'agentkit-brain');
 const openCodePluginDir = join(repoRoot, 'plugins');
 
 type PluginServer = (input: PluginInput) => Promise<unknown>;
@@ -101,7 +101,6 @@ const PRE_TOOL_USE_HOOKS = [
   'pages-police.sh',
   'mr-police.sh',
   'resource-police.sh',
-  'taste-police.sh',
 ];
 // Not a Bash gate: it judges the content an Edit or Write is about to land.
 const PRE_TOOL_USE_WRITE_HOOKS = ['plan-police.sh'];
@@ -109,7 +108,9 @@ const POST_TOOL_USE_HOOKS = ['format-police.sh', 'coding-police.sh', 'comment-po
 const ALL_POLICE_HOOKS = [...PRE_TOOL_USE_HOOKS, ...PRE_TOOL_USE_WRITE_HOOKS, ...POST_TOOL_USE_HOOKS];
 // The merge gate is consent-gated: it ships in agentkit-adversarial-review, never in core.
 const REVIEW_HOOKS = ['fail-closed-hook.sh', 'review-police.sh'];
-const MEMORY_HOOKS = ['brain-index.sh', 'brain-inject.sh'];
+// taste-police ships with the brain kit now, not core: the taste skill moved
+// into that kit, and its enforcement hook follows the skill it enforces.
+const BRAIN_HOOKS = ['memory-index.sh', 'memory-inject.sh', 'taste-police.sh'];
 
 function readJson(...parts: string[]): any {
   return JSON.parse(readFileSync(join(pluginDir, ...parts), 'utf-8'));
@@ -123,13 +124,13 @@ function readMemoryJson(...parts: string[]): any {
   return JSON.parse(readFileSync(join(memoryPluginDir, ...parts), 'utf-8'));
 }
 
-function owningPlugin(command: string): 'core' | 'adversarial-review' | 'memory' {
+function owningPlugin(command: string): 'core' | 'adversarial-review' | 'brain' {
   if (command.includes('review-police.sh')) return 'adversarial-review';
-  if (MEMORY_HOOKS.some((script) => command.includes(script))) return 'memory';
+  if (BRAIN_HOOKS.some((script) => command.includes(script))) return 'brain';
   return 'core';
 }
 
-function wiringFor(settings: any, plugin: 'core' | 'adversarial-review' | 'memory'): any {
+function wiringFor(settings: any, plugin: 'core' | 'adversarial-review' | 'brain'): any {
   const hooks: Record<string, unknown[]> = {};
   for (const [event, kits] of Object.entries<any[]>(settings.hooks)) {
     const kept = kits
@@ -199,7 +200,7 @@ describe('agentkit plugin hooks', () => {
     // entry has to land in exactly one of them.
     expect(readJson('hooks', 'hooks.json')).toEqual(wiringFor(expected, 'core'));
     expect(readReviewJson('hooks', 'hooks.json')).toEqual(wiringFor(expected, 'adversarial-review'));
-    expect(readMemoryJson('hooks', 'hooks.json')).toEqual(wiringFor(expected, 'memory'));
+    expect(readMemoryJson('hooks', 'hooks.json')).toEqual(wiringFor(expected, 'brain'));
   });
 
   test('every referenced police script exists and is executable', () => {
@@ -235,14 +236,14 @@ describe('agentkit plugin hooks', () => {
     const sourceHooks = join(repoRoot, 'hooks', 'claude');
     const sourceScripts = readdirSync(sourceHooks).filter((name) => name.endsWith('.sh')).sort();
     const coreScripts = sourceScripts.filter(
-      (name) => !REVIEW_HOOKS.includes(name) && !MEMORY_HOOKS.includes(name),
+      (name) => !REVIEW_HOOKS.includes(name) && !BRAIN_HOOKS.includes(name),
     );
     expect(coreScripts).not.toEqual(sourceScripts);
 
     for (const [dir, scripts] of [
       [pluginDir, coreScripts],
       [reviewPluginDir, [...REVIEW_HOOKS].sort()],
-      [memoryPluginDir, [...MEMORY_HOOKS].sort()],
+      [memoryPluginDir, [...BRAIN_HOOKS].sort()],
     ] as [string, string[]][]) {
       const pluginScripts = readdirSync(join(dir, 'hooks'))
         .filter((name) => name.endsWith('.sh'))

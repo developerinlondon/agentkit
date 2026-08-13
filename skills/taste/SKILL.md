@@ -21,12 +21,12 @@ its whole output is a diff someone can read, reject, or amend.
 
 ## First: is this skill on?
 
-Read `taste.enabled` and `taste.learning` from `.agentkit/config.yaml`, falling back to
+Read `brain.taste.enabled` and `brain.taste.learning` from `.agentkit/config.yaml`, falling back to
 `~/.config/agentkit/config.yaml`. Both default to `true` when the key or the file is absent.
 
-- `taste.enabled: false` — this skill is inert. Load nothing, write nothing, and say so if
+- `brain.taste.enabled: false` — this skill is inert. Load nothing, write nothing, and say so if
   asked why a taste was ignored.
-- `taste.learning: false` — load and honor tastes, but never write or update one. A
+- `brain.taste.learning: false` — load and honor tastes, but never write or update one. A
   correction still deserves an answer: say the preference would have become a taste, and
   what it would have said.
 
@@ -56,7 +56,7 @@ as a source. Everything else at the root is that store's own layer, and nothing 
 `external/` is ever counted as one.
 
 The external layer holds one directory per declared source, and only a declared one is read:
-a directory under `tastes/external/` that no longer appears in `taste.sources` binds nothing,
+a directory under `tastes/external/` that no longer appears in `brain.taste.sources` binds nothing,
 and is named as vendored-but-undeclared rather than left to look active. The next section is
 how a source gets there.
 
@@ -92,7 +92,7 @@ in a repository's review surface, where nobody reviewing that repository can see
 
 An external source is an organisation's policy that every repository agrees on, kept in
 one place instead of copy-pasted into each one. Subscribing is an
-ordinary committed config change in `taste.sources`, reviewed like any other; nothing
+ordinary committed config change in `brain.taste.sources`, reviewed like any other; nothing
 arrives because a tool discovered it.
 
 ```yaml
@@ -126,7 +126,7 @@ taste:
   reason: git's `scheme::command` remote form runs a program instead of fetching, and is
   refused at the boundary and pinned off in the fetch.
 - **`.agentkit/tastes.lock` pins each source to the commit whose contents were reviewed.** It
-  is generated in `taste.sources` order and carries the name, repository, ref, commit and the
+  is generated in `brain.taste.sources` order and carries the name, repository, ref, commit and the
   date that pin was taken. The date moves only when the pin does.
 - **Never edit `.agentkit/tastes/external/` by hand.** The next sync regenerates it wholesale,
   so an edit there is a change that quietly disappears. To change what a source says, change

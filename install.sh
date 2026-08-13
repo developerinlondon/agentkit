@@ -17,7 +17,7 @@ Options:
   --with <kit>         Also install an opt-in skill kit (repeatable). Kits
                        are declared in skills/KITS; every unlisted skill is
                        in the always-installed `core` kit.
-                         --with memory           brain vault + reflect, meditate, ruminate
+                         --with brain            memory vault + tastes: reflect, meditate, ruminate, taste
                          --with product          product-intelligence, product-review
                          --with advisory-review  asks for a reviewer pass
                          --with adversarial-review    adversarial-review + merge gate
@@ -94,7 +94,7 @@ Examples:
   ./install.sh ~/code/my-project      # Install into specific project
   ./install.sh --global --uninstall   # Remove the global install
   ./install.sh --uninstall ~/code/my-project   # Remove a project install
-  ./install.sh --global --without memory       # Keep everything but the memory kit
+  ./install.sh --global --without brain        # Keep everything but the brain kit
 USAGE
 	exit "${1:-1}"
 }
@@ -995,7 +995,7 @@ install_opencode_plugins() {
 hook_kit() {
 	case "$1" in
 	review-police.sh | fail-closed-hook.sh) printf 'adversarial-review' ;;
-	brain-inject.sh | brain-index.sh) printf 'memory' ;;
+	memory-inject.sh | memory-index.sh | taste-police.sh) printf 'brain' ;;
 	*) printf 'core' ;;
 	esac
 }
@@ -1119,28 +1119,28 @@ merge_claude_settings() {
 	local review_selected=true
 	kit_selected adversarial-review || review_selected=false
 
-	# The memory strip list derives from hook_kit so it cannot drift from
+	# The brain strip list derives from hook_kit so it cannot drift from
 	# ownership. Wiring follows the selected set exactly; deselected scripts
 	# were removed above before this canonical settings merge.
-	local memory_hooks_json hook_name
-	memory_hooks_json="$(for hook_file in "$REPO_DIR"/hooks/claude/*.sh; do
+	local brain_hooks_json hook_name
+	brain_hooks_json="$(for hook_file in "$REPO_DIR"/hooks/claude/*.sh; do
 		hook_name="$(basename "$hook_file")"
-		if [[ "$(hook_kit "$hook_name")" == memory ]]; then
+		if [[ "$(hook_kit "$hook_name")" == brain ]]; then
 			printf '%s\n' "$hook_name"
 		fi
 	done | jq -R . | jq -s .)"
-	local memory_wired=false
-	kit_selected memory && memory_wired=true
+	local brain_wired=false
+	kit_selected brain && brain_wired=true
 
 	local hooks_json
 	hooks_json=$(jq --arg dir "$hooks_dir" \
-		--argjson review "$review_selected" --argjson memory "$memory_wired" \
-		--argjson memoryHooks "$memory_hooks_json" '
+		--argjson review "$review_selected" --argjson brain "$brain_wired" \
+		--argjson brainHooks "$brain_hooks_json" '
     {hooks: (.hooks | with_entries(
       .value |= (map(.hooks |= map(
         select($review or ((.command // "") | contains("review-police") | not))
-        | select($memory or ((.command // "") as $c
-            | (any($memoryHooks[]; . as $h | $c | contains($h))) | not))
+        | select($brain or ((.command // "") as $c
+            | (any($brainHooks[]; . as $h | $c | contains($h))) | not))
         | .command |= gsub("\\$HOME/\\.claude/hooks"; $dir)
       )) | map(select((.hooks | length) > 0)))
     ) | with_entries(select((.value | length) > 0)))}
@@ -1164,7 +1164,7 @@ merge_claude_settings() {
 		# stripped. The police events stay replace-semantics on purpose: there
 		# agentkit's wiring is the single source of truth.
 		echo "$existing" | jq --argjson new_hooks "$hooks_json" \
-			--argjson memoryHooks "$memory_hooks_json" '
+			--argjson brainHooks "$brain_hooks_json" '
       ($new_hooks.hooks.SessionStart // []) as $ours
       | ((.hooks // {}).SessionStart // []) as $theirs
       | . * ($new_hooks | del(.hooks.SessionStart))
@@ -1173,7 +1173,7 @@ merge_claude_settings() {
             | map(.hooks = ((.hooks // []) | map(select(
                 ((.command // "") as $c
                  | ($c | contains("update-notice.sh"))
-                   or (any($memoryHooks[]; . as $h | $c | contains($h))))
+                   or (any($brainHooks[]; . as $h | $c | contains($h))))
                 | not
               ))))
             | map(select((.hooks | length) > 0))

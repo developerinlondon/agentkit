@@ -65,8 +65,9 @@ export function tasteSection(path: string): Record<string, unknown> | undefined 
   } catch {
     return undefined;
   }
-  if (!isRecord(parsed) || !isRecord(parsed.taste)) return undefined;
-  return parsed.taste;
+  if (!isRecord(parsed) || !isRecord(parsed.brain)) return undefined;
+  if (!isRecord(parsed.brain.taste)) return undefined;
+  return parsed.brain.taste;
 }
 
 function defaultName(repo: string): string {

@@ -54,7 +54,7 @@ export const TEST_SLICES = {
     'tests/install/wizard.test.ts',
   ],
   integrations: ['tests/infra-tools-mcp.test.ts', 'tests/test-slices.test.ts'],
-  memory: ['tests/memory/brain-hooks.test.ts', 'tests/memory/ruminate-extractor.test.ts'],
+  memory: ['tests/memory/memory-hooks.test.ts', 'tests/memory/ruminate-extractor.test.ts'],
   product: [
     'tests/product-intelligence/acquisition.test.ts',
     'tests/product-intelligence/composition.test.ts',

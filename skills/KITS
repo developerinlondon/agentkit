@@ -15,7 +15,7 @@
 # Adding a kit is a `kit` line plus its membership lines — nothing else.
 
 kit core Enforcement, planning, and workflow skills for everyday use
-kit memory Persistent brain vault with a learning loop: reflect, meditate, ruminate
+kit brain What the agent knows and how it works: memory (a learning vault) plus taste (conventions)
 kit product Product-model skills: evidence-backed briefs and product review
 kit clickup ClickUp task and sprint lifecycle for teams that track work in ClickUp
 kit adversarial-review Adversarial review: independent refutation lane + evidence records + hard merge gate (explicit opt-in)
@@ -27,6 +27,7 @@ product-intelligence product
 product-review product
 clickup-task-lifecycle clickup
 adversarial-review adversarial-review
-reflect memory
-meditate memory
-ruminate memory
+reflect brain
+meditate brain
+ruminate brain
+taste brain

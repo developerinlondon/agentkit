@@ -326,10 +326,10 @@ describe('installer skill-kit wizard', () => {
       );
       expect(first.stdout).toContain('[kits]   Install product? [y/N]');
       expect(first.stdout).toContain(
-        '[kits]   memory: Persistent brain vault with a learning loop: reflect, meditate, ruminate',
+        '[kits]   brain: What the agent knows and how it works: memory (a learning vault) plus taste (conventions)',
       );
-      expect(first.stdout).toContain('[kits]   Install memory? [y/N]');
-      expect(first.stdout).toContain('Skill kits:    core memory product');
+      expect(first.stdout).toContain('[kits]   Install brain? [y/N]');
+      expect(first.stdout).toContain('Skill kits:    core brain product');
 
       for (
         const name of [
@@ -338,20 +338,21 @@ describe('installer skill-kit wizard', () => {
           'reflect',
           'meditate',
           'ruminate',
+          'taste',
         ]
       ) {
         expect(existsSync(join(canonSkill(home, name), 'SKILL.md')), `${name} installed`).toBe(true);
       }
       const persisted = readFileSync(join(home, '.agentkit', 'kits'), 'utf-8');
       expect(persisted).toContain('product');
-      expect(persisted).toContain('memory');
+      expect(persisted).toContain('brain');
 
       // The answer was persisted, so the upgrade must run straight through — the
       // whole point of asking once rather than every time.
       const upgrade = installOnTty(home, '');
       expect(upgrade.status, upgrade.stderr).toBe(0);
       expect(upgrade.stdout).not.toContain(promptMarker);
-      expect(upgrade.stdout).toContain('Skill kits:    core memory product');
+      expect(upgrade.stdout).toContain('Skill kits:    core brain product');
     } finally {
       rmSync(home, { force: true, recursive: true });
     }

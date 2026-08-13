@@ -322,7 +322,7 @@ describe('skill kit selection', () => {
     const home = mkdtempSync(join(tmpdir(), 'agentkit-kits-'));
 
     try {
-      expect(install(home, ['--with', 'product', '--with', 'memory']).status).toBe(0);
+      expect(install(home, ['--with', 'product', '--with', 'brain']).status).toBe(0);
       writeFileSync(join(home, '.agentkit', 'kits'), '');
 
       const upgrade = install(home);
@@ -331,9 +331,9 @@ describe('skill kit selection', () => {
       expect(existsSync(canonSkill(home, 'product-review'))).toBe(false);
       expect(existsSync(canonSkill(home, 'reflect'))).toBe(false);
       expect(existsSync(join(home, '.codex', 'prompts', 'product-review.md'))).toBe(false);
-      expect(existsSync(join(home, '.claude', 'hooks', 'brain-inject.sh'))).toBe(false);
+      expect(existsSync(join(home, '.claude', 'hooks', 'memory-inject.sh'))).toBe(false);
       expect(readFileSync(join(home, '.claude', 'settings.json'), 'utf-8')).not.toContain(
-        'brain-inject.sh',
+        'memory-inject.sh',
       );
     } finally {
       rmSync(home, { force: true, recursive: true });

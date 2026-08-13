@@ -1,6 +1,0 @@
-#!/usr/bin/env bash
-# Direct installer for the memory kit: core install with this kit preselected.
-set -euo pipefail
-payload="$(curl -fsSL https://raw.githubusercontent.com/developerinlondon/agentkit/main/bootstrap.sh)"
-[[ -n "$payload" ]] || { echo "kits/memory: bootstrap.sh download came back empty" >&2; exit 1; }
-exec bash -c "$payload" bootstrap --with memory "$@"

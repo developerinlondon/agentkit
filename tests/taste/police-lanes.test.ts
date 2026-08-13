@@ -134,7 +134,7 @@ describe('the Claude hook lane refuses from the same data', () => {
   });
 
   test('taste.enabled: false makes the hook inert', () => {
-    const cwd = sandbox({ ...PROJECT, '.agentkit/config.yaml': 'taste:\n  enabled: false\n' });
+    const cwd = sandbox({ ...PROJECT, '.agentkit/config.yaml': 'brain:\n  taste:\n    enabled: false\n' });
     expect(runHook(TAG_MINOR, cwd).stdout.trim()).toBe('');
   });
 

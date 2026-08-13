@@ -9,7 +9,7 @@ See the LICENSE file for the full license text.
 Third-party content:
 
 The memory kit (skills/reflect, skills/meditate, skills/ruminate and the
-brain-inject/brain-index hooks) adapts the vault layout, learning-loop skill
+memory-inject/memory-index hooks) adapts the vault layout, learning-loop skill
 design, and index-maintenance approach of brainmaxxing
 (https://github.com/poteto/brainmaxxing), Copyright (c) 2026 Lauren Tan,
 licensed under the MIT License (full text below).
