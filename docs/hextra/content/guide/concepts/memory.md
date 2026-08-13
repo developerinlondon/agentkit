@@ -1,33 +1,66 @@
 ---
-title: The memory kit
+title: Memory
 weight: 9
 ---
 
-Police hooks enforce lessons someone already learned. The memory kit closes the other half of that
-loop: capturing what a session taught, and deciding where it belongs.
+Police hooks enforce lessons someone already learned. Memory closes the other half of that
+loop: capturing what a session taught, and deciding where it belongs. It is one of the two units
+of the [`brain` kit](/reference/configuration/#brain), alongside taste.
 
 {{< callout type="info" >}}
-Opt-in. `--with memory`, or `curl -fsSL https://raw.githubusercontent.com/developerinlondon/agentkit/main/kits/memory | bash`.
+Opt-in. `--with brain`, or `curl -fsSL https://raw.githubusercontent.com/developerinlondon/agentkit/main/kits/brain | bash`.
 {{< /callout >}}
 
 ## The store is deliberately boring
 
-`brain/` at the project root — an Obsidian-compatible tree of markdown notes with a `brain/index.md`
-of bare `[[wikilinks]]`. Two small hooks do the plumbing:
+`memory/` at the project root and `~/.agentkit/memory/` on the machine — Obsidian-compatible trees of
+markdown notes, each with an `index.md` of bare `[[wikilinks]]`. Two small hooks do the plumbing:
 
-| Hook              | Event                            | Does                                                                 |
-| ----------------- | -------------------------------- | -------------------------------------------------------------------- |
-| `memory-inject.sh` | `SessionStart` (startup, resume) | prints the index so the agent knows what knowledge exists            |
-| `memory-index.sh`  | `PostToolUse` (Edit, Write)      | deterministically rebuilds the index after any write inside `brain/` |
+| Hook               | Event                            | Does                                                                |
+| ------------------ | -------------------------------- | ------------------------------------------------------------------- |
+| `memory-inject.sh` | `SessionStart` (startup, resume) | prints each vault's index, and names the external sources it holds  |
+| `memory-index.sh`  | `PostToolUse` (Edit, Write)      | deterministically rebuilds the index after any write inside a vault |
 
 Both are silent no-ops in projects without a vault, so the kit is safe to install globally.
 
 The index is injected into every session, so it must not grow with the vault. Once a section holds
 more than 20 notes it is summarised as a count and an `ls` hint rather than listed note by note,
 which keeps the index proportional to the number of sections instead of the size of the vault. Set
-`AGENTKIT_BRAIN_INDEX_MAX_PER_SECTION` to change the threshold, or `0` to always list everything.
+`AGENTKIT_MEMORY_INDEX_MAX_PER_SECTION` to change the threshold, or `0` to always list everything.
 Summarised sections stay reachable — the agent is told to `ls` the directory and read what matches,
 which is how a self-describing note name earns its keep.
+
+## A knowledgebase is a source, not a second mechanism
+
+`brain.memory.sources` reads a git repository of human-authored notes — ADRs, designs, runbooks —
+through the same resolver taste uses for its sources. Each is pinned to a ref, snapshotted markdown-only
+into `<vault>/external/<name>/`, and recorded in that store's `.agentkit/memory.lock`:
+
+```yaml
+brain:
+  memory:
+    sources:
+      - repo: git@github.com:you/knowledgebase.git
+        ref: v2026.08.1
+        visibility: private
+```
+
+```sh
+bun <skill-dir>/scripts/sync.ts memory
+```
+
+Two properties fall out of vendoring, and both are the point:
+
+- **Read-only by construction.** Every sync re-snapshots the pinned ref, so anything an agent writes
+  into `external/` is destroyed. Nothing has to enforce it.
+- **Reviewable.** A pin bump is a merge request whose diff is the exact text your agents will read.
+
+Vendoring a **private** source into a public repository is refused, and `visibility` is required of a
+source a repository vendors — the snapshot is committed there. Declare the source at the machine
+level instead and nothing is copied into any checkout.
+
+External notes are named at session start with their counts rather than listed one by one, and stay
+out of the vault's own index: that index is what this vault wrote, not what it subscribes to.
 
 ## The loop
 
@@ -63,8 +96,8 @@ Two rules protect the vault's future:
 - **No secrets in notes, ever** — a vault may later be shared or synced beyond one machine.
 - **All skill or vault changes land as diffs a human reviews**, never as silent self-modification.
 
-Deselecting the kit (`--without memory`) removes the managed skills, hooks, settings entries, prompts
-and plugin. A later bare install keeps it absent until `--with memory` selects it again.
+Deselecting the kit (`--without brain`) removes the managed skills, hooks, settings entries, prompts
+and plugin. A later bare install keeps it absent until `--with brain` selects it again.
 
 The vault layout and learning-loop design adapt
 [brainmaxxing](https://github.com/poteto/brainmaxxing) (MIT) to agentkit's kit and enforcement model.

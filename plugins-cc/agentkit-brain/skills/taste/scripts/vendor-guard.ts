@@ -1,8 +1,8 @@
 import { statSync } from 'node:fs';
 import { join } from 'node:path';
-import { tastesRoot } from './layout.ts';
 import { offValueLine, readOverride } from './override.ts';
-import type { TasteSource } from './sources.ts';
+import type { Source } from './sources.ts';
+import type { Store } from './store.ts';
 import {
   containingWorkTree,
   repoVisibility,
@@ -15,11 +15,12 @@ export type { Target };
 export type Probe = (dir: string, env: Record<string, string | undefined>) => Promise<Target>;
 
 export interface GuardRequest {
+  store: Store;
   cwd: string;
   home: string;
   env: Record<string, string | undefined>;
-  project: readonly TasteSource[];
-  machine: readonly TasteSource[];
+  project: readonly Source[];
+  machine: readonly Source[];
   probe?: Probe;
 }
 
@@ -28,43 +29,47 @@ export interface GuardResult {
   report: string[];
 }
 
-interface Store {
-  sources: readonly TasteSource[];
+// Where a snapshot would land, and what to say about it: the repository being
+// vendored into, or the machine store when that sits inside a work tree.
+interface Destination {
+  sources: readonly Source[];
   dir: string;
   publicWhere: string;
   unknownWhere: string;
   advice: string;
 }
 
-const MACHINE_SCOPE = 'Declare the source at the machine level in ~/.config/agentkit/config.yaml, '
-  + 'where its snapshot stays in ~/.agentkit/tastes/ and is committed to nothing';
+function machineScope(store: Store, home: string): string {
+  return 'Declare the source at the machine level in ~/.config/agentkit/config.yaml, where its '
+    + `snapshot stays in ${store.tree('user', home)} and is committed to nothing`;
+}
 
 const MOVE_STORE = 'Move the machine store out of that work tree, or declare the source '
   + 'visibility: public';
 
-function missingKey(source: TasteSource): string {
+function missingKey(source: Source, store: Store): string {
   return `${source.name}: visibility is not declared in ${source.origin} — vendoring commits this `
-    + 'source\'s tastes into the repository, so a source a repository vendors must say whether '
-    + 'they are public or private. Add visibility: public or visibility: private.';
+    + `source's ${store.plural} into the repository, so a source a repository vendors must say `
+    + 'whether they are public or private. Add visibility: public or visibility: private.';
 }
 
-function intoPublic(source: TasteSource, target: Target, store: Store): string {
-  return `${source.name}: refusing to vendor a private source into ${store.publicWhere} — `
-    + `${target.detail}, and vendoring would commit ${source.name}'s tastes into it. `
-    + `${store.advice}.`;
+function intoPublic(source: Source, target: Target, store: Store, into: Destination): string {
+  return `${source.name}: refusing to vendor a private source into ${into.publicWhere} — `
+    + `${target.detail}, and vendoring would commit ${source.name}'s ${store.plural} into it. `
+    + `${into.advice}.`;
 }
 
 // Fail closed. A target that cannot be shown to be private is treated as
 // public, because the opposite assumes privacy on no evidence — and that
 // assumption costs a leak where this one costs one environment variable.
 function intoUnknown(
-  source: TasteSource,
+  source: Source,
   target: Target,
-  store: Store,
+  into: Destination,
   refusedOverride: string,
 ): string {
-  const advice = `${store.advice.charAt(0).toLowerCase()}${store.advice.slice(1)}`;
-  return `${source.name}: refusing to vendor a private source into ${store.unknownWhere} — `
+  const advice = `${into.advice.charAt(0).toLowerCase()}${into.advice.slice(1)}`;
+  return `${source.name}: refusing to vendor a private source into ${into.unknownWhere} — `
     + `${target.detail}. ${refusedOverride}Set ${TARGET_PRIVATE_OVERRIDE}=1 on the command if you `
     + `know it is private, or ${advice}.`;
 }
@@ -75,8 +80,8 @@ function isDirectory(path: string): boolean {
 
 // The deepest part of the machine store that exists, since git can only be
 // asked about a directory that is there.
-function storeAnchor(home: string): string | undefined {
-  return [tastesRoot(home), join(home, '.agentkit'), home].find(isDirectory);
+function storeAnchor(store: Store, home: string): string | undefined {
+  return [store.tree('user', home), join(home, '.agentkit'), home].find(isDirectory);
 }
 
 // The repository store is gated unconditionally: a directory with no remote
@@ -87,19 +92,20 @@ function storeAnchor(home: string): string | undefined {
 async function machineStore(
   request: GuardRequest,
   timeoutEnv: Record<string, string | undefined>,
-): Promise<Store | undefined> {
+): Promise<Destination | undefined> {
   if (request.machine.length === 0) return undefined;
-  const anchor = storeAnchor(request.home);
+  const store = request.store;
+  const anchor = storeAnchor(store, request.home);
   if (anchor === undefined) return undefined;
   const tree = await containingWorkTree(anchor, timeoutEnv);
   if (tree === undefined) return undefined;
+  const at = store.tree('user', request.home);
   return {
     sources: request.machine,
     dir: tree,
-    publicWhere: `the machine store at ${tastesRoot(request.home)}, which sits inside the public `
-      + `git work tree ${tree}`,
-    unknownWhere: `the machine store at ${tastesRoot(request.home)}, which sits inside the git `
-      + `work tree ${tree}, whose visibility could not be determined`,
+    publicWhere: `the machine store at ${at}, which sits inside the public git work tree ${tree}`,
+    unknownWhere: `the machine store at ${at}, which sits inside the git work tree ${tree}, `
+      + 'whose visibility could not be determined',
     advice: MOVE_STORE,
   };
 }
@@ -107,15 +113,19 @@ async function machineStore(
 // The forge is asked once per store, and only when a private source is actually
 // declared for it: a public source is vendored into anything, and asking anyway
 // would make an offline machine fail a sync that was never at risk.
-async function judge(store: Store, request: GuardRequest, probe: Probe): Promise<GuardResult> {
-  const declaredPrivate = store.sources.filter((source) => source.visibility === 'private');
+async function judge(
+  into: Destination,
+  request: GuardRequest,
+  probe: Probe,
+): Promise<GuardResult> {
+  const declaredPrivate = into.sources.filter((source) => source.visibility === 'private');
   if (declaredPrivate.length === 0) return { errors: [], report: [] };
 
-  const target = await probe(store.dir, request.env);
+  const target = await probe(into.dir, request.env);
   if (target.visibility === 'private') return { errors: [], report: [] };
   if (target.visibility === 'public') {
     return {
-      errors: declaredPrivate.map((source) => intoPublic(source, target, store)),
+      errors: declaredPrivate.map((source) => intoPublic(source, target, request.store, into)),
       report: [],
     };
   }
@@ -135,7 +145,7 @@ async function judge(store: Store, request: GuardRequest, probe: Probe): Promise
     ? `${offValueLine(TARGET_PRIVATE_OVERRIDE, override.value)}, so the guard still applies. `
     : '';
   return {
-    errors: declaredPrivate.map((source) => intoUnknown(source, target, store, refused)),
+    errors: declaredPrivate.map((source) => intoUnknown(source, target, into, refused)),
     report: [],
   };
 }
@@ -145,20 +155,22 @@ async function judge(store: Store, request: GuardRequest, probe: Probe): Promise
 // it set, because that case is the leak rather than the inconvenience.
 export async function guardTargets(request: GuardRequest): Promise<GuardResult> {
   const probe = request.probe ?? repoVisibility;
-  const errors = request.project.filter((source) => source.visibility === undefined).map(missingKey);
+  const errors = request.project
+    .filter((source) => source.visibility === undefined)
+    .map((source) => missingKey(source, request.store));
   const report: string[] = [];
 
-  const repository: Store = {
+  const repository: Destination = {
     sources: request.project,
     dir: request.cwd,
     publicWhere: 'a public repository',
     unknownWhere: 'a repository whose visibility could not be determined',
-    advice: MACHINE_SCOPE,
+    advice: machineScope(request.store, request.home),
   };
 
-  for (const store of [repository, await machineStore(request, request.env)]) {
-    if (store === undefined) continue;
-    const verdict = await judge(store, request, probe);
+  for (const into of [repository, await machineStore(request, request.env)]) {
+    if (into === undefined) continue;
+    const verdict = await judge(into, request, probe);
     errors.push(...verdict.errors);
     report.push(...verdict.report);
   }

@@ -195,12 +195,12 @@ export function inspectTaste(file: string, contents: string): Inspection {
 
 // `skipTop` applies to the top level only: it is how the owner's own tastes are
 // read without the external subtree sitting at the same root coming with them.
-export function tasteFiles(dir: string, skipTop?: string): string[] {
+export function markdownFiles(dir: string, skipTop?: string): string[] {
   const found: string[] = [];
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     if (entry.name.startsWith('.') || entry.name === skipTop) continue;
     const path = join(dir, entry.name);
-    if (entry.isDirectory()) found.push(...tasteFiles(path));
+    if (entry.isDirectory()) found.push(...markdownFiles(path));
     else if (entry.name.endsWith('.md')) found.push(path);
   }
   return found;
@@ -238,7 +238,7 @@ export function lintTasteDirectory(
   // collision the lint cannot see is two tastes claiming one name.
   const byName = new Map<string, string[]>();
 
-  for (const file of tasteFiles(dir, skipTop).sort()) {
+  for (const file of markdownFiles(dir, skipTop).sort()) {
     const path = relative(relativeTo, file);
     const inspection = inspectTaste(path, readFileSync(file, 'utf-8'));
     errors.push(...inspection.errors.map((error) => `${path}: ${error}`));
@@ -251,7 +251,7 @@ export function lintTasteDirectory(
 }
 
 export function countTastes(dir: string): number {
-  return tasteFiles(dir).length;
+  return markdownFiles(dir).length;
 }
 
 // The external tree holds one directory per source, and a name two sources both

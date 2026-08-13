@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { chmodSync, existsSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { type SyncResult, syncSources } from '../../skills/taste/scripts/sync.ts';
+import { TASTE } from '../../skills/taste/scripts/store.ts';
 import {
   repoVisibility,
   TARGET_PRIVATE_OVERRIDE,
@@ -61,7 +62,7 @@ async function vendor(
   };
   return {
     ...at,
-    result: await syncSources({ ...at, env, today: TODAY, probe }),
+    result: await syncSources({ store: TASTE, ...at, env, today: TODAY, probe }),
   };
 }
 
@@ -309,7 +310,7 @@ describe('the forge is asked about the repository being written into', () => {
   // had been asked about the wrong one.
   async function repoSync(at: { cwd: string; env: Record<string, string | undefined> }) {
     writeFiles(at.cwd, { '.agentkit/config.yaml': config(source(upstream().url, PRIVATE)) });
-    return await syncSources({ cwd: at.cwd, home: scratch({}), env: at.env, today: TODAY });
+    return await syncSources({ store: TASTE, cwd: at.cwd, home: scratch({}), env: at.env, today: TODAY });
   }
 
   test('a private source is refused in a two-remote checkout, and nothing is written', async () => {
@@ -368,7 +369,7 @@ describe('the machine store is gated when it sits inside a work tree', () => {
     writeFiles(home, {
       '.config/agentkit/config.yaml': config(source(upstream().url, declared)),
     });
-    return await syncSources({ cwd: scratch({}), home, env, today: TODAY });
+    return await syncSources({ store: TASTE, cwd: scratch({}), home, env, today: TODAY });
   }
 
   test('a home that is no git checkout vendors, and the forge is never asked', async () => {
@@ -379,6 +380,7 @@ describe('the machine store is gated when it sits inside a work tree', () => {
     });
 
     const result = await syncSources({
+      store: TASTE,
       cwd: scratch({}),
       home,
       env: {},

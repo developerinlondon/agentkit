@@ -178,7 +178,7 @@ global install; re-running updates in place:
 ```bash
 curl -fsSL https://raw.githubusercontent.com/developerinlondon/agentkit/main/bootstrap.sh | bash
 # with options:  … | bash -s -- --with product
-# one URL per kit: …/main/kits/memory | bash   (bootstrap with that kit preselected)
+# one URL per kit: …/main/kits/brain | bash   (bootstrap with that kit preselected)
 ```
 
 **It installs the newest release tag, not `main`.** The bootstrap script itself is
@@ -232,7 +232,7 @@ the plugin generator, and the tests all read it rather than hard-coding names.
 
 ```bash
 ./agentkit/install.sh --global                  # core only (or whatever you chose last time)
-./agentkit/install.sh --global --with memory    # + brain vault: reflect, meditate, ruminate
+./agentkit/install.sh --global --with brain     # + memory vault and tastes
 ./agentkit/install.sh --global --with product   # + product-intelligence, product-review
 ./agentkit/install.sh --global --all            # every declared kit
 ```

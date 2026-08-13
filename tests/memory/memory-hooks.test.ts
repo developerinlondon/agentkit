@@ -170,6 +170,23 @@ describe('memory-index.sh', () => {
     }
   });
 
+  // A vendored source is a whole knowledgebase. Listing its notes one by one
+  // would put someone else's repository in the index this vault injects.
+  test('leaves a vendored source out of the vault\'s own index', () => {
+    const dir = vaultProject();
+    try {
+      mkdirSync(join(dir, 'memory', 'external', 'knowledge'), { recursive: true });
+      writeFileSync(join(dir, 'memory', 'external', 'knowledge', 'runbook.md'), 'note\n');
+      const run = runHook(indexHook, dir, writePayload(join(dir, 'memory', 'topic.md')));
+      expect(run.status, run.stderr).toBe(0);
+      const index = readFileSync(join(dir, 'memory', 'index.md'), 'utf8');
+      expect(index).not.toContain('external');
+      expect(index).toContain('- [[topic]]');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test('ignores writes outside brain/ and projects without a vault index', () => {
     const dir = vaultProject();
     try {
@@ -188,6 +205,57 @@ describe('memory-index.sh', () => {
 });
 
 describe('memory-inject.sh', () => {
+  // Read from disk at injection time rather than from the index: the index hook
+  // fires on Edit and Write, so a source a sync added would not appear in it
+  // until someone happened to edit a note.
+  test('names each vendored source and how many notes it holds', () => {
+    const dir = vaultProject();
+    try {
+      mkdirSync(join(dir, 'memory', 'external', 'knowledge', 'decisions'), { recursive: true });
+      writeFileSync(join(dir, 'memory', 'external', 'knowledge', 'runbook.md'), 'note\n');
+      writeFileSync(
+        join(dir, 'memory', 'external', 'knowledge', 'decisions', 'postgres.md'),
+        'note\n',
+      );
+      const run = runHook(injectHook, dir);
+
+      expect(run.status, run.stderr).toBe(0);
+      expect(run.stdout).toContain('knowledge');
+      expect(run.stdout).toContain('2 notes');
+      expect(run.stdout).toContain(join(dir, 'memory', 'external', 'knowledge'));
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  // A repository that declares sources and writes no notes of its own has a
+  // vault with no index in it. The sources are still the whole reason it exists.
+  test('names a source in a vault that holds nothing else', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'memory-external-only-'));
+    try {
+      mkdirSync(join(dir, 'memory', 'external', 'knowledge'), { recursive: true });
+      writeFileSync(join(dir, 'memory', 'external', 'knowledge', 'runbook.md'), 'note\n');
+      const run = runHook(injectHook, dir);
+
+      expect(run.status, run.stderr).toBe(0);
+      expect(run.stdout).toContain('knowledge');
+      expect(run.stdout).toContain('1 note');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('says nothing about external sources when a vault has none', () => {
+    const dir = vaultProject();
+    try {
+      const run = runHook(injectHook, dir);
+      expect(run.status, run.stderr).toBe(0);
+      expect(run.stdout).not.toContain('external');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test('prints the index when a vault exists and nothing otherwise', () => {
     const dir = vaultProject();
     try {

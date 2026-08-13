@@ -3,16 +3,13 @@ import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { scalar } from './lint.ts';
+import { CONFIG_SCOPES, type SourceScope, type Store } from './store.ts';
 
-// Where a source was declared, which decides where its snapshot lands: a
-// repository's own config vendors into that repository, the machine's config
-// into the owner's home directory. Nothing about a machine-level source is ever
-// copied into a checkout.
-export type SourceScope = 'project' | 'user';
+export type { SourceScope };
 
 export type SourceVisibility = 'public' | 'private';
 
-export interface TasteSource {
+export interface Source {
   name: string;
   repo: string;
   ref: string;
@@ -24,14 +21,14 @@ export interface TasteSource {
 }
 
 export interface SourceDeclaration {
-  sources: TasteSource[];
+  sources: Source[];
   errors: string[];
 }
 
 export const SOURCE_KEYS = ['name', 'repo', 'ref', 'path', 'mode', 'visibility'];
 export const VISIBILITIES: SourceVisibility[] = ['public', 'private'];
 const MODES = ['vendored', 'reference'];
-// The name keys a directory under .agentkit/tastes/external/, so it is a plain
+// The name keys a directory under the store's external tree, so it is a plain
 // directory name or it is refused: a source must not be able to choose where in
 // the checkout its files land.
 const SOURCE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
@@ -54,11 +51,7 @@ export function configFiles(
   ];
 }
 
-// The order configFiles is written in, named: the first entry is the
-// repository's own config, the second the machine's.
-export const CONFIG_SCOPES: SourceScope[] = ['project', 'user'];
-
-export function tasteSection(path: string): Record<string, unknown> | undefined {
+export function unitSection(path: string, store: Store): Record<string, unknown> | undefined {
   let parsed: unknown;
   try {
     parsed = YAML.parse(readFileSync(path, 'utf-8'));
@@ -66,8 +59,8 @@ export function tasteSection(path: string): Record<string, unknown> | undefined 
     return undefined;
   }
   if (!isRecord(parsed) || !isRecord(parsed.brain)) return undefined;
-  if (!isRecord(parsed.brain.taste)) return undefined;
-  return parsed.brain.taste;
+  const unit = parsed.brain[store.unit];
+  return isRecord(unit) ? unit : undefined;
 }
 
 function defaultName(repo: string): string {
@@ -75,11 +68,11 @@ function defaultName(repo: string): string {
   return tail.replace(/\.git$/, '');
 }
 
-function checkName(name: string, at: string): string[] {
+function checkName(name: string, at: string, store: Store): string[] {
   if (SOURCE_NAME.test(name) && !name.includes('..')) return [];
   return [
     `${at}: name ${JSON.stringify(name)} must be a plain directory name — it keys `
-    + '.agentkit/tastes/external/, and a source does not choose where in the checkout it lands',
+    + `${store.externalLabel}, and a source does not choose where in the checkout it lands`,
   ];
 }
 
@@ -141,8 +134,9 @@ function readSource(
   index: number,
   origin: string,
   scope: SourceScope,
-): { source?: TasteSource; errors: string[] } {
-  const at = `${origin}: brain.taste.sources[${index}]`;
+  store: Store,
+): { source?: Source; errors: string[] } {
+  const at = `${origin}: ${store.key}[${index}]`;
   if (!isRecord(entry)) {
     return { errors: [`${at} is not a source — a source is a mapping of ${SOURCE_KEYS.join(', ')}`] };
   }
@@ -172,7 +166,7 @@ function readSource(
       ]
       : checkRef(ref, at)),
     ...checkMode(mode, at),
-    ...(name === undefined ? [] : checkName(name, at)),
+    ...(name === undefined ? [] : checkName(name, at, store)),
     ...checkPath(path, at),
   ];
 
@@ -198,17 +192,22 @@ function readSource(
   };
 }
 
-function parseSources(declared: unknown, origin: string, scope: SourceScope): SourceDeclaration {
+function parseSources(
+  declared: unknown,
+  origin: string,
+  scope: SourceScope,
+  store: Store,
+): SourceDeclaration {
   if (!Array.isArray(declared)) {
-    return { sources: [], errors: [`${origin}: brain.taste.sources must be a list of sources`] };
+    return { sources: [], errors: [`${origin}: ${store.key} must be a list of sources`] };
   }
 
-  const sources: TasteSource[] = [];
+  const sources: Source[] = [];
   const errors: string[] = [];
   const seen = new Set<string>();
 
   for (const [index, entry] of declared.entries()) {
-    const read = readSource(entry, index, origin, scope);
+    const read = readSource(entry, index, origin, scope, store);
     errors.push(...read.errors);
     if (read.source === undefined) continue;
     if (seen.has(read.source.name)) {
@@ -230,17 +229,18 @@ function parseSources(declared: unknown, origin: string, scope: SourceScope): So
 // collide, so neither has to replace the other — the repository's are simply
 // read first, which is the whole of the precedence between them.
 export function readSources(
+  store: Store,
   cwd: string,
   home?: string,
   env?: Record<string, string | undefined>,
 ): SourceDeclaration {
-  const sources: TasteSource[] = [];
+  const sources: Source[] = [];
   const errors: string[] = [];
 
   for (const [index, path] of configFiles(cwd, home, env).entries()) {
-    const declared = tasteSection(path)?.sources;
+    const declared = unitSection(path, store)?.sources;
     if (declared === undefined) continue;
-    const read = parseSources(declared, path, CONFIG_SCOPES[index] as SourceScope);
+    const read = parseSources(declared, path, CONFIG_SCOPES[index] as SourceScope, store);
     sources.push(...read.sources);
     errors.push(...read.errors);
   }

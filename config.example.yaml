@@ -202,6 +202,26 @@ brain:
     # read-only — a learning is reported rather than filed.
     learning: true
 
+    # External memory sources: git repositories whose files are notes. This is
+    # how a human-authored knowledgebase — ADRs, designs, runbooks — is read,
+    # with no unit of its own. Same machinery, same lockfile discipline and same
+    # visibility guard as brain.taste.sources below.
+    #
+    # A source vendors into <vault>/external/<name>/ and is pinned in the store's
+    # .agentkit/memory.lock: the repository vault at ./memory/ for a source
+    # declared in a repository, ~/.agentkit/memory/ for one declared here.
+    #
+    # Vendored notes are read-only by construction — every sync re-snapshots the
+    # pinned ref, so anything written into external/ is destroyed. They are named
+    # at session start with their note counts rather than listed in the vault's
+    # own index, which stays the index of notes this vault wrote.
+    # sources:
+    #   - repo: git@github.com:developerinlondon/knowledgebase.git
+    #     ref: v2026.08.1
+    #     visibility: private    # public | private
+    #     path: docs/            # optional subdirectory holding the notes
+    #     name: knowledge        # optional; defaults to the repository name
+
   # Read by the `taste` skill and by the `taste-police` hook, which load one
   # markdown file per convention from .agentkit/tastes/ and ~/.agentkit/tastes/.
   taste:

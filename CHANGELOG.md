@@ -9,6 +9,19 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+- feat(brain): **a knowledgebase is read as `brain.memory.sources`, not as a third unit.** A git
+  repository of human-authored notes — ADRs, designs, runbooks — is declared the way a taste source
+  is, pinned to a ref, snapshotted markdown-only into `<vault>/external/<name>/` and recorded in that
+  store's `.agentkit/memory.lock`. Both units resolve through one store descriptor, so a memory
+  source gets the visibility guard unchanged: vendoring a private source into a public repository is
+  refused, and `visibility` is required of a source a repository vendors. Vendored notes are
+  read-only by construction — every sync re-snapshots the pinned ref — and are named at session start
+  with their counts rather than listed in the vault's own index, which stays the index of what that
+  vault wrote. `sync.ts` now syncs both units; name one to narrow it.
+- fix(brain): **`reflect`, `meditate` and `ruminate` name the vault the hooks actually read.** The
+  rename to `memory/` moved the hooks and left the skills seeding and auditing `brain/`, so a
+  bootstrapped vault was one nothing injected. Same for `--with memory` in the README, the uninstall
+  skill and the memory page: the kit has been `brain` since the units were banded together.
 - fix(hooks): **`issue-police` catches an issue filed through the REST API, not just the
   subcommand.** It matched `gh|glab issue create` only, so `glab api --method POST
   <project>/issues` filed an issue with no `Disposition:` line and no refusal — the guard was

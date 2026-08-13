@@ -2,7 +2,8 @@ import { homedir } from 'node:os';
 import { offValueLine, type Override, readOverride, unquote } from './override.ts';
 import { type ResolvedTaste, resolveTastes, type TasteRule } from './resolve.ts';
 import { evaluateRule, type MatchOutcome } from './rules/kinds.ts';
-import { configFiles, tasteSection } from './sources.ts';
+import { configFiles, unitSection } from './sources.ts';
+import { TASTE } from './store.ts';
 
 // The rule's pattern is capped where the lint can refuse it; the subject is
 // capped here. Neither bounds backtracking: a 200-character pattern well inside
@@ -32,7 +33,7 @@ function tasteEnabled(
   env: Record<string, string | undefined>,
 ): boolean {
   for (const path of configFiles(cwd, home, env)) {
-    const enabled = tasteSection(path)?.enabled;
+    const enabled = unitSection(path, TASTE)?.enabled;
     if (typeof enabled === 'boolean') return enabled;
   }
   return true;

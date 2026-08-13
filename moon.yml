@@ -158,7 +158,9 @@ fileGroups:
     - "skills/meditate/**/*"
     - "skills/reflect/**/*"
     - "skills/ruminate/**/*"
+    - "skills/taste/scripts/**/*"
     - "tests/memory/**/*"
+    - "tests/taste/fixtures.ts"
 
   productInputs:
     - "hooks/claude/pages-police.sh"

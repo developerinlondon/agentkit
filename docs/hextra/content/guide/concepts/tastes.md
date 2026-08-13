@@ -96,8 +96,12 @@ stores means two locks, because one file describing both would put a machine-loc
 repository's review surface.
 
 ```sh
-bun <skill-dir>/scripts/sync.ts
+bun <skill-dir>/scripts/sync.ts        # both brain units
+bun <skill-dir>/scripts/sync.ts taste  # tastes only
 ```
+
+The same resolver serves [memory sources](/guide/concepts/memory/), which is why a knowledgebase
+needs no mechanism of its own.
 
 Sync **lints a source before anything is copied** — a source whose tastes the lint refuses is
 reported by name and nothing enters the tree — then snapshots the taste files and rewrites that

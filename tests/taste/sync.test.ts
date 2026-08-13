@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { syncSources } from '../../skills/taste/scripts/sync.ts';
+import { TASTE } from '../../skills/taste/scripts/store.ts';
 import { removeScratch, type Remote, remote, scratch, taste, treeOf } from './fixtures.ts';
 
 afterEach(removeScratch);
@@ -24,7 +25,7 @@ function project(upstream: Remote, extra: Record<string, string> = {}): string {
 }
 
 async function sync(cwd: string) {
-  return await syncSources({ cwd, home: scratch(), env: {}, today: TODAY });
+  return await syncSources({ store: TASTE, cwd, home: scratch(), env: {}, today: TODAY });
 }
 
 function upstream(files: Record<string, string> = { 'release-tier.md': taste('release-tier') }) {
@@ -131,7 +132,7 @@ describe('a re-sync is a no-op until the upstream moves', () => {
 
     await sync(cwd);
     const first = treeOf(cwd);
-    const second = await syncSources({ cwd, home: scratch(), env: {}, today: '2026-09-01' });
+    const second = await syncSources({ store: TASTE, cwd, home: scratch(), env: {}, today: '2026-09-01' });
 
     expect(second.errors).toEqual([]);
     expect(treeOf(cwd)).toEqual(first);
@@ -144,7 +145,7 @@ describe('a re-sync is a no-op until the upstream moves', () => {
     const cwd = scratch({ '.agentkit/config.yaml': project(source) });
 
     await sync(cwd);
-    await syncSources({ cwd, home: scratch(), env: {}, today: '2026-09-01' });
+    await syncSources({ store: TASTE, cwd, home: scratch(), env: {}, today: '2026-09-01' });
 
     expect(lockOf(cwd)).toContain(TODAY);
     expect(lockOf(cwd)).not.toContain('2026-09-01');
@@ -171,7 +172,7 @@ describe('a re-sync is a no-op until the upstream moves', () => {
     const pinned = treeOf(cwd);
 
     advance(source);
-    const result = await syncSources({ cwd, home: scratch(), env: {}, today: '2026-09-01' });
+    const result = await syncSources({ store: TASTE, cwd, home: scratch(), env: {}, today: '2026-09-01' });
 
     expect(result.errors).toEqual([]);
     expect(treeOf(cwd)).toEqual(pinned);
@@ -184,7 +185,7 @@ describe('a re-sync is a no-op until the upstream moves', () => {
 
     advance(source);
     writeFileSync(join(cwd, '.agentkit', 'config.yaml'), project(source, { ref: 'v2' }));
-    const result = await syncSources({ cwd, home: scratch(), env: {}, today: '2026-09-01' });
+    const result = await syncSources({ store: TASTE, cwd, home: scratch(), env: {}, today: '2026-09-01' });
 
     expect(result.errors).toEqual([]);
     expect(treeOf(vendor(cwd))).toEqual(V2);
@@ -230,7 +231,7 @@ describe('a source is linted before it is allowed into the tree', () => {
     source.commit({ 'release-tier.md': taste('release-tier').replace('name:', 'nome:') });
     source.tag('v2');
     writeFileSync(join(cwd, '.agentkit', 'config.yaml'), project(source, { ref: 'v2' }));
-    const result = await syncSources({ cwd, home: scratch(), env: {}, today: '2026-09-01' });
+    const result = await syncSources({ store: TASTE, cwd, home: scratch(), env: {}, today: '2026-09-01' });
 
     expect(result.ok).toBe(false);
     expect(treeOf(vendor(cwd))).toEqual(good);
@@ -295,7 +296,7 @@ describe('sync answers for what it cannot do', () => {
         }),
       });
 
-      const result = await syncSources({ cwd, home: scratch(), env: {}, today: TODAY, timeoutMs: 1200 });
+      const result = await syncSources({ store: TASTE, cwd, home: scratch(), env: {}, today: TODAY, timeoutMs: 1200 });
 
       expect(result.ok).toBe(false);
       // The message is the assertion that pins the deadline: a bound on how long
@@ -325,7 +326,7 @@ describe('sync answers for what it cannot do', () => {
     process.env.GIT_CONFIG_GLOBAL = gitconfig;
 
     try {
-      const result = await syncSources({ cwd, home: scratch(), env: {}, today: TODAY });
+      const result = await syncSources({ store: TASTE, cwd, home: scratch(), env: {}, today: TODAY });
 
       expect(result.ok).toBe(false);
       expect(existsSync(sentinel)).toBe(false);

@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
-import { tasteFiles } from '../../skills/taste/scripts/lint.ts';
+import { markdownFiles } from '../../skills/taste/scripts/lint.ts';
 
 const created: string[] = [];
 
@@ -45,8 +45,12 @@ export function source(repo: string, extra: Record<string, string> = {}): string
   return lines.join('\n');
 }
 
+export function sourcesConfig(unit: string, ...sources: string[]): string {
+  return `brain:\n  ${unit}:\n    sources:\n${sources.join('\n')}\n`;
+}
+
 export function config(...sources: string[]): string {
-  return `brain:\n  taste:\n    sources:\n${sources.join('\n')}\n`;
+  return sourcesConfig('taste', ...sources);
 }
 
 function git(dir: string, ...args: string[]): string {
@@ -122,5 +126,5 @@ function walk(root: string): string[] {
 }
 
 export function tasteNames(dir: string): string[] {
-  return tasteFiles(dir).map((path) => relative(dir, path)).sort();
+  return markdownFiles(dir).map((path) => relative(dir, path)).sort();
 }
