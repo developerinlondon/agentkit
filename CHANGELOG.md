@@ -9,6 +9,22 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+## v0.7.15 — 2026-08-13
+
+- feat(docs): **kits and harnesses are first-class sections.** Kits moved out of Getting started,
+  where it had been filed as an install topic, to `/docs/kits/`. Harness support had no page at all
+  despite being mentioned across five; `/docs/harnesses/` now states what each of the four gets and
+  which guards it can carry, rendered from the declarations the installer reads.
+- fix(docs): **every section landing introduces its section.** Concepts, Getting started and
+  Extending rendered as a title and nothing else.
+- fix(docs): the breadcrumb keeps the home crumb the theme drops, which on a docs-only site is the
+  documentation front page; the wordmark leaves for the site rather than linking to the page the
+  reader is already on; body prose is set in mono to match it; and Pages gains an accounts section
+  covering who signs in and how.
+- fix(docs): **a published version tree could be pruned.** The deploy spared only versions the
+  picker offers, and a version in the current minor is never offered as an archive, so
+  `/docs/0.7.14/` was one deploy from deletion. Every published tree is spared now.
+
 ## v0.7.14 — 2026-08-13
 
 - feat(docs): **the documentation site is now Hugo and Hextra.** The Astro build, its archive
