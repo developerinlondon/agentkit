@@ -361,6 +361,8 @@ jobs:
       - name: Build and publish the docs site
         env:
           AGENTKIT_SITE_TOKEN: ${{ secrets.AGENTKIT_SITE_TOKEN }}
+          # Set only on a tag, so only a release also lands under /docs/<version>/.
+          AGENTKIT_DOCS_VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
         run: |
           if [ -z "$AGENTKIT_SITE_TOKEN" ]; then
             echo 'docs: AGENTKIT_SITE_TOKEN is not configured' >&2
