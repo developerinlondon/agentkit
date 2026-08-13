@@ -5,6 +5,7 @@ import { evaluateCommand } from '../../skills/taste/scripts/police.ts';
 import { resolveTastes } from '../../skills/taste/scripts/resolve.ts';
 import { readSources } from '../../skills/taste/scripts/sources.ts';
 import { syncSources } from '../../skills/taste/scripts/sync.ts';
+import { TASTE } from '../../skills/taste/scripts/store.ts';
 import { remote, removeScratch, scratch, source, taste } from './fixtures.ts';
 
 afterEach(removeScratch);
@@ -27,7 +28,7 @@ function where(files: Record<string, string>, homeFiles: Record<string, string> 
 
 function declare(files: Record<string, string>, homeFiles: Record<string, string> = {}) {
   const { cwd, home } = where(files, homeFiles);
-  return readSources(cwd, home, {});
+  return readSources(TASTE, cwd, home, {});
 }
 
 describe('a source is declared in committed config', () => {
@@ -111,12 +112,13 @@ describe('every entry point answers to a cwd on its own', () => {
         'probe.ts': [
           `import { resolveTastes } from ${JSON.stringify(join(scriptsDir, 'resolve.ts'))};`,
           `import { configFiles, readSources } from ${JSON.stringify(join(scriptsDir, 'sources.ts'))};`,
+          `import { TASTE } from ${JSON.stringify(join(scriptsDir, 'store.ts'))};`,
           `const cwd = ${JSON.stringify(cwd)};`,
           `const home = ${JSON.stringify(home)};`,
           'console.log(JSON.stringify({',
           '  tastes: resolveTastes(cwd).tastes.map((entry) => entry.name),',
           '  explicit: resolveTastes(cwd, home).tastes.map((entry) => entry.name),',
-          '  sources: readSources(cwd).sources.map((entry) => entry.name),',
+          '  sources: readSources(TASTE, cwd).sources.map((entry) => entry.name),',
           '  configs: configFiles(cwd),',
           '}));',
         ].join('\n'),
@@ -430,7 +432,7 @@ describe('a source cannot make git run a program', () => {
         + `        ref: "--upload-pack=touch ${sentinel}"\n        name: evil\n        visibility: public\n`,
     });
 
-    const result = await syncSources({ cwd, home: scratch(), env: {}, today: '2026-08-05' });
+    const result = await syncSources({ store: TASTE, cwd, home: scratch(), env: {}, today: '2026-08-05' });
 
     expect(result.ok).toBe(false);
     expect(existsSync(sentinel)).toBe(false);

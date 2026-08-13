@@ -259,8 +259,13 @@ enforcement, and a taste does not earn `block` by being dictated.
 Run the skill's own sync. There is nothing to install and no command on the PATH:
 
 ```sh
-bun <skill-dir>/scripts/sync.ts
+bun <skill-dir>/scripts/sync.ts        # both brain units
+bun <skill-dir>/scripts/sync.ts taste  # tastes only
 ```
+
+One sync serves both units of the `brain` banner: `brain.taste.sources` into the tastes trees and
+`brain.memory.sources` into the memory vaults, each with its own lock. Name a unit to narrow it. A
+unit that declares nothing says so rather than being silently skipped.
 
 It fetches each declared source at its `ref`, **lints it before anything is copied** — a
 source whose tastes the lint refuses is reported by name, with the offending files, and

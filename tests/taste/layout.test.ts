@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { lintTastePath } from '../../skills/taste/scripts/lint.ts';
 import { resolveTastes } from '../../skills/taste/scripts/resolve.ts';
 import { syncSources } from '../../skills/taste/scripts/sync.ts';
+import { TASTE } from '../../skills/taste/scripts/store.ts';
 import { config, remote, removeScratch, scratch, source, taste, treeOf } from './fixtures.ts';
 
 afterEach(removeScratch);
@@ -217,7 +218,7 @@ describe('a tree still at the old tastes-vendor location', () => {
       '.agentkit/tastes-vendor/agentkit-tastes/release-tier.md': taste('release-tier'),
     });
 
-    const result = await syncSources({ cwd, home: scratch(), env: {}, today: '2026-08-06' });
+    const result = await syncSources({ store: TASTE, cwd, home: scratch(), env: {}, today: '2026-08-06' });
 
     expect(result.ok).toBe(true);
     expect(existsSync(join(cwd, '.agentkit', 'tastes-vendor'))).toBe(false);
@@ -245,7 +246,7 @@ describe('sync writes under external/ and nowhere else in the tastes tree', () =
       '.agentkit/tastes/external/left-behind/commit-style.md': taste('commit-style'),
     });
 
-    const result = await syncSources({ cwd, home: scratch(), env: {}, today: '2026-08-06' });
+    const result = await syncSources({ store: TASTE, cwd, home: scratch(), env: {}, today: '2026-08-06' });
 
     expect(result.ok).toBe(true);
     expect(result.report.join('\n')).toContain('left-behind');

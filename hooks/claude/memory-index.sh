@@ -29,7 +29,11 @@ done <<<"$(agentkit_memory_vaults)"
 index="$vault_dir/index.md"
 [[ -f "$index" ]] || exit 0
 
-disk="$(cd "$vault_dir" && find . -name '*.md' ! -name 'index.md' -type f \
+# external/ holds a vendored source, listed by the injector rather than here: a
+# whole knowledgebase indexed note by note is someone else's repository in this
+# vault's index.
+disk="$(cd "$vault_dir" && find . -path ./external -prune -o \
+	-name '*.md' ! -name 'index.md' -type f -print \
 	| sed 's|^\./||; s|\.md$||' \
 	| sort)"
 

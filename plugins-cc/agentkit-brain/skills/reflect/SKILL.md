@@ -9,21 +9,26 @@ description: >-
 
 # Reflect
 
-Review the conversation and persist what future sessions need — to `brain/`, to a
+Review the conversation and persist what future sessions need — to `memory/`, to a
 skill, or as structural enforcement. Never a memory dump: only what would change
 a future session's behaviour.
 
 ## Vault bootstrap
 
-If `brain/` does not exist at the project root, seed it first by copying this
-skill's `references/starter-vault/` directory to `brain/` (the starter index and
-principles). The vault is an Obsidian-compatible tree: `brain/index.md` (bare
+If `memory/` does not exist at the project root, seed it first by copying this
+skill's `references/starter-vault/` directory to `memory/` (the starter index and
+principles). The vault is an Obsidian-compatible tree: `memory/index.md` (bare
 `[[wikilink]]` index, rebuilt automatically by the `memory-index` hook) plus one
 topic per file.
 
+`memory/external/` is not yours to write. It holds a snapshot of each repository
+declared in `brain.memory.sources`, re-taken from its pinned ref on every sync —
+a note filed there is destroyed the next time one runs. Read it, cite it, and
+write what you learned into the vault's own tree.
+
 ## Process
 
-1. **Read `brain/index.md`** — know what already exists.
+1. **Read `memory/index.md`** — know what already exists.
 2. **Scan the conversation** for: mistakes and corrections, user preferences,
    codebase knowledge (architecture, gotchas), tool/library quirks, decisions and
    their rationale, repeated manual steps.

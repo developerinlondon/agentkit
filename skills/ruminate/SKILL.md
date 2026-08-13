@@ -12,7 +12,7 @@ description: >-
 Mine conversation history for vault-worthy knowledge that was never captured.
 Run occasionally (weekly, monthly) or once to bootstrap a new vault.
 
-No `brain/` vault yet → seed it first via the `reflect` skill's bootstrap.
+No `memory/` vault yet → seed it first via the `reflect` skill's bootstrap.
 
 ## Process
 

@@ -152,12 +152,13 @@ it from a hex digest or a UTF-8 label, and a wrong "tracked" loses the gap silen
 
 Ships in the `brain` kit (`--with brain`). Two units under one banner: **memory** is what is true
 (additive — every note listed), **taste** is what to do (replacement — a higher scope wins a name
-outright). They share a scope ladder, never a store. External sources are taste-only today; memory gains them next.
+outright). They share a scope ladder and one source resolver, never a store.
 
 | Key               | Type | Default |
 | ----------------- | ---- | ------- |
 | `memory.enabled`  | bool | `true`  |
 | `memory.learning` | bool | `true`  |
+| `memory.sources`  | list | `[]`    |
 | `taste.enabled`   | bool | `true`  |
 | `taste.learning`  | bool | `true`  |
 | `taste.sources`   | list | `[]`    |
@@ -168,17 +169,18 @@ store read-only: a learning or correction is reported rather than filed.
 Each unit reads two vaults, the repository's and the operator's, so knowledge that belongs to you
 rather than to any one repository has somewhere to live:
 
-| Unit   | Repository                 | User                  |
-| ------ | -------------------------- | --------------------- |
-| memory | `<repo>/memory/`           | `~/.agentkit/memory/` |
-| taste  | `<repo>/.agentkit/tastes/` | `~/.agentkit/tastes/` |
+| Unit   | Repository                 | User                  | External sources land in | Lock                    |
+| ------ | -------------------------- | --------------------- | ------------------------ | ----------------------- |
+| memory | `<repo>/memory/`           | `~/.agentkit/memory/` | `<vault>/external/`      | `.agentkit/memory.lock` |
+| taste  | `<repo>/.agentkit/tastes/` | `~/.agentkit/tastes/` | `<tree>/external/`       | `.agentkit/tastes.lock` |
 
 Each source takes `repo`, `ref`, `mode` (only `vendored` is implemented; declaring `reference` is an
 error), `visibility` (`public` or `private`), and optionally `path` and `name`. `visibility` is
 **required** of a source a repository vendors, and vendoring a private source into a public
 repository is refused. A vendored source is re-snapshotted from its pinned ref on every sync, so it
 is read-only in practice — which is how a human-authored knowledgebase is pulled in without a
-separate mechanism. See [tastes](/guide/concepts/tastes/).
+separate mechanism: point `memory.sources` at the repository holding your ADRs, designs and
+runbooks. See [tastes](/guide/concepts/tastes/) and [memory](/guide/concepts/memory/).
 
 ## Kill switches
 

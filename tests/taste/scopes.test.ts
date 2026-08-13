@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { type Layer, resolveTastes } from '../../skills/taste/scripts/resolve.ts';
 import { readSources } from '../../skills/taste/scripts/sources.ts';
 import { type SyncResult, syncSources } from '../../skills/taste/scripts/sync.ts';
+import { TASTE } from '../../skills/taste/scripts/store.ts';
 import {
   config,
   type Remote,
@@ -93,6 +94,7 @@ describe('a source declared on the machine binds in every repository', () => {
 describe('a repository list and a machine list both apply', () => {
   function declared(project: string, user: string) {
     return readSources(
+      TASTE,
       scratch({ '.agentkit/config.yaml': project }),
       scratch({ [USER_CONFIG]: user }),
       {},
@@ -225,7 +227,7 @@ describe('sync refreshes each scope into its own store', () => {
     return {
       cwd,
       home,
-      run: (today = TODAY) => syncSources({ cwd, home, env: {}, today }),
+      run: (today = TODAY) => syncSources({ store: TASTE, cwd, home, env: {}, today }),
     };
   }
 

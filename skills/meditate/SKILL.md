@@ -17,7 +17,11 @@ surviving note costs context in every future session. Pruning is the
 destructive direction: an ambiguous or unsupported audit verdict KEEPS the
 note; delete only on positive evidence of staleness or redundancy.
 
-No `brain/` vault in this project → say so and stop.
+No `memory/` vault in this project → say so and stop.
+
+Audit the vault's own notes only. `memory/external/` is a vendored snapshot of a
+declared source: pruning it deletes nothing durable — the next sync restores it —
+and the words there are someone else's to edit, upstream.
 
 ## Process
 
@@ -25,7 +29,7 @@ No `brain/` vault in this project → say so and stop.
    not a tree:
 
    ```bash
-   bash <this skill's scripts/>snapshot.sh brain/ /tmp/brain-snapshot.md
+   bash <this skill's scripts/>snapshot.sh memory/ /tmp/memory-snapshot.md
    bash <this skill's scripts/>snapshot.sh <skills dir> /tmp/skills-snapshot.md
    ```
 

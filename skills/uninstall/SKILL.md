@@ -37,8 +37,8 @@ would leave it discoverable and auto-triggerable, so presence without a recorded
 selection is not enough to keep any optional kit. `core` cannot be deselected.
 
 ```sh
-./install.sh --global --without memory
-./install.sh --global --with memory       # select and install it again later
+./install.sh --global --without brain
+./install.sh --global --with brain        # select and install it again later
 ```
 
 The installer reconciles only artifacts it owns. It preserves unrelated skills,

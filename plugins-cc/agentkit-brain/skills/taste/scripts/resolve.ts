@@ -1,9 +1,10 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, join } from 'node:path';
-import { EXTERNAL_DIR, externalRoot, legacyExternalRoot, tastesRoot } from './layout.ts';
-import { inspectTaste, scalar, tasteFiles } from './lint.ts';
-import { readSources, type SourceScope, type TasteSource } from './sources.ts';
+import { EXTERNAL_DIR, externalRoot, legacyExternalRoot } from './layout.ts';
+import { inspectTaste, markdownFiles, scalar } from './lint.ts';
+import { readSources, type Source } from './sources.ts';
+import { type SourceScope, TASTE } from './store.ts';
 
 // Two locations, and within each the owner's own files above the ones they
 // pulled in. Naming all four is what lets a listing say which store a winner
@@ -50,7 +51,7 @@ function undeclared(root: string, declared: readonly string[]): string[] {
   for (const entry of isDirectory(root) ? readdirSync(root, { withFileTypes: true }) : []) {
     if (!entry.isDirectory() || declared.includes(entry.name)) continue;
     warnings.push(
-      `${join(root, entry.name)}: vendored but not declared in brain.taste.sources — nothing reads it`,
+      `${join(root, entry.name)}: vendored but not declared in ${TASTE.key} — nothing reads it`,
     );
   }
   return warnings;
@@ -86,9 +87,9 @@ const STORES: readonly Omit<Store, 'root'>[] = [
 
 function external(
   store: Store,
-  sources: readonly TasteSource[],
+  sources: readonly Source[],
 ): { dirs: Directory[]; warnings: string[] } {
-  const root = externalRoot(store.root);
+  const root = externalRoot(TASTE.tree(store.scope, store.root));
   const legacy = store.legacy ? legacyExternalRoot(store.root) : undefined;
   const warnings: string[] = [];
   const dirs: Directory[] = [];
@@ -135,7 +136,7 @@ function tasteDirectories(
   home: string,
   env: Record<string, string | undefined>,
 ): { dirs: Directory[]; warnings: string[] } {
-  const { sources, errors } = readSources(cwd, home, env);
+  const { sources, errors } = readSources(TASTE, cwd, home, env);
   const dirs: Directory[] = [];
   const warnings = [...errors];
 
@@ -143,7 +144,7 @@ function tasteDirectories(
     const store: Store = { ...shape, root: shape.scope === 'project' ? cwd : home };
     const pulled = external(store, sources.filter((source) => source.scope === store.scope));
     dirs.push(
-      { layer: store.own, dir: tastesRoot(store.root), skipTop: EXTERNAL_DIR },
+      { layer: store.own, dir: TASTE.tree(store.scope, store.root), skipTop: EXTERNAL_DIR },
       ...pulled.dirs,
     );
     warnings.push(...pulled.warnings);
@@ -230,7 +231,7 @@ export function resolveTastes(
 
     let files: string[];
     try {
-      files = tasteFiles(where.dir, where.skipTop).sort();
+      files = markdownFiles(where.dir, where.skipTop).sort();
     } catch (error) {
       warnings.push(`${where.dir}: unreadable — ${(error as Error).message}`);
       continue;

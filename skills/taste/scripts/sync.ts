@@ -15,12 +15,12 @@ import {
   externalRoot,
   LEGACY_EXTERNAL_ROOT,
   legacyExternalRoot,
-  lockPath,
 } from './layout.ts';
-import { lintTasteDirectory, tasteFiles } from './lint.ts';
+import { markdownFiles } from './lint.ts';
 import { formatLock, type LockEntry, parseLock, pinnedOn } from './lock.ts';
 import { type Run, runBounded } from './run.ts';
-import { readSources, type SourceScope, type TasteSource } from './sources.ts';
+import { readSources, type Source } from './sources.ts';
+import { type SourceScope, type Store, storeFor, STORES } from './store.ts';
 import { guardTargets, type Target } from './vendor-guard.ts';
 
 // Per git step. GIT_TERMINAL_PROMPT=0 answers a credential prompt but not a
@@ -29,6 +29,7 @@ import { guardTargets, type Target } from './vendor-guard.ts';
 export const STEP_TIMEOUT_MS = 60_000;
 
 export interface SyncRequest {
+  store: Store;
   cwd: string;
   home?: string;
   env?: Record<string, string | undefined>;
@@ -45,17 +46,19 @@ export interface SyncResult {
 }
 
 interface Staged {
-  source: TasteSource;
+  source: Source;
   sha: string;
   dir: string;
 }
 
-interface Store {
+// One scope's half of a unit's store: where its tree is, what a report calls it,
+// and the sources declared for it.
+interface Shelf {
   scope: SourceScope;
   label: string;
   root: string;
-  legacy: boolean;
-  sources: TasteSource[];
+  tree: string;
+  sources: Source[];
 }
 
 // protocol.ext.allow is pinned rather than inherited: git's own default refuses
@@ -74,13 +77,13 @@ function firstLine(text: string): string {
   return text.split('\n').filter((line) => line.trim() !== '').pop() ?? 'no output';
 }
 
-// Shallow, and at the named ref only: a taste set is read, never developed from
+// Shallow, and at the named ref only: a source is read, never developed from
 // here, so its history is not something this checkout has any use for. Both
 // values that come from config — the repo and the ref — sit after
 // --end-of-options, because git reads options after positionals and would
 // otherwise run a ref of `--upload-pack=...` as a program.
 async function fetchSource(
-  source: TasteSource,
+  source: Source,
   into: string,
   timeoutMs: number,
 ): Promise<{ sha?: string; error?: string }> {
@@ -114,7 +117,7 @@ async function fetchSource(
   return { sha: head.out };
 }
 
-function tasteRoot(source: TasteSource, checkout: string): { dir?: string; error?: string } {
+function sourceRoot(source: Source, checkout: string): { dir?: string; error?: string } {
   const dir = source.path === undefined ? checkout : join(checkout, source.path);
   if (!statSync(dir, { throwIfNoEntry: false })?.isDirectory()) {
     return { error: `${source.name}: path ${JSON.stringify(source.path)} is not a directory in ${source.ref}` };
@@ -122,13 +125,13 @@ function tasteRoot(source: TasteSource, checkout: string): { dir?: string; error
   return { dir };
 }
 
-// The lint the whole toolchain already gates on, run before a single file is
-// copied. A source that cannot pass it is a source whose tastes would be
-// skipped one by one at read time, with nobody having agreed to any of it.
-function lintSource(source: TasteSource, dir: string): string[] {
-  const errors = lintTasteDirectory(dir);
-  if (errors.length === 0 && tasteFiles(dir).length === 0) {
-    return [`${source.name}: no taste files at ${source.ref} — nothing to vendor`];
+// The gate the whole toolchain already applies, run before a single file is
+// copied. A source that cannot pass it is a source whose files would be skipped
+// one by one at read time, with nobody having agreed to any of it.
+function checkSource(store: Store, source: Source, dir: string): string[] {
+  const errors = store.check(dir);
+  if (errors.length === 0 && markdownFiles(dir).length === 0) {
+    return [`${source.name}: no ${store.emptyLabel} at ${source.ref} — nothing to vendor`];
   }
   return errors.map((error) => `${source.name}: ${error}`);
 }
@@ -136,26 +139,26 @@ function lintSource(source: TasteSource, dir: string): string[] {
 // Staged under the declaring scope: a source name is unique only within its own
 // store, so one checkout keyed on the name would fetch the machine's source
 // onto the repository's.
-async function stage(store: Store, workspace: string, timeoutMs: number): Promise<{
+async function stage(store: Store, shelf: Shelf, workspace: string, timeoutMs: number): Promise<{
   staged: Staged[];
   errors: string[];
 }> {
   const staged: Staged[] = [];
   const errors: string[] = [];
 
-  for (const source of store.sources) {
-    const checkout = join(workspace, store.scope, source.name);
+  for (const source of shelf.sources) {
+    const checkout = join(workspace, store.unit, shelf.scope, source.name);
     const fetched = await fetchSource(source, checkout, timeoutMs);
     if (fetched.sha === undefined) {
       errors.push(fetched.error as string);
       continue;
     }
-    const root = tasteRoot(source, checkout);
+    const root = sourceRoot(source, checkout);
     if (root.dir === undefined) {
       errors.push(root.error as string);
       continue;
     }
-    const complaints = lintSource(source, root.dir);
+    const complaints = checkSource(store, source, root.dir);
     if (complaints.length > 0) {
       errors.push(...complaints);
       continue;
@@ -166,11 +169,11 @@ async function stage(store: Store, workspace: string, timeoutMs: number): Promis
   return { staged, errors };
 }
 
-// Markdown only. The vendored tree is read as policy, so a source cannot land a
-// script, a binary or a symlink in this repository along with its words.
+// Markdown only. The vendored tree is read as words, so a source cannot land a
+// script, a binary or a symlink in this repository along with them.
 function snapshot(from: string, to: string): number {
   rmSync(to, { recursive: true, force: true });
-  const files = tasteFiles(from);
+  const files = markdownFiles(from);
   for (const file of files) {
     const target = join(to, relative(from, file));
     mkdirSync(dirname(target), { recursive: true });
@@ -179,17 +182,17 @@ function snapshot(from: string, to: string): number {
   return files.length;
 }
 
-// Only `external/` is swept. The taste files beside it are the owner's own, and
-// a prune that reached one would delete a taste no source ever vendored.
-function prune(store: Store, declared: readonly string[]): string[] {
-  const root = externalRoot(store.root);
+// Only `external/` is swept. The files beside it are the owner's own, and a
+// prune that reached one would delete something no source ever vendored.
+function prune(shelf: Shelf, declared: readonly string[]): string[] {
+  const root = externalRoot(shelf.tree);
   if (!statSync(root, { throwIfNoEntry: false })?.isDirectory()) return [];
 
   const removed: string[] = [];
   for (const entry of readdirSync(root, { withFileTypes: true })) {
     if (!entry.isDirectory() || declared.includes(entry.name)) continue;
     rmSync(join(root, entry.name), { recursive: true, force: true });
-    removed.push(`removed .agentkit/tastes/${EXTERNAL_DIR}/${entry.name} — no longer declared`);
+    removed.push(`removed ${relative(shelf.root, join(root, entry.name))} — no longer declared`);
   }
   return removed;
 }
@@ -208,37 +211,41 @@ function relocate(cwd: string): string[] {
   ];
 }
 
-function heldLock(root: string): LockEntry[] {
+function heldLock(store: Store, root: string): LockEntry[] {
   try {
-    return parseLock(readFileSync(lockPath(root), 'utf-8'));
+    return parseLock(readFileSync(store.lock(root), 'utf-8'));
   } catch {
     return [];
   }
 }
 
-function land(store: Store, staged: readonly Staged[], today: string): {
+function land(store: Store, shelf: Shelf, staged: readonly Staged[], today: string): {
   report: string[];
   entries: LockEntry[];
 } {
-  if (store.sources.length === 0) {
-    return { report: ['no sources declared in brain.taste.sources — nothing to sync'], entries: [] };
+  if (shelf.sources.length === 0) {
+    return { report: [`no sources declared in ${store.key} — nothing to sync`], entries: [] };
   }
 
-  const held = heldLock(store.root);
+  const held = heldLock(store, shelf.root);
   const report: string[] = [];
   const entries: LockEntry[] = [];
 
   for (const { source, sha, dir } of staged) {
-    const count = snapshot(dir, join(externalRoot(store.root), source.name));
+    const count = snapshot(dir, join(externalRoot(shelf.tree), source.name));
     const pin = { name: source.name, repo: source.repo, ref: source.ref, sha };
     entries.push({ ...pin, pinned: pinnedOn(pin, held, today) });
-    report.push(`${source.name} ${source.ref} ${sha.slice(0, 12)} — ${count} taste${count === 1 ? '' : 's'}`);
+    report.push(
+      `${source.name} ${source.ref} ${sha.slice(0, 12)} — ${count} ${store.noun}${
+        count === 1 ? '' : 's'
+      }`,
+    );
   }
 
-  if (store.legacy) report.push(...relocate(store.root));
-  report.push(...prune(store, staged.map(({ source }) => source.name)));
-  mkdirSync(dirname(lockPath(store.root)), { recursive: true });
-  writeFileSync(lockPath(store.root), formatLock(entries, store.label));
+  if (store.legacy && shelf.scope === 'project') report.push(...relocate(shelf.root));
+  report.push(...prune(shelf, staged.map(({ source }) => source.name)));
+  mkdirSync(dirname(store.lock(shelf.root)), { recursive: true });
+  writeFileSync(store.lock(shelf.root), formatLock(entries, store, shelf.label));
 
   return { report, entries };
 }
@@ -246,30 +253,32 @@ function land(store: Store, staged: readonly Staged[], today: string): {
 // The repository's store and the machine's, in the order they resolve. A source
 // declared in both places is two subscriptions to one upstream, kept in two
 // trees, which is why neither list has to replace the other.
-function stores(cwd: string, home: string, sources: readonly TasteSource[]): Store[] {
+function shelves(store: Store, cwd: string, home: string, sources: readonly Source[]): Shelf[] {
   return [
-    { scope: 'project', label: 'repository', root: cwd, legacy: true, sources: [] },
-    { scope: 'user', label: 'machine', root: home, legacy: false, sources: [] },
-  ].map((store) => ({
-    ...store,
-    scope: store.scope as SourceScope,
-    sources: sources.filter((source) => source.scope === store.scope),
+    { scope: 'project' as SourceScope, label: 'repository', root: cwd },
+    { scope: 'user' as SourceScope, label: 'machine', root: home },
+  ].map((shelf) => ({
+    ...shelf,
+    tree: store.tree(shelf.scope, shelf.root),
+    sources: sources.filter((source) => source.scope === shelf.scope),
   }));
 }
 
-// Every source at every scope is fetched and linted before anything is written,
+// Every source at every scope is fetched and checked before anything is written,
 // so a bad source cannot leave a tree half-updated: the working-tree diff is
 // the review surface, and a partial one would be reviewed as if it were policy.
 export async function syncSources(request: SyncRequest): Promise<SyncResult> {
+  const store = request.store;
   const home = request.home ?? homedir();
   const env = request.env ?? process.env;
   const today = request.today ?? new Date().toISOString().slice(0, 10);
-  const { sources, errors } = readSources(request.cwd, home, env);
+  const { sources, errors } = readSources(store, request.cwd, home, env);
 
   if (errors.length > 0) return { ok: false, errors, report: [], entries: [] };
-  const scoped = stores(request.cwd, home, sources);
+  const scoped = shelves(store, request.cwd, home, sources);
 
   const guard = await guardTargets({
+    store,
     cwd: request.cwd,
     home,
     env,
@@ -281,22 +290,22 @@ export async function syncSources(request: SyncRequest): Promise<SyncResult> {
     return { ok: false, errors: guard.errors, report: [], entries: [] };
   }
 
-  const workspace = mkdtempSync(join(tmpdir(), 'agentkit-taste-sync-'));
+  const workspace = mkdtempSync(join(tmpdir(), 'agentkit-source-sync-'));
   try {
     const staged = new Map<SourceScope, Staged[]>();
     const refused: string[] = [];
-    for (const store of scoped) {
-      const run = await stage(store, workspace, request.timeoutMs ?? STEP_TIMEOUT_MS);
-      staged.set(store.scope, run.staged);
+    for (const shelf of scoped) {
+      const run = await stage(store, shelf, workspace, request.timeoutMs ?? STEP_TIMEOUT_MS);
+      staged.set(shelf.scope, run.staged);
       refused.push(...run.errors);
     }
     if (refused.length > 0) return { ok: false, errors: refused, report: [], entries: [] };
 
     const report = [...guard.report];
     const entries: LockEntry[] = [];
-    for (const store of scoped) {
-      const landed = land(store, staged.get(store.scope) ?? [], today);
-      report.push(...landed.report.map((line) => `${store.label}: ${line}`));
+    for (const shelf of scoped) {
+      const landed = land(store, shelf, staged.get(shelf.scope) ?? [], today);
+      report.push(...landed.report.map((line) => `${shelf.label}: ${line}`));
       entries.push(...landed.entries);
     }
     return { ok: true, errors: [], report, entries };
@@ -305,8 +314,28 @@ export async function syncSources(request: SyncRequest): Promise<SyncResult> {
   }
 }
 
+// Both units, unless one is named. A unit that declares nothing reports that and
+// costs a config read, so the ordinary run is the whole banner at once.
+export async function syncUnits(
+  cwd: string,
+  units: readonly Store[] = STORES,
+): Promise<SyncResult> {
+  const result: SyncResult = { ok: true, errors: [], report: [], entries: [] };
+  for (const store of units) {
+    const run = await syncSources({ store, cwd });
+    result.ok &&= run.ok;
+    result.errors.push(...run.errors.map((line) => `${store.unit}: ${line}`));
+    result.report.push(...run.report.map((line) => `${store.unit} ${line}`));
+    result.entries.push(...run.entries);
+  }
+  return result;
+}
+
 if (import.meta.main) {
-  const result = await syncSources({ cwd: process.argv[2] ?? process.cwd() });
+  const named = process.argv.slice(2).filter((argument) => storeFor(argument) !== undefined);
+  const rest = process.argv.slice(2).filter((argument) => storeFor(argument) === undefined);
+  const units = named.length > 0 ? named.map((unit) => storeFor(unit) as Store) : STORES;
+  const result = await syncUnits(rest[0] ?? process.cwd(), units);
   for (const line of result.report) console.log(line);
   for (const error of result.errors) console.error(error);
   process.exit(result.ok ? 0 : 1);
