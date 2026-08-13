@@ -112,13 +112,15 @@ reference it stand down.
 The kit is generic about discipline and specific about tooling. Assuming otherwise is how a playbook
 silently stops applying.
 
-| Skill                     | Actually requires                                       |
-| ------------------------- | ------------------------------------------------------- |
-| `issue-raiser`            | **GitLab only** — every forge command is `glab`         |
-| `gitlab-issue-lifecycle`  | GitLab work items and merge requests                    |
-| `github-issue-lifecycle`  | GitHub issues and Projects v2                           |
-| `clickup-task-lifecycle`  | ClickUp, and repo-local `agentkit.clickup.*` git config |
-| `gitops-master`           | ArgoCD **and** Kargo                                    |
-| `resource-safe-execution` | Linux, systemd user scopes, cgroup v2                   |
+| Skill                      | Actually requires                                             |
+| -------------------------- | ------------------------------------------------------------- |
+| `issue-raiser`             | **GitLab only** — every forge command is `glab`               |
+| `gitlab-issue-lifecycle`   | GitLab work items and merge requests                          |
+| `github-issue-lifecycle`   | GitHub issues and Projects v2                                 |
+| `clickup-task-lifecycle`   | ClickUp, and repo-local `agentkit.clickup.*` git config       |
+| `huly-work-item-lifecycle` | Huly tracker, and repo-local `agentkit.huly.*` git config     |
+| `workspace-diagrams`       | ExcaliDash, and repo-local `agentkit.excalidash.*` git config |
+| `gitops-master`            | ArgoCD **and** Kargo                                          |
+| `resource-safe-execution`  | Linux, systemd user scopes, cgroup v2                         |
 
 There is no GitHub counterpart to `issue-raiser`'s research lane.

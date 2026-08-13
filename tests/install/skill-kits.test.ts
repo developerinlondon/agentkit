@@ -170,6 +170,45 @@ describe('skill kit selection', () => {
     }
   }, globalInstallTimeoutMs);
 
+  // Membership is what withholds a skill. A kit declaration with no `<skill> <kit>`
+  // record leaves the skill in core, where it installs for everyone — which is
+  // indistinguishable from a working opt-in kit unless the default install is
+  // asserted to be empty of it.
+  test('the workspace kit stays out of a default install and lands with --with', () => {
+    const home = mkdtempSync(join(tmpdir(), 'agentkit-kits-'));
+    const skills = ['huly-work-item-lifecycle', 'workspace-diagrams'];
+
+    try {
+      expect(install(home).status).toBe(0);
+      for (const skill of skills) {
+        expect(existsSync(canonSkill(home, skill)), `${skill} withheld by default`).toBe(false);
+      }
+
+      expect(install(home, ['--with', 'workspace']).status).toBe(0);
+      for (const skill of skills) {
+        expect(existsSync(join(canonSkill(home, skill), 'SKILL.md')), skill).toBe(true);
+      }
+    } finally {
+      rmSync(home, { force: true, recursive: true });
+    }
+  }, globalInstallTimeoutMs * 2);
+
+  // The manifest is the assertion the install test cannot make on its own: a
+  // skill named by no membership line reads as core, and core is every install.
+  test('every workspace skill is recorded in the workspace kit, not in core', () => {
+    const manifest = readSkillKits(repoRoot);
+    const workspace = manifest.kits.find((kit) => kit.id === 'workspace');
+
+    expect(workspace, 'workspace kit declared').toBeDefined();
+    expect(workspace?.explicit, 'workspace is opt-in, not consent-gated').toBe(false);
+    expect(skillsInKit(manifest, repoRoot, 'workspace').sort()).toEqual([
+      'huly-work-item-lifecycle',
+      'workspace-diagrams',
+    ]);
+    expect(skillsInKit(manifest, repoRoot, 'core')).not.toContain('huly-work-item-lifecycle');
+    expect(skillsInKit(manifest, repoRoot, 'core')).not.toContain('workspace-diagrams');
+  });
+
   test('a literal --with installs an explicit kit; deselecting it removes the skills', () => {
     const home = mkdtempSync(join(tmpdir(), 'agentkit-kits-'));
 

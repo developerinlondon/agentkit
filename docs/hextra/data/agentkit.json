@@ -134,7 +134,7 @@
         "plugin"
       ],
       "claudePlugins": [
-        "agentkit"
+        "agentkit-brain"
       ]
     },
     {
@@ -257,6 +257,11 @@
       "explicit": true
     },
     {
+      "id": "brain",
+      "description": "What the agent knows and how it works: memory (a learning vault) plus taste (conventions)",
+      "explicit": false
+    },
+    {
       "id": "clickup",
       "description": "ClickUp task and sprint lifecycle for teams that track work in ClickUp",
       "explicit": false
@@ -267,13 +272,13 @@
       "explicit": false
     },
     {
-      "id": "memory",
-      "description": "Persistent brain vault with a learning loop: reflect, meditate, ruminate",
+      "id": "product",
+      "description": "Product-model skills: evidence-backed briefs and product review",
       "explicit": false
     },
     {
-      "id": "product",
-      "description": "Product-model skills: evidence-backed briefs and product review",
+      "id": "workspace",
+      "description": "Day-to-day admin across a self-hosted workspace: Huly work-item lifecycle plus where diagrams live and how they stay current",
       "explicit": false
     }
   ],
@@ -345,6 +350,12 @@
       "description": "GitOps operations master for ArgoCD + Kargo. Diagnose stuck stages, verify deployments, manage promotions, configure verification and retry. Triggers: 'stage stuck', 'sync failed', 'promote', 'verify stage', 'kargo', 'argocd', 'gitops', 'pipeline', 'freight'"
     },
     {
+      "name": "huly-work-item-lifecycle",
+      "kit": "workspace",
+      "explicit": false,
+      "description": "Issue-first workflow and lifecycle hygiene for teams tracking work in Huly: every piece of work runs against an issue, statuses stay current on every touch, branches and PRs reference the issue, and issues close with a verification note. Applies only in repositories configured with agentkit.huly.* git config, so it stays inert everywhere else. Triggers: starting tracked work in a Huly-backed repo, updating issue status, milestone planning, linking a branch or PR to an issue, closing an issue."
+    },
+    {
       "name": "issue-raiser",
       "kit": "core",
       "explicit": false,
@@ -352,7 +363,7 @@
     },
     {
       "name": "meditate",
-      "kit": "memory",
+      "kit": "brain",
       "explicit": false,
       "description": "Audit and evolve the project's brain vault — prune stale or low-value notes, surface unstated principles hiding across entries, and cross-check skills against the vault for missed structural enforcement. Run periodically, after the vault has accumulated content. Triggers: \"meditate\", \"audit the brain\"."
     },
@@ -382,7 +393,7 @@
     },
     {
       "name": "reflect",
-      "kit": "memory",
+      "kit": "brain",
       "explicit": false,
       "description": "Persist learnings from the current session into the project's brain vault — after mistakes, corrections, or notable codebase discoveries, or when wrapping up. Structural enforcement beats notes: route recurring lessons into hooks, lint rules, or skill edits instead. Triggers: \"reflect\", \"remember this\"."
     },
@@ -394,13 +405,13 @@
     },
     {
       "name": "ruminate",
-      "kit": "memory",
+      "kit": "brain",
       "explicit": false,
       "description": "Mine past Claude Code conversations for corrections, preferences, and knowledge that never reached the brain vault. Complements reflect (current session) and meditate (vault audit). Good for bootstrapping a vault from existing history. Triggers: \"ruminate\", \"mine my history\"."
     },
     {
       "name": "taste",
-      "kit": "core",
+      "kit": "brain",
       "explicit": false,
       "description": "Load and maintain tastes — one small markdown file per convention, committed to the repository it governs or kept in your home directory, telling every harness how this owner wants work done. Load them before acting, re-read a `check` taste immediately before an action it covers, and capture a correction as a taste instead of losing it. Triggers: \"from now on\", \"always/never do X\", \"that is not how I want it\", any correction that is a preference rather than a bug, and any question about where a convention lives or why an agent behaves a certain way."
     },
@@ -421,6 +432,12 @@
       "kit": "core",
       "explicit": false,
       "description": "Report what was started and not finished in a repository — unmerged branches, dirty worktrees, open merge requests and what holds them, open issues you filed, and plans whose own gaps section still lists untracked work. Read-only; it changes nothing. Use when asked \"what is half done\", \"what did I leave unfinished\", \"what is still open\", \"status of my work\", \"anything abandoned\", before picking up work after a break, and before calling a plan finished."
+    },
+    {
+      "name": "workspace-diagrams",
+      "kit": "workspace",
+      "explicit": false,
+      "description": "Where a team's diagrams live and how they stay current when the boards are held in an ExcaliDash dashboard: one board per subject in a named collection, referenced by URL from the tracker rather than copied into it, exported as a snapshot for surfaces that cannot reach the dashboard, and drawn only when a picture carries what prose cannot. Applies only in repositories configured with agentkit.excalidash.* git config, so it stays inert everywhere else. Triggers: drawing or updating an architecture board, attaching a diagram to an issue or document, exporting a diagram into a PR or README, auditing whether a board is stale."
     }
   ],
   "tools": [
@@ -556,9 +573,9 @@
   ],
   "counts": {
     "units": 15,
-    "skills": 24,
-    "coreSkills": 17,
-    "kits": 6,
+    "skills": 26,
+    "coreSkills": 16,
+    "kits": 7,
     "tools": 7,
     "rules": 5,
     "instructions": 6,
