@@ -9,6 +9,7 @@ command -v "$HUGO" >/dev/null || {
 }
 
 bun scripts/facts.ts
+bun scripts/versions.ts
 
 rm -rf public
 "$HUGO" --logLevel warn --gc --minify

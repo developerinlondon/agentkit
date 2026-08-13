@@ -47,6 +47,10 @@ menu:
       url: https://github.com/developerinlondon/agentkit
       params:
         icon: github
+    - name: Theme
+      weight: 10
+      params:
+        type: theme-toggle
 
   sidebar:
     - identifier: releases
@@ -70,7 +74,9 @@ params:
 
   theme:
     default: system
-    displayToggle: true
+    # The navbar carries the only toggle; the theme would otherwise repeat it
+    # in the sidebar and the footer.
+    displayToggle: false
 
   footer:
     enable: true

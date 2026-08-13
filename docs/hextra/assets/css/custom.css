@@ -332,3 +332,73 @@ nav a[href$="/docs/"]:first-child {
 .content div[class*="hx:bg-red-100"] {
 	border-inline-start: 2px solid var(--deny);
 }
+
+/* Single-click theme toggle. The stock control is a menu; this is a button,
+   showing the icon of the theme a click would give you. */
+.ak-theme-toggle {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 1.9rem;
+	height: 1.9rem;
+	padding: 0;
+	border: 0;
+	border-radius: 0.375rem;
+	background: transparent;
+	color: var(--muted);
+	cursor: pointer;
+	transition: color 0.12s ease, background-color 0.12s ease;
+}
+
+.ak-theme-toggle:hover {
+	color: var(--ink);
+	background: var(--sunk);
+}
+
+.ak-theme-toggle:focus-visible {
+	outline: 2px solid var(--signal);
+	outline-offset: 2px;
+}
+
+.ak-theme-toggle .ak-ico {
+	display: block;
+}
+
+.ak-theme-toggle[data-theme="dark"] .ak-moon,
+.ak-theme-toggle[data-theme="light"] .ak-sun {
+	display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.ak-theme-toggle {
+		transition: none;
+	}
+}
+
+/* Version picker, beside the theme toggle in the navbar. */
+.ak-navbar-controls {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.4rem;
+}
+
+.ak-version-picker {
+	font-family: var(--ak-mono);
+	font-size: 0.75rem;
+	color: var(--muted);
+	background: var(--sunk);
+	border: 1px solid var(--rule);
+	border-radius: 0.375rem;
+	padding: 0.25rem 0.4rem;
+	cursor: pointer;
+	max-width: 11rem;
+}
+
+.ak-version-picker:hover {
+	color: var(--ink);
+}
+
+.ak-version-picker:focus-visible {
+	outline: 2px solid var(--signal);
+	outline-offset: 2px;
+}

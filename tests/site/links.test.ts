@@ -4,7 +4,7 @@ import { join } from 'node:path';
 
 const REPO = join(import.meta.dir, '..', '..');
 const SITE_SRC = join(REPO, 'pages', 'site', 'src');
-const DOCS = join(REPO, 'docs', 'site', 'src', 'content', 'docs');
+const DOCS = join(REPO, 'docs', 'hextra', 'content');
 
 function sourceFiles(dir: string): string[] {
   const out: string[] = [];
@@ -31,15 +31,13 @@ function relative(path: string): string {
   return path.slice(REPO.length + 1);
 }
 
-// `/docs/a/b/` is served either by content/docs/a/b.{md,mdx} or by
-// content/docs/a/b/index.{md,mdx} — a section landing page uses the latter, and
-// checking only the first shape reports live pages as broken.
+// `/docs/a/b/` is served either by content/a/b.md or by content/a/b/_index.md —
+// a section landing page uses the latter, and checking only the first shape
+// reports live pages as broken.
 function pageExists(href: string): boolean {
   const slug = href.replace(/^\/docs\/?/, '').replace(/\/$/, '');
-  const base = slug === '' ? 'index' : slug;
-  return ['md', 'mdx'].some((ext) =>
-    existsSync(join(DOCS, `${base}.${ext}`)) || existsSync(join(DOCS, base, `index.${ext}`))
-  );
+  if (slug === '') return existsSync(join(DOCS, '_index.md'));
+  return existsSync(join(DOCS, `${slug}.md`)) || existsSync(join(DOCS, slug, '_index.md'));
 }
 
 // The marketing page and the docs used to live in separate repositories, so
