@@ -371,7 +371,8 @@ jobs:
           install -d -m 700 "$HOME/.config/agentkit"
           umask 077
           printf '%s' "$AGENTKIT_SITE_TOKEN" > "$HOME/.config/agentkit/site-token"
-          (cd docs/hextra && HUGO_BIN=hugo ./build.sh && ./deploy.sh)
+          export HUGO_BIN=hugo
+          (cd docs/hextra && ./build.sh && ./deploy.sh)
 
   site-publish:
     name: Publish the marketing site
