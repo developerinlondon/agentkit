@@ -142,7 +142,7 @@ function readSource(
   origin: string,
   scope: SourceScope,
 ): { source?: TasteSource; errors: string[] } {
-  const at = `${origin}: taste.sources[${index}]`;
+  const at = `${origin}: brain.taste.sources[${index}]`;
   if (!isRecord(entry)) {
     return { errors: [`${at} is not a source — a source is a mapping of ${SOURCE_KEYS.join(', ')}`] };
   }
@@ -200,7 +200,7 @@ function readSource(
 
 function parseSources(declared: unknown, origin: string, scope: SourceScope): SourceDeclaration {
   if (!Array.isArray(declared)) {
-    return { sources: [], errors: [`${origin}: taste.sources must be a list of sources`] };
+    return { sources: [], errors: [`${origin}: brain.taste.sources must be a list of sources`] };
   }
 
   const sources: TasteSource[] = [];

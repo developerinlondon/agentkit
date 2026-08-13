@@ -221,7 +221,7 @@ function land(store: Store, staged: readonly Staged[], today: string): {
   entries: LockEntry[];
 } {
   if (store.sources.length === 0) {
-    return { report: ['no sources declared in taste.sources — nothing to sync'], entries: [] };
+    return { report: ['no sources declared in brain.taste.sources — nothing to sync'], entries: [] };
   }
 
   const held = heldLock(store.root);
