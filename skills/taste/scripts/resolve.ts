@@ -50,7 +50,7 @@ function undeclared(root: string, declared: readonly string[]): string[] {
   for (const entry of isDirectory(root) ? readdirSync(root, { withFileTypes: true }) : []) {
     if (!entry.isDirectory() || declared.includes(entry.name)) continue;
     warnings.push(
-      `${join(root, entry.name)}: vendored but not declared in taste.sources — nothing reads it`,
+      `${join(root, entry.name)}: vendored but not declared in brain.taste.sources — nothing reads it`,
     );
   }
   return warnings;
@@ -125,7 +125,7 @@ function external(
 }
 
 // The more specific location wins, and inside one location the owner's own
-// files beat the ones they pulled in. Position in taste.sources is the whole
+// files beat the ones they pulled in. Position in brain.taste.sources is the whole
 // precedence rule among sources: a later one is subscribed to precisely to win.
 //
 // An own layer stops at `external/`: the same files read as both would give a
