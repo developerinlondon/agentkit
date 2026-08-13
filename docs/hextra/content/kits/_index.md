@@ -84,7 +84,7 @@ Any of them aborts the run before a file is touched.
 {{< skill-table kit="adversarial-review" >}}
 
 Also installs `review-police`, the `review-gate` and `review-profile` tools, and the
-`evidence-gated-review` instruction. See [review and the gate](/docs/guide/concepts/review/).
+`evidence-gated-review` instruction. See [review and the gate](/guide/concepts/review/).
 {{< /tab >}}
 {{< tab name="advisory-review" >}}
 This kit carries no skills. It installs one always-on instruction, `review-discipline.md`, which

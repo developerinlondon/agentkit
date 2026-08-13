@@ -98,9 +98,9 @@ describe('apex site routing', () => {
   });
 
   test.each([
-    ['https://agentkit.sbs/docs', '_site/docs/index.html'],
-    ['https://agentkit.sbs/docs/install', '_site/docs/install/index.html'],
-    ['https://agentkit.sbs/docs/install/', '_site/docs/install/index.html'],
+    ['https://docs.agentkit.sbs', '_site/docs/index.html'],
+    ['https://docs.agentkit.sbs/install', '_site/docs/install/index.html'],
+    ['https://docs.agentkit.sbs/install/', '_site/docs/install/index.html'],
     ['https://www.agentkit.sbs/guides/a-b-c', '_site/guides/a-b-c/index.html'],
   ])('%s serves %s with no noindex', async (url, key) => {
     const store = bucket({ [key]: '<h1>page</h1>' });
@@ -114,7 +114,7 @@ describe('apex site routing', () => {
 
   test('absent sub-path 404s with the site 404 page', async () => {
     const store = bucket({ '_site/index.html': '<h1>home</h1>' });
-    const res = await worker.fetch(get('https://agentkit.sbs/docs/missing'), env(store));
+    const res = await worker.fetch(get('https://docs.agentkit.sbs/missing'), env(store));
 
     expect(res.status).toBe(404);
     expect(await res.text()).toContain('No page lives at this address');
@@ -140,8 +140,8 @@ describe('apex site routing', () => {
   // The URL parser decodes and collapses dot segments before the worker sees a
   // path, so traversal cannot survive to the key — it resolves within the site.
   test.each([
-    ['https://agentkit.sbs/docs/%2e%2e/secret', '_site/secret/index.html'],
-    ['https://agentkit.sbs/docs/../secret', '_site/secret/index.html'],
+    ['https://agentkit.sbs/%2e%2e/secret', '_site/secret/index.html'],
+    ['https://agentkit.sbs/../secret', '_site/secret/index.html'],
     ['https://agentkit.sbs/../../pages/evil', '_site/pages/evil/index.html'],
   ])('%s stays inside the site keyspace', async (url, key) => {
     const store = bucket();
@@ -175,8 +175,8 @@ describe('site writes', () => {
   test.each([
     ['_site', '_site/index.html', 'https://agentkit.sbs/'],
     ['_pages-index', '_site/pages-index.html', 'https://pages.agentkit.sbs/'],
-    ['_site/docs', '_site/docs/index.html', 'https://agentkit.sbs/docs'],
-    ['_site/docs/install', '_site/docs/install/index.html', 'https://agentkit.sbs/docs/install'],
+    ['_site/docs', '_site/docs/index.html', 'https://docs.agentkit.sbs'],
+    ['_site/docs/install', '_site/docs/install/index.html', 'https://docs.agentkit.sbs/install'],
   ])('SITE_TOKEN writes %s to %s', async (slug, key, url) => {
     const store = bucket();
     const res = await worker.fetch(
@@ -196,7 +196,7 @@ describe('site writes', () => {
       write('https://agentkit.sbs/api/pages/_site/docs/install', SITE_TOKEN, '<h1>install</h1>'),
       env(store),
     );
-    const res = await worker.fetch(get('https://agentkit.sbs/docs/install'), env(store));
+    const res = await worker.fetch(get('https://docs.agentkit.sbs/install'), env(store));
 
     expect(res.status).toBe(200);
     expect(await res.text()).toBe('<h1>install</h1>');
@@ -378,9 +378,9 @@ describe('writes fail closed when the secret is missing', () => {
 describe('method allowlist', () => {
   test.each([
     ['POST', 'https://agentkit.sbs/'],
-    ['POST', 'https://agentkit.sbs/docs'],
-    ['PATCH', 'https://agentkit.sbs/docs'],
-    ['OPTIONS', 'https://agentkit.sbs/docs'],
+    ['POST', 'https://docs.agentkit.sbs'],
+    ['PATCH', 'https://docs.agentkit.sbs'],
+    ['OPTIONS', 'https://docs.agentkit.sbs'],
     ['PATCH', 'https://agentkit.sbs/api/pages/_site/docs'],
     ['POST', 'https://agentkit.sbs/api/pages/deadbeef'],
   ])('%s %s is refused without touching R2', async (method, url) => {
@@ -454,10 +454,10 @@ describe('size limits', () => {
 
 describe('the docs subtree serves a generated site', () => {
   test.each([
-    ['https://agentkit.sbs/docs/', '_site/docs/index.html'],
-    ['https://agentkit.sbs/docs/getting-started/install/', '_site/docs/getting-started/install/index.html'],
-    ['https://agentkit.sbs/docs/0.4/getting-started/install/', '_site/docs/0.4/getting-started/install/index.html'],
-    ['https://agentkit.sbs/docs/0.4/reference/hooks/pkg-police/checks/', '_site/docs/0.4/reference/hooks/pkg-police/checks/index.html'],
+    ['https://docs.agentkit.sbs/', '_site/docs/index.html'],
+    ['https://docs.agentkit.sbs/getting-started/install/', '_site/docs/getting-started/install/index.html'],
+    ['https://docs.agentkit.sbs/0.4/getting-started/install/', '_site/docs/0.4/getting-started/install/index.html'],
+    ['https://docs.agentkit.sbs/0.4/reference/hooks/pkg-police/checks/', '_site/docs/0.4/reference/hooks/pkg-police/checks/index.html'],
   ])('%s resolves as a page', async (url, key) => {
     const store = bucket({ [key]: '<h1>docs</h1>' });
     const res = await worker.fetch(get(url), env(store));
@@ -477,7 +477,7 @@ describe('the docs subtree serves a generated site', () => {
   ])('docs/%s is served verbatim as %s', async (path, type) => {
     const key = `_site/docs/${path}`;
     const store = bucket({ [key]: 'asset-body' });
-    const res = await worker.fetch(get(`https://agentkit.sbs/docs/${path}`), env(store));
+    const res = await worker.fetch(get(`https://docs.agentkit.sbs/${path}`), env(store));
 
     expect(res.status).toBe(200);
     expect(await res.text()).toBe('asset-body');
@@ -488,14 +488,14 @@ describe('the docs subtree serves a generated site', () => {
 
   test('an unknown extension resolves as a page, not a file', async () => {
     const store = bucket();
-    await worker.fetch(get('https://agentkit.sbs/docs/0.4'), env(store));
+    await worker.fetch(get('https://docs.agentkit.sbs/0.4'), env(store));
 
     expect(store.reads).toEqual(['_site/docs/0.4/index.html']);
   });
 
   test('a missing asset 404s without the site 404 page', async () => {
     const store = bucket();
-    const res = await worker.fetch(get('https://agentkit.sbs/docs/_astro/gone.css'), env(store));
+    const res = await worker.fetch(get('https://docs.agentkit.sbs/_astro/gone.css'), env(store));
 
     expect(res.status).toBe(404);
     expect(await res.text()).not.toContain('No page lives at this address');
@@ -503,7 +503,7 @@ describe('the docs subtree serves a generated site', () => {
 
   test('a docs page carries the relaxed policy and stays indexable', async () => {
     const store = bucket({ '_site/docs/index.html': '<h1>docs</h1>' });
-    const res = await worker.fetch(get('https://agentkit.sbs/docs/'), env(store));
+    const res = await worker.fetch(get('https://docs.agentkit.sbs/'), env(store));
     const csp = res.headers.get('content-security-policy') ?? '';
 
     expect(csp).toContain("script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'");
@@ -559,7 +559,7 @@ describe('docs asset writes are SITE_TOKEN only', () => {
     expect(await res.json()).toEqual({
       ok: true,
       path: 'docs/_astro/app.aYS1OYVv.css',
-      url: 'https://agentkit.sbs/docs/_astro/app.aYS1OYVv.css',
+      url: 'https://docs.agentkit.sbs/_astro/app.aYS1OYVv.css',
     });
     expect(store.writes.get('_site/docs/_astro/app.aYS1OYVv.css')).toEqual({
       body: 'body{}',
@@ -676,7 +676,7 @@ describe('docs asset caching', () => {
   test('a hashed bundle is immutable for a year', async () => {
     const store = bucket({ '_site/docs/_astro/app.aYS1OYVv.css': 'body{}' });
     const res = await worker.fetch(
-      get('https://agentkit.sbs/docs/_astro/app.aYS1OYVv.css'),
+      get('https://docs.agentkit.sbs/_astro/app.aYS1OYVv.css'),
       env(store),
     );
 
@@ -685,14 +685,14 @@ describe('docs asset caching', () => {
 
   test('an unhashed asset revalidates', async () => {
     const store = bucket({ '_site/docs/pagefind/pagefind.js': 'js' });
-    const res = await worker.fetch(get('https://agentkit.sbs/docs/pagefind/pagefind.js'), env(store));
+    const res = await worker.fetch(get('https://docs.agentkit.sbs/pagefind/pagefind.js'), env(store));
 
     expect(res.headers.get('cache-control')).toBe('public, max-age=300');
   });
 
   test('a document is never cached, so a deploy is verifiable', async () => {
     const store = bucket({ '_site/docs/index.html': '<h1>docs</h1>' });
-    const res = await worker.fetch(get('https://agentkit.sbs/docs/'), env(store));
+    const res = await worker.fetch(get('https://docs.agentkit.sbs/'), env(store));
 
     expect(res.headers.get('cache-control')).toBeNull();
   });
@@ -700,10 +700,12 @@ describe('docs asset caching', () => {
 
 describe('an html asset path is still a document', () => {
   test.each([
-    'https://agentkit.sbs/docs/index.html',
-    'https://agentkit.sbs/docs/getting-started/install/index.html',
+    'https://docs.agentkit.sbs/index.html',
+    'https://docs.agentkit.sbs/getting-started/install/index.html',
   ])('%s carries the document headers, not bare asset headers', async (url) => {
-    const key = `_site/${new URL(url).pathname.replace(/^\//, '')}`;
+    // The docs host serves the `_site/docs/` subtree, so the key carries that
+    // prefix even though the URL no longer shows it.
+    const key = `_site/docs/${new URL(url).pathname.replace(/^\//, '')}`;
     const store = bucket({ [key]: '<h1>docs</h1>' });
     const res = await worker.fetch(get(url), env(store));
     const csp = res.headers.get('content-security-policy') ?? '';

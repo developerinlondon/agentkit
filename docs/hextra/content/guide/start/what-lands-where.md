@@ -96,7 +96,7 @@ on top and a re-install will not clobber.
 **Two slices, two owners.** `install.sh` provisions the **session** slice,
 `agent-sessions.slice`. The **work** slice that `bounded-run` verifies before running a heavy
 command — `agent-work.slice` — is provisioned on the host separately, and `bounded-run` fails closed
-until it is in place. See [containment](/docs/guide/concepts/containment/).
+until it is in place. See [containment](/guide/concepts/containment/).
 {{< /callout >}}
 
 ## Global versus project

@@ -81,14 +81,11 @@ bun ~/.agentkit/skills/publish-page/publish.ts \
 | `raw`    | complete self-contained HTML, published as-is |
 
 A rendered deck is worth more than a description of one:
-[the publish-freshness deck](/docs/examples/publish-freshness-deck.html) is six slides through the
+[the publish-freshness deck](/examples/publish-freshness-deck.html) is six slides through the
 `deck` template — a cover with a stat row, a severity callout, legend rails, and column cards. Arrow
-keys, space and swipe move between slides; the toggle in the nav bar flips the theme. Its markdown
-source is
-[`docs/site/examples/publish-freshness-deck.md`](https://github.com/developerinlondon/agentkit/blob/main/docs/site/examples/publish-freshness-deck.md).
-Rendering it through the `deck` template with `--title "The Publish Freshness Architecture"`
-reproduces the published file byte for byte. The title has to be given: a deck's cover headline is
-HTML rather than a markdown `#` heading, so there is nothing to derive one from. The bytes come from
+keys, space and swipe move between slides; the toggle in the nav bar flips the theme. A deck needs
+`--title` given explicitly: its cover headline is HTML rather than a markdown `#` heading, so there
+is nothing to derive one from. The bytes come from
 `renderThemed` in `skills/publish-page/render-html.ts` against this repo's copy of the theme —
 `publish.ts` prefers a pages clone's theme when you have one, and a different theme renders
 different bytes.
@@ -152,4 +149,4 @@ both themes, and read every figure before handing the link over. A clipped or il
 means fix and republish. Never report the URL of an unviewed page.
 {{< /callout >}}
 
-How the URL is derived, and what happens on key rotation: [Pages](/docs/guide/concepts/pages/).
+How the URL is derived, and what happens on key rotation: [Pages](/guide/concepts/pages/).

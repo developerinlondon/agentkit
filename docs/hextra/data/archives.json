@@ -1,6 +1,4 @@
 {
-  "comment": "Docs trees published under /docs/<version>/. Every entry is spared from the deploy's prune, whether or not the picker offers it: a published path must not vanish because a newer patch replaced it in the list. A release appends its own version here once its tree is live.",
-  "published": [
-    "0.7.14"
-  ]
+  "comment": "Docs trees published under docs.agentkit.sbs/<version>/. Every entry is spared from the prune. History restarts at the move to this host: earlier trees were built for a different URL scheme and their in-content links point at the old one. A release appends its own version here once its tree is live.",
+  "published": []
 }

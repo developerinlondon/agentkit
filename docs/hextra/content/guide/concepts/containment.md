@@ -109,7 +109,7 @@ With `resource-police` enabled, these classes must go through the installed runn
 
 Remove entries from `resource-police.bounded` to relax individual classes; omitting the list bounds
 every class. The unit is **off by default** — see
-[configuration](/docs/reference/configuration/#resource-police).
+[configuration](/reference/configuration/#resource-police).
 
 {{< callout type="info" >}}
 Bounding matches command prefixes, so privileged or remote wrappers (`sudo`, `ssh`) around a heavy

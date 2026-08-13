@@ -216,7 +216,13 @@ function publishedUrl(env, slug, isSite) {
   if (!isSite) return `${env.PAGES_URL || "https://pages.agentkit.sbs"}/${slug}`;
   if (slug === "_pages-index") return "https://pages.agentkit.sbs/";
   if (slug === "_site") return "https://agentkit.sbs/";
-  return `https://agentkit.sbs/${slug.slice(SITE_PREFIX.length)}`;
+  const path = slug.slice(SITE_PREFIX.length);
+  // The docs subtree is written under `_site/docs/` but served from its own
+  // host, so the URL reported back has to be the one that actually answers.
+  if (isDocsPath(path)) {
+    return `https://docs.agentkit.sbs/${path.slice(DOCS_PREFIX.length)}`.replace(/\/$/, "");
+  }
+  return `https://agentkit.sbs/${path}`;
 }
 
 async function handlePublish(request, env, slug) {
@@ -256,7 +262,11 @@ async function handleAssetWrite(request, env, path) {
     return new Response("asset must be 1 byte to 5 MB\n", { status: 413 });
   }
   await env.PAGES.put(key, body, { httpMetadata: { contentType: contentTypeFor(path) } });
-  return Response.json({ ok: true, path, url: `https://agentkit.sbs/${path}` });
+  // Docs assets are written under `docs/` but answered by the docs host.
+  const served = isDocsPath(path)
+    ? `https://docs.agentkit.sbs/${path.slice(DOCS_PREFIX.length)}`
+    : `https://agentkit.sbs/${path}`;
+  return Response.json({ ok: true, path, url: served });
 }
 
 // The deploy can only prune what it can enumerate. Scoped to the docs subtree and
@@ -460,7 +470,10 @@ function requestedTitle(request) {
   }
 }
 
-async function handleSiteRequest(request, env, path) {
+// `servesDocs` separates the two hosts that reach this handler: the docs host
+// serves the `docs/` subtree, the marketing host no longer does. Writes are
+// unaffected — an `api/site/...` path is not a docs path.
+async function handleSiteRequest(request, env, path, servesDocs = false) {
   if (
     (request.method === "PUT" || request.method === "DELETE")
     && path.startsWith("api/pages/")
@@ -485,6 +498,7 @@ async function handleSiteRequest(request, env, path) {
   }
   if (path === "") return servePage(env, "_site/index.html", BASE_HEADERS);
   if (isDocsPath(path)) {
+    if (!servesDocs) return html(404, NOT_FOUND);
     const assetKey = docsAssetKey(path);
     if (assetKey) return serveAsset(env, assetKey, path);
     if (!SITE_PAGE_RE.test(path)) return html(404, NOT_FOUND, DOCS_HEADERS);
@@ -586,6 +600,10 @@ export default {
     const host = url.hostname;
     const path = url.pathname.replace(/\/+$/, "").replace(/^\/+/, "");
     const siteRequest = host === "agentkit.sbs" || host === "www.agentkit.sbs";
+    // The docs have their own host, serving the same `_site/docs/` keyspace the
+    // marketing site serves under a path. Read-only by construction: prefixing
+    // the path moves every write endpoint out of the shape that matches one.
+    const docsRequest = host === "docs.agentkit.sbs";
     const accountHost = configuredHost(env.ACCOUNT_URL);
     const pagesHost = configuredHost(env.PAGES_URL) || "pages.agentkit.sbs";
     const accountRequest = accountHost !== null && host === accountHost;
@@ -593,11 +611,14 @@ export default {
 
     if (
       !siteRequest
+      && !docsRequest
       && env.ACCOUNT_MODE === "required"
       && (!env.DB || accountHost === null)
     ) {
       return new Response("account storage unavailable\n", { status: 503 });
     }
+
+    if (docsRequest) return handleSiteRequest(request, env, path === "" ? "docs" : `docs/${path}`, true);
 
     if (siteRequest) return handleSiteRequest(request, env, path);
 

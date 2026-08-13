@@ -118,7 +118,7 @@ check_no_external() {
 
 	hit=$(grep -oE 'href=("[^"]*"|'\''[^'\'']*'\'')' "$f" \
 		| grep -E 'https?:|//' \
-		| grep -vE 'href=.https://(github\.com|raw\.githubusercontent\.com|agentkit\.sbs|pages\.agentkit\.sbs|account\.agentkit\.sbs)/' || true)
+		| grep -vE 'href=.https://(github\.com|raw\.githubusercontent\.com|agentkit\.sbs|pages\.agentkit\.sbs|account\.agentkit\.sbs|docs\.agentkit\.sbs)/' || true)
 	[[ -z "$hit" ]] || fail "$f: unexpected off-site href: $hit"
 }
 

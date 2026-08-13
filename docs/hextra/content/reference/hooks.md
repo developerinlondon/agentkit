@@ -94,9 +94,9 @@ itself while it is happening, so confirm both dependencies resolve after an inst
 
 | Scope       | How                                                                                    |
 | ----------- | -------------------------------------------------------------------------------------- |
-| one command | the unit's own override variable — see [override a guard](/docs/cookbook/override-a-guard/) |
+| one command | the unit's own override variable — see [override a guard](/cookbook/override-a-guard/) |
 | one session | `AGENTKIT_SKIP_HOOKS=<unit>,<unit>` or `AGENTKIT_SKIP_HOOKS=all`                       |
-| permanently | the unit's key in [`config.yaml`](/docs/reference/configuration/), where it has one         |
+| permanently | the unit's key in [`config.yaml`](/reference/configuration/), where it has one         |
 
 `AGENTKIT_SKIP_HOOKS` is honoured by the advisory units — `coding-police`, `comment-police` and
 `format-police` on the Claude side, `version-police` on the OpenCode side. The refusing units do not

@@ -35,13 +35,22 @@ export function parse(slugs: string[]): Parsed[] {
   return out.sort((a, b) => b.major - a.major || b.minor - a.minor || b.patch - a.patch);
 }
 
-/** The last published patch of every minor older than the one shipping now. */
+/**
+ * Every published patch of the minor shipping now, plus the last patch of each
+ * older minor. Trimming a long history is what the rule is for; dropping the
+ * release you shipped last week is not, and that is the one a reader is most
+ * likely to want back.
+ */
 export function archivesFor(current: string, published: string[]): Parsed[] {
   const now = parse([current])[0];
   if (!now) return [];
-  const seen = new Set<string>([`${now.major}.${now.minor}`]);
+  const seen = new Set<string>();
   const kept: Parsed[] = [];
   for (const entry of parse(published)) {
+    if (entry.major === now.major && entry.minor === now.minor) {
+      if (entry.patch !== now.patch) kept.push(entry);
+      continue;
+    }
     const series = `${entry.major}.${entry.minor}`;
     if (seen.has(series)) continue;
     seen.add(series);

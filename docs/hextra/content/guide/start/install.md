@@ -62,7 +62,7 @@ git clone git@github.com:developerinlondon/agentkit.git
 ```
 
 The interactive kit picker only appears here, and only on a terminal — see
-[skill kits](/docs/kits/).
+[skill kits](/kits/).
 {{< /tab >}}
 
 {{< tab name="Claude plugin" >}}
@@ -88,7 +88,7 @@ To wire Claude this way as part of a normal install, pass `--claude-plugin` (glo
 
 {{< callout type="info" >}}
 The plugin format has no way to inject always-on global context, so
-[instructions](/docs/guide/concepts/context/) do not arrive on this path. They come from a file install.
+[instructions](/guide/concepts/context/) do not arrive on this path. They come from a file install.
 {{< /callout >}}
 {{< /tab >}}
 
@@ -140,9 +140,9 @@ Exit codes matter if you script around it:
 | `--claude-plugin` without `--global` | `1`  |
 
 Environment inputs, rather than flags, are listed in the
-[environment reference](/docs/reference/environment/).
+[environment reference](/reference/environment/).
 
 ## Then prove it took
 
 A file listing tells you files were copied. It does not tell you the behaviour changed, which is the
-entire product. Go to [verify the install](/docs/guide/start/verify/) next.
+entire product. Go to [verify the install](/guide/start/verify/) next.

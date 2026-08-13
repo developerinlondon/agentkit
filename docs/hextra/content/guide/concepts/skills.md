@@ -36,7 +36,7 @@ sufficient alone — the skill has no teeth, the hook has no idea which profile 
 {{< skill-table >}}
 
 Kit membership is declared in one manifest, `skills/KITS`, read by a shared library so the installer
-and the plugin generator can never disagree. See [skill kits](/docs/kits/) for selecting them.
+and the plugin generator can never disagree. See [skill kits](/kits/) for selecting them.
 
 ## Skills that ship code
 
@@ -65,4 +65,4 @@ that a local review record does not authenticate reviewer identity or prove any 
 that overclaims about itself is the one you cannot calibrate against.
 
 Several skills are tied to a specific forge or platform — the list is in
-[boundaries](/docs/guide/concepts/boundaries/#several-skills-are-not-forge-neutral).
+[boundaries](/guide/concepts/boundaries/#several-skills-are-not-forge-neutral).

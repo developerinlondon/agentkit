@@ -77,4 +77,4 @@ portable Codex review hook still installs when `adversarial-review` is selected.
 
 The installer seeds `~/.config/agentkit/config.yaml` from `config.example.yaml` on first run, and
 never overwrites it afterwards. `XDG_CONFIG_HOME` is respected. Every key is listed in the
-[configuration reference](/docs/reference/configuration/).
+[configuration reference](/reference/configuration/).
