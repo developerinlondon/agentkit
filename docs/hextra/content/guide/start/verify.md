@@ -1,5 +1,5 @@
 ---
-title: Verify it took
+title: Verify the install
 weight: 2
 ---
 

@@ -1,4 +1,6 @@
 {
-  "comment": "Docs trees published under /docs/<version>/. Version history starts at the Hugo cutover: earlier trees were built by a different generator and documented a product that had not launched. A release appends its own version here after its tree is live.",
-  "published": []
+  "comment": "Docs trees published under /docs/<version>/. Every entry is spared from the deploy's prune, whether or not the picker offers it: a published path must not vanish because a newer patch replaced it in the list. A release appends its own version here once its tree is live.",
+  "published": [
+    "0.7.14"
+  ]
 }

@@ -73,8 +73,10 @@
 	border-radius: 0;
 }
 
+/* The marketing site sets its whole body in mono; the docs follow it rather
+   than reading as a different product one click away. */
 html {
-	font-family: var(--ak-sans);
+	font-family: var(--ak-mono);
 }
 
 body {
@@ -401,4 +403,14 @@ nav a[href$="/docs/"]:first-child {
 .ak-version-picker:focus-visible {
 	outline: 2px solid var(--signal);
 	outline-offset: 2px;
+}
+
+/* A lone version is stated, not offered: same place and weight as the picker,
+   without the affordance of a control that cannot do anything. */
+.ak-version-label {
+	font-family: var(--ak-mono);
+	font-size: 0.75rem;
+	color: var(--muted);
+	padding: 0.25rem 0.1rem;
+	white-space: nowrap;
 }

@@ -94,7 +94,7 @@ A guard you wrongly believe in is worse than no guard, because you stop watching
 
 {{< cards >}}
   {{< card link="/docs/guide/start/install/" title="Install" subtitle="Get it onto a machine, pick a door, and choose your kits." >}}
-  {{< card link="/docs/guide/start/verify/" title="Verify it took" subtitle="Prove the enforcement is live rather than trusting a file listing." >}}
+  {{< card link="/docs/guide/start/verify/" title="Verify the install" subtitle="Prove the enforcement is live rather than trusting a file listing." >}}
   {{< card link="/docs/guide/thinking/" title="Thinking in agentkit" subtitle="When discipline should be a skill, a rule, a hook or a tool." >}}
   {{< card link="/docs/cookbook/" title="Cookbook" subtitle="Copyable shapes for the workflows people actually run." >}}
 {{< /cards >}}

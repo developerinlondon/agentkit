@@ -29,10 +29,11 @@ layout: hextra-home
 <div class="hx:mt-12"></div>
 
 {{< hextra/feature-grid >}}
-{{< hextra/feature-card title="Refusal, not advice" link="guide/concepts/hooks/" subtitle="A force push, a `--no-verify`, an unbounded build — refused at the tool call, not warned about afterwards." >}}
-{{< hextra/feature-card title="Install once, every agent" link="guide/start/what-lands-where/" subtitle="One copy under `~/.agentkit`, linked into each harness. Skills you installed yourself survive every upgrade." >}}
-{{< hextra/feature-card title="Honest boundaries" link="guide/concepts/boundaries/" subtitle="Every limit states what it reaches, what it cannot see, and what it does when it cannot run." >}}
-{{< hextra/feature-card title="Limits the kernel holds" link="guide/concepts/containment/" subtitle="`bounded-run` caps memory and CPU in a systemd scope, and fails closed if its slice is missing." >}}
-{{< hextra/feature-card title="A gate with teeth" link="guide/concepts/review/" subtitle="The merge is denied unless a review record matches the exact commit under review." >}}
-{{< hextra/feature-card title="Reference built from the tree" link="reference/" subtitle="Every table here is generated from the repository it documents, or the build fails." >}}
+{{< hextra/feature-card title="Police units" link="guide/concepts/hooks/" subtitle="Discipline as a refusal at the tool call. A force push, a `--no-verify`, an unbounded build — denied, with the legitimate override named in the message." >}}
+{{< hextra/feature-card title="Skills" link="guide/concepts/skills/" subtitle="Instructions an agent loads when the work calls for them, so the guidance arrives at the moment it applies rather than filling the context." >}}
+{{< hextra/feature-card title="Rules and instructions" link="guide/concepts/context/" subtitle="Always-on context, scoped by glob. What every agent reads before it touches the files that rule governs." >}}
+{{< hextra/feature-card title="Tools" link="guide/concepts/containment/" subtitle="Where advice will not hold, the capability itself is replaced: `bounded-run` caps memory and CPU in the kernel, not in a prompt." >}}
+{{< hextra/feature-card title="Kits" link="guide/start/kits/" subtitle="Skills are partitioned into kits. `core` always installs; memory, the product model, the review lanes and ClickUp are opted into and remembered." >}}
+{{< hextra/feature-card title="Boundaries" link="guide/concepts/boundaries/" subtitle="What each guard does not reach, written where the feature is. A guard you wrongly believe in is worse than no guard at all." >}}
+{{< hextra/feature-card title="Pages" link="guide/concepts/pages/" subtitle="An agent finishes something worth looking at and chat is the wrong container. Publishing puts it on a private URL it can hand back." >}}
 {{< /hextra/feature-grid >}}
