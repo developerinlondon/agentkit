@@ -92,6 +92,7 @@ export const TEST_SLICES = {
   ],
   session: ['tests/session/agent-session.test.ts', 'tests/session/install-session-slice.test.ts'],
   taste: [
+    'tests/taste/key-path.test.ts',
     'tests/taste/kinds.test.ts',
     'tests/taste/layout.test.ts',
     'tests/taste/lint.test.ts',
