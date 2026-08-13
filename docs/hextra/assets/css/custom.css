@@ -137,6 +137,17 @@ aside.sidebar-container,
 	color: var(--muted);
 }
 
+/* Hextra paints the ToC's sticky footer white, with a white glow above it to
+   mask entries scrolling underneath. Over the dot grid that reads as a bright
+   panel pasted into the sidebar rather than part of it. The hairline alone
+   ends the list, which is the same edge the rest of the chrome uses. */
+.hextra-toc .hx\:bg-white,
+.dark .hextra-toc .hx\:dark\:bg-dark {
+	background: var(--ground);
+	box-shadow: none;
+	border-color: var(--rule);
+}
+
 .sidebar-container a {
 	border-inline-start: 1px solid var(--rule-lo);
 }
