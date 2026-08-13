@@ -29,11 +29,11 @@ skill; `product-intelligence` needs `--with product`.
 
 ## The recipes
 
-| Recipe                                                                  | Needs                         |
-| ----------------------------------------------------------------------- | ----------------------------- |
-| [Publish a page](/cookbook/publish-a-page/)                        | core, plus `bun`              |
-| [Gate a merge on a review record](/cookbook/gate-a-merge/)         | `--with adversarial-review`   |
-| [Contain a heavy build](/cookbook/contain-a-build/)                | Linux, provisioned work slice |
-| [Declare what your repo ships](/cookbook/declare-your-product/)    | `--with product`              |
-| [Override a guard, once, on purpose](/cookbook/override-a-guard/)  | core                          |
-| [Find what is half done](/cookbook/find-what-is-half-done/)        | core                          |
+| Recipe                                                            | Needs                         |
+| ----------------------------------------------------------------- | ----------------------------- |
+| [Publish a page](/cookbook/publish-a-page/)                       | core, plus `bun`              |
+| [Gate a merge on a review record](/cookbook/gate-a-merge/)        | `--with adversarial-review`   |
+| [Contain a heavy build](/cookbook/contain-a-build/)               | Linux, provisioned work slice |
+| [Declare what your repo ships](/cookbook/declare-your-product/)   | `--with product`              |
+| [Override a guard, once, on purpose](/cookbook/override-a-guard/) | core                          |
+| [Find what is half done](/cookbook/find-what-is-half-done/)       | core                          |

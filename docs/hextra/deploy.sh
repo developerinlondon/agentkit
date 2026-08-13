@@ -6,7 +6,6 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 ENDPOINT="${AGENTKIT_SITE_ENDPOINT:-https://agentkit.sbs}"
-SITE_URL="${AGENTKIT_SITE_URL:-https://agentkit.sbs}"
 DOCS_URL="${AGENTKIT_DOCS_URL:-https://docs.agentkit.sbs}"
 TOKEN_FILE="${AGENTKIT_SITE_TOKEN_FILE:-$HOME/.config/agentkit/site-token}"
 MARKER='ak-theme-toggle'
