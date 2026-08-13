@@ -9,6 +9,9 @@ ENDPOINT="${AGENTKIT_SITE_ENDPOINT:-https://agentkit.sbs}"
 SITE_URL="${AGENTKIT_SITE_URL:-https://agentkit.sbs}"
 TOKEN_FILE="${AGENTKIT_SITE_TOKEN_FILE:-$HOME/.config/agentkit/site-token}"
 MARKER='ak-theme-toggle'
+# Slugs published under /docs/<version>/, which this build does not contain and
+# which the prune must therefore spare.
+keep=archives.txt
 
 die() {
 	echo "deploy: $*" >&2
@@ -41,9 +44,23 @@ done < <(find public -type f)
 [[ "$uploaded" -gt 0 ]] || die "public/ holds no files"
 echo "deploy: uploaded $uploaded file(s)"
 
+# A release also lands under its own version, which is what the picker offers
+# and what keeps that copy readable after the next release replaces /docs/.
+# Add the version to data/archives.json in the release commit so the picker
+# starts offering it.
+version="${AGENTKIT_DOCS_VERSION#v}"
+if [[ -n "$version" ]]; then
+	while IFS= read -r file; do
+		curl -sS --fail-with-body -X PUT --config "$auth" --data-binary "@$file" \
+			"$ENDPOINT/api/site/docs/$version/${file#public/}" >/dev/null \
+			|| die "FAILED $file -> docs/$version/"
+	done < <(find public -type f)
+	echo "deploy: also published $SITE_URL/docs/$version/"
+	printf '%s\n' "$version" >> "$keep"
+fi
+
 # Archives are published once and never rebuilt, so they are absent from this
 # build and would otherwise read as stale on every deploy.
-keep=archives.txt
 if ! curl -sS --fail-with-body --config "$auth" "$ENDPOINT/api/site-list/docs/" > "$live.json" 2>/dev/null; then
 	die "could not list what is live — not pruning"
 fi
