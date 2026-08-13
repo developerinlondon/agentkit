@@ -62,7 +62,7 @@ git clone git@github.com:developerinlondon/agentkit.git
 ```
 
 The interactive kit picker only appears here, and only on a terminal — see
-[skill kits](/docs/guide/start/kits/).
+[skill kits](/docs/kits/).
 {{< /tab >}}
 
 {{< tab name="Claude plugin" >}}
