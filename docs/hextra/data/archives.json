@@ -1,25 +1,4 @@
 {
-  "comment": "Docs trees that are actually published. Archives are never rebuilt, so this is a fact about the deployment rather than about git: a tag with no published tree must not reach the picker. A release appends its own version here once its tree is live.",
-  "published": [
-    "0.7.12",
-    "0.7.11",
-    "0.7.10",
-    "0.7.9",
-    "0.7.8",
-    "0.7.7",
-    "0.7.6",
-    "0.7.5",
-    "0.7.4",
-    "0.7.3",
-    "0.7.2",
-    "0.7.1",
-    "0.7.0",
-    "0.6.4",
-    "0.6.3",
-    "0.6.2",
-    "0.6.1",
-    "0.6.0",
-    "0.5.3",
-    "0.5.2"
-  ]
+  "comment": "Docs trees published under /docs/<version>/. Version history starts at the Hugo cutover: earlier trees were built by a different generator and documented a product that had not launched. A release appends its own version here after its tree is live.",
+  "published": []
 }

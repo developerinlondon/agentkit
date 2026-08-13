@@ -2,7 +2,7 @@ import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const repoRoot = join(import.meta.dir, '..');
-const factsPath = join(repoRoot, 'docs', 'site', 'src', 'generated', 'kit-facts.json');
+const factsPath = join(repoRoot, 'docs', 'hextra', 'data', 'agentkit.json');
 
 const MECHANISMS = {
   hook: { directory: join('hooks', 'claude'), suffix: '-police.sh' },

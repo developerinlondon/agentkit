@@ -8,7 +8,7 @@ import { existsSync, readdirSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import worker from '../pages/worker/src/worker.js';
 
-const DIST = join(import.meta.dir, '..', 'docs', 'site', 'dist');
+const DIST = join(import.meta.dir, '..', 'docs', 'hextra', 'public');
 const SITE_TOKEN = 'site-secret';
 
 if (!existsSync(DIST)) {
