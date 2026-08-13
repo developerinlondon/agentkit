@@ -9,6 +9,15 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+- fix(hooks): **`issue-police` catches an issue filed through the REST API, not just the
+  subcommand.** It matched `gh|glab issue create` only, so `glab api --method POST
+  <project>/issues` filed an issue with no `Disposition:` line and no refusal — the guard was
+  present and silent. The URL is normally quoted, and quoted strings are emptied before the
+  trigger match, so the path is now read from the original command truncated at the first body
+  flag: an issues URL quoted inside a description is still not a creation. Reads, updates, and
+  notes on an existing issue remain untouched. `issue-police.sh` also joins the hooks whose
+  packaged plugin copy is asserted byte-for-byte, so the pair cannot drift again.
+
 ## v0.7.17 — 2026-08-13
 
 - fix(ci): **the docs publish gets the same Hugo binary the build gets.** `HUGO_BIN` was set as a
