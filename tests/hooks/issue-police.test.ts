@@ -153,3 +153,47 @@ describe('issue-police: harness compatibility', () => {
     expect(res.stdout ?? '').toContain('"deny"');
   });
 });
+
+describe('issue-police: the REST spelling of a creation', () => {
+  const url = '"projects/GTI%2Fgroup%2Frepo/issues"';
+
+  test('glab api POST to an issues collection with no disposition is refused', () => {
+    expect(denied(`glab api --method POST ${url} --field title="broken thing"`)).toBe(true);
+  });
+
+  test('the -X spelling is refused too', () => {
+    expect(denied(`glab api -X POST ${url} --field title="broken thing"`)).toBe(true);
+  });
+
+  test('gh api POST to an issues collection is refused', () => {
+    expect(denied('gh api --method POST /repos/o/r/issues -f title="broken thing"')).toBe(true);
+  });
+
+  test('a disposition in the field body passes', () => {
+    expect(
+      denied(
+        `glab api --method POST ${url} --field description="Disposition: new work, unrelated to anything in flight"`,
+      ),
+    ).toBe(false);
+  });
+
+  test('posting a NOTE to an existing issue is not a creation', () => {
+    expect(denied('glab api --method POST "projects/g%2Fr/issues/140/notes" --field body="an update"')).toBe(
+      false,
+    );
+  });
+
+  test('an issues URL quoted inside a description is not a creation', () => {
+    expect(
+      denied('glab api --method POST "projects/g%2Fr/merge_requests" --field description="see /issues"'),
+    ).toBe(false);
+  });
+
+  test('reading issues is not a creation', () => {
+    expect(denied('glab api "projects/g%2Fr/issues?state=opened"')).toBe(false);
+  });
+
+  test('updating an issue is not a creation', () => {
+    expect(denied('glab api --method PUT "projects/g%2Fr/issues/140" --field labels="bug"')).toBe(false);
+  });
+});
