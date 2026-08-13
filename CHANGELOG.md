@@ -9,6 +9,17 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+## v0.7.17 — 2026-08-13
+
+- fix(ci): **the docs publish gets the same Hugo binary the build gets.** `HUGO_BIN` was set as a
+  prefix on `build.sh`, so it reached that command and not the deploy chained after it; the archive
+  build fell back to a binary the runner does not install, and v0.7.16 published everything except
+  the documentation.
+- fix(ci): **a self-hosted Mac can be taken out of rotation.** Online and idle is not health: a
+  runner whose network cannot reach the release CDN still won the job and failed at toolchain
+  install. Measured on it — 4.1 MB/s from Cloudflare against 38 KB/s from GitHub's release CDN on
+  both IPv4 and IPv6 — so the repository variable removes it without deregistering it.
+
 ## v0.7.16 — 2026-08-13
 
 - feat(docs): **the documentation has its own host, `docs.agentkit.sbs`.** The worker serves it
