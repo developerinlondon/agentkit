@@ -298,7 +298,7 @@ Both the hook and CI branch on these, so they are part of the contract.
 | `3`  | fault — a named plan is missing or unreadable                   |
 
 Discovery and matching are configurable per repository; see
-[Configuration](/docs/reference/configuration/).
+[Configuration](/reference/configuration/).
 
 ## `review-gate`
 
@@ -377,7 +377,7 @@ worktree.
 
 Every run appends one tab-separated line to `${HOME:-/tmp}/.agentkit/review-audit.log`. The append
 is best-effort and never fails the run. Config errors exit `2`; see
-[Configuration](/docs/reference/configuration/) for the keys and precedence.
+[Configuration](/reference/configuration/) for the keys and precedence.
 
 ## `fix-ascii-boxes.py`
 

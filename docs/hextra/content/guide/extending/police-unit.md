@@ -8,9 +8,9 @@ and registering the hook so the harness runs it.
 
 {{< callout type="info" >}}
 Before writing a hook, check whether the discipline belongs at a lower altitude. A preference of
-yours is a [taste](/docs/guide/concepts/tastes/) — which can already refuse, with no code at all. A
-workflow is a [skill](/docs/guide/concepts/skills/). Only reach for a unit when "please don't" has already
-failed. [Thinking in agentkit](/docs/guide/thinking/) is the ladder.
+yours is a [taste](/guide/concepts/tastes/) — which can already refuse, with no code at all. A
+workflow is a [skill](/guide/concepts/skills/). Only reach for a unit when "please don't" has already
+failed. [Thinking in agentkit](/guide/thinking/) is the ladder.
 {{< /callout >}}
 
 ## The anatomy of one
@@ -120,7 +120,7 @@ Wrap it in `fail-closed-hook.sh <budget>` only if its **silence** should be a de
 the merge gate and nothing else so far — every other unit fails open, loudly.
 
 The generated tables on this site read that same file, so registering a unit is what puts it in the
-[hooks reference](/docs/reference/hooks/).
+[hooks reference](/reference/hooks/).
 
 ## The other mechanisms
 
@@ -134,7 +134,7 @@ shipping something that looks precise and is not. `delegation-police` is the wor
 refuses whole classes outright on Codex while the hook and plugin do real payload analysis.
 
 A unit does not have to exist in all three. Coverage is uneven on purpose, and the
-[coverage table](/docs/reference/hooks/#coverage) is generated from which files exist.
+[coverage table](/reference/hooks/#coverage) is generated from which files exist.
 
 ## Test it
 

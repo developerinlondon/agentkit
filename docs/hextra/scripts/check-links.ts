@@ -7,7 +7,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 
 const publicDir = resolve(import.meta.dir, '..', 'public');
-const BASE = '/docs';
+const BASE = '';
 
 // Hugo writes every page as <path>/index.html, plus real files for assets.
 function walk(dir: string, out: string[] = []): string[] {

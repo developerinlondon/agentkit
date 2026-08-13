@@ -7,6 +7,7 @@ cd "$(dirname "$0")"
 
 ENDPOINT="${AGENTKIT_SITE_ENDPOINT:-https://agentkit.sbs}"
 SITE_URL="${AGENTKIT_SITE_URL:-https://agentkit.sbs}"
+DOCS_URL="${AGENTKIT_DOCS_URL:-https://docs.agentkit.sbs}"
 TOKEN_FILE="${AGENTKIT_SITE_TOKEN_FILE:-$HOME/.config/agentkit/site-token}"
 MARKER='ak-theme-toggle'
 # Slugs published under /docs/<version>/, which this build does not contain and
@@ -44,19 +45,23 @@ done < <(find public -type f)
 [[ "$uploaded" -gt 0 ]] || die "public/ holds no files"
 echo "deploy: uploaded $uploaded file(s)"
 
-# A release also lands under its own version, which is what the picker offers
-# and what keeps that copy readable after the next release replaces /docs/.
-# Add the version to data/archives.json in the release commit so the picker
-# starts offering it.
+# A release also lands under its own version, so the copy stays readable once
+# /docs/ moves on. It is rebuilt against its own base: Hugo content-hashes the
+# stylesheet name, so a copy pointing at /docs/ loses every asset the moment the
+# next release changes that hash.
 version="${AGENTKIT_DOCS_VERSION:-}"
 version="${version#v}"
 if [[ -n "$version" ]]; then
+	archive=$(mktemp -d)
+	"${HUGO_BIN:-hugo-extended}" --quiet --destination "$archive" \
+		--baseURL "$DOCS_URL/$version/" || die "could not build the $version archive"
 	while IFS= read -r file; do
 		curl -sS --fail-with-body -X PUT --config "$auth" --data-binary "@$file" \
-			"$ENDPOINT/api/site/docs/$version/${file#public/}" >/dev/null \
+			"$ENDPOINT/api/site/docs/$version/${file#"$archive"/}" >/dev/null \
 			|| die "FAILED $file -> docs/$version/"
-	done < <(find public -type f)
-	echo "deploy: also published $SITE_URL/docs/$version/"
+	done < <(find "$archive" -type f)
+	rm -rf "$archive"
+	echo "deploy: also published $DOCS_URL/$version/"
 	printf '%s\n' "$version" >> "$keep"
 fi
 
@@ -98,10 +103,10 @@ served=$(mktemp)
 trap 'rm -f "$auth" "$live" "$built" "$stale" "$served"' EXIT
 attempts=${AGENTKIT_VERIFY_ATTEMPTS:-6}
 for ((try = 1; try <= attempts; try++)); do
-	if curl -sS --max-time 20 -o "$served" "$SITE_URL/docs/" 2>/dev/null && grep -q "$MARKER" "$served"; then
-		echo "deploy: $SITE_URL/docs/ is serving this build"
+	if curl -sS --max-time 20 -o "$served" "$DOCS_URL/" 2>/dev/null && grep -q "$MARKER" "$served"; then
+		echo "deploy: $DOCS_URL/ is serving this build"
 		exit 0
 	fi
 	if [[ "$try" -lt "$attempts" ]]; then sleep 3; fi
 done
-die "published, but $SITE_URL/docs/ still does not serve this build after $attempts attempts"
+die "published, but $DOCS_URL/ still does not serve this build after $attempts attempts"

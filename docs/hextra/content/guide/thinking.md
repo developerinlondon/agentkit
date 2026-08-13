@@ -113,7 +113,7 @@ you stop watching.
 
 ## Next
 
-- [Four surfaces](/docs/guide/concepts/surfaces/) — the mechanics behind the ladder above.
-- [Police hooks](/docs/guide/concepts/hooks/) — every unit, what it checks, how to override it.
-- [Cookbook](/docs/cookbook/) — the recipes these principles produce.
-- [Install](/docs/guide/start/install/) — if you have not got it on a machine yet.
+- [Four surfaces](/guide/concepts/surfaces/) — the mechanics behind the ladder above.
+- [Police hooks](/guide/concepts/hooks/) — every unit, what it checks, how to override it.
+- [Cookbook](/cookbook/) — the recipes these principles produce.
+- [Install](/guide/start/install/) — if you have not got it on a machine yet.

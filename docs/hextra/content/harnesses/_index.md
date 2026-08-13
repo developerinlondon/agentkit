@@ -40,7 +40,7 @@ timeout is treated as a refusal only where a fail-closed budget is declared.
 {{< callout type="warning" >}}
 **Codex reads argv, not shell.** Its policies match literal command prefixes rather than parsing a
 shell payload, so the same intent written a different way — through a pipe, a script, an API call —
-is outside what they match. [Boundaries](/docs/guide/concepts/boundaries/) states every such limit
+is outside what they match. [Boundaries](/guide/concepts/boundaries/) states every such limit
 in one place.
 {{< /callout >}}
 
@@ -48,4 +48,4 @@ in one place.
 
 The cgroup tooling is Linux-only. On macOS and elsewhere the bounded runner, its `agentkit-run`
 alias and the Codex heavy-command policy are not installed, and containment stands down — while
-every guard that does not need cgroups stays active. [Requirements and platforms](/docs/guide/start/requirements/) lists exactly what is skipped and what remains.
+every guard that does not need cgroups stays active. [Requirements and platforms](/guide/start/requirements/) lists exactly what is skipped and what remains.

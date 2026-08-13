@@ -46,8 +46,8 @@ skipped acts at exactly one point.
 | **Hook**  | refuses at the tool call         | nothing — ignoring it is not possible      |
 | **Tool**  | replaces the capability itself   | nothing — the limit is in the kernel       |
 
-Climb only as high as the failure justifies. [Four surfaces](/docs/guide/concepts/surfaces/) explains the
-mechanics; [thinking in agentkit](/docs/guide/thinking/) is the judgment call about which one a given
+Climb only as high as the failure justifies. [Four surfaces](/guide/concepts/surfaces/) explains the
+mechanics; [thinking in agentkit](/guide/thinking/) is the judgment call about which one a given
 piece of discipline deserves.
 
 ## The enforcement, concretely
@@ -66,7 +66,7 @@ duplicated blocks, and comments carrying references that rot. Every refusal name
 override.
 
 Two units — `resource` and `delegation` — enforce nothing under the default configuration, and
-`review` ships only with an explicit kit. See [configuration](/docs/reference/configuration/) for turning
+`review` ships only with an explicit kit. See [configuration](/reference/configuration/) for turning
 them on.
 
 ## What the guards cover
@@ -77,7 +77,7 @@ precisely:
 
 {{< callout type="warning" >}}
 A guard you wrongly believe in is worse than no guard, because you stop watching.
-[Boundaries](/docs/guide/concepts/boundaries/) states every limit in one place.
+[Boundaries](/guide/concepts/boundaries/) states every limit in one place.
 {{< /callout >}}
 
 - Hooks are **guards**: they detect a pattern in a tool call and refuse it. An effect written a
@@ -93,8 +93,8 @@ A guard you wrongly believe in is worse than no guard, because you stop watching
 ## Start here
 
 {{< cards >}}
-{{< card link="/docs/guide/start/install/" title="Install" subtitle="Get it onto a machine, pick a door, and choose your kits." >}}
-{{< card link="/docs/guide/start/verify/" title="Verify the install" subtitle="Prove the enforcement is live rather than trusting a file listing." >}}
-{{< card link="/docs/guide/thinking/" title="Thinking in agentkit" subtitle="When discipline should be a skill, a rule, a hook or a tool." >}}
-{{< card link="/docs/cookbook/" title="Cookbook" subtitle="Copyable shapes for the workflows people actually run." >}}
+{{< card link="/guide/start/install/" title="Install" subtitle="Get it onto a machine, pick a door, and choose your kits." >}}
+{{< card link="/guide/start/verify/" title="Verify the install" subtitle="Prove the enforcement is live rather than trusting a file listing." >}}
+{{< card link="/guide/thinking/" title="Thinking in agentkit" subtitle="When discipline should be a skill, a rule, a hook or a tool." >}}
+{{< card link="/cookbook/" title="Cookbook" subtitle="Copyable shapes for the workflows people actually run." >}}
 {{< /cards >}}

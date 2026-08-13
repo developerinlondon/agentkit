@@ -145,5 +145,5 @@ can require stricter evidence and cannot be weakened by `~/.config/agentkit/conf
 
 ## What the gate proves
 
-It proves **binding**, not authentication. See [boundaries](/docs/guide/concepts/boundaries/#what-the-merge-gate-proves)
+It proves **binding**, not authentication. See [boundaries](/guide/concepts/boundaries/#what-the-merge-gate-proves)
 for exactly what that excludes.

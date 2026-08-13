@@ -93,7 +93,7 @@ Codex policies update on the next `install.sh` run.
 
 Classes: `js-packages`, `js-scripts`, `typescript`, `playwright`, `cargo`, `go`, `moon`, `python`.
 Remove entries to relax individual classes; omitting the whole list bounds every class. See
-[containment](/docs/guide/concepts/containment/).
+[containment](/guide/concepts/containment/).
 
 ## `delegation-police`
 
@@ -162,10 +162,10 @@ read-only — a correction is reported rather than filed.
 Each source takes `repo`, `ref`, `mode` (only `vendored` is implemented; declaring `reference` is an
 error), `visibility` (`public` or `private`), and optionally `path` and `name`. `visibility` is
 **required** of a source a repository vendors, and vendoring a private source into a public
-repository is refused. See [tastes](/docs/guide/concepts/tastes/).
+repository is refused. See [tastes](/guide/concepts/tastes/).
 
 ## Kill switches
 
 Configuration is not the only lever. `AGENTKIT_SKIP_HOOKS` disables units for one session, and most
 refusing units take a per-command override variable — all of them in the
-[environment reference](/docs/reference/environment/).
+[environment reference](/reference/environment/).

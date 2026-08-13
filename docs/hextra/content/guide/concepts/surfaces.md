@@ -22,7 +22,7 @@ unbounded form has no reach at all outside `Bash` — and cannot be talked out o
 a given kind of discipline can push, and how much of your work it reaches. It is not a list of the
 artifacts the installer places, and nothing in `install.sh` enumerates a count of four. For the
 actual inventory — including the per-session resource shims and the systemd slice, which are not any
-of the four — see [what lands where](/docs/guide/start/what-lands-where/).
+of the four — see [what lands where](/guide/start/what-lands-where/).
 {{< /callout >}}
 
 ## One unit, up to three implementations
@@ -89,4 +89,4 @@ because the refusals that reference it would be pointing at a lie.
   supervisor converts every failure into a denial — because the harness's own default (crashed hook =
   allow) points the wrong way.
 - **Honest non-goals.** The gate is not security. Codex policies do not parse shell. Containment
-  excludes delegated workloads. Every limit is stated in [boundaries](/docs/guide/concepts/boundaries/).
+  excludes delegated workloads. Every limit is stated in [boundaries](/guide/concepts/boundaries/).

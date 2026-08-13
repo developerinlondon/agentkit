@@ -20,7 +20,7 @@ function docsLinks(): { file: string; href: string }[] {
   const found: { file: string; href: string }[] = [];
   for (const file of sourceFiles(SITE_SRC)) {
     const body = readFileSync(file, 'utf-8');
-    for (const match of body.matchAll(/href="(\/docs\/[^"]*)"/g)) {
+    for (const match of body.matchAll(/href="https:\/\/docs\.agentkit\.sbs(\/[^"]*)"/g)) {
       found.push({ file: relative(file), href: match[1] ?? '' });
     }
   }
@@ -35,7 +35,7 @@ function relative(path: string): string {
 // a section landing page uses the latter, and checking only the first shape
 // reports live pages as broken.
 function pageExists(href: string): boolean {
-  const slug = href.replace(/^\/docs\/?/, '').replace(/\/$/, '');
+  const slug = href.replace(/^\/+/, '').replace(/\/$/, '');
   if (slug === '') return existsSync(join(DOCS, '_index.md'));
   return existsSync(join(DOCS, `${slug}.md`)) || existsSync(join(DOCS, slug, '_index.md'));
 }

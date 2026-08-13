@@ -20,7 +20,7 @@ description: >-
 `description` is not a summary for humans. It is the only thing an agent reads when deciding whether
 to load the skill, so it must contain the trigger conditions, not just the capability.
 
-The facts generator reads this field to build the [catalogue](/docs/reference/skills/), and it **fails the
+The facts generator reads this field to build the [catalogue](/reference/skills/), and it **fails the
 build** on a skill with no frontmatter or no description. A block scalar (`>-`) is handled; an empty
 value is an error.
 
@@ -81,5 +81,5 @@ skill in two kits, or an `explicit` marker naming a kit that was never declared.
 ## What a skill cannot do
 
 It cannot enforce. The agent decides whether to load it, and a skill that is never loaded does
-nothing at all. If the rule must hold, it is a [police unit](/docs/guide/extending/police-unit/) — and the
+nothing at all. If the rule must hold, it is a [police unit](/guide/extending/police-unit/) — and the
 two are wired to agree where they overlap, the skill carrying the judgement and the hook the force.

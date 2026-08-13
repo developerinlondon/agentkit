@@ -49,7 +49,7 @@ The consequence is uncomfortable and load-bearing: **a `PreToolUse` hook that cr
 decision, and no decision means allow.** A guard that dies on its first line is not merely broken;
 it is silently off while appearing installed. That has happened in this kit — a hardcoded absolute
 path that did not exist on one platform killed a hook immediately, and the harness reported only a
-non-blocking status code. [Verify the install](/docs/guide/start/verify/) is the routine that catches it.
+non-blocking status code. [Verify the install](/guide/start/verify/) is the routine that catches it.
 {{< /callout >}}
 
 ### Why the write hooks exit 2
@@ -147,5 +147,5 @@ Refusal, mapping, override. All three, every time. This is a design rule, not a 
 that hits a wall with no door will try every other wall. A refusal that does not say what to do
 instead is treated as a bug in the kit.
 
-What each unit refuses is in the [hooks reference](/docs/reference/hooks/). How to override one for a
-single command is in [override a guard](/docs/cookbook/override-a-guard/).
+What each unit refuses is in the [hooks reference](/reference/hooks/). How to override one for a
+single command is in [override a guard](/cookbook/override-a-guard/).

@@ -63,7 +63,7 @@ every harness.
 An install partition declared in `skills/KITS`, a plain-text manifest read by the installer, the
 Claude plugin generator and the tests alike. A skill with no membership record belongs to `core`,
 which always installs, and a skill may name only one kit. The declared kits are listed in
-[Skill kits](/docs/kits/), generated from the manifest.
+[Skill kits](/kits/), generated from the manifest.
 
 ## Explicit kit
 

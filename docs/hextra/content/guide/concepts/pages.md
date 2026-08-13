@@ -134,7 +134,7 @@ both themes, and read every figure. **Never report the URL of an unviewed page.*
 
 ## Direct writes are blocked on purpose
 
-[`pages-police`](/docs/reference/hooks/) refuses raw `curl`, `wget`, `httpie` and `xh` writes to the
+[`pages-police`](/reference/hooks/) refuses raw `curl`, `wget`, `httpie` and `xh` writes to the
 publish API. Publishing
 through the skill enforces the figure lint, the size cap and the canonical commit; a raw write bypasses
 all three.

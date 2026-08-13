@@ -135,4 +135,4 @@ pair it with forge-side required approvals, which are what actually prevent a me
 {{< /callout >}}
 
 The doctrine behind all of this, including the opt-in advisory lane (`--with advisory-review`):
-[Review and the gate](/docs/guide/concepts/review/).
+[Review and the gate](/guide/concepts/review/).

@@ -128,5 +128,5 @@ wrongly. Before assuming breakage, walk these in order:
 | Is the link intact? | `ls -l ~/.claude/hooks/` — every entry should resolve into `~/.agentkit/hooks/` |
 | Does it run at all? | drive it by hand as above; a crash prints a shell error rather than JSON |
 
-Every switch and config key is in [configuration](/docs/reference/configuration/); to override one guard
-for one command, see [override a guard](/docs/cookbook/override-a-guard/).
+Every switch and config key is in [configuration](/reference/configuration/); to override one guard
+for one command, see [override a guard](/cookbook/override-a-guard/).

@@ -10,7 +10,7 @@ agent has before it decides anything.
 | -------------------------------- | -------------------------- | --------------------------- | --------------- |
 | Rules                            | a matching file is in play | a glob in the frontmatter   | `rules/`        |
 | Instructions                     | every session              | nothing — always on         | `instructions/` |
-| [Skills](/docs/guide/concepts/skills/) | the agent invokes one      | its own trigger description | `skills/`       |
+| [Skills](/guide/concepts/skills/) | the agent invokes one      | its own trigger description | `skills/`       |
 
 ## Rules: markdown with a glob
 
@@ -82,5 +82,5 @@ That budget is the whole reason the discipline is not one enormous prompt. And i
 that _must_ hold are not in this layer at all: a rule you paid context for is still a rule the agent
 can decide to skip. Only a hook cannot be skipped.
 
-A preference that is yours rather than universal belongs in a [taste](/docs/guide/concepts/tastes/), which
+A preference that is yours rather than universal belongs in a [taste](/guide/concepts/tastes/), which
 is the one layer in this family that can also refuse.

@@ -97,4 +97,4 @@ edit that marks a plan done and refuses the edit while a bare gap stands — fil
 pasting its number is the fix.
 
 Plan layout is discovered from six common roots and is configurable per repository; see
-[Configuration](/docs/reference/configuration/) for `wip.plan-paths` and `wip.issue-refs`.
+[Configuration](/reference/configuration/) for `wip.plan-paths` and `wip.issue-refs`.

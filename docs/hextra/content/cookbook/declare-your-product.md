@@ -70,4 +70,4 @@ The template ships with the skill, at `~/.agentkit/skills/product-review/product
 agentkit dogfoods it: this repository's own `.agentkit/product.yaml` declares a `test-suite` surface
 and a `plugin` surface.
 
-Why the declaration is committed rather than inferred: [The product model](/docs/guide/concepts/product/).
+Why the declaration is committed rather than inferred: [The product model](/guide/concepts/product/).

@@ -18,7 +18,7 @@
   {{- if gt (len $versions) 1 -}}
   <select class="ak-version-picker" aria-label="Documentation version">
     {{- range $versions }}
-    {{- $href := cond .current site.BaseURL (printf "/docs/%s/" .slug) }}
+    {{- $href := cond .current site.BaseURL (printf "/%s/" .slug) }}
     <option value="{{ $href }}"{{ if .current }} selected{{ end }}>{{ .label }}</option>
     {{- end }}
   </select>
