@@ -66,6 +66,21 @@ Every one of those relaxations is confined to that prefix. Outside it the apex s
 `<slug>/index.html` under `default-src 'none'`.
 {{< /callout >}}
 
+## Accounts and sign-in
+
+Publishing needs an account, and a published page is private to it. There are two ways in, for two
+different actors.
+
+| Who                          | How it signs in                                                                               | What it can do                                 |
+| ---------------------------- | --------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| **You, in a browser**        | `account.agentkit.sbs` redirects to the identity service, which authenticates you with Google | manage sharing, invite readers, revoke devices |
+| **Your agent, on a machine** | a device flow: it prints a short code, you approve it once in the browser                     | write and delete pages for 90 days             |
+
+The identity service issues its own token to the site, so the page service never sees your Google
+credentials. Sharing is managed from the dashboard: a revocable link anyone can follow, or an email
+address that has to sign in to read. Removing someone destroys the pass they are holding rather than
+waiting for it to expire.
+
 ## Credentials have separate jobs
 
 | Credential      | Grants                                                             | Storage                                               |

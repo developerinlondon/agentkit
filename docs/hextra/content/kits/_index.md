@@ -1,6 +1,8 @@
 ---
-title: Skill kits
-weight: 4
+title: Kits
+weight: 2
+cascade:
+  type: docs
 ---
 
 Skills are partitioned into **kits**. `core` always installs; everything else is opted into, and the
@@ -46,14 +48,14 @@ discovering and auto-triggering a workflow the user removed.
 
 The interactive picker is narrow on purpose. It runs only when **all** of these hold:
 
-| Condition | Why |
-| --- | --- |
-| the install is `--global` | project installs never write the remembered set |
-| stdin is a terminal | a piped `curl … \| bash` has no terminal, so it cannot ask |
-| `--no-prompt` was not passed | the explicit opt-out |
-| `AGENTKIT_SKIP_PROMPT` is unset | the environment opt-out, for CI |
-| `CI` is unset | CI is never interactive |
-| no `--with`/`--without`/`--all` was passed | you already stated the selection |
+| Condition                                  | Why                                                        |
+| ------------------------------------------ | ---------------------------------------------------------- |
+| the install is `--global`                  | project installs never write the remembered set            |
+| stdin is a terminal                        | a piped `curl … \| bash` has no terminal, so it cannot ask |
+| `--no-prompt` was not passed               | the explicit opt-out                                       |
+| `AGENTKIT_SKIP_PROMPT` is unset            | the environment opt-out, for CI                            |
+| `CI` is unset                              | CI is never interactive                                    |
+| no `--with`/`--without`/`--all` was passed | you already stated the selection                           |
 
 That is why the bootstrap one-liner installs `core` only unless you pass `--with <kit>`: piped
 stdin is not a terminal, so the question never fires.
@@ -74,18 +76,18 @@ Any of them aborts the run before a file is touched.
 ## What is in each kit
 
 {{< tabs >}}
-  {{< tab name="core" >}}{{< skill-table kit="core" >}}{{< /tab >}}
-  {{< tab name="memory" >}}{{< skill-table kit="memory" >}}{{< /tab >}}
-  {{< tab name="product" >}}{{< skill-table kit="product" >}}{{< /tab >}}
-  {{< tab name="clickup" >}}{{< skill-table kit="clickup" >}}{{< /tab >}}
-  {{< tab name="adversarial-review" >}}
+{{< tab name="core" >}}{{< skill-table kit="core" >}}{{< /tab >}}
+{{< tab name="memory" >}}{{< skill-table kit="memory" >}}{{< /tab >}}
+{{< tab name="product" >}}{{< skill-table kit="product" >}}{{< /tab >}}
+{{< tab name="clickup" >}}{{< skill-table kit="clickup" >}}{{< /tab >}}
+{{< tab name="adversarial-review" >}}
 {{< skill-table kit="adversarial-review" >}}
 
 Also installs `review-police`, the `review-gate` and `review-profile` tools, and the
 `evidence-gated-review` instruction. See [review and the gate](/docs/guide/concepts/review/).
-  {{< /tab >}}
-  {{< tab name="advisory-review" >}}
+{{< /tab >}}
+{{< tab name="advisory-review" >}}
 This kit carries no skills. It installs one always-on instruction, `review-discipline.md`, which
 asks for one non-authoring reviewer pass per substantive change. Nothing enforces it.
-  {{< /tab >}}
+{{< /tab >}}
 {{< /tabs >}}

@@ -36,7 +36,7 @@ sufficient alone — the skill has no teeth, the hook has no idea which profile 
 {{< skill-table >}}
 
 Kit membership is declared in one manifest, `skills/KITS`, read by a shared library so the installer
-and the plugin generator can never disagree. See [skill kits](/docs/guide/start/kits/) for selecting them.
+and the plugin generator can never disagree. See [skill kits](/docs/kits/) for selecting them.
 
 ## Skills that ship code
 

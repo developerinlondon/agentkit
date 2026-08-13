@@ -32,12 +32,18 @@ menu:
     - name: Guide
       pageRef: /guide
       weight: 1
+    - name: Kits
+      pageRef: /kits
+      weight: 2
+    - name: Harnesses
+      pageRef: /harnesses
+      weight: 3
     - name: Reference
       pageRef: /reference
-      weight: 2
+      weight: 4
     - name: Cookbook
       pageRef: /cookbook
-      weight: 3
+      weight: 5
     - name: Search
       weight: 8
       params:

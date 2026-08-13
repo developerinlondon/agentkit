@@ -15,7 +15,7 @@ description it does not carry, or in a kit it does not belong to.
 
 A skill with no record in `skills/KITS` belongs to `core`, and a skill may name only one kit.
 `explicit` kits are never offered by the interactive picker and are excluded from `--all`; only a
-literal `--with <kit>` selects one. See [skill kits](/docs/guide/start/kits/).
+literal `--with <kit>` selects one. See [skill kits](/docs/kits/).
 
 ## Not forge-neutral
 
