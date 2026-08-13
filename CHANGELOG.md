@@ -9,6 +9,9 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+- fix(brain): **the sync override is `AGENTKIT_TARGET_PRIVATE`, not `AGENTKIT_TASTE_TARGET_PRIVATE`.**
+  The guard serves memory sources too now, so a refusal about a knowledgebase named a variable with
+  taste in it. Pre-1.0 rename with no dual reading: the old name is not consulted.
 - feat(brain): **a knowledgebase is read as `brain.memory.sources`, not as a third unit.** A git
   repository of human-authored notes — ADRs, designs, runbooks — is declared the way a taste source
   is, pinned to a ref, snapshotted markdown-only into `<vault>/external/<name>/` and recorded in that

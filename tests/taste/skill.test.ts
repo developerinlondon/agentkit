@@ -169,7 +169,7 @@ const VENDOR_GUARD: [string, string][] = [
   ['internal is on the public side', '**Internal is not private.**'],
   ['the machine level is gated once it publishes', 'gated only when it publishes'],
   ['a dotfiles repository is the shape it exists for', 'a dotfiles repository is the shape'],
-  ['the override is named', 'AGENTKIT_TASTE_TARGET_PRIVATE=1'],
+  ['the override is named', 'AGENTKIT_TARGET_PRIVATE=1'],
   ['the override supplies only what was unknown', 'stays refused with it set'],
   ['off-reading values do not grant it', 'are refusals here too'],
 ];

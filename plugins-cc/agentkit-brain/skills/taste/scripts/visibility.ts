@@ -11,7 +11,7 @@ export interface Target {
 // toolchain is. It asserts a fact the tool could not establish — that this
 // repository is private — and asserts nothing about a repository the forge
 // already answered for.
-export const TARGET_PRIVATE_OVERRIDE = 'AGENTKIT_TASTE_TARGET_PRIVATE';
+export const TARGET_PRIVATE_OVERRIDE = 'AGENTKIT_TARGET_PRIVATE';
 
 export const FORGE_TIMEOUT_MS = 20_000;
 
