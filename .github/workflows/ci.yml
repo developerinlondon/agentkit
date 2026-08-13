@@ -55,10 +55,17 @@ jobs:
           # compare unequal and land on hosted, and non-PR events stay false so
           # main and tag pushes can still use the Mac.
           IS_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+          SELF_HOSTED_MAC: ${{ vars.SELF_HOSTED_MAC || 'on' }}
         run: |
           mac='["macos-15"]'
           if [ "$IS_FORK" = 'true' ]; then
             echo 'fork pull request: hosted macOS only'
+          elif [ "$SELF_HOSTED_MAC" = 'off' ]; then
+            # Online and idle is not the same as healthy: a runner whose network
+            # cannot reach the release CDN accepts the job and then fails at
+            # toolchain install. This takes it out of rotation without a code
+            # change, and without deregistering it.
+            echo 'self-hosted macOS disabled by repository variable'
           elif online=$(gh api "repos/$GITHUB_REPOSITORY/actions/runners?per_page=100" \
               --jq '[.runners[] | select(.status=="online" and .busy==false)
                      | select((["self-hosted","macOS","ARM64"] - [.labels[].name]) | length == 0)] | length') \
