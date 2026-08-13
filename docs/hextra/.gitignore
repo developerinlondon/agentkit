@@ -1,0 +1,7 @@
+public/
+resources/
+.hugo_build.lock
+_vendor/
+archives.txt
+*.key
+*.crt

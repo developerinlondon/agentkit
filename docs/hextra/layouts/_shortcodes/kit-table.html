@@ -1,0 +1,18 @@
+{{- $facts := hugo.Data.agentkit -}}
+<div class="hx:overflow-x-auto">
+<table>
+  <thead><tr><th>Kit</th><th>Selection</th><th>Skills</th><th>What it adds</th></tr></thead>
+  <tbody>
+  {{- range $facts.kits }}
+    {{- $id := .id -}}
+    {{- $members := where $facts.skills "kit" $id -}}
+    <tr>
+      <td><code>{{ $id }}</code></td>
+      <td>{{ if eq $id "core" }}always installed{{ else if .explicit }}explicit <code>--with</code> only{{ else }}picker, <code>--all</code>, or <code>--with</code>{{ end }}</td>
+      <td>{{ len $members }}</td>
+      <td>{{ .description }}</td>
+    </tr>
+  {{- end }}
+  </tbody>
+</table>
+</div>

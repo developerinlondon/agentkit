@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+# Publishes the built docs to the worker and removes what is no longer part of
+# them. Every path is under `docs/`, which is the only prefix the worker's asset
+# API will accept.
+set -euo pipefail
+cd "$(dirname "$0")"
+
+ENDPOINT="${AGENTKIT_SITE_ENDPOINT:-https://agentkit.sbs}"
+SITE_URL="${AGENTKIT_SITE_URL:-https://agentkit.sbs}"
+TOKEN_FILE="${AGENTKIT_SITE_TOKEN_FILE:-$HOME/.config/agentkit/site-token}"
+MARKER='ak-theme-toggle'
+
+die() {
+	echo "deploy: $*" >&2
+	exit 1
+}
+
+[[ -f "$TOKEN_FILE" ]] || die "no site token at $TOKEN_FILE"
+[[ -d public ]] || die "no public/ — run ./build.sh first"
+
+umask 077
+auth=$(mktemp)
+live=$(mktemp)
+built=$(mktemp)
+stale=$(mktemp)
+trap 'rm -f "$auth" "$live" "$built" "$stale"' EXIT
+printf 'header = "Authorization: Bearer %s"\n' "$(cat "$TOKEN_FILE")" > "$auth"
+
+# Upload before pruning: a half-finished upload that had already deleted the
+# previous copy would leave the docs missing rather than merely stale.
+uploaded=0
+while IFS= read -r file; do
+	rel="docs/${file#public/}"
+	if ! body=$(curl -sS --fail-with-body -X PUT \
+		--config "$auth" --data-binary "@$file" "$ENDPOINT/api/site/$rel" 2>&1); then
+		echo "$body" >&2
+		die "FAILED $file -> $rel"
+	fi
+	uploaded=$((uploaded + 1))
+done < <(find public -type f)
+[[ "$uploaded" -gt 0 ]] || die "public/ holds no files"
+echo "deploy: uploaded $uploaded file(s)"
+
+# Archives are published once and never rebuilt, so they are absent from this
+# build and would otherwise read as stale on every deploy.
+keep=archives.txt
+if ! curl -sS --fail-with-body --config "$auth" "$ENDPOINT/api/site-list/docs/" > "$live.json" 2>/dev/null; then
+	die "could not list what is live — not pruning"
+fi
+tr ',' '\n' < "$live.json" | grep -oE '"docs/[^"]+"' | tr -d '"' | sort -u > "$live"
+rm -f "$live.json"
+(cd public && find . -type f | sed 's|^\./|docs/|') | sort -u > "$built"
+comm -23 "$live" "$built" > "$stale"
+
+if [[ -s "$keep" ]]; then
+	spare=$(mktemp)
+	sed 's/\./\\./g; s|.*|^docs/&/|' "$keep" > "$spare"
+	grep -vEf "$spare" "$stale" > "$stale.kept" || true
+	mv "$stale.kept" "$stale"
+	rm -f "$spare"
+fi
+
+stale_count=$(grep -c . "$stale" || true)
+if [[ "${stale_count:-0}" -gt 0 ]]; then
+	echo "deploy: removing $stale_count object(s) no longer in the build"
+	# Deletions are independent of each other, and a cutover can leave thousands
+	# behind; serially they would outlast the job that runs them.
+	xargs -P 8 -I{} curl -sS -o /dev/null -X DELETE --config "$auth" \
+		"$ENDPOINT/api/site/{}" < "$stale"
+fi
+
+# Proves the bytes that answer are this build's, not a cached previous copy.
+# Retried because the worker serves the previous object for a moment after a
+# write, and a large prune widens that window — failing on the first read would
+# report a correct deploy as broken.
+# Fetched to a file rather than piped into grep: `grep -q` closes the pipe on
+# its first match, curl then dies of SIGPIPE, and pipefail reports a successful
+# deploy as a failed one.
+served=$(mktemp)
+trap 'rm -f "$auth" "$live" "$built" "$stale" "$served"' EXIT
+attempts=${AGENTKIT_VERIFY_ATTEMPTS:-6}
+for ((try = 1; try <= attempts; try++)); do
+	if curl -sS --max-time 20 -o "$served" "$SITE_URL/docs/" 2>/dev/null && grep -q "$MARKER" "$served"; then
+		echo "deploy: $SITE_URL/docs/ is serving this build"
+		exit 0
+	fi
+	if [[ "$try" -lt "$attempts" ]]; then sleep 3; fi
+done
+die "published, but $SITE_URL/docs/ still does not serve this build after $attempts attempts"

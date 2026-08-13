@@ -68,17 +68,17 @@ fileGroups:
   # the thing it documents moved underneath it.
   siteInputs:
     - "pages/site/**/*"
-    - "docs/site/src/content/docs/**/*"
+    - "docs/hextra/content/**/*"
     - "tests/site/**/*"
 
   docsInputs:
-    - "docs/site/astro.config.mjs"
-    - "docs/site/build-archives.sh"
-    - "docs/site/deploy.sh"
-    - "docs/site/examples/**/*"
-    - "docs/site/package.json"
-    - "docs/site/public/**/*"
-    - "docs/site/src/**/*"
+    - "docs/hextra/build.sh"
+    - "docs/hextra/deploy.sh"
+    - "docs/hextra/content/**/*"
+    - "docs/hextra/data/**/*"
+    - "docs/hextra/hugo.yaml"
+    - "docs/hextra/layouts/**/*"
+    - "docs/hextra/scripts/**/*"
     - "hooks/**/*"
     - "plugins/*.ts"
     - "plugins-cc/*/hooks/**/*"

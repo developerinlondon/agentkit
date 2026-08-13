@@ -1,0 +1,19 @@
+{{- $facts := hugo.Data.agentkit -}}
+<div class="hx:overflow-x-auto">
+<table>
+  <thead><tr>
+    <th>Unit</th><th>Claude hook</th><th>OpenCode plugin</th><th>Codex policy</th><th>Packaged in</th>
+  </tr></thead>
+  <tbody>
+  {{- range $facts.units }}
+    <tr>
+      <td><code>{{ .name }}-police</code></td>
+      <td>{{ if in .mechanisms "hook" }}yes{{ else }}—{{ end }}</td>
+      <td>{{ if in .mechanisms "plugin" }}yes{{ else }}—{{ end }}</td>
+      <td>{{ if in .mechanisms "codexPolicy" }}yes{{ else }}—{{ end }}</td>
+      <td>{{ with .claudePlugins }}{{ delimit . ", " }}{{ else }}—{{ end }}</td>
+    </tr>
+  {{- end }}
+  </tbody>
+</table>
+</div>

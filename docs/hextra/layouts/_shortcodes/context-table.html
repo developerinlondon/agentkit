@@ -1,0 +1,16 @@
+{{- $facts := hugo.Data.agentkit -}}
+{{- $kind := .Get "kind" | default "rules" -}}
+{{- $rows := index $facts $kind -}}
+<div class="hx:overflow-x-auto">
+<table>
+  <thead><tr><th>File</th><th>Loads</th></tr></thead>
+  <tbody>
+  {{- range $rows }}
+    <tr>
+      <td><code>{{ .file }}</code></td>
+      <td>{{ with .globs }}<code>{{ . }}</code>{{ else }}always-on{{ end }}</td>
+    </tr>
+  {{- end }}
+  </tbody>
+</table>
+</div>

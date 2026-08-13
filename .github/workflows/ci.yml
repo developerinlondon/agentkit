@@ -232,11 +232,11 @@ jobs:
       - name: Install dependencies from the lockfile
         run: bun install --frozen-lockfile
 
-      - name: Install docs dependencies from the lockfile
-        run: bun install --frozen-lockfile --cwd docs/site
-
-      - name: Report the Node version the build will use
-        run: node --version
+      - name: Install Hugo
+        uses: peaceiris/actions-hugo@75d2e84710de30f6ff7268e08f310b60ef14033f # v3.0.0
+        with:
+          hugo-version: '0.165.0'
+          extended: true
 
       - name: Check the generated tables against the tree
         run: bun run scripts/sync-docs-facts.ts --check
@@ -244,19 +244,12 @@ jobs:
       - name: Run the docs test slice
         run: bun test tests/docs/
 
+      # Builds the data the tables render from, the version list the picker
+      # offers, and the site; then refuses a dangling internal link, which Hugo
+      # does not check itself.
       - name: Build the docs site
-        working-directory: docs/site
-        env:
-          AGENTKIT_DOCS_VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
-        run: node ./node_modules/astro/bin/astro.mjs build
-
-      # On PRs too, not just at publish: a broken archive script or a tag that
-      # stopped building must fail the PR, never detonate during a release.
-      # Running before the asset check also hands it the archives' files —
-      # a different toolchain version is where an unlisted extension appears.
-      - name: Build the archived versions from their tags
-        working-directory: docs/site
-        run: ./build-archives.sh dist
+        working-directory: docs/hextra
+        run: HUGO_BIN=hugo ./build.sh
 
       # Needs the build, so it is a check rather than a test: an extension nobody
       # listed is invisible to a hand-maintained fixture.
@@ -359,13 +352,15 @@ jobs:
         with:
           auto-install: true
 
-      - name: Install docs dependencies from the lockfile
-        run: bun install --frozen-lockfile --cwd docs/site
+      - name: Install Hugo
+        uses: peaceiris/actions-hugo@75d2e84710de30f6ff7268e08f310b60ef14033f # v3.0.0
+        with:
+          hugo-version: '0.165.0'
+          extended: true
 
       - name: Build and publish the docs site
         env:
           AGENTKIT_SITE_TOKEN: ${{ secrets.AGENTKIT_SITE_TOKEN }}
-          AGENTKIT_DOCS_VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
         run: |
           if [ -z "$AGENTKIT_SITE_TOKEN" ]; then
             echo 'docs: AGENTKIT_SITE_TOKEN is not configured' >&2
@@ -374,7 +369,7 @@ jobs:
           install -d -m 700 "$HOME/.config/agentkit"
           umask 077
           printf '%s' "$AGENTKIT_SITE_TOKEN" > "$HOME/.config/agentkit/site-token"
-          ./docs/site/deploy.sh
+          (cd docs/hextra && HUGO_BIN=hugo ./build.sh && ./deploy.sh)
 
   site-publish:
     name: Publish the marketing site

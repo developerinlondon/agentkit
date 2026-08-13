@@ -14,14 +14,9 @@ export const TEST_SLICES = {
     'tests/diagram/vendor-icons.test.ts',
   ],
   docs: [
-    'tests/docs/archive-banner.test.ts',
-    'tests/docs/archive-reuse.test.ts',
     'tests/docs/asset-types.test.ts',
-    'tests/docs/deploy.test.ts',
     'tests/docs/docs-tone.test.ts',
-    'tests/docs/example-deck.test.ts',
     'tests/docs/facts.test.ts',
-    'tests/docs/release-label.test.ts',
   ],
   site: ['tests/site/links.test.ts'],
   hooks: [

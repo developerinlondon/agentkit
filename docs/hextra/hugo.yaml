@@ -1,0 +1,117 @@
+baseURL: https://agentkit.sbs/docs/
+title: agentkit
+locale: en-gb
+
+module:
+  imports:
+    - path: github.com/imfing/hextra
+
+enableRobotsTXT: true
+enableGitInfo: true
+enableInlineShortcodes: true
+
+markup:
+  goldmark:
+    renderer:
+      unsafe: true
+    parser:
+      attribute:
+        block: true
+  highlight:
+    noClasses: false
+    lineNos: false
+    codeFences: true
+
+outputs:
+  home: [HTML]
+  page: [HTML]
+  section: [HTML, RSS]
+
+menu:
+  main:
+    - name: Guide
+      pageRef: /guide
+      weight: 1
+    - name: Reference
+      pageRef: /reference
+      weight: 2
+    - name: Cookbook
+      pageRef: /cookbook
+      weight: 3
+    - name: Search
+      weight: 8
+      params:
+        type: search
+    - name: GitHub
+      weight: 9
+      url: https://github.com/developerinlondon/agentkit
+      params:
+        icon: github
+    - name: Theme
+      weight: 10
+      params:
+        type: theme-toggle
+
+  sidebar:
+    - identifier: releases
+      name: "Releases ↗"
+      url: https://github.com/developerinlondon/agentkit/releases
+      weight: 1
+    - identifier: changelog
+      name: "Changelog ↗"
+      url: https://github.com/developerinlondon/agentkit/blob/main/CHANGELOG.md
+      weight: 2
+
+params:
+  description: >-
+    Executable discipline for coding agents. Hooks that refuse at the tool call,
+    skills that instruct, tools that make the limit unreachable — across OpenCode,
+    Claude Code, Codex CLI and Grok CLI.
+
+  navbar:
+    displayTitle: true
+    displayLogo: false
+
+  theme:
+    default: system
+    # The navbar carries the only toggle; the theme would otherwise repeat it
+    # in the sidebar and the footer.
+    displayToggle: false
+
+  footer:
+    enable: true
+    displayCopyright: true
+    displayPoweredBy: false
+    width: normal
+
+  editURL:
+    enable: true
+    base: https://github.com/developerinlondon/agentkit/edit/main/docs/hextra/content
+
+  page:
+    width: normal
+
+  toc:
+    displayTags: false
+
+  # Every runtime asset is served from this origin. The site is published behind
+  # a Worker whose CSP is `default-src 'none'`, so a CDN fetch would be blocked
+  # at load rather than fail visibly at review time.
+  search:
+    enable: true
+    type: flexsearch
+    flexsearch:
+      index: content
+      tokenize: forward
+      js: js/vendor/flexsearch.bundle.min.js
+
+  mermaid:
+    js: js/vendor/mermaid.min.js
+
+  highlight:
+    copy:
+      enable: true
+      display: hover
+
+  displayUpdatedDate: true
+  dateFormat: "2 January 2006"

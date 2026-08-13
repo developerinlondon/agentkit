@@ -2,7 +2,6 @@ import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const repoRoot = join(import.meta.dir, '..');
-const factsPath = join(repoRoot, 'docs', 'site', 'src', 'generated', 'kit-facts.json');
 
 const MECHANISMS = {
   hook: { directory: join('hooks', 'claude'), suffix: '-police.sh' },
@@ -324,29 +323,12 @@ export function spliceReadme(readme: string, facts: KitFacts): string {
 
 const readmePath = join(repoRoot, 'README.md');
 
-export function committedFacts(): string {
-  return readFileSync(factsPath, 'utf-8');
-}
-
 if (import.meta.main) {
   const facts = collectFacts();
-  const fresh = serialise(facts);
   const readme = readFileSync(readmePath, 'utf-8');
   const freshReadme = spliceReadme(readme, facts);
 
   if (process.argv.includes('--check')) {
-    let committed = '';
-    try {
-      committed = committedFacts();
-    } catch {
-      console.error(`docs facts: ${factsPath} is missing — run scripts/sync-docs-facts.ts`);
-      process.exit(1);
-    }
-    if (committed !== fresh) {
-      console.error('docs facts: the committed tables disagree with the tree');
-      console.error('  run: bun run scripts/sync-docs-facts.ts');
-      process.exit(1);
-    }
     if (readme !== freshReadme) {
       console.error('docs facts: the README skills table disagrees with the tree');
       console.error('  run: bun run scripts/sync-docs-facts.ts');
@@ -357,8 +339,6 @@ if (import.meta.main) {
         `${facts.kits.length} kits, ${facts.tools.length} tools`,
     );
   } else {
-    writeFileSync(factsPath, fresh);
-    console.log(`docs facts: wrote ${factsPath}`);
     if (readme !== freshReadme) {
       writeFileSync(readmePath, freshReadme);
       console.log(`docs facts: wrote ${readmePath}`);

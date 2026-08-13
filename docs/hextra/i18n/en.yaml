@@ -1,0 +1,3 @@
+# Overrides the theme's own strings. Hugo merges this over the theme's i18n,
+# so only the lines that differ belong here.
+copyright: "© 2026 NSM Technologies Limited"

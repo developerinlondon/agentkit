@@ -1,0 +1,34 @@
+{{- /*
+  Replaces Hextra's three-option dropdown with a single-click light/dark
+  toggle, and carries the version picker beside it.
+
+  The picker rides here because the theme offers no other navbar extension
+  point, and overriding navbar.html wholesale would mean re-merging it on every
+  theme upgrade. Params from the theme's call sites are accepted and ignored.
+*/ -}}
+{{- $iconHeight := .iconHeight | default 14 -}}
+{{- $versions := site.Data.versions -}}
+
+<div class="ak-navbar-controls">
+  {{- if gt (len $versions) 1 -}}
+  {{- /* The current docs are wherever this build is served from, so its option
+         follows the baseURL; an archive is always at its own published path. */ -}}
+  <select class="ak-version-picker" aria-label="Documentation version">
+    {{- range $versions }}
+    {{- $href := cond .current site.BaseURL (printf "/docs/%s/" .slug) }}
+    <option value="{{ $href }}"{{ if .current }} selected{{ end }}>{{ .label }}</option>
+    {{- end }}
+  </select>
+  {{- end -}}
+
+  <button
+    class="ak-theme-toggle"
+    type="button"
+    title="{{ (T "changeTheme") | default "Change theme" }}"
+    aria-label="{{ (T "changeTheme") | default "Change theme" }}"
+    data-theme="light"
+  >
+    {{- partial "utils/icon.html" (dict "name" "sun" "attributes" (printf `height=%d class="ak-ico ak-sun"` $iconHeight)) -}}
+    {{- partial "utils/icon.html" (dict "name" "moon" "attributes" (printf `height=%d class="ak-ico ak-moon"` $iconHeight)) -}}
+  </button>
+</div>

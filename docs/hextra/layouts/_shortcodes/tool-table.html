@@ -1,0 +1,14 @@
+{{- $facts := hugo.Data.agentkit -}}
+<div class="hx:overflow-x-auto">
+<table>
+  <thead><tr><th>Executable</th><th>Hosts</th></tr></thead>
+  <tbody>
+  {{- range $facts.toolDetails }}
+    <tr>
+      <td><code>{{ .name }}</code></td>
+      <td>{{ if in .platforms "portable" }}every platform{{ else }}{{ delimit .platforms ", " }} only — removed elsewhere{{ end }}</td>
+    </tr>
+  {{- end }}
+  </tbody>
+</table>
+</div>

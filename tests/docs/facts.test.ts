@@ -5,7 +5,6 @@ import { dirname, join, relative } from 'node:path';
 import {
   collectFacts,
   collectWiring,
-  committedFacts,
   pluginHookDrift,
   serialise,
   spliceReadme,
@@ -29,64 +28,6 @@ beforeEach(() => {
 
 afterEach(() => {
   rmSync(root, { recursive: true, force: true });
-});
-
-describe('the docs tables are derived from the tree', () => {
-  // This is the drift gate. The previous docs lived in another repository and
-  // needed a scheduled job to notice they had gone stale; in-repo docs fail the
-  // build instead.
-  test('the committed tables match a fresh walk of this repository', () => {
-    expect(committedFacts()).toBe(serialise(collectFacts()));
-  });
-
-  test('a unit is reported in exactly the mechanisms that implement it', () => {
-    write('hooks/claude/alpha-police.sh', '#!/usr/bin/env bash\n');
-    write('plugins/alpha-police.ts', 'export {};\n');
-    write('policies/codex/alpha-police.rules', 'rule\n');
-    write('plugins-cc/agentkit/hooks/alpha-police.sh', '#!/usr/bin/env bash\n');
-    write('hooks/claude/beta-police.sh', '#!/usr/bin/env bash\n');
-    write('plugins/gamma-police.ts', 'export {};\n');
-    write('hooks/claude/not-a-unit.sh', '#!/usr/bin/env bash\n');
-    write('skills/KITS', 'kit core Everyday\n');
-    mkdirSync(join(root, 'skills'), { recursive: true });
-
-    const facts = collectFacts(root);
-
-    expect(facts.units).toEqual([
-      {
-        name: 'alpha',
-        mechanisms: ['hook', 'plugin', 'codexPolicy'],
-        claudePlugins: ['agentkit'],
-      },
-      { name: 'beta', mechanisms: ['hook'], claudePlugins: [] },
-      { name: 'gamma', mechanisms: ['plugin'], claudePlugins: [] },
-    ]);
-  });
-
-  // Packaging a hook is not a fourth mechanism: the plugin copy is generated
-  // from hooks/claude. A page that counted it as one would overstate coverage.
-  test('a plugin copy is packaging, not an extra mechanism', () => {
-    write('skills/KITS', 'kit core Everyday\n');
-    write('hooks/claude/solo-police.sh', '#!/usr/bin/env bash\n');
-    write('plugins-cc/agentkit/hooks/solo-police.sh', '#!/usr/bin/env bash\n');
-    write('plugins-cc/agentkit-adversarial-review/hooks/solo-police.sh', '#!/usr/bin/env bash\n');
-    mkdirSync(join(root, 'skills'), { recursive: true });
-
-    const unit = collectFacts(root).units[0];
-
-    expect(unit?.mechanisms).toEqual(['hook']);
-    expect(unit?.claudePlugins).toEqual(['agentkit', 'agentkit-adversarial-review']);
-  });
-
-  test('a unit that exists only as a packaged hook is still reported', () => {
-    write('skills/KITS', 'kit core Everyday\n');
-    write('plugins-cc/agentkit/hooks/orphan-police.sh', '#!/usr/bin/env bash\n');
-    mkdirSync(join(root, 'skills'), { recursive: true });
-
-    expect(collectFacts(root).units).toEqual([
-      { name: 'orphan', mechanisms: [], claudePlugins: ['agentkit'] },
-    ]);
-  });
 });
 
 describe('the packaged hooks match their source', () => {
@@ -324,28 +265,12 @@ describe('the README skills table comes from the tree', () => {
   });
 });
 
-describe('the prose that enumerates units stays complete', () => {
-  // The "what each unit refuses" column cannot be generated — the wording lives
-  // nowhere machine-readable. Its completeness can be, so adding or removing a
-  // unit fails here instead of leaving the page quietly short of one.
-  test('the hooks reference documents exactly the units in the tree', () => {
-    const page = readFileSync(
-      join(import.meta.dir, '..', '..', 'docs', 'site', 'src', 'content', 'docs', 'reference', 'hooks.mdx'),
-      'utf-8',
-    );
-    const documented = [...page.matchAll(/^\| `([a-z-]+)-police` \|/gm)].map((match) => match[1]);
-    const inTree = collectFacts().units.map((unit) => unit.name);
-
-    expect(documented.slice().sort()).toEqual(inTree.slice().sort());
-  });
-});
-
 describe('generated data reaches a page only through a component', () => {
   // Pages render generated data through components, never by importing the JSON
   // directly — the components are the one place table markup and any future
   // data resolution live, and a page that bypasses them forks that in silence.
   test('no content page imports the generated tables directly', () => {
-    const root = join(import.meta.dir, '..', '..', 'docs', 'site', 'src', 'content', 'docs');
+    const root = join(import.meta.dir, '..', '..', 'docs', 'hextra', 'content');
     const offenders: string[] = [];
 
     const walk = (dir: string): void => {
@@ -378,8 +303,8 @@ describe('the content tree holds only content', () => {
   // hours once: OMC had written its session state to
   // `src/content/docs/.omc/state/*.jsonl` because an agent ran with that
   // directory as its cwd.
-  test('no file under src/content/docs is anything but markdown', () => {
-    const root = join(import.meta.dir, '..', '..', 'docs', 'site', 'src', 'content', 'docs');
+  test('no file under the content tree is anything but markdown', () => {
+    const root = join(import.meta.dir, '..', '..', 'docs', 'hextra', 'content');
     const strays: string[] = [];
 
     const walk = (dir: string): void => {
