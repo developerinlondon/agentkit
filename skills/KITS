@@ -18,6 +18,7 @@ kit core Enforcement, planning, and workflow skills for everyday use
 kit brain What the agent knows and how it works: memory (a learning vault) plus taste (conventions)
 kit product Product-model skills: evidence-backed briefs and product review
 kit clickup ClickUp task and sprint lifecycle for teams that track work in ClickUp
+kit workspace Day-to-day admin across a self-hosted workspace: Huly work-item lifecycle plus where diagrams live and how they stay current
 kit adversarial-review Adversarial review: independent refutation lane + evidence records + hard merge gate (explicit opt-in)
 kit advisory-review Advisory review: one non-authoring reviewer pass per substantive change, as an always-loaded instruction (explicit opt-in)
 explicit adversarial-review
@@ -26,6 +27,8 @@ explicit advisory-review
 product-intelligence product
 product-review product
 clickup-task-lifecycle clickup
+huly-work-item-lifecycle workspace
+workspace-diagrams workspace
 adversarial-review adversarial-review
 reflect brain
 meditate brain

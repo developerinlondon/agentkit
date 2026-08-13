@@ -80,6 +80,7 @@ Any of them aborts the run before a file is touched.
 {{< tab name="memory" >}}{{< skill-table kit="memory" >}}{{< /tab >}}
 {{< tab name="product" >}}{{< skill-table kit="product" >}}{{< /tab >}}
 {{< tab name="clickup" >}}{{< skill-table kit="clickup" >}}{{< /tab >}}
+{{< tab name="workspace" >}}{{< skill-table kit="workspace" >}}{{< /tab >}}
 {{< tab name="adversarial-review" >}}
 {{< skill-table kit="adversarial-review" >}}
 

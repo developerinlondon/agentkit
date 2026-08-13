@@ -9,6 +9,13 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+- feat(skills): **`huly-work-item-lifecycle` and `workspace-diagrams`, in a new opt-in `workspace`
+  kit.** The admin kit: work runs against a Huly issue whose status is current on every touch and
+  which closes with a verification note, and diagrams live as one board per subject in a dashboard
+  collection, referenced by URL and exported as snapshots rather than copied. Neither ships in a
+  default install (`--with workspace`, or `kits/workspace`), and both gate on repo-local git config
+  — `agentkit.huly.project` and `agentkit.excalidash.collection` — so they stay inert everywhere the
+  operator has not opted the repository in.
 - fix(brain): **the sync override is `AGENTKIT_TARGET_PRIVATE`, not `AGENTKIT_TASTE_TARGET_PRIVATE`.**
   The guard serves memory sources too now, so a refusal about a knowledgebase named a variable with
   taste in it. Pre-1.0 rename with no dual reading: the old name is not consulted.

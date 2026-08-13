@@ -48,6 +48,12 @@
       "version": "0.3.1"
     },
     {
+      "name": "agentkit-workspace",
+      "source": "./plugins-cc/agentkit-workspace",
+      "description": "Day-to-day admin across a self-hosted workspace: Huly work-item lifecycle plus where diagrams live and how they stay current",
+      "version": "0.3.1"
+    },
+    {
       "name": "agentkit-adversarial-review",
       "source": "./plugins-cc/agentkit-adversarial-review",
       "description": "Adversarial review: independent refutation lane + evidence records + hard merge gate (explicit opt-in)",

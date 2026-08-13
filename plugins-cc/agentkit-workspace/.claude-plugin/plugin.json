@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin.json",
+  "name": "agentkit-workspace",
+  "version": "0.3.1",
+  "description": "Day-to-day admin across a self-hosted workspace: Huly work-item lifecycle plus where diagrams live and how they stay current",
+  "author": {
+    "name": "developerinlondon",
+    "url": "https://github.com/developerinlondon"
+  },
+  "skills": "./skills/"
+}
