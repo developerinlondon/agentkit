@@ -49,7 +49,7 @@ The consequence is uncomfortable and load-bearing: **a `PreToolUse` hook that cr
 decision, and no decision means allow.** A guard that dies on its first line is not merely broken;
 it is silently off while appearing installed. That has happened in this kit — a hardcoded absolute
 path that did not exist on one platform killed a hook immediately, and the harness reported only a
-non-blocking status code. [Verify it took](/docs/guide/start/verify/) is the routine that catches it.
+non-blocking status code. [Verify the install](/docs/guide/start/verify/) is the routine that catches it.
 {{< /callout >}}
 
 ### Why the write hooks exit 2

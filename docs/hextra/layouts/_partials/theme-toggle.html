@@ -10,15 +10,20 @@
 {{- $versions := site.Data.versions -}}
 
 <div class="ak-navbar-controls">
+  {{- /* Which version you are reading is worth saying even when there is
+         nothing to switch to, so a lone version renders as a label rather than
+         a dropdown with one dead option. The current docs are wherever this
+         build is served from, so it follows the baseURL; an archive is always
+         at its own published path. */ -}}
   {{- if gt (len $versions) 1 -}}
-  {{- /* The current docs are wherever this build is served from, so its option
-         follows the baseURL; an archive is always at its own published path. */ -}}
   <select class="ak-version-picker" aria-label="Documentation version">
     {{- range $versions }}
     {{- $href := cond .current site.BaseURL (printf "/docs/%s/" .slug) }}
     <option value="{{ $href }}"{{ if .current }} selected{{ end }}>{{ .label }}</option>
     {{- end }}
   </select>
+  {{- else if $versions -}}
+  <span class="ak-version-label">{{ (index $versions 0).label }}</span>
   {{- end -}}
 
   <button

@@ -75,7 +75,7 @@ open" — it is **never fail silent**.
 {{< callout type="warning" >}}
 A `PreToolUse` hook that crashes emits no decision, and **no decision means allow**. That is the
 harness contract, not an agentkit choice. It is why `review-police` runs behind a supervisor, and why
-[verify it took](/docs/guide/start/verify/) drives a hook by hand rather than trusting a file listing.
+[verify the install](/docs/guide/start/verify/) drives a hook by hand rather than trusting a file listing.
 {{< /callout >}}
 
 ## What the merge gate proves

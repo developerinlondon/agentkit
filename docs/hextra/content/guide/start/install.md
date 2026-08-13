@@ -145,4 +145,4 @@ Environment inputs, rather than flags, are listed in the
 ## Then prove it took
 
 A file listing tells you files were copied. It does not tell you the behaviour changed, which is the
-entire product. Go to [verify it took](/docs/guide/start/verify/) next.
+entire product. Go to [verify the install](/docs/guide/start/verify/) next.

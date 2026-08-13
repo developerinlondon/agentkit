@@ -39,8 +39,8 @@ flowchart LR
 Each surface trades reach for force. What arrives everywhere can only advise; what cannot be
 skipped acts at exactly one point.
 
-| Surface  | Reach                            | Ignored on a Friday evening, the result is  |
-| -------- | -------------------------------- | ------------------------------------------- |
+| Surface   | Reach                            | Ignored on a Friday evening, the result is |
+| --------- | -------------------------------- | ------------------------------------------ |
 | **Skill** | loaded on demand, agent's choice | the work is worse                          |
 | **Rule**  | always-on context, glob-tagged   | bad habits land, and show up in review     |
 | **Hook**  | refuses at the tool call         | nothing — ignoring it is not possible      |
@@ -85,7 +85,7 @@ A guard you wrongly believe in is worse than no guard, because you stop watching
 - Codex policies match literal argv prefixes rather than parsing shell payloads, so work delegated
   through an API or a socket is outside their reach.
 - The review record lives in the repository and the agent can write it. The gate makes the honest
-  path correct and a *stale* review mechanically impossible to merge past; forge-side required
+  path correct and a _stale_ review mechanically impossible to merge past; forge-side required
   approvals are what actually prevent a merge.
 - Containment deliberately excludes delegated workloads — `docker`, `podman`, `systemd-run`, `ssh` —
   because the child work can escape the cgroup.
@@ -93,8 +93,8 @@ A guard you wrongly believe in is worse than no guard, because you stop watching
 ## Start here
 
 {{< cards >}}
-  {{< card link="/docs/guide/start/install/" title="Install" subtitle="Get it onto a machine, pick a door, and choose your kits." >}}
-  {{< card link="/docs/guide/start/verify/" title="Verify it took" subtitle="Prove the enforcement is live rather than trusting a file listing." >}}
-  {{< card link="/docs/guide/thinking/" title="Thinking in agentkit" subtitle="When discipline should be a skill, a rule, a hook or a tool." >}}
-  {{< card link="/docs/cookbook/" title="Cookbook" subtitle="Copyable shapes for the workflows people actually run." >}}
+{{< card link="/docs/guide/start/install/" title="Install" subtitle="Get it onto a machine, pick a door, and choose your kits." >}}
+{{< card link="/docs/guide/start/verify/" title="Verify the install" subtitle="Prove the enforcement is live rather than trusting a file listing." >}}
+{{< card link="/docs/guide/thinking/" title="Thinking in agentkit" subtitle="When discipline should be a skill, a rule, a hook or a tool." >}}
+{{< card link="/docs/cookbook/" title="Cookbook" subtitle="Copyable shapes for the workflows people actually run." >}}
 {{< /cards >}}

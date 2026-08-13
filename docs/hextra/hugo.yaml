@@ -71,6 +71,10 @@ params:
   navbar:
     displayTitle: true
     displayLogo: false
+    # Without this the wordmark links to the docs home, which is where the
+    # reader already is; they expect it to leave for the site.
+    logo:
+      link: https://agentkit.sbs/
 
   theme:
     default: system

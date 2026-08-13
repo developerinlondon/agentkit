@@ -48,7 +48,8 @@ echo "deploy: uploaded $uploaded file(s)"
 # and what keeps that copy readable after the next release replaces /docs/.
 # Add the version to data/archives.json in the release commit so the picker
 # starts offering it.
-version="${AGENTKIT_DOCS_VERSION#v}"
+version="${AGENTKIT_DOCS_VERSION:-}"
+version="${version#v}"
 if [[ -n "$version" ]]; then
 	while IFS= read -r file; do
 		curl -sS --fail-with-body -X PUT --config "$auth" --data-binary "@$file" \

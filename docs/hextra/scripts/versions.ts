@@ -82,10 +82,9 @@ if (import.meta.main) {
     process.exit(1);
   }
   writeFileSync(join(dataDir, 'versions.json'), `${JSON.stringify(versions, null, 2)}\n`);
-  writeFileSync(
-    join(here, '..', 'archives.txt'),
-    `${versions.slice(1).map((v) => v.slug).join('\n')}\n`,
-  );
+  // Every published tree, not just the ones the picker offers: a version the
+  // list stops showing is still a URL someone may hold.
+  writeFileSync(join(here, '..', 'archives.txt'), `${published.join('\n')}\n`);
   console.log(
     `versions: current ${current}, archives ${versions.slice(1).map((v) => v.slug).join(', ') || '(none)'}`,
   );
