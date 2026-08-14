@@ -272,6 +272,11 @@
       "explicit": false
     },
     {
+      "id": "marketing",
+      "description": "Marketing skills: write what the company publishes, against a brief and in a voice a draft can fail",
+      "explicit": false
+    },
+    {
       "id": "product",
       "description": "Product-model skills: evidence-backed briefs and product review",
       "explicit": false
@@ -312,6 +317,12 @@
       "kit": "core",
       "explicit": false,
       "description": "Code quality standards: warnings-as-errors, no underscore prefixes for unused vars, mandatory test coverage. Apply to any TypeScript, JavaScript, Rust, or Python project. Triggers: code review, linting, writing new functions, refactoring."
+    },
+    {
+      "name": "content-creator",
+      "kit": "marketing",
+      "explicit": false,
+      "description": "Write what a company publishes — posts, emails, long-form, landing copy — in that company's voice, against a brief rather than a topic. Enforces the brief-to-draft contract: seven fields before writing starts, a draft package returned against them, and an acceptance check that stops at the first failure. Derives a brand voice from real samples into testable rules and runs a pass/fail check before submission, never after review. Refuses to draft from a topic, to invent a statistic, testimonial or customer quote, and to derive a voice from adjectives. Triggers: write a post/email/newsletter/landing page/announcement, draft copy, \"in our voice\", brand voice guide, content brief, repurpose this into a thread, review a draft for voice."
     },
     {
       "name": "designer",
@@ -573,9 +584,9 @@
   ],
   "counts": {
     "units": 15,
-    "skills": 26,
+    "skills": 27,
     "coreSkills": 16,
-    "kits": 7,
+    "kits": 8,
     "tools": 7,
     "rules": 5,
     "instructions": 6,

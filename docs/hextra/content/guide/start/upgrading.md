@@ -36,10 +36,10 @@ Observed on a second bare `--global` over the same install: exit 0, **29** `Upda
 `--without <kit>` drops a kit from the selection and remembered set, then removes that kit's managed
 artifacts:
 
-| Kit                                         | `install.sh --global --without <kit>`                                    |
-| ------------------------------------------- | ------------------------------------------------------------------------ |
-| `adversarial-review`, `advisory-review`     | removes managed instructions, skills, hooks, tools, prompts, and plugins |
-| `memory`, `product`, `clickup`, `workspace` | removes managed skills, hooks, settings entries, prompts, and plugins    |
+| Kit                                                     | `install.sh --global --without <kit>`                                    |
+| ------------------------------------------------------- | ------------------------------------------------------------------------ |
+| `adversarial-review`, `advisory-review`                 | removes managed instructions, skills, hooks, tools, prompts, and plugins |
+| `brain`, `product`, `clickup`, `workspace`, `marketing` | removes managed skills, hooks, settings entries, prompts, and plugins    |
 
 Real directories and plugins that agentkit does not own remain untouched. A real directory using the
 same name as an agentkit skill is **reported instead of deleted** — that is your own fork of a skill.

@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin.json",
+  "name": "agentkit-marketing",
+  "version": "0.3.1",
+  "description": "Marketing skills: write what the company publishes, against a brief and in a voice a draft can fail",
+  "author": {
+    "name": "developerinlondon",
+    "url": "https://github.com/developerinlondon"
+  },
+  "skills": "./skills/"
+}
