@@ -209,6 +209,40 @@ describe('skill kit selection', () => {
     expect(skillsInKit(manifest, repoRoot, 'core')).not.toContain('workspace-diagrams');
   });
 
+  test('the marketing kit stays out of a default install and lands with --with', () => {
+    const home = mkdtempSync(join(tmpdir(), 'agentkit-kits-'));
+
+    try {
+      expect(install(home).status).toBe(0);
+      expect(existsSync(canonSkill(home, 'content-creator')), 'withheld by default').toBe(false);
+
+      expect(install(home, ['--with', 'marketing']).status).toBe(0);
+      expect(existsSync(join(canonSkill(home, 'content-creator'), 'SKILL.md'))).toBe(true);
+      // The references carry the procedures SKILL.md defers to. Installing the
+      // entry point without them leaves the skill citing files that are not there.
+      expect(
+        existsSync(join(canonSkill(home, 'content-creator'), 'references', 'voice-guide.md')),
+        'voice-guide reference installed',
+      ).toBe(true);
+      expect(
+        existsSync(join(canonSkill(home, 'content-creator'), 'references', 'repurposing.md')),
+        'repurposing reference installed',
+      ).toBe(true);
+    } finally {
+      rmSync(home, { force: true, recursive: true });
+    }
+  }, globalInstallTimeoutMs * 2);
+
+  test('content-creator is recorded in the marketing kit, not in core', () => {
+    const manifest = readSkillKits(repoRoot);
+    const marketing = manifest.kits.find((kit) => kit.id === 'marketing');
+
+    expect(marketing, 'marketing kit declared').toBeDefined();
+    expect(marketing?.explicit, 'marketing is opt-in, not consent-gated').toBe(false);
+    expect(skillsInKit(manifest, repoRoot, 'marketing').sort()).toEqual(['content-creator']);
+    expect(skillsInKit(manifest, repoRoot, 'core')).not.toContain('content-creator');
+  });
+
   test('a literal --with installs an explicit kit; deselecting it removes the skills', () => {
     const home = mkdtempSync(join(tmpdir(), 'agentkit-kits-'));
 

@@ -9,6 +9,13 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+- feat(skills): **a `marketing` kit, with `content-creator` as its first skill.** AgentKit had no
+  skill for the person who writes what a company publishes — `documentation` covers docs,
+  `designer` covers pages, and neither governs a draft. The skill enforces the brief-to-draft
+  contract: seven fields before writing starts, a five-part draft package returned against them,
+  and an acceptance check that stops at the first failure. A brand voice is derived from real
+  samples into at most twelve testable rules, because a guide a draft cannot fail is a mood board.
+  Opt-in, not `explicit`: `--with marketing`, never in `core`.
 - feat(skills): **`huly-work-item-lifecycle` and `workspace-diagrams`, in a new opt-in `workspace`
   kit.** The admin kit: work runs against a Huly issue whose status is current on every touch and
   which closes with a verification note, and diagrams live as one board per subject in a dashboard

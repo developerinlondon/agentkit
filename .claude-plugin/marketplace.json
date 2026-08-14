@@ -54,6 +54,12 @@
       "version": "0.3.1"
     },
     {
+      "name": "agentkit-marketing",
+      "source": "./plugins-cc/agentkit-marketing",
+      "description": "Marketing skills: write what the company publishes, against a brief and in a voice a draft can fail",
+      "version": "0.3.1"
+    },
+    {
       "name": "agentkit-adversarial-review",
       "source": "./plugins-cc/agentkit-adversarial-review",
       "description": "Adversarial review: independent refutation lane + evidence records + hard merge gate (explicit opt-in)",
