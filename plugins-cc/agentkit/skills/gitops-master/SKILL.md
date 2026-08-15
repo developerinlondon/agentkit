@@ -829,3 +829,23 @@ platform (Kargo-controlled)
 services (Kargo-controlled)
        Application services
 ```
+
+## RELEASE-MR TRAINS (auto-opened deploy MRs)
+
+Many pipelines open a release/deploy MR in a GitOps repo for every merge to the app repo's
+default branch. Two rules keep that from wasting hours or deploying the wrong thing:
+
+**1. Batch, don't run one train per merge.** Each deploy train costs its full pipeline + sync
+latency regardless of change size, and only the newest release is ever the one deployed. Land
+related MRs back-to-back, close the superseded release MRs, merge only the newest. Reserve
+deploy-per-merge for serial live debugging, where each fix's effect is only observable once
+deployed.
+
+**2. "Newest open release MR" is not "newest release."** The pipeline that opens the release
+MR may still be running when you look, so picking the newest OPEN one races it — you deploy
+the second-newest and report success. Before merging a release MR, confirm it pins the app
+repo's default-branch HEAD (or its build), not merely the top of the open list.
+
+Failure modes both observed in production, same week: an eight-deep queue of unmerged release
+MRs left an environment running a week-old build while everyone believed deploys were
+happening; and a batch's "latest" release MR was merged one release short, silently.
