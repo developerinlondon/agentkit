@@ -326,7 +326,7 @@ describe('installer skill-kit wizard', () => {
       );
       expect(first.stdout).toContain('[kits]   Install product? [y/N]');
       expect(first.stdout).toContain(
-        '[kits]   brain: What the agent knows and how it works: memory (a learning vault) plus taste (conventions)',
+        '[kits]   brain: A learning vault: what the agent knows, written down and injected back',
       );
       expect(first.stdout).toContain('[kits]   Install brain? [y/N]');
       expect(first.stdout).toContain('Skill kits:    core brain product');
@@ -338,7 +338,6 @@ describe('installer skill-kit wizard', () => {
           'reflect',
           'meditate',
           'ruminate',
-          'taste',
         ]
       ) {
         expect(existsSync(join(canonSkill(home, name), 'SKILL.md')), `${name} installed`).toBe(true);

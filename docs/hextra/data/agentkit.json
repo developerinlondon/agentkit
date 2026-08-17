@@ -134,7 +134,7 @@
         "plugin"
       ],
       "claudePlugins": [
-        "agentkit-brain"
+        "agentkit"
       ]
     },
     {
@@ -258,7 +258,7 @@
     },
     {
       "id": "brain",
-      "description": "What the agent knows and how it works: memory (a learning vault) plus taste (conventions)",
+      "description": "A learning vault: what the agent knows, written down and injected back",
       "explicit": false
     },
     {
@@ -268,7 +268,7 @@
     },
     {
       "id": "core",
-      "description": "Enforcement, planning, and workflow skills for everyday use",
+      "description": "Enforcement, planning, and workflow skills for everyday use, plus taste — the conventions this owner states once",
       "explicit": false
     },
     {
@@ -293,6 +293,12 @@
       "kit": "adversarial-review",
       "explicit": true,
       "description": "Falsify a proposed plan or implementation with independent traces, concrete failing inputs, claims verification, scope re-derivation, and lifecycle analysis. Use for non-trivial code review, plan refutation, security or reliability changes, bug fixes, merge-gate evidence, and any request to adversarially review or prove a change wrong."
+    },
+    {
+      "name": "agentauthz",
+      "kit": "core",
+      "explicit": false,
+      "description": "Administer an agentauthz host over its MCP tools (authz_describe, authz_check, authz_grant, authz_grants, authz_revoke, authz_policies, authz_audit_query): read the descriptor before touching vocabulary, grant curated policies bounded down, probe-check both directions after every change, verify in the audit trail. Triggers: granting or revoking access, authoring or validating authz policy, \"why was this denied\", bounds, condition keys, agentauthz, authz MCP tools."
     },
     {
       "name": "architect",
@@ -422,7 +428,7 @@
     },
     {
       "name": "taste",
-      "kit": "brain",
+      "kit": "core",
       "explicit": false,
       "description": "Load and maintain tastes — one small markdown file per convention, committed to the repository it governs or kept in your home directory, telling every harness how this owner wants work done. Load them before acting, re-read a `check` taste immediately before an action it covers, and capture a correction as a taste instead of losing it. Triggers: \"from now on\", \"always/never do X\", \"that is not how I want it\", any correction that is a preference rather than a bug, and any question about where a convention lives or why an agent behaves a certain way."
     },
@@ -584,8 +590,8 @@
   ],
   "counts": {
     "units": 15,
-    "skills": 27,
-    "coreSkills": 16,
+    "skills": 28,
+    "coreSkills": 18,
     "kits": 8,
     "tools": 7,
     "rules": 5,

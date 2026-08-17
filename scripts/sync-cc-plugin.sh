@@ -30,7 +30,7 @@ review_hook_script() {
 }
 brain_hook_script() {
 	case "$(basename "$1")" in
-	memory-inject.sh | memory-index.sh | taste-police.sh) return 0 ;;
+	memory-inject.sh | memory-index.sh) return 0 ;;
 	esac
 	return 1
 }
@@ -45,6 +45,20 @@ for hook in "$REPO_DIR"/hooks/claude/*.sh; do
 	else
 		cp "$hook" "$PLUGIN_DIR/hooks/$(basename "$hook")"
 	fi
+done
+# A hook that changed kit must LEAVE its old plugin. The copy arms above only
+# evict from core, so a script promoted out of an opt-in kit would otherwise stay
+# behind as an unwired file the kit still ships.
+for kit_hooks in "$REVIEW_PLUGIN_DIR/hooks" "$BRAIN_PLUGIN_DIR/hooks"; do
+	for stale in "$kit_hooks"/*.sh; do
+		[[ -e "$stale" ]] || continue
+		case "$kit_hooks" in
+		"$REVIEW_PLUGIN_DIR/hooks") review_hook_script "$stale" && continue ;;
+		"$BRAIN_PLUGIN_DIR/hooks") brain_hook_script "$stale" && continue ;;
+		esac
+		rm -f "$stale"
+		echo "[sync] pruned $(basename "$stale") from ${kit_hooks#"$REPO_DIR/"} — no longer that kit's"
+	done
 done
 echo "[sync] hooks/claude/*.sh -> plugins-cc/{agentkit,agentkit-adversarial-review,agentkit-brain}/hooks/"
 

@@ -14,8 +14,8 @@
 # the TypeScript reader trims and tolerates it — they only agree on LF.
 # Adding a kit is a `kit` line plus its membership lines — nothing else.
 
-kit core Enforcement, planning, and workflow skills for everyday use
-kit brain What the agent knows and how it works: memory (a learning vault) plus taste (conventions)
+kit core Enforcement, planning, and workflow skills for everyday use, plus taste — the conventions this owner states once
+kit brain A learning vault: what the agent knows, written down and injected back
 kit product Product-model skills: evidence-backed briefs and product review
 kit clickup ClickUp task and sprint lifecycle for teams that track work in ClickUp
 kit workspace Day-to-day admin across a self-hosted workspace: Huly work-item lifecycle plus where diagrams live and how they stay current
@@ -35,4 +35,3 @@ adversarial-review adversarial-review
 reflect brain
 meditate brain
 ruminate brain
-taste brain

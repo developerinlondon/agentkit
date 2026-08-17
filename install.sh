@@ -17,7 +17,8 @@ Options:
   --with <kit>         Also install an opt-in skill kit (repeatable). Kits
                        are declared in skills/KITS; every unlisted skill is
                        in the always-installed `core` kit.
-                         --with brain            memory vault + tastes: reflect, meditate, ruminate, taste
+                         --with brain            memory vault: reflect, meditate, ruminate
+                                                 (taste is core — it installs unasked)
                          --with product          product-intelligence, product-review
                          --with advisory-review  asks for a reviewer pass
                          --with adversarial-review    adversarial-review + merge gate
@@ -94,7 +95,7 @@ Examples:
   ./install.sh ~/code/my-project      # Install into specific project
   ./install.sh --global --uninstall   # Remove the global install
   ./install.sh --uninstall ~/code/my-project   # Remove a project install
-  ./install.sh --global --without brain        # Keep everything but the brain kit
+  ./install.sh --global --without brain        # Keep everything but the memory vault
 USAGE
 	exit "${1:-1}"
 }
@@ -995,7 +996,7 @@ install_opencode_plugins() {
 hook_kit() {
 	case "$1" in
 	review-police.sh | fail-closed-hook.sh) printf 'adversarial-review' ;;
-	memory-inject.sh | memory-index.sh | taste-police.sh) printf 'brain' ;;
+	memory-inject.sh | memory-index.sh) printf 'brain' ;;
 	*) printf 'core' ;;
 	esac
 }

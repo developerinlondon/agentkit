@@ -101,6 +101,7 @@ const PRE_TOOL_USE_HOOKS = [
   'pages-police.sh',
   'mr-police.sh',
   'resource-police.sh',
+  'taste-police.sh',
 ];
 // Not a Bash gate: it judges the content an Edit or Write is about to land.
 const PRE_TOOL_USE_WRITE_HOOKS = ['plan-police.sh'];
@@ -108,9 +109,10 @@ const POST_TOOL_USE_HOOKS = ['format-police.sh', 'coding-police.sh', 'comment-po
 const ALL_POLICE_HOOKS = [...PRE_TOOL_USE_HOOKS, ...PRE_TOOL_USE_WRITE_HOOKS, ...POST_TOOL_USE_HOOKS];
 // The merge gate is consent-gated: it ships in agentkit-adversarial-review, never in core.
 const REVIEW_HOOKS = ['fail-closed-hook.sh', 'review-police.sh'];
-// taste-police ships with the brain kit now, not core: the taste skill moved
-// into that kit, and its enforcement hook follows the skill it enforces.
-const BRAIN_HOOKS = ['memory-index.sh', 'memory-inject.sh', 'taste-police.sh'];
+// The vault is the opt-in half of brain. taste-police is core with the taste
+// skill: it carries no rules of its own, so it refuses nothing until the owner
+// writes a taste at enforce: block.
+const BRAIN_HOOKS = ['memory-index.sh', 'memory-inject.sh'];
 
 function readJson(...parts: string[]): any {
   return JSON.parse(readFileSync(join(pluginDir, ...parts), 'utf-8'));

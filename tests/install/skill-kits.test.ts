@@ -61,6 +61,14 @@ describe('skill kit selection', () => {
       expect(result.status, result.stderr).toBe(0);
 
       expect(existsSync(join(canonSkill(home, 'code-quality'), 'SKILL.md'))).toBe(true);
+      // taste is core: an owner who asked for no kits still has somewhere to
+      // state a convention, and every client sees it.
+      expect(existsSync(join(canonSkill(home, 'taste'), 'SKILL.md'))).toBe(true);
+      expect(existsSync(join(home, '.claude', 'skills', 'taste'))).toBe(true);
+      expect(existsSync(join(home, '.claude', 'hooks', 'taste-police.sh'))).toBe(true);
+      for (const name of ['reflect', 'meditate', 'ruminate']) {
+        expect(existsSync(canonSkill(home, name)), `${name} is the opt-in vault half`).toBe(false);
+      }
       for (const name of ['product-intelligence', 'product-review']) {
         expect(existsSync(canonSkill(home, name)), `${name} must not install by default`).toBe(
           false,
