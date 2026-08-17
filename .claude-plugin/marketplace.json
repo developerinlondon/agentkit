@@ -32,7 +32,7 @@
     {
       "name": "agentkit-brain",
       "source": "./plugins-cc/agentkit-brain",
-      "description": "What the agent knows and how it works: memory (a learning vault) plus taste (conventions)",
+      "description": "A learning vault: what the agent knows, written down and injected back",
       "version": "0.3.1"
     },
     {

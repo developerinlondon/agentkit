@@ -150,9 +150,14 @@ it from a hex digest or a UTF-8 label, and a wrong "tracked" loses the gap silen
 
 ## `brain`
 
-Ships in the `brain` kit (`--with brain`). Two units under one banner: **memory** is what is true
-(additive — every note listed), **taste** is what to do (replacement — a higher scope wins a name
-outright). They share a scope ladder and one source resolver, never a store.
+Two units under one banner: **memory** is what is true (additive — every note listed), **taste** is
+what to do (replacement — a higher scope wins a name outright). They share a scope ladder and one
+source resolver, never a store.
+
+The banner is not the install boundary. **Taste ships with core** — the reader must be present
+everywhere or a stated convention binds only the machines that opted in, and `taste-police` carries
+no rules of its own, so it refuses nothing until a taste says `enforce: block`. The **memory vault**
+is opt-in (`--with brain`): it injects context at every session start and writes into your tree.
 
 | Key               | Type | Default |
 | ----------------- | ---- | ------- |

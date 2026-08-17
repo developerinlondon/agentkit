@@ -9,6 +9,18 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+- feat(taste): **taste installs with `core`; the `brain` kit is the memory vault.** A convention the
+  owner states once bound only the machines that had remembered `--with brain`: 14 taste files sat on
+  the author's own machine for eleven days, read by nothing, with no signal that the reader was
+  absent — and a plugin-only host that loads `plugins-cc/agentkit` was taste-blind by construction.
+  Core gains no default behaviour from the move: `taste-police` carries no rules of its own and exits
+  before doing anything when the tastes tree is empty, so it refuses nothing until a taste says
+  `enforce: block`. The `brain` config banner, the scope ladder, the shared source resolver, and the
+  separate stores are all unchanged — this is the install boundary, not the design. The vault half
+  stays opt-in because it injects context at every session start and writes into your tree.
+- fix(sync): **a hook that changes kit leaves its old plugin.** `sync-cc-plugin.sh` evicted a script
+  from core when it joined a kit, but never from a kit plugin when it left one — so a promoted hook
+  stayed behind as a file the kit still shipped and no longer wired.
 - feat(skills): **a `marketing` kit, with `content-creator` as its first skill.** AgentKit had no
   skill for the person who writes what a company publishes — `documentation` covers docs,
   `designer` covers pages, and neither governs a draft. The skill enforces the brief-to-draft

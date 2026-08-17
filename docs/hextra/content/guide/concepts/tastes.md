@@ -6,6 +6,9 @@ weight: 3
 A police unit encodes discipline that is true for everyone. A **taste** encodes a preference that is
 true for _you_ — one convention, in one file, that outlives the session it was stated in.
 
+Installed with core, on every machine and in the Claude Code plugin — no kit flag. A convention you
+stated once should not bind only the machines that remembered to ask for it.
+
 The mechanism is the interesting part: `taste-police` carries **no rules of its own**. It reads your
 taste files, tests each one's `rule.match` against the command in process, and refuses with that
 taste's own `remedy` and its own named `override`. Blocking a new preference is a file, never a

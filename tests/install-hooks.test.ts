@@ -153,7 +153,7 @@ describe('Claude Code and Codex hook wiring', () => {
       expect(commandNames(settings.hooks.PreToolUse[1].hooks)).toEqual(['plan-police.sh']);
       expect(commandNames(settings.hooks.PreToolUse[0].hooks)).toEqual(
         commandNames(canonical.hooks.PreToolUse[0].hooks).filter(
-          (name) => name !== 'review-police.sh' && name !== 'taste-police.sh',
+          (name) => name !== 'review-police.sh',
         ),
       );
       expect(commandNames(settings.hooks.PostToolUse[0].hooks)).toEqual(
@@ -243,6 +243,10 @@ describe('Claude Code and Codex hook wiring', () => {
       for (const name of ['memory-inject.sh', 'memory-index.sh']) {
         expect(existsSync(join(claudeDir, 'hooks', name)), name).toBe(false);
       }
+      // taste is core, so dropping the vault must not take the taste lane with
+      // it: the hook stays installed and stays wired.
+      expect(existsSync(join(claudeDir, 'hooks', 'taste-police.sh'))).toBe(true);
+      expect(commandNames(settings.hooks.PreToolUse[0].hooks)).toContain('taste-police.sh');
     } finally {
       rmSync(home, { force: true, recursive: true });
     }
