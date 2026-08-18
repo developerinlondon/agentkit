@@ -37,6 +37,33 @@ git-police:
     #     - brain
     #     - my-notes
 
+issue-police:
+  # An empty body and an unfilled template are refused with no configuration.
+  # These add the parts only a project can decide.
+
+  # Refuse a body shorter than this many characters. 0 disables the floor.
+  min-body-chars: 0
+
+  # Refuse a body longer than this many characters. 0 disables the ceiling.
+  max-body-chars: 0
+
+  # Comma-separated fields every issue must carry: labels, assignee, milestone.
+  # A required label is also checked against the project's own taxonomy.
+  require: ""
+
+  # Refuse an issue assigned to the account whose token filed it. For a bot
+  # account only: an agent driving a person's credentials assigns to that
+  # person legitimately.
+  refuse-self-assignment: false
+
+mr-police:
+  # Refuse a merge request whose body names no issue.
+  require-issue-reference: false
+
+  # Refuse close/fix/resolve/implement next to an issue number, which would let
+  # the merge decide the work is done before the requester has verified it.
+  forbid-closing-keywords: false
+
 coding-police:
   # Maximum lines per file before warning to split.
   max-file-lines: 1000

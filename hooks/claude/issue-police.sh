@@ -7,6 +7,10 @@ set -euo pipefail
 
 # shellcheck source=lib/hook-input.sh
 source "${BASH_SOURCE[0]%/*}/lib/hook-input.sh"
+# shellcheck source=lib/forge-config.sh
+source "${BASH_SOURCE[0]%/*}/lib/forge-config.sh"
+# shellcheck source=lib/forge-cache.sh
+source "${BASH_SOURCE[0]%/*}/lib/forge-cache.sh"
 agentkit_slurp_input
 COMMAND=$(agentkit_command)
 
@@ -65,7 +69,238 @@ done
 # on the quote character itself.
 DISPOSITION_RE="[Dd]isposition:[[:space:]]*[^[:space:]\"'\`]"
 
+BODY_TEXT=""
+for body_file in $BODY_FILES; do
+	[[ "$body_file" == "-" ]] && continue
+	if [[ "$body_file" != /* && -n "$TARGET_DIR" ]]; then
+		body_file="$TARGET_DIR/$body_file"
+	fi
+	[[ -r "$body_file" ]] || continue
+	BODY_TEXT="$BODY_TEXT"$'\n'"$(cat "$body_file" 2>/dev/null || true)"
+done
+
+# shlex, because a body is a quoted argument containing everything a regex would
+# have to survive: newlines, nested quotes, flags quoted inside prose.
+forge_flag_value() {
+	command -v python3 >/dev/null 2>&1 || return 1
+	COMMAND="$COMMAND" python3 -c '
+import os, shlex, sys
+names = sys.argv[1:]
+try:
+    parts = shlex.split(os.environ["COMMAND"], comments=False)
+except ValueError:
+    sys.exit(1)
+for i, part in enumerate(parts):
+    for name in names:
+        if part == name and i + 1 < len(parts):
+            print(parts[i + 1])
+            sys.exit(0)
+        if part.startswith(name + "="):
+            print(part[len(name) + 1:])
+            sys.exit(0)
+sys.exit(1)
+' "$@" 2>/dev/null
+}
+
+# The REST spelling carries the body as `--field description=…`, not as a flag.
+forge_field_value() {
+	command -v python3 >/dev/null 2>&1 || return 1
+	COMMAND="$COMMAND" python3 -c '
+import os, shlex, sys
+names = sys.argv[1:]
+flags = ("--field", "-f", "--raw-field", "-F")
+try:
+    parts = shlex.split(os.environ["COMMAND"], comments=False)
+except ValueError:
+    sys.exit(1)
+for i, part in enumerate(parts):
+    pair = None
+    if part in flags and i + 1 < len(parts):
+        pair = parts[i + 1]
+    elif part.startswith("--field=") or part.startswith("--raw-field="):
+        pair = part.split("=", 1)[1]
+    if not pair or "=" not in pair:
+        continue
+    key, value = pair.split("=", 1)
+    if key in names:
+        print(value)
+        sys.exit(0)
+sys.exit(1)
+' "$@" 2>/dev/null
+}
+
+char_count() { printf '%s' "$1" | wc -c | tr -d ' '; }
+
+# A skeleton nobody filled in is worse than no template: it reads as answered.
+has_unfilled_skeleton() {
+	local body="$1"
+	echo "$body" | grep -qE '<!--' && return 0
+	echo "$body" | grep -qE '^[[:space:]]*-[[:space:]]*\[[ xX]?\][[:space:]]*$' && return 0
+	echo "$body" | grep -qE '^[[:space:]]*/(milestone|label|assign)[[:space:]]*%?[[:space:]]*$' && return 0
+	return 1
+}
+
+completeness_checks() {
+	local body min max require assignee
+	body="$(forge_flag_value --description -d --body -b || true)"
+	[[ -z "$body" ]] && body="$(forge_field_value description body || true)"
+	[[ -z "$body" ]] && body="$BODY_TEXT"
+	body="${body#"${body%%[![:space:]]*}"}"
+
+	# An empty body is wrong everywhere; how short is too short is a house call,
+	# so the floor and the ceiling are both opt-in.
+	min="$(agentkit_forge_config_or issue-police min-body-chars 0)"
+	max="$(agentkit_forge_config_or issue-police max-body-chars 0)"
+
+	if [[ -z "$body" ]]; then
+		deny "BLOCKED: this issue has no description.
+
+An issue with a title and nothing else asks the next reader to reconstruct what you already knew. Pass the body with --description (glab) or --body (gh), or write it to a file and pass --description-file / --body-file.
+
+State the problem, what done looks like, and the evidence you have — a few lines beat a heading with nothing under it."
+	fi
+
+	if [[ "$min" -gt 0 && "$(char_count "$body")" -lt "$min" ]]; then
+		deny "BLOCKED: this issue body is shorter than this project's floor of ${min} characters.
+
+A stub costs the next reader the whole investigation again. Say what is wrong, what done looks like, and cite the evidence — file:line, or the command and what it showed.
+
+Raise or lower the floor with issue-police.min-body-chars in .agentkit/config.yaml."
+	fi
+
+	if [[ "$max" -gt 0 && "$(char_count "$body")" -gt "$max" ]]; then
+		deny "BLOCKED: this issue body is longer than this project's ceiling of ${max} characters.
+
+Concise is not the same as empty, and neither is complete the same as long. Keep the template's sections, cut the narration: bullets and tables, evidence as citations rather than retellings.
+
+Change the ceiling with issue-police.max-body-chars in .agentkit/config.yaml."
+	fi
+
+	if has_unfilled_skeleton "$body"; then
+		deny "BLOCKED: this issue body still carries an unfilled template.
+
+A template comment, an empty checkbox, or a bare quick action means the skeleton was pasted and not answered — which reads as a completed issue while carrying no more than the blank form did.
+
+Answer each section, delete the ones that genuinely do not apply (and say why), and remove the guidance comments before filing."
+	fi
+
+	require="$(agentkit_forge_config_or issue-police require '')"
+	require_fields "$require"
+
+	assignee="$(forge_flag_value --assignee -a || true)"
+	[[ -n "$assignee" ]] && refuse_self_assignment "$assignee"
+	return 0
+}
+
+forge_cli() {
+	echo "$STRIPPED" | grep -qiE '\bglab\b' && {
+		printf 'glab'
+		return 0
+	}
+	echo "$STRIPPED" | grep -qiE '\bgh\b' && {
+		printf 'gh'
+		return 0
+	}
+	return 1
+}
+
+forge_project() {
+	forge_flag_value --repo -R
+}
+
+require_fields() {
+	local wanted="$1" field flag value
+	[[ -n "$wanted" ]] || return 0
+	for field in $(echo "$wanted" | tr ',' ' '); do
+		case "$field" in
+		labels) flag="--label" ;;
+		assignee) flag="--assignee" ;;
+		milestone) flag="--milestone" ;;
+		*) continue ;;
+		esac
+		value="$(forge_flag_value "$flag" "${flag:1:2}" || true)"
+		[[ -n "$value" ]] || deny "BLOCKED: this issue has no ${field}, and this project requires one.
+
+An item without ${field} is invisible to the board, the milestone report, or the epic rollup it belongs to — accurate text does not make it findable.
+
+Read what the project actually offers before you choose, then pass ${flag}. Requirements live in issue-police.require in .agentkit/config.yaml."
+		if [[ "$field" == labels ]]; then
+			refuse_unknown_labels "$value"
+		fi
+	done
+	return 0
+}
+
+LABELS_WANTED=""
+
+labels_all_known() {
+	local known="$1" label
+	for label in $(echo "$LABELS_WANTED" | tr ',' ' '); do
+		echo "$known" | grep -qxF "$label" || return 1
+	done
+	return 0
+}
+
+# An invented label is silently dropped by the forge, so the issue lands
+# unlabelled while the command that filed it looks correct.
+refuse_unknown_labels() {
+	local cli project
+	LABELS_WANTED="$1"
+	cli="$(forge_cli || true)"
+	[[ "$cli" == glab ]] || return 0
+	command -v glab >/dev/null 2>&1 || return 0
+	project="$(forge_project || true)"
+	[[ -n "$project" ]] || return 0
+	LABEL_PROJECT="$project"
+	agentkit_forge_verify "labels/$project" 3600 labels_all_known forge_labels_glab && return 0
+	deny "BLOCKED: at least one of these labels does not exist in ${project}: ${LABELS_WANTED}.
+
+A label the project does not define is dropped on creation, so the item lands unlabelled while the command looks right.
+
+List what exists and pick from it: glab label list -R ${project}"
+}
+
+# Stated in the passing direction on purpose: an unreachable forge then reads as
+# "not self" and the hook fails open, the way every other lookup here does.
+identity_is_other() {
+	[[ -n "$1" && "$1" != "$ASSIGNEE_WANTED" ]]
+}
+
+ASSIGNEE_WANTED=""
+
+# Opt-in, because only a dedicated bot account can tell the two cases apart: an
+# agent driving a person's own credentials assigns to that person legitimately,
+# while a bot assigning to itself leaves the item unowned.
+refuse_self_assignment() {
+	local cli me_key
+	agentkit_forge_flag issue-police refuse-self-assignment || return 0
+	ASSIGNEE_WANTED="$1"
+	cli="$(forge_cli || true)"
+	[[ -n "$cli" ]] || return 0
+	command -v "$cli" >/dev/null 2>&1 || return 0
+	me_key="identity/$cli/${GITLAB_HOST:-${GH_HOST:-default}}"
+	if [[ "$cli" == glab ]]; then
+		agentkit_forge_verify "$me_key" 86400 identity_is_other forge_identity_glab && return 0
+	else
+		agentkit_forge_verify "$me_key" 86400 identity_is_other forge_identity_gh && return 0
+	fi
+	deny "BLOCKED: you assigned this item to yourself (${ASSIGNEE_WANTED}), the account this token belongs to.
+
+An item assigned to the authoring agent looks owned and is not: no human is going to see it on their board. Assign the person who asked for the work.
+
+If this account genuinely owns the item, say so and let the operator assign it."
+}
+
+forge_identity_glab() { glab api /user 2>/dev/null | jq -r '.username // empty'; }
+forge_identity_gh() { gh api user 2>/dev/null | jq -r '.login // empty'; }
+
+LABEL_PROJECT=""
+forge_labels_glab() {
+	glab label list -R "$LABEL_PROJECT" -F json --per-page 100 2>/dev/null | jq -r '.[].name // empty'
+}
+
 if echo "$TEXT" | grep -qE "$DISPOSITION_RE"; then
+	completeness_checks
 	exit 0
 fi
 

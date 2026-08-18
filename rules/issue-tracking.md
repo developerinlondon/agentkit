@@ -17,6 +17,11 @@ an orphan.
   else could pick it up.
 - Trivial one-line fixes may ride an existing issue's scope instead of getting their own; if no
   related issue exists, file one anyway when the change is user-visible.
+- **Tracking work you are about to do is not the same as filing what you noticed.** A review
+  finding defaults to being fixed in the change that caused it, and scope carved out of the issue
+  in flight is a deferral needing the operator's sign-off. Both are exceptions that have to be
+  argued, which is what the `Disposition:` line on a new issue is for — filing is not free, and a
+  backlog nobody asked for costs more than the finding did.
 - If work started without an issue (it happens), file one **before** opening the PR/MR — never
   merge untracked work.
 

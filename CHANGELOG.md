@@ -9,6 +9,20 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+- feat(issue-police, mr-police): **the forge units check completeness, not just presence, over a
+  shared cached lookup.** An audit of one agent account's output — 22 issues, 22 merge requests —
+  found 2 issues filed with an empty body, one that was the template pasted with every placeholder
+  still in it, and 12 MRs assigned to the bot itself: the `--assignee` requirement had been
+  satisfied in the cheapest way that cleared it. `issue-police` now refuses an empty body and an
+  unfilled template everywhere, and a project can add a floor, a ceiling, required fields (with a
+  required label checked against the project's own taxonomy) and a self-assignment refusal.
+  `mr-police` gains the REST creation path it never matched — `glab api --method POST …
+  /merge_requests` walked straight past a unit that only knew `glab mr create` — plus opt-in
+  issue-reference and closing-keyword refusals. Forge answers are cached under
+  `$XDG_CACHE_HOME/agentkit/forge`, and a cached answer that would deny is refetched before
+  anything is refused, so staleness can cost a wasted call but never a wrong block. Both units
+  still fail open with no CLI or an unreachable forge.
+
 - feat(taste): **taste installs with `core`; the `brain` kit is the memory vault.** A convention the
   owner states once bound only the machines that had remembered `--with brain`: 14 taste files sat on
   the author's own machine for eleven days, read by nothing, with no signal that the reader was
