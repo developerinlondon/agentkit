@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -286,5 +286,46 @@ describe('issue-police: required metadata', () => {
     expect(
       withConfig('issue-police:\n  require: milestone,assignee\n', `${bare} --milestone "Aug" --assignee sam`),
     ).toBe(false);
+  });
+});
+
+// A gate that cannot read its subject must not refuse it. Without python3 the
+// shlex parser is gone, so the body and flags are indistinguishable from prose
+// that mentions them — and denying there blocks every issue on the host.
+describe('issue-police: no parser means no opinion', () => {
+  function withoutPython(command: string): string {
+    const bin = mkdtempSync(join(tmpdir(), 'agentkit-nopython-'));
+    try {
+      for (const tool of ['bash', 'grep', 'sed', 'jq', 'cat', 'wc', 'tr', 'awk', 'head', 'date']) {
+        const found = spawnSync('sh', ['-c', `command -v ${tool}`], { encoding: 'utf-8' }).stdout?.trim();
+        if (found) symlinkSync(found, join(bin, tool));
+      }
+      const res = spawnSync('bash', [HOOK], {
+        cwd: root,
+        input: JSON.stringify({ tool_input: { command } }),
+        encoding: 'utf-8',
+        env: { PATH: bin, HOME: root },
+      });
+      return res.stdout ?? '';
+    } finally {
+      rmSync(bin, { force: true, recursive: true });
+    }
+  }
+
+  const filed = `glab issue create -R o/r -t x --description "${DISPOSITION} and the detail"`;
+
+  test('an issue is allowed through when python3 is absent', () => {
+    const out = withoutPython(filed);
+    expect(out).not.toContain('"deny"');
+  });
+
+  test('and it says so, rather than passing silently as if it had checked', () => {
+    expect(withoutPython(filed)).toContain('UNCHECKED');
+  });
+
+  test('the disposition gate still refuses without python3', () => {
+    expect(withoutPython('glab issue create -R o/r -t x --description "no disposition here"')).toContain(
+      '"deny"',
+    );
   });
 });

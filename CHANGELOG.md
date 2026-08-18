@@ -9,6 +9,14 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+- fix(issue-police): **a host without python3 refused every issue instead of checking none.** The
+  completeness checks read the command through a shlex parser, and when it is absent the body and
+  the flags are indistinguishable from prose that mentions them — so an issue with a full
+  description was denied for having none, on every creation, with no way around it. Found on a
+  deployed agent image that ships jq but not python3. The unit now says UNCHECKED and allows,
+  matching taste-police: a gate that cannot read its subject does not get an opinion about it. The
+  disposition gate is unaffected — it reads the raw text and still applies.
+
 - feat(issue-police, mr-police): **the forge units check completeness, not just presence, over a
   shared cached lookup.** An audit of one agent account's output — 22 issues, 22 merge requests —
   found 2 issues filed with an empty body, one that was the template pasted with every placeholder

@@ -140,8 +140,15 @@ has_unfilled_skeleton() {
 	return 1
 }
 
+# Every check below reads the command through the shlex parser. Without it the
+# body and the flags cannot be told apart from prose that mentions them, and a
+# gate that cannot read its subject must not refuse it.
 completeness_checks() {
 	local body min max require assignee
+	command -v python3 >/dev/null 2>&1 || {
+		agentkit_advise_json "UNCHECKED: issue-police read no further than the disposition — python3 is missing, so the body and metadata of this issue were not examined. Install python3 to enforce issue completeness."
+		return 0
+	}
 	body="$(forge_flag_value --description -d --body -b || true)"
 	[[ -z "$body" ]] && body="$(forge_field_value description body || true)"
 	[[ -z "$body" ]] && body="$BODY_TEXT"
