@@ -47,6 +47,48 @@ Delete a granular key to inherit the selected profile.
 Entries match by repo name (`brain`) or `owner/name` (`myorg/brain`); partial matches are supported,
 so `brain` matches `myorg/brain`.
 
+## `issue-police`
+
+Two refusals need no configuration, because they are wrong everywhere: an issue filed with **no
+body at all**, and one whose body still carries an **unfilled template** — a guidance comment, an
+empty checkbox, or a bare quick action like `/milestone %`. The rest is what only a project can
+decide.
+
+| Key                      | Type   | Default | Effect                                                           |
+| ------------------------ | ------ | ------- | ---------------------------------------------------------------- |
+| `min-body-chars`         | int    | `0`     | refuse a body shorter than this; `0` disables the floor          |
+| `max-body-chars`         | int    | `0`     | refuse a body longer than this; `0` disables the ceiling         |
+| `require`                | string | `""`    | comma-separated: `labels`, `assignee`, `milestone`               |
+| `refuse-self-assignment` | bool   | `false` | refuse an issue assigned to the account whose token is filing it |
+
+A required **label** is additionally checked against the project's own taxonomy, because a label the
+project does not define is dropped on creation — the item lands unlabelled while the command that
+filed it looks correct.
+
+`refuse-self-assignment` is off by default because only the operator knows which case they are in:
+an agent driving a person's own credentials assigns to that person legitimately, while a bot
+assigning to itself produces an item that looks owned and is not.
+
+## `mr-police`
+
+| Key                       | Type | Default | Effect                                                             |
+| ------------------------- | ---- | ------- | ------------------------------------------------------------------ |
+| `require-issue-reference` | bool | `false` | refuse a merge request whose body names no issue                   |
+| `forbid-closing-keywords` | bool | `false` | refuse `close`/`fix`/`resolve`/`implement` next to an issue number |
+
+The open-MR cap is separate and set by `AGENTKIT_MR_POLICE_MAX` in the environment, not here.
+
+`forbid-closing-keywords` stays off by default because auto-close is the behaviour most projects
+want. Turn it on where completion is the requester's call to make after verifying, not the merge's.
+
+### The forge lookups are cached
+
+Checking a label against a taxonomy, or an assignee against the token's own identity, needs the
+forge. Those answers are cached under `$XDG_CACHE_HOME/agentkit/forge` — identity for a day,
+taxonomies for an hour — and the cache can only ever cost a wasted refresh, never a wrong refusal:
+a cached answer that would **pass** is trusted, and one that would **deny** is refetched before
+anything is refused. With no CLI installed, or a forge that cannot be reached, both units fail open.
+
 ## `coding-police`
 
 | Key                    | Type | Default | Effect                                                                                             |

@@ -132,3 +132,102 @@ describe('mr-police assignee rule', () => {
     expect(shimCalls()).toBe('');
   });
 });
+
+// The command-text gates below run BEFORE the glab lookups, so they need no
+// shim — a PATH without a forge CLI proves they fire on their own.
+function runTextGate(command: string, configYaml?: string): string {
+  const home = mkdtempSync(join(tmpdir(), 'agentkit-mrcfg-'));
+  try {
+    if (configYaml) {
+      mkdirSync(join(home, 'agentkit'), { recursive: true });
+      writeFileSync(join(home, 'agentkit', 'config.yaml'), configYaml);
+    }
+    const res = spawnSync('bash', [HOOK], {
+      cwd: root,
+      input: JSON.stringify({ tool_input: { command } }),
+      encoding: 'utf-8',
+      env: { PATH: '/usr/bin:/bin', HOME: root, CLAUDE_PROJECT_DIR: root, XDG_CONFIG_HOME: home },
+    });
+    return res.stdout ?? '';
+  } finally {
+    rmSync(home, { force: true, recursive: true });
+  }
+}
+
+function textGateDenied(command: string, configYaml?: string): boolean {
+  return runTextGate(command, configYaml).includes('"deny"');
+}
+
+describe('mr-police: the REST path is the same creation as the CLI', () => {
+  test('a REST merge request with no assignee is refused', () => {
+    const out = runTextGate(
+      'glab api --method POST "projects/g%2Fr/merge_requests" -f source_branch=fix -f title=x',
+    );
+    expect(out).toContain('"deny"');
+    expect(out).toContain('REST API with no assignee');
+  });
+
+  test('a REST merge request naming an assignee passes', () => {
+    expect(
+      textGateDenied('glab api --method POST "projects/g%2Fr/merge_requests" -f title=x -f assignee_id=42'),
+    ).toBe(false);
+  });
+
+  test('a GitHub pull request created over the API carries the same rule', () => {
+    expect(textGateDenied('gh api --method POST /repos/o/r/pulls -f title=x -f base=main')).toBe(true);
+  });
+
+  test('reading merge requests is not a creation', () => {
+    expect(textGateDenied('glab api "projects/g%2Fr/merge_requests?state=opened"')).toBe(false);
+  });
+
+  test('a merge_requests URL quoted in a body is not a creation', () => {
+    expect(
+      textGateDenied('glab api --method POST "projects/g%2Fr/issues" -f description="see /merge_requests"'),
+    ).toBe(false);
+  });
+});
+
+describe('mr-police: issue-first is the project’s call', () => {
+  const noRef = 'glab mr create --assignee sam --title "fix the poller" --description "widens the filter"';
+
+  test('nothing is required by default', () => {
+    expect(textGateDenied(noRef)).toBe(false);
+  });
+
+  test('with the requirement on, an MR naming no issue is refused', () => {
+    expect(textGateDenied(noRef, 'mr-police:\n  require-issue-reference: true\n')).toBe(true);
+  });
+
+  test('a reference satisfies it', () => {
+    expect(
+      textGateDenied(
+        'glab mr create --assignee sam --title x --description "Addresses #42"',
+        'mr-police:\n  require-issue-reference: true\n',
+      ),
+    ).toBe(false);
+  });
+});
+
+describe('mr-police: closing keywords decide completion for someone else', () => {
+  const closing = 'glab mr create --assignee sam --title x --description "Closes #42"';
+
+  test('allowed by default, because many projects want the auto-close', () => {
+    expect(textGateDenied(closing)).toBe(false);
+  });
+
+  test('refused where the project has turned it off', () => {
+    const out = runTextGate(closing, 'mr-police:\n  forbid-closing-keywords: true\n');
+    expect(out).toContain('"deny"');
+    expect(out).toContain('closing keyword');
+  });
+
+  test('the word alone, with no issue number beside it, is prose and passes', () => {
+    expect(
+      textGateDenied(
+        'glab mr create --assignee sam --title x --description "this fixes the poller"',
+        'mr-police:\n  forbid-closing-keywords: true\n',
+      ),
+    ).toBe(false);
+  });
+});

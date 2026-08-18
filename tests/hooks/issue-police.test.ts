@@ -197,3 +197,94 @@ describe('issue-police: the REST spelling of a creation', () => {
     expect(denied('glab api --method PUT "projects/g%2Fr/issues/140" --field labels="bug"')).toBe(false);
   });
 });
+
+const DISPOSITION = 'Disposition: new work, unrelated to anything in flight';
+
+function withConfig(body: string, command: string): boolean {
+  const home = mkdtempSync(join(tmpdir(), 'agentkit-issuecfg-'));
+  try {
+    mkdirSync(join(home, 'agentkit'), { recursive: true });
+    writeFileSync(join(home, 'agentkit', 'config.yaml'), body);
+    const res = spawnSync('bash', [HOOK], {
+      cwd: root,
+      input: JSON.stringify({ tool_input: { command } }),
+      encoding: 'utf-8',
+      env: { ...process.env, XDG_CONFIG_HOME: home, CLAUDE_PROJECT_DIR: root },
+    });
+    return (res.stdout ?? '').includes('"deny"');
+  } finally {
+    rmSync(home, { force: true, recursive: true });
+  }
+}
+
+describe('issue-police: an issue that says nothing is not an issue', () => {
+  test('a title with no description is refused even when the disposition is in the title', () => {
+    const out = runHook(`gh issue create --title "${DISPOSITION}"`);
+    expect(out).toContain('"deny"');
+    expect(out).toContain('no description');
+  });
+
+  test('a template pasted with its guidance comments still in it is refused', () => {
+    const out = runHook(
+      `glab issue create -R o/r -t x --description "${DISPOSITION}\n\n## Description\n<!-- one sentence -->\n"`,
+    );
+    expect(out).toContain('unfilled template');
+  });
+
+  test('an empty checkbox is an unanswered section', () => {
+    expect(
+      denied(`glab issue create -R o/r -t x --description "${DISPOSITION}\n\n## Criteria\n- [ ]\n"`),
+    ).toBe(true);
+  });
+
+  test('a placeholder quick action is refused', () => {
+    expect(denied(`glab issue create -R o/r -t x --description "${DISPOSITION}\n\n/milestone %\n"`)).toBe(
+      true,
+    );
+  });
+
+  test('a filled body with real checkboxes passes', () => {
+    expect(
+      denied(
+        `glab issue create -R o/r -t x --description "${DISPOSITION}\n\n## Criteria\n- [ ] the poller sees threaded events\n"`,
+      ),
+    ).toBe(false);
+  });
+});
+
+describe('issue-police: the body bounds are the project’s to set', () => {
+  const short = `glab issue create -R o/r -t x --description "${DISPOSITION}"`;
+
+  test('no floor is configured, so a short body passes', () => {
+    expect(denied(short)).toBe(false);
+  });
+
+  test('a configured floor refuses the same body', () => {
+    expect(withConfig('issue-police:\n  min-body-chars: 400\n', short)).toBe(true);
+  });
+
+  test('a configured ceiling refuses a wall of prose', () => {
+    const long = `glab issue create -R o/r -t x --description "${DISPOSITION}. ${'word '.repeat(400)}"`;
+    expect(withConfig('issue-police:\n  max-body-chars: 500\n', long)).toBe(true);
+    expect(denied(long)).toBe(false);
+  });
+});
+
+describe('issue-police: required metadata', () => {
+  const bare = `glab issue create -R o/r -t x --description "${DISPOSITION} and here is the detail"`;
+
+  test('nothing is required by default', () => {
+    expect(denied(bare)).toBe(false);
+  });
+
+  test('a required field the command omits is refused, naming it', () => {
+    expect(withConfig('issue-police:\n  require: milestone\n', bare)).toBe(true);
+    expect(withConfig('issue-police:\n  require: assignee\n', `${bare} --milestone "Aug"`)).toBe(true);
+  });
+
+  test('the requirement is satisfied by passing the flag', () => {
+    expect(
+      withConfig('issue-police:\n  require: milestone,assignee\n', `${bare} --milestone "Aug" --assignee sam`),
+    ).toBe(false);
+  });
+});
