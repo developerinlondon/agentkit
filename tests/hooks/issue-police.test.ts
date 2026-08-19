@@ -329,3 +329,43 @@ describe('issue-police: no parser means no opinion', () => {
     );
   });
 });
+
+// An issue about templates quotes template markers as evidence. The first
+// version of the skeleton check refused exactly that — a real, well-formed
+// issue filed against a playbook was blocked for citing the prompt it was
+// complaining about.
+describe('issue-police: a quoted marker is evidence, not an unfilled section', () => {
+  const cited = `${DISPOSITION}
+
+## Description
+
+As an engineer filing an issue, I want the template to ask for the outcome, so
+that what I produce is already the right shape.
+
+Context:
+- \`default.md:13\` prompts \`<!-- One sentence: what needs to be done? -->\`, and
+  the skill says \`Description: One sentence of what needs doing\`.
+
+## Acceptance Criteria
+
+- [ ] the template asks for the outcome line`;
+
+  test('a marker quoted inline in backticks passes', () => {
+    expect(denied(`glab issue create -R o/r -t x --description "${cited}"`)).toBe(false);
+  });
+
+  test('a marker inside a fenced block passes', () => {
+    const fenced = `${DISPOSITION}\n\nThe template reads:\n\n\`\`\`markdown\n<!-- One sentence: what needs to be done? -->\n- [ ]\n\`\`\`\n\nand that is the problem.`;
+    expect(denied(`glab issue create -R o/r -t x --description "${fenced}"`)).toBe(false);
+  });
+
+  test('a marker that owns its line is still refused', () => {
+    const unfilled = `${DISPOSITION}\n\n## Description\n\n<!-- One sentence: what needs to be done? -->\n`;
+    expect(denied(`glab issue create -R o/r -t x --description "${unfilled}"`)).toBe(true);
+  });
+
+  test('an empty checkbox that owns its line is still refused', () => {
+    const unfilled = `${DISPOSITION}\n\n## Criteria\n\n- [ ]\n`;
+    expect(denied(`glab issue create -R o/r -t x --description "${unfilled}"`)).toBe(true);
+  });
+});
