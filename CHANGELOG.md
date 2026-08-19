@@ -9,6 +9,13 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+- fix(issue-police): **an issue that quotes a template marker is no longer refused for having one.**
+  The unfilled-template check matched `<!--` anywhere in the body, so an issue _about_ a bad
+  template — citing the prompt it complains about — was blocked for the thing it was reporting.
+  Caught on a real, well-formed issue filed against a playbook. Fenced blocks and inline code spans
+  are now stripped before the check, and a marker, empty checkbox or bare quick action has to own
+  its line to count as unanswered.
+
 - fix(issue-police): **a host without python3 refused every issue instead of checking none.** The
   completeness checks read the command through a shlex parser, and when it is absent the body and
   the flags are indistinguishable from prose that mentions them — so an issue with a full

@@ -131,12 +131,24 @@ sys.exit(1)
 
 char_count() { printf '%s' "$1" | wc -c | tr -d ' '; }
 
+# An issue about templates quotes template markers as evidence, so the check
+# runs against the prose only: fenced blocks and inline code spans are removed
+# first, and a marker still has to own its line to count as unanswered.
+strip_quoted() {
+	awk '
+		/^[[:space:]]*```/ { fenced = !fenced; next }
+		fenced { next }
+		{ gsub(/`[^`]*`/, ""); print }
+	'
+}
+
 # A skeleton nobody filled in is worse than no template: it reads as answered.
 has_unfilled_skeleton() {
-	local body="$1"
-	echo "$body" | grep -qE '<!--' && return 0
-	echo "$body" | grep -qE '^[[:space:]]*-[[:space:]]*\[[ xX]?\][[:space:]]*$' && return 0
-	echo "$body" | grep -qE '^[[:space:]]*/(milestone|label|assign)[[:space:]]*%?[[:space:]]*$' && return 0
+	local prose
+	prose="$(printf '%s' "$1" | strip_quoted)"
+	echo "$prose" | grep -qE '^[[:space:]]*<!--' && return 0
+	echo "$prose" | grep -qE '^[[:space:]]*-[[:space:]]*\[[ xX]?\][[:space:]]*$' && return 0
+	echo "$prose" | grep -qE '^[[:space:]]*/(milestone|label|assign)[[:space:]]*%?[[:space:]]*$' && return 0
 	return 1
 }
 
