@@ -19,6 +19,86 @@ release PR — "publish this" authorizes a release, never the tier.
 - feat(rules): **SSH-first git transport.** Diagnose auth vs network, use the providers'
   SSH-over-443 endpoints, fix ssh-config permanently; token-over-HTTPS git is operator-gated.
 
+- fix(issue-police): **an issue that quotes a template marker is no longer refused for having one.**
+  The unfilled-template check matched `<!--` anywhere in the body, so an issue _about_ a bad
+  template — citing the prompt it complains about — was blocked for the thing it was reporting.
+  Caught on a real, well-formed issue filed against a playbook. Fenced blocks and inline code spans
+  are now stripped before the check, and a marker, empty checkbox or bare quick action has to own
+  its line to count as unanswered.
+
+- fix(issue-police): **a host without python3 refused every issue instead of checking none.** The
+  completeness checks read the command through a shlex parser, and when it is absent the body and
+  the flags are indistinguishable from prose that mentions them — so an issue with a full
+  description was denied for having none, on every creation, with no way around it. Found on a
+  deployed agent image that ships jq but not python3. The unit now says UNCHECKED and allows,
+  matching taste-police: a gate that cannot read its subject does not get an opinion about it. The
+  disposition gate is unaffected — it reads the raw text and still applies.
+
+- feat(issue-police, mr-police): **the forge units check completeness, not just presence, over a
+  shared cached lookup.** An audit of one agent account's output — 22 issues, 22 merge requests —
+  found 2 issues filed with an empty body, one that was the template pasted with every placeholder
+  still in it, and 12 MRs assigned to the bot itself: the `--assignee` requirement had been
+  satisfied in the cheapest way that cleared it. `issue-police` now refuses an empty body and an
+  unfilled template everywhere, and a project can add a floor, a ceiling, required fields (with a
+  required label checked against the project's own taxonomy) and a self-assignment refusal.
+  `mr-police` gains the REST creation path it never matched — `glab api --method POST …
+  /merge_requests` walked straight past a unit that only knew `glab mr create` — plus opt-in
+  issue-reference and closing-keyword refusals. Forge answers are cached under
+  `$XDG_CACHE_HOME/agentkit/forge`, and a cached answer that would deny is refetched before
+  anything is refused, so staleness can cost a wasted call but never a wrong block. Both units
+  still fail open with no CLI or an unreachable forge.
+
+- feat(taste): **taste installs with `core`; the `brain` kit is the memory vault.** A convention the
+  owner states once bound only the machines that had remembered `--with brain`: 14 taste files sat on
+  the author's own machine for eleven days, read by nothing, with no signal that the reader was
+  absent — and a plugin-only host that loads `plugins-cc/agentkit` was taste-blind by construction.
+  Core gains no default behaviour from the move: `taste-police` carries no rules of its own and exits
+  before doing anything when the tastes tree is empty, so it refuses nothing until a taste says
+  `enforce: block`. The `brain` config banner, the scope ladder, the shared source resolver, and the
+  separate stores are all unchanged — this is the install boundary, not the design. The vault half
+  stays opt-in because it injects context at every session start and writes into your tree.
+- fix(sync): **a hook that changes kit leaves its old plugin.** `sync-cc-plugin.sh` evicted a script
+  from core when it joined a kit, but never from a kit plugin when it left one — so a promoted hook
+  stayed behind as a file the kit still shipped and no longer wired.
+- feat(skills): **a `marketing` kit, with `content-creator` as its first skill.** AgentKit had no
+  skill for the person who writes what a company publishes — `documentation` covers docs,
+  `designer` covers pages, and neither governs a draft. The skill enforces the brief-to-draft
+  contract: seven fields before writing starts, a five-part draft package returned against them,
+  and an acceptance check that stops at the first failure. A brand voice is derived from real
+  samples into at most twelve testable rules, because a guide a draft cannot fail is a mood board.
+  Opt-in, not `explicit`: `--with marketing`, never in `core`.
+- feat(skills): **`huly-work-item-lifecycle` and `workspace-diagrams`, in a new opt-in `workspace`
+  kit.** The admin kit: work runs against a Huly issue whose status is current on every touch and
+  which closes with a verification note, and diagrams live as one board per subject in a dashboard
+  collection, referenced by URL and exported as snapshots rather than copied. Neither ships in a
+  default install (`--with workspace`, or `kits/workspace`), and both gate on repo-local git config
+  — `agentkit.huly.project` and `agentkit.excalidash.collection` — so they stay inert everywhere the
+  operator has not opted the repository in.
+- fix(brain): **the sync override is `AGENTKIT_TARGET_PRIVATE`, not `AGENTKIT_TASTE_TARGET_PRIVATE`.**
+  The guard serves memory sources too now, so a refusal about a knowledgebase named a variable with
+  taste in it. Pre-1.0 rename with no dual reading: the old name is not consulted.
+- feat(brain): **a knowledgebase is read as `brain.memory.sources`, not as a third unit.** A git
+  repository of human-authored notes — ADRs, designs, runbooks — is declared the way a taste source
+  is, pinned to a ref, snapshotted markdown-only into `<vault>/external/<name>/` and recorded in that
+  store's `.agentkit/memory.lock`. Both units resolve through one store descriptor, so a memory
+  source gets the visibility guard unchanged: vendoring a private source into a public repository is
+  refused, and `visibility` is required of a source a repository vendors. Vendored notes are
+  read-only by construction — every sync re-snapshots the pinned ref — and are named at session start
+  with their counts rather than listed in the vault's own index, which stays the index of what that
+  vault wrote. `sync.ts` now syncs both units; name one to narrow it.
+- fix(brain): **`reflect`, `meditate` and `ruminate` name the vault the hooks actually read.** The
+  rename to `memory/` moved the hooks and left the skills seeding and auditing `brain/`, so a
+  bootstrapped vault was one nothing injected. Same for `--with memory` in the README, the uninstall
+  skill and the memory page: the kit has been `brain` since the units were banded together.
+- fix(hooks): **`issue-police` catches an issue filed through the REST API, not just the
+  subcommand.** It matched `gh|glab issue create` only, so `glab api --method POST
+  <project>/issues` filed an issue with no `Disposition:` line and no refusal — the guard was
+  present and silent. The URL is normally quoted, and quoted strings are emptied before the
+  trigger match, so the path is now read from the original command truncated at the first body
+  flag: an issues URL quoted inside a description is still not a creation. Reads, updates, and
+  notes on an existing issue remain untouched. `issue-police.sh` also joins the hooks whose
+  packaged plugin copy is asserted byte-for-byte, so the pair cannot drift again.
+
 ## v0.7.17 — 2026-08-13
 
 - fix(ci): **the docs publish gets the same Hugo binary the build gets.** `HUGO_BIN` was set as a
