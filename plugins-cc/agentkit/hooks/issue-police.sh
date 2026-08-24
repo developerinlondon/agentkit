@@ -23,8 +23,16 @@ STRIPPED=$(echo "$COMMAND" |
 	sed -E "s/\"([^\"\\\\]|\\\\.)*\"/\"\"/g" |
 	sed -E "s/'[^']*'/''/g")
 
+# What matched decides what can be demanded of it: an epic filed over the API
+# carries its fields as -f pairs, so flag requires would false-block it, and
+# the advisory below is its enforcement instead.
+CREATION_KIND=""
+
 is_creation() {
-	echo "$STRIPPED" | grep -qiE '\b(gh|glab)[[:space:]]+issue[[:space:]]+create\b' && return 0
+	echo "$STRIPPED" | grep -qiE '\b(gh|glab)[[:space:]]+issue[[:space:]]+create\b' && {
+		CREATION_KIND="issue"
+		return 0
+	}
 
 	echo "$STRIPPED" | grep -qiE '\b(gh|glab)[[:space:]]+api\b' || return 1
 	echo "$STRIPPED" | grep -qiE '(--method|-X)[[:space:]=]+POST\b' || return 1
@@ -35,7 +43,17 @@ is_creation() {
 	url_part=$(echo "$COMMAND" |
 		sed -E 's/[[:space:]](--field|--raw-field|-f|--input|--body|--body-file|--description-file)[[:space:]=].*//')
 	# Trailing segment only — /issues/7/notes and /issues_statistics create nothing.
-	echo "$url_part" | grep -qE '/issues([^/[:alnum:]_]|$)'
+	echo "$url_part" | grep -qE '/issues([^/[:alnum:]_]|$)' && {
+		CREATION_KIND="issue"
+		return 0
+	}
+	# Epics are work items with the same board obligations, and were the gap
+	# through which a bare epic reached the board unremarked.
+	echo "$url_part" | grep -qE '/epics([^/[:alnum:]_]|$)' && {
+		CREATION_KIND="epic"
+		return 0
+	}
+	return 1
 }
 
 is_creation || exit 0
@@ -204,7 +222,9 @@ Answer each section, delete the ones that genuinely do not apply (and say why), 
 	fi
 
 	require="$(agentkit_forge_config_or issue-police require '')"
-	require_fields "$require"
+	# An epic's fields travel as -f pairs, not flags; requiring flags of it
+	# blocks every epic the API can create. The advisory is its enforcement.
+	[[ "$CREATION_KIND" == epic ]] || require_fields "$require"
 
 	assignee="$(forge_flag_value --assignee -a || true)"
 	[[ -n "$assignee" ]] && refuse_self_assignment "$assignee"
@@ -235,6 +255,13 @@ require_fields() {
 		labels) flag="--label" ;;
 		assignee) flag="--assignee" ;;
 		milestone) flag="--milestone" ;;
+		weight)
+			# A GitLab planning field; gh has no such flag, and a machine-wide
+			# require must not block GitHub repositories for a field their forge
+			# cannot carry.
+			[[ "$(forge_cli || true)" == glab ]] || continue
+			flag="--weight"
+			;;
 		*) continue ;;
 		esac
 		value="$(forge_flag_value "$flag" "${flag:1:2}" || true)"
@@ -318,8 +345,25 @@ forge_labels_glab() {
 	glab label list -R "$LABEL_PROJECT" -F json --per-page 100 2>/dev/null | jq -r '.[].name // empty'
 }
 
+# Filed is not finished: the fields no create flag can carry are exactly the
+# ones that decide whether the item appears on a board. Advised, not blocked —
+# they can only be set after the item exists.
+board_hygiene_advice() {
+	agentkit_advise_json "FILED, not finished — board metadata is what makes this findable. Before moving on: (1) set the work-item Status off Triage (GitLab: GraphQL statusWidget — boards filter on Status, and a status:: label does not move it); (2) link the parent epic or work item; (3) weight, milestone, assignee, labels; (4) read the item back and verify every field landed — a silent API failure leaves blanks the command line never showed. The complete-work-item-metadata taste is the policy; this reminder exists because it was missed twice."
+}
+
+# An epic is a container: the filed-rather-than-fixed question does not apply,
+# and its fields travel as -f pairs no flag check can read. It gets the body
+# checks and the advisory, not the issue gates.
+if [[ "$CREATION_KIND" == epic ]]; then
+	completeness_checks
+	board_hygiene_advice
+	exit 0
+fi
+
 if echo "$TEXT" | grep -qE "$DISPOSITION_RE"; then
 	completeness_checks
+	board_hygiene_advice
 	exit 0
 fi
 
