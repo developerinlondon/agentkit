@@ -47,9 +47,15 @@ issue-police:
   # Refuse a body longer than this many characters. 0 disables the ceiling.
   max-body-chars: 0
 
-  # Comma-separated fields every issue must carry: labels, assignee, milestone.
-  # A required label is also checked against the project's own taxonomy.
-  require: ""
+  # Comma-separated fields every issue must carry: labels, assignee, milestone,
+  # weight. A required label is also checked against the project's own
+  # taxonomy. weight is a GitLab planning field and is skipped when the CLI is
+  # gh, so this default cannot block a GitHub repository.
+  #
+  # Board hygiene is the house default: an item without these is invisible to
+  # the board, the milestone report, and the epic rollup it belongs to. Opt a
+  # machine out with "", or override per project in .agentkit/config.yaml.
+  require: "labels,assignee,milestone,weight"
 
   # Refuse an issue assigned to the account whose token filed it. For a bot
   # account only: an agent driving a person's credentials assigns to that
