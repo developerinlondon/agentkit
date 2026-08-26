@@ -349,7 +349,37 @@ async function requestBody(request) {
   return Object.fromEntries(await request.formData());
 }
 
+// A device holding `pages:share` may flip the link over the API; a browser
+// session stays same-origin. The scope is separate from `pages:write` because
+// enabling a share link changes who can READ the page, which a stolen publish
+// token must not be able to do.
+async function shareByDevice(request, env, slug, bearer) {
+  const credential = await deviceCredential(env, bearer);
+  if (!credential) return new Response("unauthorized\n", { status: 401 });
+  if (!credential.scopes.includes("pages:share")) {
+    return new Response("insufficient scope: pages:share\n", { status: 403 });
+  }
+  const page = await pageRecord(env, slug);
+  if (!page || page.owner_id !== credential.user.id) {
+    return new Response("not found\n", { status: 404 });
+  }
+  const rate = await consumeDeviceWrite(env, credential.tokenHash);
+  if (!rate.allowed) {
+    return new Response("device write rate exceeded\n", {
+      status: 429,
+      headers: { "retry-after": String(rate.retryAfter) },
+    });
+  }
+  const body = await requestBody(request);
+  const enabled = body.enabled === true || body.enabled === "true";
+  const token = await setShareLink(env, slug, enabled);
+  const url = token ? `${env.PAGES_URL}/${slug}?share=${token}` : null;
+  return Response.json({ ok: true, enabled, url });
+}
+
 async function handleShare(request, env, slug) {
+  const bearer = bearerToken(request);
+  if (bearer) return shareByDevice(request, env, slug, bearer);
   if (!sameOrigin(request)) return new Response("forbidden\n", { status: 403 });
   if (!(await ownerPage(request, env, slug))) return new Response("not found\n", { status: 404 });
   const body = await requestBody(request);
