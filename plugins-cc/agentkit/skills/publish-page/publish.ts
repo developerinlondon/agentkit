@@ -26,6 +26,9 @@ function arg(name: string): string | undefined {
 const explicitSlug = arg("slug");
 const name = arg("name");
 const isDelete = process.argv.includes("--delete");
+const isShare = process.argv.includes("--share");
+const isUnshare = process.argv.includes("--unshare");
+if (isShare && isUnshare) fail("--share and --unshare are mutually exclusive");
 const file = arg("file");
 const template = arg("template") ?? "doc";
 let noGit = !shouldCommitCanonical(process.argv);
@@ -37,8 +40,9 @@ if (name && !/^[a-z0-9][a-z0-9-]{0,63}$/.test(name)) {
   fail(`invalid name "${name}" (lowercase a-z0-9-)`);
 }
 if (!["doc", "deck", "raw"].includes(template)) fail(`unknown template "${template}"`);
-if (!isDelete && !file) fail("--file is required");
-if (!isDelete && !existsSync(file!)) fail(`no such file: ${file}`);
+const shareOnly = (isShare || isUnshare) && !file;
+if (!isDelete && !shareOnly && !file) fail("--file is required");
+if (!isDelete && !shareOnly && !existsSync(file!)) fail(`no such file: ${file}`);
 
 const endpoint = process.env.AGENTKIT_PAGES_ENDPOINT ?? "https://account.agentkit.sbs";
 const endpointHost = new URL(endpoint).hostname;
@@ -123,6 +127,37 @@ function commitScoped(message: string, paths: string[]) {
     );
     process.exitCode = 1;
   }
+}
+
+async function flipShare(enabled: boolean): Promise<string | null> {
+  let res: Response;
+  try {
+    res = await fetchWithDeviceAuthorization({ endpoint, tokenPath }, (token) =>
+      fetch(`${endpoint}/api/pages/${slug}/share`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+        body: JSON.stringify({ enabled }),
+      }));
+  } catch (error) {
+    fail((error as Error).message);
+  }
+  if (res!.status === 403) {
+    // Tokens minted before the pages:share scope existed cannot flip links.
+    fail(
+      "this device token predates the pages:share scope — remove "
+        + tokenPath
+        + " and re-run to authorize a fresh token, then retry",
+    );
+  }
+  if (!res!.ok) fail(await deviceRequestError(enabled ? "share" : "unshare", res!));
+  const { url: shareUrl } = (await res!.json()) as { url: string | null };
+  return shareUrl;
+}
+
+if (shareOnly) {
+  const shareUrl = await flipShare(isShare);
+  console.log(isShare ? shareUrl : `share link revoked for ${slug}`);
+  process.exit();
 }
 
 if (isDelete) {
@@ -259,4 +294,9 @@ if (!noGit) {
   commitScoped(`pages: publish ${pageLabel}`, [`src/${slug}`, `dist/${slug}`]);
 }
 
+if (isShare || isUnshare) {
+  const shareUrl = await flipShare(isShare);
+  if (isShare && shareUrl) console.log(`share: ${shareUrl}`);
+  if (isUnshare) console.error("share link revoked");
+}
 console.log(url);

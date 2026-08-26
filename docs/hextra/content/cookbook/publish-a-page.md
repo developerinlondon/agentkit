@@ -45,7 +45,7 @@ It prints the live URL, `https://pages.agentkit.sbs/<slug>`.
 
 On the first publish, the command opens `account.agentkit.sbs/device` and prints a short code. Sign in
 with Assay and approve that device. The resulting credential belongs only to that account and device;
-it grants `pages:write` and `pages:delete` for 90 days, and later publishes reuse it. A rejected or
+it grants `pages:write`, `pages:delete` and `pages:share` for 90 days, and later publishes reuse it. A rejected or
 expired credential starts the device flow again. New pages are private and appear at
 `https://account.agentkit.sbs/dashboard`,
 where the owner can create a revocable sharing link or invite another verified Assay email.

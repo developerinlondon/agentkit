@@ -89,7 +89,12 @@ async function accountEnv() {
   database.sqlite.run(
     `INSERT INTO device_tokens (token_hash, user_id, name, scopes, expires_at, created_at)
      VALUES (?, ?, ?, ?, ?, ?)`,
-    [await digest('device-a'), 'user-a', 'MacBook', 'pages:write pages:delete', now + 3600, now],
+    [await digest('device-a'), 'user-a', 'MacBook', 'pages:write pages:delete pages:share', now + 3600, now],
+  );
+  database.sqlite.run(
+    `INSERT INTO device_tokens (token_hash, user_id, name, scopes, expires_at, created_at)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [await digest('device-a-legacy'), 'user-a', 'Old MacBook', 'pages:write pages:delete', now + 3600, now],
   );
   database.sqlite.run(
     `INSERT INTO device_tokens (token_hash, user_id, name, scopes, expires_at, created_at)
@@ -525,6 +530,51 @@ describe('private access and sharing', () => {
     );
     expect(disabled.status).toBe(200);
     expect((await worker.fetch(new Request(url), setup.env)).status).toBe(302);
+  });
+
+  const deviceShare = (token: string, enabled: boolean, slug = 'private-page') =>
+    new Request(`${ACCOUNT_URL}/api/pages/${slug}/share`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ enabled }),
+    });
+
+  test('a pages:share device token flips the link and gets the URL back', async () => {
+    const setup = await accountEnv();
+    expect((await worker.fetch(publish('device-a'), setup.env)).status).toBe(200);
+
+    const enabled = await worker.fetch(deviceShare('device-a', true), setup.env);
+    expect(enabled.status).toBe(200);
+    const { url } = await enabled.json() as { url: string };
+    expect(url).toStartWith(`${PAGES_URL}/private-page?share=`);
+    expect((await worker.fetch(new Request(url), setup.env)).status).toBe(200);
+
+    const disabled = await worker.fetch(deviceShare('device-a', false), setup.env);
+    expect(disabled.status).toBe(200);
+    expect(await disabled.json()).toEqual({ ok: true, enabled: false, url: null });
+    expect((await worker.fetch(new Request(url), setup.env)).status).toBe(302);
+  });
+
+  test('a device token without pages:share is refused by name', async () => {
+    const setup = await accountEnv();
+    expect((await worker.fetch(publish('device-a'), setup.env)).status).toBe(200);
+
+    const refused = await worker.fetch(deviceShare('device-a-legacy', true), setup.env);
+    expect(refused.status).toBe(403);
+    expect(await refused.text()).toContain('pages:share');
+  });
+
+  test('a device cannot share a page its user does not own', async () => {
+    const setup = await accountEnv();
+    expect((await worker.fetch(publish('device-a'), setup.env)).status).toBe(200);
+    setup.database.sqlite.run(
+      `INSERT INTO device_tokens (token_hash, user_id, name, scopes, expires_at, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [await digest('device-b-share'), 'user-b', 'Other Mac', 'pages:write pages:delete pages:share',
+        Math.floor(Date.now() / 1000) + 3600, Math.floor(Date.now() / 1000)],
+    );
+
+    expect((await worker.fetch(deviceShare('device-b-share', true), setup.env)).status).toBe(404);
   });
 
   test('an invited Assay email can obtain page-scoped access after signing in', async () => {

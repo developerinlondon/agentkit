@@ -82,7 +82,7 @@ describe('publish-page device login', () => {
     expect(messages.join('\n')).toContain('ABCD-2345');
     expect(authorizationBodies[0]).toEqual({
       device_name: 'Test Mac',
-      scopes: ['pages:write', 'pages:delete'],
+      scopes: ['pages:write', 'pages:delete', 'pages:share'],
     });
     expect(await readFile(path, 'utf8')).toBe('new-device-token\n');
     expect((await stat(path)).mode & 0o777).toBe(0o600);

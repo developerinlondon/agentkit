@@ -86,7 +86,7 @@ waiting for it to expire.
 | Credential      | Grants                                                             | Storage                                               |
 | --------------- | ------------------------------------------------------------------ | ----------------------------------------------------- |
 | slug key        | Derives a URL from a name; no network access                       | Local file, mode `0600`                               |
-| device token    | `pages:write` / `pages:delete` for owned pages; expires in 90 days | Local file, mode `0600`; SHA-256 hash in D1           |
+| device token    | `pages:write` / `pages:delete` / `pages:share` for owned pages; expires in 90 days | Local file, mode `0600`; SHA-256 hash in D1           |
 | browser session | Account dashboard and access-broker requests                       | Host-only secure HTTP-only cookie; SHA-256 hash in D1 |
 | page capability | Read access to one page for ten minutes                            | URL parameter; SHA-256 hash and expiry in D1          |
 | sharing token   | Read access to one page until its owner disables the link          | URL shown once; SHA-256 hash in D1                    |

@@ -36,7 +36,7 @@ export async function loadOrAuthorize(options: AuthorizationOptions): Promise<st
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       device_name: options.deviceName ?? hostname(),
-      scopes: ["pages:write", "pages:delete"],
+      scopes: ["pages:write", "pages:delete", "pages:share"],
     }),
   });
   if (!started.ok) throw new Error(`device authorization failed: HTTP ${started.status}`);

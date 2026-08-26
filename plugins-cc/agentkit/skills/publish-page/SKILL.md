@@ -27,6 +27,9 @@ an artifact: decide, publish, hand back the URL.
 ```bash
 bun <skill-dir>/publish.ts --name <name> --file <content-file> [--template doc|deck|raw] [--title "Title"]
 bun <skill-dir>/publish.ts --name <name> --delete    # remove a page you published
+bun <skill-dir>/publish.ts --name <name> --file <f> --share   # publish + turn on the share link
+bun <skill-dir>/publish.ts --name <name> --share     # share an already-published page
+bun <skill-dir>/publish.ts --name <name> --unshare   # revoke the share link
 ```
 
 5. **Verify before reporting**: load the printed URL in headless Chromium at
@@ -250,16 +253,20 @@ slide with nothing but a kicker and an `h2` above them.
 
 - Device token: `~/.config/agentkit/pages-token`. First use starts the bounded device flow at
   `account.agentkit.sbs/device`, signs in through Assay, and stores the token with mode `0600`.
-  The credential grants `pages:write` and `pages:delete`, expires after 90 days,
+  The credential grants `pages:write`, `pages:delete` and `pages:share`, expires after 90 days,
   and is replaced through the same device flow when the service rejects it.
 - Themes are bundled with the skill; if a clone of `gitlab.com/agentkit/agentkit-pages`
   exists at `~/code/agentkit-pages` (override: `AGENTKIT_PAGES_REPO`), the publish
   archives `src/` + `dist/` there only with explicit `--git` — otherwise it
   serves only. Repository archival has its own visibility and is never implied
   by a private page. Endpoint override: `AGENTKIT_PAGES_ENDPOINT`.
-- New pages are **private by default**. Owners manage revocable sharing links and
-  verified-email invites, and revoke publishing devices at
-  `https://account.agentkit.sbs/dashboard`. Rendered pages stay on the separate
+- New pages are **private by default**. `--share` turns on the page's revocable
+  share link and prints it — anyone holding the URL can read the page with no
+  sign-in; `--unshare` kills it instantly. The same links, verified-email
+  invites, and device revocation are also owner-managed at
+  `https://account.agentkit.sbs/dashboard`. A device token minted before the
+  `pages:share` scope existed gets a 403 with the fix (delete the token file,
+  re-run to re-authorize). Rendered pages stay on the separate
   `pages.agentkit.sbs` origin so their inline JavaScript cannot read the account dashboard. Pages from
   before the accounts migration remain public until claimed or removed.
 - A device can perform at most 60 publish/delete operations per minute. A

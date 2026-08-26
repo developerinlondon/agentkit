@@ -5,7 +5,7 @@ const DEVICE_TTL_SECONDS = 600;
 const DEFAULT_TOKEN_TTL_SECONDS = 90 * 24 * 60 * 60;
 const POLL_INTERVAL_SECONDS = 5;
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-const ALLOWED_SCOPES = ["pages:write", "pages:delete"];
+const ALLOWED_SCOPES = ["pages:write", "pages:delete", "pages:share"];
 
 function requestedScopes(value) {
   if (value === undefined || value === null) return ALLOWED_SCOPES;
