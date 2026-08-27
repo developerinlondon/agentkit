@@ -124,6 +124,16 @@ content and a reviewer cannot tell which needed a designer.
   states — mockup chrome is a picture, hover there is an optional hint; any
   animation sits behind `prefers-reduced-motion: no-preference`.
 
+## Mockups of an existing product live in its shell
+
+A surface mockup for a product that already exists renders **inside that product's real
+chrome** — primary nav, zone layout, contextual panels — verified against the live nav
+source (read the nav model in the repo; never draw it from memory), with the proposed
+surface as the only highlighted addition (new rows dashed or marked). A mockup that drops
+the host shell reads as a different app and earns a redesign round; cropping the shell for
+width is never the fix — shrink the columns instead. Standalone canvases are for products
+that do not exist yet.
+
 ## Component grammar — route by what the concept is
 
 | The concept is                                      | Component (all in scaffold)                                                                                     |
