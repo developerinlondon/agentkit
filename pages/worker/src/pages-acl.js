@@ -1,5 +1,5 @@
 import { randomToken, sessionUser, sha256 } from "./accounts.js";
-import { shareTokenValid } from "./share-links.js";
+import { bareShared, shareTokenValid } from "./share-links.js";
 
 const PAGE_ACCESS_TTL_SECONDS = 10 * 60;
 export async function pageRecord(env, slug) {
@@ -52,6 +52,8 @@ export async function pageReadGrant(request, env, page) {
   if (share && await shareTokenValid(env, page, share)) {
     return { allowed: true, owner: false, viaShare: true };
   }
+  // viaShare so an owner's own browser still upgrades this visit to the shell.
+  if (bareShared(page)) return { allowed: true, owner: false, viaShare: true };
   return { allowed: false, owner: false };
 }
 export async function ownerByAccess(env, slug, token) {
