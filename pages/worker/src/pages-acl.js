@@ -49,9 +49,6 @@ export async function pageReadGrant(request, env, page) {
   if (!grant) return { allowed: false, owner: false };
   return { allowed: true, owner: grant.user_id === page.owner_id };
 }
-export async function canReadPage(request, env, page) {
-  return (await pageReadGrant(request, env, page)).allowed;
-}
 async function userCanReadPage(env, user, page) {
   if (!user || !page) return false;
   if (user.id === page.owner_id) return true;

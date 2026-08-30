@@ -640,9 +640,10 @@ async function withShareButton(response, env, slug) {
   const body = await response.text();
   const button = `<a href="${env.ACCOUNT_URL}/dashboard#page-${slug}" target="_blank" rel="noopener"`
     + ` title="Share settings" style="${SHARE_BUTTON_STYLE}">Share</a>`;
-  const closing = /<\/body>/i;
-  const merged = closing.test(body) ? body.replace(closing, `${button}</body>`) : body + button;
-  return html(200, merged, PAGE_HEADERS);
+  // Appended, never spliced: a literal "</body>" may legally sit inside a
+  // script string or comment, so any rewrite targeting it corrupts the page.
+  // The parser reparents a trailing element back into body regardless.
+  return html(200, body + button, PAGE_HEADERS);
 }
 
 export default {

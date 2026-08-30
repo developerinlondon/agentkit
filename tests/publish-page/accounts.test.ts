@@ -466,7 +466,9 @@ describe('private access and sharing', () => {
     expect(location).toStartWith(`${PAGES_URL}/private-page?access=`);
     const page = await worker.fetch(new Request(location), setup.env);
     expect(page.status).toBe(200);
-    expect(await page.text()).toStartWith('<h1>private</h1>');
+    const owned = await page.text();
+    expect(owned).toStartWith('<h1>private</h1><a href=');
+    expect(owned.split('>Share</a>')).toHaveLength(2);
 
     expect((await worker.fetch(
       new Request(location.replace('/private-page?', '/another-page?')),
@@ -509,8 +511,10 @@ describe('private access and sharing', () => {
     const response = await worker.fetch(new Request(access.location!), setup.env);
 
     expect(response.status).toBe(200);
-    // The owner's copy carries the injected share button after the content.
-    expect(await response.text()).toStartWith('<h1>private</h1>');
+    // The owner's copy is the exact content plus exactly one appended button.
+    const text = await response.text();
+    expect(text).toStartWith('<h1>private</h1><a href=');
+    expect(text.split('>Share</a>')).toHaveLength(2);
   });
 
   test('a share link grants access and disabling it revokes the old URL', async () => {
@@ -1120,13 +1124,14 @@ describe('owner share button on served pages', () => {
     expect(body).toContain('>Share</a>');
   });
 
-  test('the button lands inside body when the page has a closing tag', async () => {
+  test('a literal </body> in page content is never a splice point', async () => {
     const setup = await accountEnv();
-    const doc = '<!doctype html><body><h1>private</h1></body>';
+    const doc = '<script>var s = "</body>";</script><h1>private</h1>';
     expect((await worker.fetch(publish('device-a', doc), setup.env)).status).toBe(200);
     const { location } = await pageAccessUrl(setup);
     const body = await servedBody(setup, location!);
-    expect(body.indexOf('>Share</a>')).toBeLessThan(body.indexOf('</body>'));
+    expect(body).toStartWith(doc);
+    expect(body.split('>Share</a>')).toHaveLength(2);
   });
 
   test('an invited reader gets the page without the button', async () => {
