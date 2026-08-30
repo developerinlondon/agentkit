@@ -1,173 +1,19 @@
-import { Database } from 'bun:sqlite';
 import { afterEach, describe, expect, test } from 'bun:test';
-import { readdirSync, readFileSync } from 'node:fs';
 import { consumeDeviceWrite } from '../../pages/worker/src/accounts.js';
 import worker from '../../pages/worker/src/worker.js';
-
-const openDatabases: Database[] = [];
-const ACCOUNT_URL = 'https://account.agentkit.sbs';
-const PAGES_URL = 'https://pages.agentkit.sbs';
-
-function d1() {
-  const sqlite = new Database(':memory:');
-  // D1 enforces foreign keys on every query; bun:sqlite defaults them off.
-  sqlite.run('PRAGMA foreign_keys = ON');
-  openDatabases.push(sqlite);
-  const migrationsUrl = new URL('../../pages/worker/migrations/', import.meta.url);
-  for (const migration of readdirSync(migrationsUrl).filter((name) => name.endsWith('.sql')).sort()) {
-    sqlite.run(readFileSync(new URL(migration, migrationsUrl), 'utf8'));
-  }
-  return {
-    sqlite,
-    binding: {
-      prepare(sql: string) {
-        let values: unknown[] = [];
-        const statement = {
-          bind(...next: unknown[]) {
-            values = next;
-            return statement;
-          },
-          async first() {
-            return sqlite.query(sql).get(...values);
-          },
-          async all() {
-            return { results: sqlite.query(sql).all(...values) };
-          },
-          async run() {
-            const result = sqlite.query(sql).run(...values);
-            return { success: true, meta: { changes: result.changes } };
-          },
-        };
-        return statement;
-      },
-    },
-  };
-}
-
-function bucket() {
-  const writes = new Map<string, { body: string }>();
-  return {
-    writes,
-    async get(key: string) {
-      return writes.get(key) ?? null;
-    },
-    async put(key: string, body: ArrayBuffer) {
-      writes.set(key, { body: new TextDecoder().decode(body) });
-    },
-    async head(key: string) {
-      return writes.has(key) ? {} : null;
-    },
-    async delete(key: string) {
-      writes.delete(key);
-    },
-    async list() {
-      return { objects: [], truncated: false };
-    },
-  };
-}
-
-async function digest(value: string) {
-  const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
-  return [...new Uint8Array(bytes)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
-}
-
-async function pkce(value: string) {
-  const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
-  return Buffer.from(bytes).toString('base64url');
-}
-
-async function accountEnv() {
-  const database = d1();
-  const pages = bucket();
-  const now = Math.floor(Date.now() / 1000);
-  database.sqlite.run(
-    'INSERT INTO users (id, email, display_name, created_at) VALUES (?, ?, ?, ?)',
-    ['user-a', 'owner@example.com', 'Owner', now],
-  );
-  database.sqlite.run(
-    'INSERT INTO users (id, email, display_name, created_at) VALUES (?, ?, ?, ?)',
-    ['user-b', 'other@example.com', 'Other', now],
-  );
-  database.sqlite.run(
-    `INSERT INTO device_tokens (token_hash, user_id, name, scopes, expires_at, created_at)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-    [await digest('device-a'), 'user-a', 'MacBook', 'pages:write pages:delete pages:share', now + 3600, now],
-  );
-  database.sqlite.run(
-    `INSERT INTO device_tokens (token_hash, user_id, name, scopes, expires_at, created_at)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-    [await digest('device-a-legacy'), 'user-a', 'Old MacBook', 'pages:write pages:delete', now + 3600, now],
-  );
-  database.sqlite.run(
-    `INSERT INTO device_tokens (token_hash, user_id, name, scopes, expires_at, created_at)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-    [await digest('device-b'), 'user-b', 'Other Mac', 'pages:write pages:delete', now + 3600, now],
-  );
-  database.sqlite.run(
-    'INSERT INTO sessions (token_hash, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)',
-    [await digest('session-a'), 'user-a', now + 3600, now],
-  );
-  database.sqlite.run(
-    'INSERT INTO sessions (token_hash, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)',
-    [await digest('session-b'), 'user-b', now + 3600, now],
-  );
-  return {
-    database,
-    pages,
-    env: {
-      DB: database.binding,
-      PAGES: pages,
-      SITE_TOKEN: 'site-secret',
-      PUBLISH_TOKEN: 'legacy-shared-secret',
-      ACCOUNT_MODE: 'required',
-      ACCOUNT_URL,
-      PAGES_URL,
-      OIDC_ISSUER: 'https://auth.assay.rs/auth',
-      OIDC_CLIENT_ID: 'agentkit-pages',
-      OIDC_CLIENT_SECRET: 'oidc-secret',
-      SESSION_SECRET: 'session-secret',
-    },
-  };
-}
-
-function signedIn(url: string, session = 'session-a') {
-  return new Request(url, { headers: { cookie: `agentkit_session=${session}` } });
-}
-
-function accountPost(url: string, body: unknown, session = 'session-a') {
-  return new Request(url, {
-    method: 'POST',
-    headers: {
-      cookie: `agentkit_session=${session}`,
-      'content-type': 'application/json',
-      origin: ACCOUNT_URL,
-    },
-    body: JSON.stringify(body),
-  });
-}
-
-function publish(token: string, body = '<h1>private</h1>', slug = 'private-page', title?: string) {
-  return new Request(`${ACCOUNT_URL}/api/pages/${slug}`, {
-    method: 'PUT',
-    headers: {
-      authorization: `Bearer ${token}`,
-      ...(title ? { 'x-page-title': encodeURIComponent(title) } : {}),
-    },
-    body,
-  });
-}
-
-async function pageAccessUrl(
-  setup: Awaited<ReturnType<typeof accountEnv>>,
-  slug = 'private-page',
-  session = 'session-a',
-) {
-  const response = await worker.fetch(
-    signedIn(`${ACCOUNT_URL}/access?return_to=${encodeURIComponent(`${PAGES_URL}/${slug}`)}`, session),
-    setup.env,
-  );
-  return { response, location: response.headers.get('location') };
-}
+import {
+  ACCOUNT_URL,
+  accountEnv,
+  accountPost,
+  bucket,
+  digest,
+  openDatabases,
+  pageAccessUrl,
+  PAGES_URL,
+  pkce,
+  publish,
+  signedIn,
+} from './account-harness.ts';
 
 afterEach(() => {
   for (const database of openDatabases.splice(0)) database.close();
@@ -495,7 +341,10 @@ describe('private access and sharing', () => {
     expect((await worker.fetch(publish('device-a'), setup.env)).status).toBe(200);
     const target = `${ACCOUNT_URL}/access?return_to=${encodeURIComponent(`${PAGES_URL}/private-page`)}`;
 
-    expect((await worker.fetch(signedIn(target, 'session-b'), setup.env)).status).toBe(404);
+    // Denial explains itself instead of pretending the page does not exist.
+    const denied = await worker.fetch(signedIn(target, 'session-b'), setup.env);
+    expect(denied.status).toBe(403);
+    expect(await denied.text()).toContain('This page is private');
 
     expect((await worker.fetch(
       accountPost(`${ACCOUNT_URL}/api/pages/private-page/invites`, { email: 'other@example.com' }),
@@ -559,7 +408,7 @@ describe('private access and sharing', () => {
 
     const disabled = await worker.fetch(deviceShare('device-a', false), setup.env);
     expect(disabled.status).toBe(200);
-    expect(await disabled.json()).toEqual({ ok: true, enabled: false, url: null });
+    expect(await disabled.json()).toEqual({ ok: true, enabled: false, url: null, already: false });
     expect((await worker.fetch(new Request(url), setup.env)).status).toBe(302);
   });
 
@@ -622,7 +471,7 @@ describe('private access and sharing', () => {
     );
 
     expect(removed.status).toBe(200);
-    expect((await pageAccessUrl(setup, 'private-page', 'session-b')).response.status).toBe(404);
+    expect((await pageAccessUrl(setup, 'private-page', 'session-b')).response.status).toBe(403);
     expect((await worker.fetch(new Request(access.location!), setup.env)).status).toBe(302);
   });
 
@@ -702,7 +551,7 @@ describe('private access and sharing', () => {
     expect(response.status).toBe(403);
   });
 
-  test('the dashboard share form displays the new one-time link', async () => {
+  test('the dashboard share form shows the link persistently, not once', async () => {
     const setup = await accountEnv();
     expect((await worker.fetch(publish('device-a'), setup.env)).status).toBe(200);
     const response = await worker.fetch(
@@ -718,22 +567,15 @@ describe('private access and sharing', () => {
       setup.env,
     );
 
-    // The link comes back through a one-shot cookie and is rendered on the
-    // dashboard itself, so the token never reaches the address bar or history.
+    // The link is derivable on demand, so the form just returns to the
+    // dashboard, which renders it in place — on every load, not via a
+    // one-shot reveal cookie.
     expect(response.status).toBe(303);
-    const flash = response.headers.get('set-cookie') ?? '';
-    expect(flash).toContain('agentkit_share=');
-    expect(flash).toContain('HttpOnly');
-
-    const dashboardResponse = await worker.fetch(
-      new Request(`${ACCOUNT_URL}/dashboard`, {
-        headers: { cookie: `agentkit_session=session-a; ${flash.split(';')[0]}` },
-      }),
-      setup.env,
-    );
-    expect(await dashboardResponse.text()).toContain('https://pages.agentkit.sbs/private-page?share=');
-    // Cleared on the way out, so a reload cannot show it a second time.
-    expect(dashboardResponse.headers.get('set-cookie')).toContain('Max-Age=0');
+    expect(response.headers.get('set-cookie')).toBeNull();
+    const first = await (await worker.fetch(signedIn(`${ACCOUNT_URL}/dashboard`), setup.env)).text();
+    expect(first).toContain('https://pages.agentkit.sbs/private-page?share=');
+    const again = await (await worker.fetch(signedIn(`${ACCOUNT_URL}/dashboard`), setup.env)).text();
+    expect(again).toContain('https://pages.agentkit.sbs/private-page?share=');
   });
 
   test('a cross-origin request cannot change sharing', async () => {
@@ -1213,11 +1055,11 @@ describe('owner share shell and menu', () => {
     expect(first.already).toBe(false);
     expect(await (await worker.fetch(new Request(first.url), setup.env)).text()).toBe('<h1>private</h1>');
 
-    // Enable again: idempotent - the circulating link survives.
+    // Enable again: idempotent - the circulating link survives AND comes back.
     const again = await worker.fetch(shareAction(manage, 'enable'), setup.env);
     const second = await again.json() as { url: string | null; already: boolean };
     expect(second.already).toBe(true);
-    expect(second.url).toBeNull();
+    expect(second.url).toBe(first.url);
     expect((await worker.fetch(new Request(first.url), setup.env)).status).toBe(200);
 
     // Rotate kills the old link and mints a working new one.

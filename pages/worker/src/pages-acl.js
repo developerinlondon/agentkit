@@ -1,12 +1,14 @@
 import { randomToken, sessionUser, sha256 } from "./accounts.js";
+import { shareTokenValid } from "./share-links.js";
 
 const PAGE_ACCESS_TTL_SECONDS = 10 * 60;
 export async function pageRecord(env, slug) {
   if (!env.DB) return null;
   return env.DB.prepare(
-    "SELECT slug, owner_id, visibility, share_token_hash FROM pages WHERE slug = ?",
+    "SELECT slug, owner_id, title, visibility, share_token_hash, share_generation, share_enabled FROM pages WHERE slug = ?",
   ).bind(slug).first();
 }
+
 export async function claimPage(env, slug, userId, title) {
   const existing = await pageRecord(env, slug);
   if (existing && existing.owner_id !== userId) return "forbidden";
@@ -38,13 +40,19 @@ export async function deletePageRecord(env, slug, userId) {
 // other visitor, so nothing owner-only can leak onto their copy of the page.
 export async function pageReadGrant(request, env, page) {
   if (!page || page.visibility === "public") return { allowed: true, owner: false };
-  const share = new URL(request.url).searchParams.get("share");
-  if (share && page.share_token_hash === await sha256(share)) return { allowed: true, owner: false };
-  const access = new URL(request.url).searchParams.get("access");
-  if (!access) return { allowed: false, owner: false };
-  const grant = await ownerByAccess(env, page.slug, access);
-  if (!grant) return { allowed: false, owner: false };
-  return { allowed: true, owner: grant.user_id === page.owner_id };
+  const params = new URL(request.url).searchParams;
+  // An access grant carries more privilege than a share token (it can mark the
+  // visitor as owner), so when both ride the URL the access grant decides.
+  const access = params.get("access");
+  if (access) {
+    const grant = await ownerByAccess(env, page.slug, access);
+    if (grant) return { allowed: true, owner: grant.user_id === page.owner_id };
+  }
+  const share = params.get("share");
+  if (share && await shareTokenValid(env, page, share)) {
+    return { allowed: true, owner: false, viaShare: true };
+  }
+  return { allowed: false, owner: false };
 }
 export async function ownerByAccess(env, slug, token) {
   return env.DB.prepare(
@@ -101,27 +109,6 @@ export async function ownerPage(request, env, slug) {
   if (!user || !page || page.owner_id !== user.id) return null;
   return { user, page };
 }
-// mode: "off" clears; "mint" unconditionally rotates (dashboard and device
-// callers keep their historical semantics); "enable" is idempotent — it never
-// silently kills a link that is already circulating.
-export async function setShareLink(env, slug, mode) {
-  if (mode === "off") {
-    await env.DB.prepare("UPDATE pages SET share_token_hash = NULL WHERE slug = ?").bind(slug).run();
-    return { token: null, already: false };
-  }
-  const token = randomToken();
-  const hash = await sha256(token);
-  if (mode === "enable") {
-    const result = await env.DB.prepare(
-      "UPDATE pages SET share_token_hash = ? WHERE slug = ? AND share_token_hash IS NULL",
-    ).bind(hash, slug).run();
-    if (result.meta.changes === 0) return { token: null, already: true };
-    return { token, already: false };
-  }
-  await env.DB.prepare("UPDATE pages SET share_token_hash = ? WHERE slug = ?")
-    .bind(hash, slug).run();
-  return { token, already: false };
-}
 export async function inviteEmail(env, slug, email) {
   const normalized = email.trim().toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) return false;
@@ -142,7 +129,8 @@ export async function removeInvite(env, slug, email) {
 }
 export async function pagesForUser(env, userId) {
   return (await env.DB.prepare(
-    `SELECT slug, title, visibility, share_token_hash, created_at, updated_at
+    `SELECT slug, title, visibility, share_token_hash, share_generation, share_enabled,
+            created_at, updated_at
        FROM pages WHERE owner_id = ? ORDER BY updated_at DESC`,
   ).bind(userId).all()).results;
 }

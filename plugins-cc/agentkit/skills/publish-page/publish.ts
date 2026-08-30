@@ -156,7 +156,12 @@ async function flipShare(enabled: boolean): Promise<string | null> {
 
 if (shareOnly) {
   const shareUrl = await flipShare(isShare);
-  console.log(isShare ? shareUrl : `share link revoked for ${slug}`);
+  console.log(
+    isShare
+      ? shareUrl
+        ?? `share link already on for ${slug}, but it predates recoverable links — use the Share menu on the page to rotate it into a visible one`
+      : `share link revoked for ${slug}`,
+  );
   process.exit();
 }
 
