@@ -27,6 +27,7 @@ flowchart LR
 | `DB`                 | D1       | Users, sessions, devices, pages, and grants |
 | `SITE_TOKEN`         | Secret   | Marketing and documentation deployment only |
 | `OIDC_CLIENT_SECRET` | Secret   | Confidential Assay client                   |
+| `SHARE_LINK_KEY`     | Secret   | HMAC key share tokens are derived from      |
 | `ACCOUNT_MODE`       | Variable | `required` fails closed without D1          |
 | `ACCOUNT_URL`        | Variable | Trusted dashboard and account API origin    |
 | `PAGES_URL`          | Variable | Untrusted rendered-page origin              |
@@ -51,6 +52,13 @@ Worker that references a schema migration before the migration has succeeded.
 node node_modules/wrangler/bin/wrangler.js d1 migrations apply agentkit-pages --remote
 node node_modules/wrangler/bin/wrangler.js deploy
 ```
+
+Migration `0006` and the `SHARE_LINK_KEY` secret are hard prerequisites of the current Worker:
+every private-page read selects the share columns, and `required` account mode fails closed with
+`503 share key unconfigured` until the secret is set. Share tokens are
+`HMAC-SHA256(SHARE_LINK_KEY, share:<slug>:<generation>)`, so the key is load-bearing for every
+circulating share link — rotating it invalidates all of them at once; treat rotation as a planned
+migration, never routine hygiene.
 
 New pages are private. An R2 page without a D1 metadata row is treated as a legacy public page so
 the account rollout does not break existing URLs. Claiming legacy ownership is intentionally not

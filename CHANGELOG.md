@@ -9,6 +9,20 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+- Pages: **share links are now derivable and the address bar is honest.** The
+  share token is HMAC(secret, slug:generation) instead of an unrecoverable
+  stored hash, so enabling is idempotent and always hands back the live link,
+  the shell menu and dashboard show it persistently, and rotation is an
+  explicit generation bump (links minted before the scheme keep working until
+  rotated). The owner shell becomes a slim top bar — the content frame starts
+  below it, so the chrome can no longer cover a page's own controls — and
+  rewrites the address bar to the durable share URL when sharing is on (clean
+  page URL when off), so copying what you see always yields a link that works
+  indefinitely, never the personal ten-minute access pass. Owners reopening
+  their own share link get upgraded back into the shell; strangers holding a
+  share link are never walled behind login; signed-in strangers on a private
+  page get an explanation instead of a bare 404 (#402, #403, #404).
+
 - Pages: owners now land on a trusted shell — their page in a sandboxed
   frame, plus a right-edge Share menu that turns the share link on
   (idempotently), rotates it, copies it, or turns it off in place. The menu
