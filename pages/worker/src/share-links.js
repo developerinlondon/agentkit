@@ -37,6 +37,18 @@ export function shareCapable(env) {
   return Boolean(env.SHARE_LINK_KEY);
 }
 
+// The default publish flow derives slugs as HMAC hex[20] — an 80-bit secret in
+// its own right. For those pages "sharing on" means the page URL itself is the
+// link: no token to lose, nothing to explain. Readable custom slugs are
+// guessable, so they keep requiring the derived token.
+const GENERATED_SLUG_RE = /^[0-9a-f]{20}$/;
+
+export function bareShared(page) {
+  if (!page) return false;
+  if (!page.share_enabled && !page.share_token_hash) return false;
+  return GENERATED_SLUG_RE.test(page.slug);
+}
+
 // "legacy" = a link minted before the derivable scheme: still honored via its
 // stored hash, but not re-displayable. Rotating moves the page onto the scheme.
 // "unavailable" = the page says shared but this deployment has no share key —
@@ -48,8 +60,10 @@ export function shareState(env, page) {
   return page.share_token_hash ? "legacy" : "off";
 }
 
-// The current share URL, or null when sharing is off, legacy, or keyless.
+// The current share URL: the bare page URL when the slug is its own secret,
+// the derived-token URL otherwise, null when sharing is off, legacy, or keyless.
 export async function shareUrl(env, page) {
+  if (bareShared(page)) return `${env.PAGES_URL}/${page.slug}`;
   if (!page || !page.share_enabled || !shareCapable(env)) return null;
   const token = await deriveShareToken(env, page.slug, page.share_generation);
   return `${env.PAGES_URL}/${page.slug}?share=${token}`;
@@ -96,7 +110,10 @@ export async function setShareLink(env, slug, mode) {
         RETURNING slug, share_token_hash, share_generation, share_enabled`,
     ).bind(slug).first();
     if (!row) return { error: "not found" };
-    if (row.share_token_hash) return { enabled: true, url: null, already: true, legacy: true };
+    if (row.share_token_hash) {
+      const legacyUrl = await shareUrl(env, row);
+      return { enabled: true, url: legacyUrl, already: true, legacy: !legacyUrl };
+    }
     return { enabled: true, url: await shareUrl(env, row), already: Boolean(before.share_enabled) };
   }
   const rotated = await env.DB.prepare(

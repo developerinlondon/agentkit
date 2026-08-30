@@ -9,6 +9,14 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+- Pages: **for generated slugs, the page URL is the share link.** Default
+  publishes get HMAC-derived hex slugs that are already unguessable, so when
+  sharing is on, the bare page URL serves to anyone — no `?share=` token to
+  copy, lose, or explain; the shell, dashboard, and CLI hand back the bare
+  URL, and legacy-shared generated slugs shed their "unrecoverable link"
+  state. Readable custom slugs are guessable, so they keep requiring the
+  derived token; private pages of every slug shape stay private.
+
 - Pages: **share links are now derivable and the address bar is honest.** The
   share token is HMAC(secret, slug:generation) instead of an unrecoverable
   stored hash, so enabling is idempotent and always hands back the live link,

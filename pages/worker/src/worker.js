@@ -18,7 +18,7 @@ import {
   pageReadGrant,
   removeInvite,
 } from "./pages-acl.js";
-import { setShareLink, shareState, shareUrl } from "./share-links.js";
+import { bareShared, setShareLink, shareState, shareUrl } from "./share-links.js";
 import { dashboard } from "./dashboard.js";
 import { approveDevice, devicePage, pollDevice, startDevice } from "./devices.js";
 import { completeLogin, startLogin } from "./oidc.js";
@@ -493,13 +493,17 @@ async function handlePageAccess(request, env) {
   if (!requested) return new Response("invalid page target\n", { status: 400 });
   // A page with no record predates accounts and is world-readable — telling a
   // visitor it is private would be false. Send them straight to it.
-  if (!(await pageRecord(env, requested.slug))) {
+  const record = await pageRecord(env, requested.slug);
+  if (!record) {
     requested.target.search = "";
     return new Response(null, { status: 302, headers: { location: requested.target.toString() } });
   }
+  // A bare-shared page is readable without any grant, so nobody who cannot
+  // sign in (or is not invited) should ever hit a wall on the way to it.
+  const openToAll = requested.share || bareShared(record);
   const user = await sessionUser(request, env);
   if (!user) {
-    if (requested.share) return backToSharedPage(requested);
+    if (openToAll) return backToSharedPage(requested);
     const current = new URL(request.url);
     const returnTo = `${current.pathname}${current.search}`;
     return new Response(null, {
@@ -509,7 +513,7 @@ async function handlePageAccess(request, env) {
   }
   const issued = await issuePageAccess(env, requested.slug, user);
   if (!issued) {
-    if (requested.share) return backToSharedPage(requested);
+    if (openToAll) return backToSharedPage(requested);
     return html(403, PRIVATE_PAGE);
   }
   requested.target.searchParams.delete("share");
@@ -710,8 +714,11 @@ const EMBED_HEADERS = {
 async function shellDocument(env, slug, page) {
   const title = escapeHtml(page.title || slug);
   const dashboard = `${env.ACCOUNT_URL}/dashboard#page-${slug}`;
-  const state = shareState(env, page);
   const link = await shareUrl(env, page);
+  // A legacy page with a showable bare link has nothing legacy-shaped left to
+  // explain — it presents as plainly shared.
+  const rawState = shareState(env, page);
+  const state = rawState === "legacy" && link ? "on" : rawState;
   const labels = {
     on: "Shared by link",
     legacy: "Shared by link",
@@ -777,7 +784,7 @@ $("aks-note").textContent=NOTES[state];
 $("aks-url").hidden=!link;if(link)$("aks-url").textContent=link;
 $("aks-copy").hidden=!link;
 $("aks-on").hidden=state!=="off";
-$("aks-rotate").hidden=state==="off"||state==="unavailable";
+$("aks-rotate").hidden=state==="off"||state==="unavailable"||(link&&link.indexOf("?share=")<0);
 $("aks-off").hidden=state==="off"||state==="unavailable";
 try{history.replaceState(null,"",(state==="on"&&link?link:"/${slug}")+location.hash)}catch(e){}
 }
