@@ -637,7 +637,7 @@ async function handlePagesRequest(request, env, path) {
   }
   const manage = url.searchParams.get("manage");
   if (grant.owner && manage) {
-    return html(200, shellDocument(env, path, page, url.searchParams.get("access")), SHELL_HEADERS);
+    return html(200, shellDocument(env, path, page), SHELL_HEADERS);
   }
   return servePage(env, `pages/${path}/index.html`, PAGE_HEADERS);
 }
@@ -656,7 +656,7 @@ const EMBED_HEADERS = {
     "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:; font-src data:; frame-ancestors 'self'; form-action 'none'; base-uri 'none'",
 };
 
-function shellDocument(env, slug, page, access) {
+function shellDocument(env, slug, page) {
   const title = escapeHtmlText(page.title || slug);
   const dashboard = `${env.ACCOUNT_URL}/dashboard#page-${slug}`;
   const shared = Boolean(page.share_token_hash);
@@ -696,9 +696,8 @@ html,body{margin:0;height:100%}
 var $=function(id){return document.getElementById(id)};
 var q=new URLSearchParams(location.search);
 var manage=q.get("manage");
-var access=${JSON.stringify(access)};
 var url=null;
-$("content").src="/${slug}?embed=1&access="+encodeURIComponent(access)+location.hash;
+$("content").src="/${slug}?embed=1&access="+encodeURIComponent(q.get("access")||"")+location.hash;
 $("aks-tab").addEventListener("click",function(){$("aks-menu").hidden=!$("aks-menu").hidden});
 function fail(m){$("aks-err").textContent=m;$("aks-err").hidden=false}
 function state(on){$("aks-state").textContent=on?"Shared by link":"Private";$("aks-on").hidden=on;$("aks-rotate").hidden=!on;$("aks-off").hidden=!on;if(!on){url=null;$("aks-url").hidden=true;$("aks-copy").hidden=true}}

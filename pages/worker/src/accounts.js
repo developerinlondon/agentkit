@@ -26,7 +26,10 @@ export async function deviceCredential(env, token) {
   };
 }
 
+const WRITE_LIMIT_TABLES = new Set(["device_write_limits", "share_write_limits"]);
+
 export async function consumeDeviceWrite(env, tokenHash, table = "device_write_limits") {
+  if (!WRITE_LIMIT_TABLES.has(table)) throw new Error(`unknown limiter table: ${table}`);
   const configured = Number(env.WRITE_RATE_LIMIT_PER_MINUTE || 60);
   const limit = Number.isSafeInteger(configured) && configured > 0 ? configured : 60;
   const result = await env.DB.prepare(
