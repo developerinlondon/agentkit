@@ -51,7 +51,7 @@ export async function consumeDeviceWrite(env, tokenHash, table = "device_write_l
   };
 }
 
-function cookie(request, name) {
+export function cookieValue(request, name) {
   const prefix = `${name}=`;
   for (const part of (request.headers.get("cookie") || "").split(";")) {
     const value = part.trim();
@@ -62,7 +62,7 @@ function cookie(request, name) {
 
 export async function sessionUser(request, env) {
   if (!env.DB) return null;
-  const token = cookie(request, "agentkit_session");
+  const token = cookieValue(request, "agentkit_session");
   if (!token) return null;
   return env.DB.prepare(
     `SELECT users.id, users.email, users.display_name
@@ -73,7 +73,7 @@ export async function sessionUser(request, env) {
 }
 
 export async function endSession(request, env) {
-  const token = cookie(request, "agentkit_session");
+  const token = cookieValue(request, "agentkit_session");
   if (token) {
     await env.DB.prepare("DELETE FROM sessions WHERE token_hash = ?").bind(await sha256(token)).run();
   }

@@ -1,5 +1,6 @@
 import {
   consumeDeviceWrite,
+  cookieValue,
   deviceCredential,
   endSession,
   revokeDeviceToken,
@@ -16,8 +17,8 @@ import {
   pageRecord,
   pageReadGrant,
   removeInvite,
-  setShareLink,
 } from "./pages-acl.js";
+import { setShareLink, shareState, shareUrl } from "./share-links.js";
 import { dashboard } from "./dashboard.js";
 import { approveDevice, devicePage, pollDevice, startDevice } from "./devices.js";
 import { completeLogin, startLogin } from "./oidc.js";
@@ -326,28 +327,6 @@ function sameOrigin(request) {
   return request.headers.get("origin") === new URL(request.url).origin;
 }
 
-const FLASH_COOKIE = "agentkit_share";
-
-function flashCookie(value, maxAge) {
-  return `${FLASH_COOKIE}=${encodeURIComponent(value)}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAge}`;
-}
-
-// Reads the one-shot sharing link back out, so the dashboard can render it
-// once and the next request has nothing left to leak.
-function takeShareFlash(request, env) {
-  const raw = (request.headers.get("cookie") || "")
-    .split(";").map((part) => part.trim())
-    .find((part) => part.startsWith(`${FLASH_COOKIE}=`));
-  if (!raw) return null;
-  const value = decodeURIComponent(raw.slice(FLASH_COOKIE.length + 1));
-  const separator = value.indexOf("|");
-  if (separator < 1) return null;
-  const slug = value.slice(0, separator);
-  const token = value.slice(separator + 1);
-  if (!SLUG_RE.test(slug) || !token) return null;
-  return { slug, url: `${env.PAGES_URL}/${slug}?share=${token}` };
-}
-
 async function requestBody(request) {
   if (request.headers.get("content-type")?.startsWith("application/json")) return request.json();
   return Object.fromEntries(await request.formData());
@@ -370,6 +349,12 @@ async function shareByDevice(request, env, slug, bearer) {
   return rateLimitedShareChange(request, env, slug, credential.tokenHash);
 }
 
+function shareChangeResponse(result) {
+  if (result.error === "not found") return new Response("not found\n", { status: 404 });
+  if (result.error) return new Response(`share links unavailable: ${result.error}\n`, { status: 503 });
+  return Response.json({ ok: true, ...result });
+}
+
 async function rateLimitedShareChange(request, env, slug, limiterKey, limiterTable) {
   const rate = await consumeDeviceWrite(env, limiterKey, limiterTable);
   if (!rate.allowed) {
@@ -380,9 +365,7 @@ async function rateLimitedShareChange(request, env, slug, limiterKey, limiterTab
   }
   const body = await requestBody(request);
   const enabled = body.enabled === true || body.enabled === "true";
-  const { token } = await setShareLink(env, slug, enabled ? "mint" : "off");
-  const url = token ? `${env.PAGES_URL}/${slug}?share=${token}` : null;
-  return Response.json({ ok: true, enabled, url });
+  return shareChangeResponse(await setShareLink(env, slug, enabled ? "enable" : "off"));
 }
 
 async function handleShare(request, env, slug) {
@@ -392,17 +375,13 @@ async function handleShare(request, env, slug) {
   if (!(await ownerPage(request, env, slug))) return new Response("not found\n", { status: 404 });
   const body = await requestBody(request);
   const enabled = body.enabled === true || body.enabled === "true";
-  const { token } = await setShareLink(env, slug, enabled ? "mint" : "off");
-  if (!request.headers.get("content-type")?.startsWith("application/json")) {
-    // The link is handed back through a one-shot cookie rather than the URL:
-    // the dashboard can then show it in place, and the token stays out of the
-    // address bar, browser history and any referrer.
-    const headers = { location: "/dashboard" };
-    if (token) headers["set-cookie"] = flashCookie(`${slug}|${token}`, 120);
-    return new Response(null, { status: 303, headers });
+  const result = await setShareLink(env, slug, enabled ? "enable" : "off");
+  if (!result.error && !request.headers.get("content-type")?.startsWith("application/json")) {
+    // The dashboard shows the derived link persistently, so the form flow just
+    // returns to it — no one-shot reveal cookie needed any more.
+    return new Response(null, { status: 303, headers: { location: "/dashboard" } });
   }
-  const url = token ? `${env.PAGES_URL}/${slug}?share=${token}` : null;
-  return Response.json({ ok: true, enabled, url });
+  return shareChangeResponse(result);
 }
 
 async function handleInvite(request, env, slug) {
@@ -464,6 +443,10 @@ function configuredHost(value) {
   }
 }
 
+// A share token is the one query parameter allowed to round-trip through
+// /access: it lets an owner's browser upgrade a share-link visit to the shell,
+// and lets anyone else fall back to the plain shared page instead of a login
+// wall. Everything else in the query is still rejected.
 function requestedPageTarget(request, env) {
   const raw = new URL(request.url).searchParams.get("return_to");
   if (!raw) return null;
@@ -471,13 +454,28 @@ function requestedPageTarget(request, env) {
     const target = new URL(raw);
     const pagesOrigin = new URL(env.PAGES_URL).origin;
     const slug = target.pathname.replace(/^\/+|\/+$/g, "");
-    if (target.origin !== pagesOrigin || target.search || target.hash || !SLUG_RE.test(slug)) {
+    const extraneous = [...target.searchParams.keys()].some((key) => key !== "share");
+    if (target.origin !== pagesOrigin || extraneous || target.hash || !SLUG_RE.test(slug)) {
       return null;
     }
-    return { target, slug };
+    return { target, slug, share: target.searchParams.get("share") };
   } catch {
     return null;
   }
+}
+
+const PRIVATE_PAGE = `<!doctype html><meta charset="utf-8"><title>Private page</title>
+<body style="font-family:system-ui;display:grid;place-items:center;min-height:90vh">
+<div style="text-align:center;max-width:34rem;padding:0 1rem"><h1 style="letter-spacing:-0.02em">This page is private</h1>
+<p>Your account doesn't have access to it. If someone sent you this link, it was
+probably their personal, time-limited pass — those expire. Ask them for a share
+link instead (the Share menu on the page hands one out that works indefinitely).</p></div>`;
+
+// The plain=1 marker tells the pages host not to bounce this visit back here,
+// which would otherwise loop for a browser holding an owner cookie.
+function backToSharedPage(requested) {
+  requested.target.searchParams.set("plain", "1");
+  return new Response(null, { status: 302, headers: { location: requested.target.toString() } });
 }
 
 async function handlePageAccess(request, env) {
@@ -485,6 +483,7 @@ async function handlePageAccess(request, env) {
   if (!requested) return new Response("invalid page target\n", { status: 400 });
   const user = await sessionUser(request, env);
   if (!user) {
+    if (requested.share) return backToSharedPage(requested);
     const current = new URL(request.url);
     const returnTo = `${current.pathname}${current.search}`;
     return new Response(null, {
@@ -493,7 +492,11 @@ async function handlePageAccess(request, env) {
     });
   }
   const issued = await issuePageAccess(env, requested.slug, user);
-  if (!issued) return new Response("not found\n", { status: 404 });
+  if (!issued) {
+    if (requested.share) return backToSharedPage(requested);
+    return html(403, PRIVATE_PAGE);
+  }
+  requested.target.searchParams.delete("share");
   requested.target.searchParams.set("access", issued.access);
   if (issued.manage) requested.target.searchParams.set("manage", issued.manage);
   return new Response(null, { status: 302, headers: { location: requested.target.toString() } });
@@ -601,16 +604,29 @@ async function handleAccountRequest(request, env, path) {
         headers: { location: "/login?return_to=%2Fdashboard" },
       });
     }
-    const flash = takeShareFlash(request, env);
-    const headers = flash
-      ? { ...UI_HEADERS, "set-cookie": flashCookie("", 0) }
-      : UI_HEADERS;
-    return html(200, await dashboard(env, user, flash), headers);
+    return html(200, await dashboard(env, user), UI_HEADERS);
   }
   if (request.method !== "GET" && request.method !== "HEAD") {
     return new Response("method not allowed\n", { status: 405 });
   }
   return html(404, NOT_FOUND, UI_HEADERS);
+}
+
+// Set whenever this browser has held the owner shell for some page. It is a
+// hint, not a credential: it only decides whether a share-link visit is worth
+// bouncing through /access to see if a session can upgrade it to the shell.
+const OWNER_HINT_COOKIE = "agentkit_owner";
+
+function redirectToAccess(env, request, share) {
+  const target = new URL(request.url);
+  target.search = "";
+  if (share) target.searchParams.set("share", share);
+  return new Response(null, {
+    status: 302,
+    headers: {
+      location: `${env.ACCOUNT_URL}/access?return_to=${encodeURIComponent(target.toString())}`,
+    },
+  });
 }
 
 async function handlePagesRequest(request, env, path) {
@@ -621,23 +637,25 @@ async function handlePagesRequest(request, env, path) {
   if (!SLUG_RE.test(path)) return html(404, NOT_FOUND, PAGE_HEADERS);
   const page = await pageRecord(env, path);
   const grant = await pageReadGrant(request, env, page);
-  if (!grant.allowed) {
-    const target = new URL(request.url);
-    target.search = "";
-    return new Response(null, {
-      status: 302,
-      headers: {
-        location: `${env.ACCOUNT_URL}/access?return_to=${encodeURIComponent(target.toString())}`,
-      },
-    });
-  }
   const url = new URL(request.url);
+  if (!grant.allowed) return redirectToAccess(env, request, null);
   if (url.searchParams.get("embed") === "1") {
     return servePage(env, `pages/${path}/index.html`, EMBED_HEADERS);
   }
+  if (
+    grant.viaShare
+    && url.searchParams.get("plain") !== "1"
+    && cookieValue(request, OWNER_HINT_COOKIE)
+  ) {
+    return redirectToAccess(env, request, url.searchParams.get("share"));
+  }
   const manage = url.searchParams.get("manage");
   if (grant.owner && manage) {
-    return html(200, shellDocument(env, path, page), SHELL_HEADERS);
+    return html(200, await shellDocument(env, path, page), {
+      ...SHELL_HEADERS,
+      "set-cookie":
+        `${OWNER_HINT_COOKIE}=1; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=15552000`,
+    });
   }
   return servePage(env, `pages/${path}/index.html`, PAGE_HEADERS);
 }
@@ -656,64 +674,100 @@ const EMBED_HEADERS = {
     "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:; font-src data:; frame-ancestors 'self'; form-action 'none'; base-uri 'none'",
 };
 
-function shellDocument(env, slug, page) {
+// The owner chrome is a bar with its own strip of the viewport — the content
+// iframe starts below it, so nothing here can ever cover a page's own controls
+// (the floating mid-edge tab this replaces could). The bar also keeps the
+// address bar honest: the durable share URL when sharing is on, the clean page
+// URL when it is off — never the personal, expiring access pass.
+async function shellDocument(env, slug, page) {
   const title = escapeHtmlText(page.title || slug);
   const dashboard = `${env.ACCOUNT_URL}/dashboard#page-${slug}`;
-  const shared = Boolean(page.share_token_hash);
+  const state = shareState(page);
+  const link = await shareUrl(env, page);
+  const labels = {
+    on: "Shared by link",
+    legacy: "Shared by link",
+    off: "Private",
+  };
   return `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${title}</title>
 <style>
 [hidden]{display:none!important}
-html,body{margin:0;height:100%}
-#content{position:fixed;inset:0;border:0;width:100%;height:100%}
-#aks{position:fixed;top:40%;right:0;z-index:10;font:13px/1.4 system-ui,sans-serif}
-#aks-tab{writing-mode:vertical-rl;padding:12px 7px;border-radius:8px 0 0 8px;background:#1b1d22;color:#eeeeee;border:1px solid #79a8e7;border-right:0;cursor:pointer;font:600 12px/1 system-ui,sans-serif;letter-spacing:.08em}
-#aks-menu{position:absolute;right:34px;top:0;width:250px;background:#1b1d22;color:#eeeeee;border:1px solid #2a2d34;border-radius:10px;padding:12px 14px;box-shadow:0 6px 24px rgba(0,0,0,.45)}
-#aks-state{font-weight:600;margin-bottom:8px}
+html,body{margin:0;height:100%;background:#131417}
+#content{position:fixed;top:42px;left:0;right:0;bottom:0;border:0;width:100%;height:calc(100% - 42px)}
+#aks-bar{position:fixed;top:0;left:0;right:0;height:42px;z-index:10;display:flex;align-items:center;gap:10px;padding:0 12px;box-sizing:border-box;background:#1b1d22;color:#eee;border-bottom:1px solid #2a2d34;font:13px/1.4 system-ui,sans-serif}
+#aks-title{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+#aks-state{flex:none;font:600 11px/1 system-ui,sans-serif;letter-spacing:.04em;padding:5px 9px;border-radius:99px;border:1px solid #3a3f47;color:#a9b2bf}
+#aks-state.on{border-color:#79a8e7;color:#a8c8f0}
+#aks-share{flex:none;margin-left:auto}
+#aks-menu{position:fixed;top:48px;right:8px;z-index:11;width:280px;background:#1b1d22;color:#eee;border:1px solid #2a2d34;border-radius:10px;padding:12px 14px;box-shadow:0 6px 24px rgba(0,0,0,.45);font:13px/1.4 system-ui,sans-serif}
+#aks-note{color:#a9b2bf;margin-bottom:8px}
 #aks-url{font:11px/1.4 ui-monospace,monospace;word-break:break-all;background:#131417;border:1px solid #2a2d34;border-radius:6px;padding:6px;margin-bottom:8px}
 #aks-err{color:#e06c75;margin-top:8px}
-.aks-b{font:600 12px/1 system-ui,sans-serif;padding:8px 10px;border-radius:7px;border:1px solid #3a3f47;background:#23262d;color:#eeeeee;cursor:pointer;display:block;width:100%;text-align:center;text-decoration:none;box-sizing:border-box}
+.aks-b{font:600 12px/1 system-ui,sans-serif;padding:8px 10px;border-radius:7px;border:1px solid #3a3f47;background:#23262d;color:#eee;cursor:pointer;display:block;width:100%;text-align:center;text-decoration:none;box-sizing:border-box}
 .aks-b:hover{border-color:#79a8e7}
-#aks-menu>div.btns{display:flex;flex-direction:column;gap:6px}
+#aks-bar .aks-b{width:auto;padding:6px 12px}
+#aks-menu .btns{display:flex;flex-direction:column;gap:6px}
 </style></head><body>
-<iframe id="content" title="${title}" sandbox="allow-scripts allow-forms allow-popups allow-modals allow-downloads"></iframe>
-<div id="aks">
-<button id="aks-tab" title="Share settings">SHARE</button>
+<div id="aks-bar">
+<span id="aks-title">${title}</span>
+<span id="aks-state" class="${state === "off" ? "" : "on"}">${labels[state]}</span>
+<button class="aks-b" id="aks-share">Share</button>
+</div>
 <div id="aks-menu" hidden>
-<div id="aks-state">${shared ? "Shared by link" : "Private"}</div>
+<div id="aks-note"></div>
 <div id="aks-url" hidden></div>
 <div class="btns">
-<button class="aks-b" id="aks-on" ${shared ? "hidden" : ""}>Turn share link on</button>
+<button class="aks-b" id="aks-on" hidden>Turn share link on</button>
 <button class="aks-b" id="aks-copy" hidden>Copy link</button>
-<button class="aks-b" id="aks-rotate" ${shared ? "" : "hidden"}>Rotate link (old one dies)</button>
-<button class="aks-b" id="aks-off" ${shared ? "" : "hidden"}>Turn share link off</button>
+<button class="aks-b" id="aks-rotate" hidden>Rotate link (old one dies)</button>
+<button class="aks-b" id="aks-off" hidden>Turn share link off</button>
 <a class="aks-b" href="${dashboard}" target="_blank" rel="noopener">Invites &amp; settings</a>
 </div>
 <div id="aks-err" hidden></div>
-</div></div>
+</div>
+<iframe id="content" title="${title}" sandbox="allow-scripts allow-forms allow-popups allow-modals allow-downloads"></iframe>
 <script>(function(){
 var $=function(id){return document.getElementById(id)};
 var q=new URLSearchParams(location.search);
 var manage=q.get("manage");
-var url=null;
+var state=${JSON.stringify(state)};
+var link=${JSON.stringify(link)};
+var NOTES={
+on:"Anyone with this link can view the page, until you turn it off.",
+legacy:"Shared by a link made before links were recoverable, so it cannot be shown here. Rotate to get a visible link (the old one dies), or turn sharing off.",
+off:"Private. Only you and invited people can open it."};
 $("content").src="/${slug}?embed=1&access="+encodeURIComponent(q.get("access")||"")+location.hash;
-$("aks-tab").addEventListener("click",function(){$("aks-menu").hidden=!$("aks-menu").hidden});
+function render(){
+$("aks-state").textContent=state==="off"?"Private":"Shared by link";
+$("aks-state").className=state==="off"?"":"on";
+$("aks-note").textContent=NOTES[state];
+$("aks-url").hidden=!link;if(link)$("aks-url").textContent=link;
+$("aks-copy").hidden=!link;
+$("aks-on").hidden=state!=="off";
+$("aks-rotate").hidden=state==="off";
+$("aks-off").hidden=state==="off";
+history.replaceState(null,"",(state==="on"&&link?link:"/${slug}")+location.hash);
+}
+render();
+$("aks-share").addEventListener("click",function(){$("aks-menu").hidden=!$("aks-menu").hidden});
 function fail(m){$("aks-err").textContent=m;$("aks-err").hidden=false}
-function state(on){$("aks-state").textContent=on?"Shared by link":"Private";$("aks-on").hidden=on;$("aks-rotate").hidden=!on;$("aks-off").hidden=!on;if(!on){url=null;$("aks-url").hidden=true;$("aks-copy").hidden=true}}
 function act(action){$("aks-err").hidden=true;
 fetch("/api/pages/${slug}/share",{method:"POST",headers:{"authorization":"Bearer "+manage,"content-type":"application/json"},body:JSON.stringify({action:action})})
 .then(function(r){if(r.status===401)throw new Error("Session pass expired - reload the page");if(!r.ok)throw new Error("Share update failed ("+r.status+")");return r.json()})
-.then(function(d){state(d.enabled);if(d.url){url=d.url;$("aks-url").textContent=d.url;$("aks-url").hidden=false;$("aks-copy").hidden=false}
-if(d.already)fail("Already shared - the existing link still works. Use Rotate to replace it.")})
+.then(function(d){
+state=d.enabled?(d.url?"on":"legacy"):"off";
+link=d.url||null;
+render()})
 .catch(function(e){fail(e.message)})}
 $("aks-on").addEventListener("click",function(){act("enable")});
 $("aks-rotate").addEventListener("click",function(){act("rotate")});
 $("aks-off").addEventListener("click",function(){act("off")});
 $("aks-copy").addEventListener("click",function(){
-if(!url)return;
+if(!link)return;
 if(!navigator.clipboard){fail("Clipboard unavailable - copy the link text above by hand");return}
-navigator.clipboard.writeText(url).then(function(){
+navigator.clipboard.writeText(link).then(function(){
 $("aks-copy").textContent="Copied";
 setTimeout(function(){$("aks-copy").textContent="Copy link"},1500);
 }).catch(function(){fail("Copy failed - select the link text above")})});
@@ -725,7 +779,7 @@ function escapeHtmlText(value) {
     .replace(/"/g, "&quot;");
 }
 
-const SHARE_ACTIONS = { enable: "enable", rotate: "mint", off: "off" };
+const SHARE_ACTIONS = { enable: "enable", rotate: "rotate", off: "off" };
 
 async function handleOwnerShare(request, env, slug) {
   if (!sameOrigin(request)) return new Response("forbidden\n", { status: 403 });
@@ -751,10 +805,7 @@ async function handleOwnerShare(request, env, slug) {
       headers: { "retry-after": String(rate.retryAfter) },
     });
   }
-  const { token, already } = await setShareLink(env, slug, mode);
-  const enabled = mode !== "off";
-  const url = token ? `${env.PAGES_URL}/${slug}?share=${token}` : null;
-  return Response.json({ ok: true, enabled, url, already });
+  return shareChangeResponse(await setShareLink(env, slug, mode));
 }
 
 export default {
