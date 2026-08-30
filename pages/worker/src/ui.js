@@ -71,6 +71,7 @@ code, .mono, input {
   background: var(--surface); border: 1px solid var(--line);
   border-radius: var(--radius); padding: 1.1rem 1.15rem; margin-bottom: .85rem;
 }
+.card:target { outline: 2px solid var(--accent); outline-offset: 2px; }
 .card-head {
   display: flex; flex-wrap: wrap; gap: .35rem .75rem;
   align-items: baseline; justify-content: space-between;

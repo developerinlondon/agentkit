@@ -1,19 +1,21 @@
 import {
-  canReadPage,
-  claimPage,
   consumeDeviceWrite,
-  deletePageRecord,
   deviceCredential,
   endSession,
+  revokeDeviceToken,
+  sessionUser,
+} from "./accounts.js";
+import {
+  claimPage,
+  deletePageRecord,
   inviteEmail,
   issuePageAccess,
   ownerPage,
   pageRecord,
+  pageReadGrant,
   removeInvite,
-  revokeDeviceToken,
-  sessionUser,
   setShareLink,
-} from "./accounts.js";
+} from "./pages-acl.js";
 import { dashboard } from "./dashboard.js";
 import { approveDevice, devicePage, pollDevice, startDevice } from "./devices.js";
 import { completeLogin, startLogin } from "./oidc.js";
@@ -611,7 +613,8 @@ async function handlePagesRequest(request, env, path) {
   if (path === "") return servePage(env, "_site/pages-index.html", PAGE_HEADERS);
   if (!SLUG_RE.test(path)) return html(404, NOT_FOUND, PAGE_HEADERS);
   const page = await pageRecord(env, path);
-  if (!(await canReadPage(request, env, page))) {
+  const grant = await pageReadGrant(request, env, page);
+  if (!grant.allowed) {
     const target = new URL(request.url);
     target.search = "";
     return new Response(null, {
@@ -621,7 +624,26 @@ async function handlePagesRequest(request, env, path) {
       },
     });
   }
-  return servePage(env, `pages/${path}/index.html`, PAGE_HEADERS);
+  const response = await servePage(env, `pages/${path}/index.html`, PAGE_HEADERS);
+  if (!grant.owner || response.status !== 200) return response;
+  return withShareButton(response, env, path);
+}
+
+// A plain anchor, not a control: the page CSP has no connect-src, so share
+// state can only be changed on the account origin. Injected at serve time
+// rather than publish time so every existing page gets it without a republish.
+const SHARE_BUTTON_STYLE = "position:fixed;top:12px;right:12px;z-index:2147483647;"
+  + "font:600 13px/1 system-ui,sans-serif;padding:8px 14px;border-radius:999px;"
+  + "background:#1b1d22;color:#eeeeee;border:1px solid #79a8e7;text-decoration:none;opacity:.92";
+
+async function withShareButton(response, env, slug) {
+  const body = await response.text();
+  const button = `<a href="${env.ACCOUNT_URL}/dashboard#page-${slug}" target="_blank" rel="noopener"`
+    + ` title="Share settings" style="${SHARE_BUTTON_STYLE}">Share</a>`;
+  // Appended, never spliced: a literal "</body>" may legally sit inside a
+  // script string or comment, so any rewrite targeting it corrupts the page.
+  // The parser reparents a trailing element back into body regardless.
+  return html(200, body + button, PAGE_HEADERS);
 }
 
 export default {

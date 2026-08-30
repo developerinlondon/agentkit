@@ -9,6 +9,12 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+- Pages: pages served to their owner now carry a fixed Share button linking to
+  that page's card on the account dashboard (`#page-<slug>` anchor, highlighted
+  on arrival). Share-link readers, invitees, and legacy pages are served
+  byte-identical output. Page ACL helpers moved from `accounts.js` into
+  `pages-acl.js` (#398).
+
 ## v0.7.18 — 2026-08-24
 
 - feat(config): **board-hygiene `require` is the shipped default.** Fresh installs enforce

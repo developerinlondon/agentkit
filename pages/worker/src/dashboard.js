@@ -1,4 +1,5 @@
-import { deviceTokensForUser, invitesForUserPages, pagesForUser } from "./accounts.js";
+import { deviceTokensForUser } from "./accounts.js";
+import { invitesForUserPages, pagesForUser } from "./pages-acl.js";
 import { escapeHtml, MARK, shell } from "./ui.js";
 
 function day(seconds) {
@@ -42,7 +43,7 @@ function pageCard(env, page, invites, flash) {
   const address = `${env.PAGES_URL}/${page.slug}`;
   const open = `/access?return_to=${encodeURIComponent(address)}`;
   const shared = Boolean(page.share_token_hash);
-  return `<article class="card">
+  return `<article class="card" id="page-${slug}">
     <div class="card-head">
       <h2><a href="${open}">${escapeHtml(page.title || page.slug)}</a></h2>
       <span class="pill${shared ? " on" : ""}">${shared ? "Shared by link" : "Private"}</span>
