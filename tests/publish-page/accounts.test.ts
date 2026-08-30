@@ -466,7 +466,7 @@ describe('private access and sharing', () => {
     expect(location).toStartWith(`${PAGES_URL}/private-page?access=`);
     const page = await worker.fetch(new Request(location), setup.env);
     expect(page.status).toBe(200);
-    expect(await page.text()).toBe('<h1>private</h1>');
+    expect(await page.text()).toStartWith('<h1>private</h1>');
 
     expect((await worker.fetch(
       new Request(location.replace('/private-page?', '/another-page?')),
@@ -509,7 +509,8 @@ describe('private access and sharing', () => {
     const response = await worker.fetch(new Request(access.location!), setup.env);
 
     expect(response.status).toBe(200);
-    expect(await response.text()).toBe('<h1>private</h1>');
+    // The owner's copy carries the injected share button after the content.
+    expect(await response.text()).toStartWith('<h1>private</h1>');
   });
 
   test('a share link grants access and disabling it revokes the old URL', async () => {
@@ -1100,5 +1101,75 @@ describe('Assay OIDC sessions', () => {
     expect(
       setup.database.sqlite.query('SELECT COUNT(*) AS count FROM sessions WHERE user_id = ?').get('user-a'),
     ).toEqual({ count: 0 });
+  });
+});
+
+describe('owner share button on served pages', () => {
+  async function servedBody(setup: Awaited<ReturnType<typeof accountEnv>>, url: string) {
+    const response = await worker.fetch(new Request(url), setup.env);
+    expect(response.status).toBe(200);
+    return response.text();
+  }
+
+  test('the owner sees a share button pointing at the dashboard card', async () => {
+    const setup = await accountEnv();
+    expect((await worker.fetch(publish('device-a'), setup.env)).status).toBe(200);
+    const { location } = await pageAccessUrl(setup);
+    const body = await servedBody(setup, location!);
+    expect(body).toContain(`${ACCOUNT_URL}/dashboard#page-private-page`);
+    expect(body).toContain('>Share</a>');
+  });
+
+  test('the button lands inside body when the page has a closing tag', async () => {
+    const setup = await accountEnv();
+    const doc = '<!doctype html><body><h1>private</h1></body>';
+    expect((await worker.fetch(publish('device-a', doc), setup.env)).status).toBe(200);
+    const { location } = await pageAccessUrl(setup);
+    const body = await servedBody(setup, location!);
+    expect(body.indexOf('>Share</a>')).toBeLessThan(body.indexOf('</body>'));
+  });
+
+  test('an invited reader gets the page without the button', async () => {
+    const setup = await accountEnv();
+    expect((await worker.fetch(publish('device-a'), setup.env)).status).toBe(200);
+    const invite = await worker.fetch(
+      accountPost(`${ACCOUNT_URL}/api/pages/private-page/invites`, { email: 'other@example.com' }, 'session-a'),
+      setup.env,
+    );
+    expect([200, 303]).toContain(invite.status);
+    const { location } = await pageAccessUrl(setup, 'private-page', 'session-b');
+    const body = await servedBody(setup, location!);
+    expect(body).not.toContain('>Share</a>');
+  });
+
+  test('a share-link reader gets the page without the button', async () => {
+    const setup = await accountEnv();
+    expect((await worker.fetch(publish('device-a'), setup.env)).status).toBe(200);
+    const share = await worker.fetch(
+      new Request(`${ACCOUNT_URL}/api/pages/private-page/share`, {
+        method: 'POST',
+        headers: { authorization: 'Bearer device-a', 'content-type': 'application/json' },
+        body: JSON.stringify({ enabled: true }),
+      }),
+      setup.env,
+    );
+    expect(share.status).toBe(200);
+    const { url } = await share.json() as { url: string };
+    const body = await servedBody(setup, url);
+    expect(body).not.toContain('>Share</a>');
+  });
+
+  test('a legacy page with no metadata row is served unmodified', async () => {
+    const setup = await accountEnv();
+    setup.pages.writes.set('pages/legacy-page/index.html', { body: '<h1>legacy</h1>' });
+    const body = await servedBody(setup, `${PAGES_URL}/legacy-page`);
+    expect(body).toBe('<h1>legacy</h1>');
+  });
+
+  test('the dashboard card carries the anchor the button targets', async () => {
+    const setup = await accountEnv();
+    expect((await worker.fetch(publish('device-a'), setup.env)).status).toBe(200);
+    const dashboard = await worker.fetch(signedIn(`${ACCOUNT_URL}/dashboard`), setup.env);
+    expect(await dashboard.text()).toContain('id="page-private-page"');
   });
 });
