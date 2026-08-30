@@ -6,7 +6,10 @@
 <title>{{TITLE}}</title>
 <script>
   (() => {
-    const saved = localStorage.getItem("agentkit-theme");
+    // localStorage throws in a sandboxed (opaque-origin) frame, such as the
+    // owner shell's content frame - fall through to the default theme there.
+    let saved = null;
+    try { saved = localStorage.getItem("agentkit-theme"); } catch {}
     if (saved === "light" || saved === "dark") document.documentElement.dataset.theme = saved;
   })();
 </script>
@@ -387,7 +390,9 @@
     const html = document.documentElement;
     const next = html.dataset.theme === "light" ? "dark" : "light";
     html.dataset.theme = next;
-    localStorage.setItem("agentkit-theme", next);
+    // The flip and the re-theme event must survive a sandboxed frame where
+    // storage throws; persistence is best-effort there.
+    try { localStorage.setItem("agentkit-theme", next); } catch {}
     dispatchEvent(new CustomEvent("agentkit-theme", { detail: next }));
   });
   const slides = [...document.querySelectorAll(".slide")];
