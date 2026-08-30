@@ -197,3 +197,106 @@ describe('owner-hint upgrade of share-link visits', () => {
     expect(body).not.toContain('name="enabled" value="false"');
   });
 });
+
+describe('bare share URLs for generated slugs', () => {
+  const GENERATED = 'abc123abc123abc123ab';
+
+  test('sharing on makes the bare page URL itself serve to anyone', async () => {
+    const setup = await accountEnv();
+    expect((await worker.fetch(publish('device-a', '<h1>bare</h1>', GENERATED), setup.env)).status).toBe(200);
+    expect((await worker.fetch(new Request(`${PAGES_URL}/${GENERATED}`), setup.env)).status).toBe(302);
+
+    const manage = new URL((await pageAccessUrl(setup, GENERATED)).location!).searchParams.get('manage')!;
+    const on = await (await worker.fetch(shareAction(manage, 'enable', GENERATED), setup.env)).json() as { url: string };
+    expect(on.url).toBe(`${PAGES_URL}/${GENERATED}`);
+
+    const read = await worker.fetch(new Request(`${PAGES_URL}/${GENERATED}`), setup.env);
+    expect(read.status).toBe(200);
+    expect(await read.text()).toBe('<h1>bare</h1>');
+
+    await worker.fetch(shareAction(manage, 'off', GENERATED), setup.env);
+    expect((await worker.fetch(new Request(`${PAGES_URL}/${GENERATED}`), setup.env)).status).toBe(302);
+  });
+
+  test('a readable custom slug keeps requiring the share token when shared', async () => {
+    const setup = await accountEnv();
+    expect((await worker.fetch(publish('device-a'), setup.env)).status).toBe(200);
+    const { url } = await enabledShareUrl(setup);
+    expect(url).toContain('?share=');
+    expect((await worker.fetch(new Request(`${PAGES_URL}/private-page`), setup.env)).status).toBe(302);
+    expect((await worker.fetch(new Request(url), setup.env)).status).toBe(200);
+  });
+
+  test('a hinted owner browser on the bare URL is upgraded to the shell', async () => {
+    const setup = await accountEnv();
+    expect((await worker.fetch(publish('device-a', '<h1>bare</h1>', GENERATED), setup.env)).status).toBe(200);
+    const manage = new URL((await pageAccessUrl(setup, GENERATED)).location!).searchParams.get('manage')!;
+    await worker.fetch(shareAction(manage, 'enable', GENERATED), setup.env);
+
+    const bounced = await worker.fetch(
+      new Request(`${PAGES_URL}/${GENERATED}`, { headers: { cookie: `agentkit_owner=${GENERATED}` } }),
+      setup.env,
+    );
+    expect(bounced.status).toBe(302);
+    const upgraded = await worker.fetch(signedIn(bounced.headers.get('location')!), setup.env);
+    expect(upgraded.status).toBe(302);
+    expect(new URL(upgraded.headers.get('location')!).searchParams.get('manage')).toBeTruthy();
+  });
+
+  test('a hinted but signed-out browser falls back to the plain page, not login', async () => {
+    const setup = await accountEnv();
+    expect((await worker.fetch(publish('device-a', '<h1>bare</h1>', GENERATED), setup.env)).status).toBe(200);
+    const manage = new URL((await pageAccessUrl(setup, GENERATED)).location!).searchParams.get('manage')!;
+    await worker.fetch(shareAction(manage, 'enable', GENERATED), setup.env);
+
+    const bounced = await worker.fetch(
+      new Request(`${PAGES_URL}/${GENERATED}`, { headers: { cookie: `agentkit_owner=${GENERATED}` } }),
+      setup.env,
+    );
+    const back = await worker.fetch(new Request(bounced.headers.get('location')!), setup.env);
+    expect(back.status).toBe(302);
+    const landing = new URL(back.headers.get('location')!);
+    expect(landing.searchParams.get('plain')).toBe('1');
+    expect((await worker.fetch(new Request(landing.toString()), setup.env)).status).toBe(200);
+  });
+
+  test('a legacy-shared generated slug serves bare and shows its bare link', async () => {
+    const setup = await accountEnv();
+    expect((await worker.fetch(publish('device-a', '<h1>bare</h1>', GENERATED), setup.env)).status).toBe(200);
+    setup.database.sqlite.run(
+      'UPDATE pages SET share_token_hash = ?, share_enabled = 0 WHERE slug = ?',
+      [await digest('legacy-token'), GENERATED],
+    );
+    expect((await worker.fetch(new Request(`${PAGES_URL}/${GENERATED}`), setup.env)).status).toBe(200);
+    expect((await worker.fetch(new Request(`${PAGES_URL}/${GENERATED}?share=legacy-token`), setup.env)).status).toBe(200);
+
+    const manage = new URL((await pageAccessUrl(setup, GENERATED)).location!).searchParams.get('manage')!;
+    const kept = await (await worker.fetch(shareAction(manage, 'enable', GENERATED), setup.env)).json() as {
+      url: string | null;
+      legacy?: boolean;
+    };
+    expect(kept.url).toBe(`${PAGES_URL}/${GENERATED}`);
+    expect(kept.legacy).toBeFalsy();
+  });
+
+  test('a signed-in stranger heading for a bare-shared page lands on it, not a 403', async () => {
+    const setup = await accountEnv();
+    expect((await worker.fetch(publish('device-a', '<h1>bare</h1>', GENERATED), setup.env)).status).toBe(200);
+    const manage = new URL((await pageAccessUrl(setup, GENERATED)).location!).searchParams.get('manage')!;
+    await worker.fetch(shareAction(manage, 'enable', GENERATED), setup.env);
+
+    const target = `${ACCOUNT_URL}/access?return_to=${encodeURIComponent(`${PAGES_URL}/${GENERATED}`)}`;
+    const bounced = await worker.fetch(signedIn(target, 'session-b'), setup.env);
+    expect(bounced.status).toBe(302);
+    const landing = new URL(bounced.headers.get('location')!);
+    expect(landing.searchParams.get('plain')).toBe('1');
+    expect((await worker.fetch(new Request(landing.toString()), setup.env)).status).toBe(200);
+  });
+
+  test('a private generated slug stays private', async () => {
+    const setup = await accountEnv();
+    expect((await worker.fetch(publish('device-a', '<h1>bare</h1>', GENERATED), setup.env)).status).toBe(200);
+    expect((await worker.fetch(new Request(`${PAGES_URL}/${GENERATED}`), setup.env)).status).toBe(302);
+    expect((await worker.fetch(new Request(`${PAGES_URL}/${GENERATED}?share=guess`), setup.env)).status).toBe(302);
+  });
+});

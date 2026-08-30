@@ -36,6 +36,15 @@ if (!explicitSlug && !name) fail("--name (cryptic URL, default) or --slug (reada
 if (explicitSlug && !SLUG_RE.test(explicitSlug)) {
   fail(`invalid slug "${explicitSlug}" (lowercase a-z0-9-, max 4 segments)`);
 }
+// The worker treats a 20-hex slug as a generated (unguessable) one and lets
+// the bare URL serve the page whenever sharing is on. An explicit slug of
+// that shape opts into the same rule with entropy the server cannot vouch for.
+if (explicitSlug && /^[0-9a-f]{20}$/.test(explicitSlug)) {
+  console.error(
+    `warning: --slug ${explicitSlug} looks like a generated slug; if sharing is enabled, `
+      + "this URL alone grants access - anyone who knows the identifier can read the page",
+  );
+}
 if (name && !/^[a-z0-9][a-z0-9-]{0,63}$/.test(name)) {
   fail(`invalid name "${name}" (lowercase a-z0-9-)`);
 }
