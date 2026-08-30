@@ -636,7 +636,8 @@ const OWNER_HINT_COOKIE = "agentkit_owner";
 const OWNER_HINT_MAX_SLUGS = 24;
 
 function ownerHintSlugs(request) {
-  return (cookieValue(request, OWNER_HINT_COOKIE) || "").split("|").filter(Boolean);
+  return (cookieValue(request, OWNER_HINT_COOKIE) || "").split("|")
+    .filter((known) => SLUG_RE.test(known));
 }
 
 function ownerHintCookie(request, slug) {
@@ -740,7 +741,7 @@ html,body{margin:0;height:100%;background:#131417}
 </style></head><body>
 <div id="aks-bar">
 <span id="aks-title">${title}</span>
-<span id="aks-state" class="${state === "off" ? "" : "on"}">${labels[state]}</span>
+<span id="aks-state" class="${state === "on" || state === "legacy" ? "on" : ""}">${labels[state]}</span>
 <button class="aks-b" id="aks-share">Share</button>
 </div>
 <div id="aks-menu" hidden>
@@ -771,7 +772,7 @@ $("content").src="/${slug}?embed=1&access="+encodeURIComponent(q.get("access")||
 var LABELS={on:"Shared by link",legacy:"Shared by link",off:"Private",unavailable:"Sharing unavailable"};
 function render(){
 $("aks-state").textContent=LABELS[state];
-$("aks-state").className=state==="off"?"":"on";
+$("aks-state").className=(state==="on"||state==="legacy")?"on":"";
 $("aks-note").textContent=NOTES[state];
 $("aks-url").hidden=!link;if(link)$("aks-url").textContent=link;
 $("aks-copy").hidden=!link;
