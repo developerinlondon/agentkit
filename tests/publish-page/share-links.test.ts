@@ -279,6 +279,20 @@ describe('bare share URLs for generated slugs', () => {
     expect(kept.legacy).toBeFalsy();
   });
 
+  test('a signed-in stranger heading for a bare-shared page lands on it, not a 403', async () => {
+    const setup = await accountEnv();
+    expect((await worker.fetch(publish('device-a', '<h1>bare</h1>', GENERATED), setup.env)).status).toBe(200);
+    const manage = new URL((await pageAccessUrl(setup, GENERATED)).location!).searchParams.get('manage')!;
+    await worker.fetch(shareAction(manage, 'enable', GENERATED), setup.env);
+
+    const target = `${ACCOUNT_URL}/access?return_to=${encodeURIComponent(`${PAGES_URL}/${GENERATED}`)}`;
+    const bounced = await worker.fetch(signedIn(target, 'session-b'), setup.env);
+    expect(bounced.status).toBe(302);
+    const landing = new URL(bounced.headers.get('location')!);
+    expect(landing.searchParams.get('plain')).toBe('1');
+    expect((await worker.fetch(new Request(landing.toString()), setup.env)).status).toBe(200);
+  });
+
   test('a private generated slug stays private', async () => {
     const setup = await accountEnv();
     expect((await worker.fetch(publish('device-a', '<h1>bare</h1>', GENERATED), setup.env)).status).toBe(200);

@@ -56,6 +56,8 @@ export function bareShared(page) {
 // could "fix" destructively.
 export function shareState(env, page) {
   if (!page) return "off";
+  // Bare sharing works without the HMAC key, so it can never be "unavailable".
+  if (bareShared(page)) return "on";
   if (page.share_enabled) return shareCapable(env) ? "on" : "unavailable";
   return page.share_token_hash ? "legacy" : "off";
 }

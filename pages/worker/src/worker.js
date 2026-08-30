@@ -715,10 +715,7 @@ async function shellDocument(env, slug, page) {
   const title = escapeHtml(page.title || slug);
   const dashboard = `${env.ACCOUNT_URL}/dashboard#page-${slug}`;
   const link = await shareUrl(env, page);
-  // A legacy page with a showable bare link has nothing legacy-shaped left to
-  // explain — it presents as plainly shared.
-  const rawState = shareState(env, page);
-  const state = rawState === "legacy" && link ? "on" : rawState;
+  const state = shareState(env, page);
   const labels = {
     on: "Shared by link",
     legacy: "Shared by link",
