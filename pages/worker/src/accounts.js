@@ -26,16 +26,19 @@ export async function deviceCredential(env, token) {
   };
 }
 
-export async function consumeDeviceWrite(env, tokenHash) {
+const WRITE_LIMIT_TABLES = new Set(["device_write_limits", "share_write_limits"]);
+
+export async function consumeDeviceWrite(env, tokenHash, table = "device_write_limits") {
+  if (!WRITE_LIMIT_TABLES.has(table)) throw new Error(`unknown limiter table: ${table}`);
   const configured = Number(env.WRITE_RATE_LIMIT_PER_MINUTE || 60);
   const limit = Number.isSafeInteger(configured) && configured > 0 ? configured : 60;
   const result = await env.DB.prepare(
-    `INSERT INTO device_write_limits (token_hash, window_start, request_count)
+    `INSERT INTO ${table} (token_hash, window_start, request_count)
      VALUES (?, unixepoch() - (unixepoch() % 60), 1)
      ON CONFLICT(token_hash) DO UPDATE SET
        request_count = CASE
-         WHEN device_write_limits.window_start = excluded.window_start
-         THEN device_write_limits.request_count + 1
+         WHEN window_start = excluded.window_start
+         THEN request_count + 1
          ELSE 1
        END,
        window_start = excluded.window_start

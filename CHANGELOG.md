@@ -9,6 +9,16 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+- Pages: owners now land on a trusted shell — their page in a sandboxed
+  frame, plus a right-edge Share menu that turns the share link on
+  (idempotently), rotates it, copies it, or turns it off in place. The menu
+  is driven by a separate short-lived manage capability the content frame
+  can never read, so page-authored script gets no share authority and no
+  overlay can collide with page controls. Backed by a pages-origin share
+  endpoint (manage-token auth, origin-checked, rate-limited per user) and
+  migrations 0004/0005; the test harness now enforces foreign keys like D1
+  (#400).
+
 - Pages: pages served to their owner now carry a fixed Share button linking to
   that page's card on the account dashboard (`#page-<slug>` anchor, highlighted
   on arrival). Share-link readers, invitees, and legacy pages are served

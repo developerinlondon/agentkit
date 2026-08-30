@@ -42,13 +42,17 @@ export async function pageReadGrant(request, env, page) {
   if (share && page.share_token_hash === await sha256(share)) return { allowed: true, owner: false };
   const access = new URL(request.url).searchParams.get("access");
   if (!access) return { allowed: false, owner: false };
-  const grant = await env.DB.prepare(
-    `SELECT user_id FROM page_access_tokens
-      WHERE token_hash = ? AND page_slug = ? AND expires_at > ?`,
-  ).bind(await sha256(access), page.slug, Math.floor(Date.now() / 1000)).first();
+  const grant = await ownerByAccess(env, page.slug, access);
   if (!grant) return { allowed: false, owner: false };
   return { allowed: true, owner: grant.user_id === page.owner_id };
 }
+export async function ownerByAccess(env, slug, token) {
+  return env.DB.prepare(
+    `SELECT user_id FROM page_access_tokens
+      WHERE token_hash = ? AND page_slug = ? AND expires_at > ?`,
+  ).bind(await sha256(token), slug, Math.floor(Date.now() / 1000)).first();
+}
+
 async function userCanReadPage(env, user, page) {
   if (!user || !page) return false;
   if (user.id === page.owner_id) return true;
@@ -57,36 +61,66 @@ async function userCanReadPage(env, user, page) {
   ).bind(page.slug, user.email.toLowerCase()).first();
   return Boolean(invite);
 }
-export async function issuePageAccess(env, slug, user) {
-  const page = await pageRecord(env, slug);
-  if (!(await userCanReadPage(env, user, page))) return null;
-  const now = Math.floor(Date.now() / 1000);
-  await env.DB.prepare("DELETE FROM page_access_tokens WHERE expires_at <= ?").bind(now).run();
+async function mintCapability(env, table, slug, userId, now) {
+  await env.DB.prepare(`DELETE FROM ${table} WHERE expires_at <= ?`).bind(now).run();
   const token = randomToken();
   await env.DB.prepare(
-    `INSERT INTO page_access_tokens (token_hash, page_slug, user_id, expires_at, created_at)
+    `INSERT INTO ${table} (token_hash, page_slug, user_id, expires_at, created_at)
      VALUES (?, ?, ?, ?, ?)
      ON CONFLICT(page_slug, user_id) DO UPDATE SET
        token_hash = excluded.token_hash,
        expires_at = excluded.expires_at,
        created_at = excluded.created_at`,
-  ).bind(await sha256(token), slug, user.id, now + PAGE_ACCESS_TTL_SECONDS, now).run();
+  ).bind(await sha256(token), slug, userId, now + PAGE_ACCESS_TTL_SECONDS, now).run();
   return token;
+}
+
+// Owners get a second, separately-stored capability for the share menu. Only
+// the trusted shell document ever holds it; the read token alone can never
+// change state.
+export async function issuePageAccess(env, slug, user) {
+  const page = await pageRecord(env, slug);
+  if (!(await userCanReadPage(env, user, page))) return null;
+  const now = Math.floor(Date.now() / 1000);
+  const access = await mintCapability(env, "page_access_tokens", slug, user.id, now);
+  const manage = page && page.owner_id === user.id
+    ? await mintCapability(env, "page_manage_tokens", slug, user.id, now)
+    : null;
+  return { access, manage };
+}
+
+export async function ownerByManage(env, slug, token) {
+  const grant = await env.DB.prepare(
+    `SELECT user_id FROM page_manage_tokens
+      WHERE token_hash = ? AND page_slug = ? AND expires_at > ?`,
+  ).bind(await sha256(token), slug, Math.floor(Date.now() / 1000)).first();
+  return grant ?? null;
 }
 export async function ownerPage(request, env, slug) {
   const [user, page] = await Promise.all([sessionUser(request, env), pageRecord(env, slug)]);
   if (!user || !page || page.owner_id !== user.id) return null;
   return { user, page };
 }
-export async function setShareLink(env, slug, enabled) {
-  if (!enabled) {
+// mode: "off" clears; "mint" unconditionally rotates (dashboard and device
+// callers keep their historical semantics); "enable" is idempotent — it never
+// silently kills a link that is already circulating.
+export async function setShareLink(env, slug, mode) {
+  if (mode === "off") {
     await env.DB.prepare("UPDATE pages SET share_token_hash = NULL WHERE slug = ?").bind(slug).run();
-    return null;
+    return { token: null, already: false };
   }
   const token = randomToken();
+  const hash = await sha256(token);
+  if (mode === "enable") {
+    const result = await env.DB.prepare(
+      "UPDATE pages SET share_token_hash = ? WHERE slug = ? AND share_token_hash IS NULL",
+    ).bind(hash, slug).run();
+    if (result.meta.changes === 0) return { token: null, already: true };
+    return { token, already: false };
+  }
   await env.DB.prepare("UPDATE pages SET share_token_hash = ? WHERE slug = ?")
-    .bind(await sha256(token), slug).run();
-  return token;
+    .bind(hash, slug).run();
+  return { token, already: false };
 }
 export async function inviteEmail(env, slug, email) {
   const normalized = email.trim().toLowerCase();
