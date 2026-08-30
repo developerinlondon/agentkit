@@ -22,7 +22,7 @@ import { setShareLink, shareState, shareUrl } from "./share-links.js";
 import { dashboard } from "./dashboard.js";
 import { approveDevice, devicePage, pollDevice, startDevice } from "./devices.js";
 import { completeLogin, startLogin } from "./oidc.js";
-import { UI_HEADERS } from "./ui.js";
+import { escapeHtml, UI_HEADERS } from "./ui.js";
 
 const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,63}(\/[a-z0-9][a-z0-9-]{0,63}){0,3}$/;
 const MAX_PAGE_BYTES = 5 * 1024 * 1024;
@@ -97,7 +97,13 @@ const BASE_HEADERS = {
 };
 // Private and legacy page responses both stay out of crawler indexes. Access
 // control happens before this response is built, not through an unguessable URL.
-const PAGE_HEADERS = { ...BASE_HEADERS, "x-robots-tag": "noindex, nofollow" };
+// no-store matters now that share URLs are stable: a cached copy in any
+// URL-keyed intermediary would outlive "turn share link off".
+const PAGE_HEADERS = {
+  ...BASE_HEADERS,
+  "x-robots-tag": "noindex, nofollow",
+  "cache-control": "private, no-store",
+};
 
 // Pagefind fetches index shards, spawns a worker and compiles WebAssembly from
 // bytes, so search cannot run under the marketing pages' `default-src 'none'`.
@@ -455,10 +461,14 @@ function requestedPageTarget(request, env) {
     const pagesOrigin = new URL(env.PAGES_URL).origin;
     const slug = target.pathname.replace(/^\/+|\/+$/g, "");
     const extraneous = [...target.searchParams.keys()].some((key) => key !== "share");
-    if (target.origin !== pagesOrigin || extraneous || target.hash || !SLUG_RE.test(slug)) {
+    const share = target.searchParams.get("share");
+    if (
+      target.origin !== pagesOrigin || extraneous || target.hash || !SLUG_RE.test(slug)
+      || (share !== null && !/^[A-Za-z0-9_-]{1,64}$/.test(share))
+    ) {
       return null;
     }
-    return { target, slug, share: target.searchParams.get("share") };
+    return { target, slug, share };
   } catch {
     return null;
   }
@@ -481,6 +491,12 @@ function backToSharedPage(requested) {
 async function handlePageAccess(request, env) {
   const requested = requestedPageTarget(request, env);
   if (!requested) return new Response("invalid page target\n", { status: 400 });
+  // A page with no record predates accounts and is world-readable — telling a
+  // visitor it is private would be false. Send them straight to it.
+  if (!(await pageRecord(env, requested.slug))) {
+    requested.target.search = "";
+    return new Response(null, { status: 302, headers: { location: requested.target.toString() } });
+  }
   const user = await sessionUser(request, env);
   if (!user) {
     if (requested.share) return backToSharedPage(requested);
@@ -612,10 +628,22 @@ async function handleAccountRequest(request, env, path) {
   return html(404, NOT_FOUND, UI_HEADERS);
 }
 
-// Set whenever this browser has held the owner shell for some page. It is a
-// hint, not a credential: it only decides whether a share-link visit is worth
-// bouncing through /access to see if a session can upgrade it to the shell.
+// Slugs whose owner shell this browser has held — a hint deciding whether a
+// share-link visit is worth bouncing through /access, never a credential.
+// Per-slug so someone else's share link never detours through the account
+// origin, which would put their token in its logs for nothing.
 const OWNER_HINT_COOKIE = "agentkit_owner";
+const OWNER_HINT_MAX_SLUGS = 24;
+
+function ownerHintSlugs(request) {
+  return (cookieValue(request, OWNER_HINT_COOKIE) || "").split("|").filter(Boolean);
+}
+
+function ownerHintCookie(request, slug) {
+  const slugs = [slug, ...ownerHintSlugs(request).filter((known) => known !== slug)]
+    .slice(0, OWNER_HINT_MAX_SLUGS);
+  return `${OWNER_HINT_COOKIE}=${slugs.join("|")}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=15552000`;
+}
 
 function redirectToAccess(env, request, share) {
   const target = new URL(request.url);
@@ -645,7 +673,7 @@ async function handlePagesRequest(request, env, path) {
   if (
     grant.viaShare
     && url.searchParams.get("plain") !== "1"
-    && cookieValue(request, OWNER_HINT_COOKIE)
+    && ownerHintSlugs(request).includes(path)
   ) {
     return redirectToAccess(env, request, url.searchParams.get("share"));
   }
@@ -653,8 +681,7 @@ async function handlePagesRequest(request, env, path) {
   if (grant.owner && manage) {
     return html(200, await shellDocument(env, path, page), {
       ...SHELL_HEADERS,
-      "set-cookie":
-        `${OWNER_HINT_COOKIE}=1; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=15552000`,
+      "set-cookie": ownerHintCookie(request, path),
     });
   }
   return servePage(env, `pages/${path}/index.html`, PAGE_HEADERS);
@@ -680,14 +707,15 @@ const EMBED_HEADERS = {
 // address bar honest: the durable share URL when sharing is on, the clean page
 // URL when it is off — never the personal, expiring access pass.
 async function shellDocument(env, slug, page) {
-  const title = escapeHtmlText(page.title || slug);
+  const title = escapeHtml(page.title || slug);
   const dashboard = `${env.ACCOUNT_URL}/dashboard#page-${slug}`;
-  const state = shareState(page);
+  const state = shareState(env, page);
   const link = await shareUrl(env, page);
   const labels = {
     on: "Shared by link",
     legacy: "Shared by link",
     off: "Private",
+    unavailable: "Sharing unavailable",
   };
   return `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -737,20 +765,21 @@ var link=${JSON.stringify(link)};
 var NOTES={
 on:"Anyone with this link can view the page, until you turn it off.",
 legacy:"Shared by a link made before links were recoverable, so it cannot be shown here. Rotate to get a visible link (the old one dies), or turn sharing off.",
-off:"Private. Only you and invited people can open it."};
+off:"Private. Only you and invited people can open it.",
+unavailable:"Share links are not configured on this deployment. Ask the operator to set the share key; nothing here is safe to toggle until then."};
 $("content").src="/${slug}?embed=1&access="+encodeURIComponent(q.get("access")||"")+location.hash;
+var LABELS={on:"Shared by link",legacy:"Shared by link",off:"Private",unavailable:"Sharing unavailable"};
 function render(){
-$("aks-state").textContent=state==="off"?"Private":"Shared by link";
+$("aks-state").textContent=LABELS[state];
 $("aks-state").className=state==="off"?"":"on";
 $("aks-note").textContent=NOTES[state];
 $("aks-url").hidden=!link;if(link)$("aks-url").textContent=link;
 $("aks-copy").hidden=!link;
 $("aks-on").hidden=state!=="off";
-$("aks-rotate").hidden=state==="off";
-$("aks-off").hidden=state==="off";
-history.replaceState(null,"",(state==="on"&&link?link:"/${slug}")+location.hash);
+$("aks-rotate").hidden=state==="off"||state==="unavailable";
+$("aks-off").hidden=state==="off"||state==="unavailable";
+try{history.replaceState(null,"",(state==="on"&&link?link:"/${slug}")+location.hash)}catch(e){}
 }
-render();
 $("aks-share").addEventListener("click",function(){$("aks-menu").hidden=!$("aks-menu").hidden});
 function fail(m){$("aks-err").textContent=m;$("aks-err").hidden=false}
 function act(action){$("aks-err").hidden=true;
@@ -764,6 +793,7 @@ render()})
 $("aks-on").addEventListener("click",function(){act("enable")});
 $("aks-rotate").addEventListener("click",function(){act("rotate")});
 $("aks-off").addEventListener("click",function(){act("off")});
+render();
 $("aks-copy").addEventListener("click",function(){
 if(!link)return;
 if(!navigator.clipboard){fail("Clipboard unavailable - copy the link text above by hand");return}
@@ -772,11 +802,6 @@ $("aks-copy").textContent="Copied";
 setTimeout(function(){$("aks-copy").textContent="Copy link"},1500);
 }).catch(function(){fail("Copy failed - select the link text above")})});
 })()</script></body></html>`;
-}
-
-function escapeHtmlText(value) {
-  return String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
 }
 
 const SHARE_ACTIONS = { enable: "enable", rotate: "rotate", off: "off" };
@@ -823,13 +848,15 @@ export default {
     const accountRequest = accountHost !== null && host === accountHost;
     const pagesRequest = pagesHost !== null && host === pagesHost;
 
-    if (
-      !siteRequest
-      && !docsRequest
-      && env.ACCOUNT_MODE === "required"
-      && (!env.DB || accountHost === null)
-    ) {
-      return new Response("account storage unavailable\n", { status: 503 });
+    if (!siteRequest && !docsRequest && env.ACCOUNT_MODE === "required") {
+      if (!env.DB || accountHost === null) {
+        return new Response("account storage unavailable\n", { status: 503 });
+      }
+      // Without the key every derived share link silently 302s to a login
+      // wall while everything else looks healthy; a 503 at deploy is cheaper.
+      if (!env.SHARE_LINK_KEY) {
+        return new Response("share key unconfigured\n", { status: 503 });
+      }
     }
 
     if (docsRequest) return handleSiteRequest(request, env, path === "" ? "docs" : `docs/${path}`, true);

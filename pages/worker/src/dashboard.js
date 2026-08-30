@@ -10,8 +10,17 @@ function day(seconds) {
 // The link is derivable on demand, so it can sit here permanently instead of
 // the old one-shot "copy it now" reveal. Links from before the derivable
 // scheme cannot be re-displayed; the row says so instead of showing nothing.
-function shareRow(page) {
-  const on = shareState(page) !== "off";
+// A keyless deployment gets no toggle at all: offering "turn off" for a
+// config error would destroy working share state.
+function shareRow(env, page) {
+  const state = shareState(env, page);
+  if (state === "unavailable") {
+    return `<div class="row">
+    <span class="grant">Sharing unavailable
+      <span class="how">share links are not configured on this deployment — ask the operator to set the share key</span></span>
+  </div>`;
+  }
+  const on = state !== "off";
   const slug = escapeHtml(page.slug);
   const detail = page.share_link
     ? `<a class="link-out mono" href="${escapeHtml(page.share_link)}">${escapeHtml(page.share_link)}</a>`
@@ -44,7 +53,7 @@ function pageCard(env, page, invites) {
   const slug = escapeHtml(page.slug);
   const address = `${env.PAGES_URL}/${page.slug}`;
   const open = `/access?return_to=${encodeURIComponent(address)}`;
-  const shared = shareState(page) !== "off";
+  const shared = shareState(env, page) !== "off";
   return `<article class="card" id="page-${slug}">
     <div class="card-head">
       <h2><a href="${open}">${escapeHtml(page.title || page.slug)}</a></h2>
@@ -58,7 +67,7 @@ function pageCard(env, page, invites) {
         <span class="grant">You <span class="how">owner</span></span>
       </div>
       ${invites.map((invite) => inviteRow(page.slug, invite.email)).join("")}
-      ${shareRow(page)}
+      ${shareRow(env, page)}
     </div>
     <form class="invite" method="post" action="/api/pages/${slug}/invites">
       <input type="email" name="email" required placeholder="name@example.com"
