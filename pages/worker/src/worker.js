@@ -4,12 +4,14 @@ import {
   endSession,
   revokeDeviceToken,
   sessionUser,
+  sha256,
 } from "./accounts.js";
 import {
   claimPage,
   deletePageRecord,
   inviteEmail,
   issuePageAccess,
+  ownerByAccess,
   ownerPage,
   pageRecord,
   pageReadGrant,
@@ -365,9 +367,13 @@ async function shareByDevice(request, env, slug, bearer) {
   if (!page || page.owner_id !== credential.user.id) {
     return new Response("not found\n", { status: 404 });
   }
-  const rate = await consumeDeviceWrite(env, credential.tokenHash);
+  return rateLimitedShareChange(request, env, slug, credential.tokenHash);
+}
+
+async function rateLimitedShareChange(request, env, slug, limiterKey) {
+  const rate = await consumeDeviceWrite(env, limiterKey);
   if (!rate.allowed) {
-    return new Response("device write rate exceeded\n", {
+    return new Response("share write rate exceeded\n", {
       status: 429,
       headers: { "retry-after": String(rate.retryAfter) },
     });
@@ -626,24 +632,78 @@ async function handlePagesRequest(request, env, path) {
   }
   const response = await servePage(env, `pages/${path}/index.html`, PAGE_HEADERS);
   if (!grant.owner || response.status !== 200) return response;
-  return withShareButton(response, env, path);
+  return withShareMenu(response, env, path, Boolean(page.share_token_hash));
 }
 
-// A plain anchor, not a control: the page CSP has no connect-src, so share
-// state can only be changed on the account origin. Injected at serve time
-// rather than publish time so every existing page gets it without a republish.
-const SHARE_BUTTON_STYLE = "position:fixed;top:12px;right:12px;z-index:2147483647;"
-  + "font:600 13px/1 system-ui,sans-serif;padding:8px 14px;border-radius:999px;"
-  + "background:#1b1d22;color:#eeeeee;border:1px solid #79a8e7;text-decoration:none;opacity:.92";
+// The owner's copy alone may fetch same-origin: that is what lets the injected
+// menu call the share endpoint. Every other viewer keeps connect-src omitted.
+const OWNER_HEADERS = {
+  ...PAGE_HEADERS,
+  "content-security-policy": PAGE_HEADERS["content-security-policy"]
+    .replace("img-src data:", "img-src data:; connect-src 'self'"),
+};
 
-async function withShareButton(response, env, slug) {
+function shareMenuMarkup(env, slug, shared) {
+  const dashboard = `${env.ACCOUNT_URL}/dashboard#page-${slug}`;
+  return `<div id="agentkit-share" style="position:fixed;top:40%;right:0;z-index:2147483647;font:13px/1.4 system-ui,sans-serif">
+<button id="aks-tab" title="Share settings" style="writing-mode:vertical-rl;padding:12px 7px;border-radius:8px 0 0 8px;background:#1b1d22;color:#eeeeee;border:1px solid #79a8e7;border-right:0;cursor:pointer;font:600 12px/1 system-ui,sans-serif;letter-spacing:.08em">SHARE</button>
+<div id="aks-menu" hidden style="position:absolute;right:34px;top:0;width:250px;background:#1b1d22;color:#eeeeee;border:1px solid #2a2d34;border-radius:10px;padding:12px 14px;box-shadow:0 6px 24px rgba(0,0,0,.45)">
+<div id="aks-state" style="font-weight:600;margin-bottom:8px">${shared ? "Shared by link" : "Private"}</div>
+<div id="aks-url" hidden style="font:11px/1.4 ui-monospace,monospace;word-break:break-all;background:#131417;border:1px solid #2a2d34;border-radius:6px;padding:6px;margin-bottom:8px"></div>
+<div style="display:flex;flex-direction:column;gap:6px">
+<button class="aks-b" id="aks-on" ${shared ? "hidden" : ""}>Turn share link on</button>
+<button class="aks-b" id="aks-copy" hidden>Copy link</button>
+<button class="aks-b" id="aks-rotate" ${shared ? "" : "hidden"}>Rotate link (old one dies)</button>
+<button class="aks-b" id="aks-off" ${shared ? "" : "hidden"}>Turn share link off</button>
+<a class="aks-b" href="${dashboard}" target="_blank" rel="noopener" style="text-align:center;text-decoration:none">Invites &amp; settings</a>
+</div>
+<div id="aks-err" style="color:#e06c75;margin-top:8px" hidden></div>
+</div></div>
+<style>.aks-b{font:600 12px/1 system-ui,sans-serif;padding:8px 10px;border-radius:7px;border:1px solid #3a3f47;background:#23262d;color:#eeeeee;cursor:pointer}.aks-b:hover{border-color:#79a8e7}</style>
+<script>(function(){
+var $=function(id){return document.getElementById(id)};
+var access=new URLSearchParams(location.search).get("access");
+var url=null;
+$("aks-tab").addEventListener("click",function(){$("aks-menu").hidden=!$("aks-menu").hidden});
+function fail(m){$("aks-err").textContent=m;$("aks-err").hidden=false}
+function state(on){$("aks-state").textContent=on?"Shared by link":"Private";$("aks-on").hidden=on;$("aks-rotate").hidden=!on;$("aks-off").hidden=!on;if(!on){url=null;$("aks-url").hidden=true;$("aks-copy").hidden=true}}
+function set(enabled){$("aks-err").hidden=true;
+fetch("/api/pages/${slug}/share",{method:"POST",headers:{"authorization":"Bearer "+access,"content-type":"application/json"},body:JSON.stringify({enabled:enabled})})
+.then(function(r){if(r.status===401)throw new Error("Access pass expired - reload the page");if(!r.ok)throw new Error("Share update failed ("+r.status+")");return r.json()})
+.then(function(d){state(d.enabled);if(d.url){url=d.url;$("aks-url").textContent=d.url;$("aks-url").hidden=false;$("aks-copy").hidden=false}})
+.catch(function(e){fail(e.message)})}
+$("aks-on").addEventListener("click",function(){set(true)});
+$("aks-rotate").addEventListener("click",function(){set(true)});
+$("aks-off").addEventListener("click",function(){set(false)});
+$("aks-copy").addEventListener("click",function(){if(url)navigator.clipboard.writeText(url).then(function(){$("aks-copy").textContent="Copied"})});
+})()</script>`;
+}
+
+async function withShareMenu(response, env, slug, shared) {
   const body = await response.text();
-  const button = `<a href="${env.ACCOUNT_URL}/dashboard#page-${slug}" target="_blank" rel="noopener"`
-    + ` title="Share settings" style="${SHARE_BUTTON_STYLE}">Share</a>`;
   // Appended, never spliced: a literal "</body>" may legally sit inside a
   // script string or comment, so any rewrite targeting it corrupts the page.
-  // The parser reparents a trailing element back into body regardless.
-  return html(200, body + button, PAGE_HEADERS);
+  // The parser reparents trailing elements back into body regardless.
+  return html(200, body + shareMenuMarkup(env, slug, shared), OWNER_HEADERS);
+}
+
+// The read capability doubles as share authority only when it belongs to the
+// page owner. Blast radius of a hostile page script on the owner's own view:
+// it can flip sharing of ITSELF (the token is page-scoped), which the owner
+// already controls, and it cannot exfiltrate the link (connect-src 'self').
+async function handleOwnerShare(request, env, slug) {
+  if ((request.headers.get("origin") ?? "") !== (env.PAGES_URL || "https://pages.agentkit.sbs")) {
+    return new Response("forbidden\n", { status: 403 });
+  }
+  if (!SLUG_RE.test(slug) || !env.DB) return new Response("not found\n", { status: 404 });
+  const page = await pageRecord(env, slug);
+  if (!page) return new Response("not found\n", { status: 404 });
+  const bearer = bearerToken(request);
+  const owner = bearer && await ownerByAccess(env, slug, bearer);
+  if (!owner || owner.user_id !== page.owner_id) {
+    return new Response("unauthorized\n", { status: 401 });
+  }
+  return rateLimitedShareChange(request, env, slug, await sha256(bearer));
 }
 
 export default {
@@ -686,6 +746,10 @@ export default {
     if (accountRequest) return handleAccountRequest(request, env, path);
 
     if (!pagesRequest) return html(404, NOT_FOUND);
+    const ownerShareMatch = path.match(/^api\/pages\/(.+)\/share$/);
+    if (request.method === "POST" && ownerShareMatch) {
+      return handleOwnerShare(request, env, ownerShareMatch[1]);
+    }
     return handlePagesRequest(request, env, path);
   },
 };

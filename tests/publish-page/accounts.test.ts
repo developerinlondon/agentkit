@@ -467,8 +467,8 @@ describe('private access and sharing', () => {
     const page = await worker.fetch(new Request(location), setup.env);
     expect(page.status).toBe(200);
     const owned = await page.text();
-    expect(owned).toStartWith('<h1>private</h1><a href=');
-    expect(owned.split('>Share</a>')).toHaveLength(2);
+    expect(owned).toStartWith('<h1>private</h1><div id="agentkit-share"');
+    expect(owned.split('id="agentkit-share"')).toHaveLength(2);
 
     expect((await worker.fetch(
       new Request(location.replace('/private-page?', '/another-page?')),
@@ -513,8 +513,8 @@ describe('private access and sharing', () => {
     expect(response.status).toBe(200);
     // The owner's copy is the exact content plus exactly one appended button.
     const text = await response.text();
-    expect(text).toStartWith('<h1>private</h1><a href=');
-    expect(text.split('>Share</a>')).toHaveLength(2);
+    expect(text).toStartWith('<h1>private</h1><div id="agentkit-share"');
+    expect(text.split('id="agentkit-share"')).toHaveLength(2);
   });
 
   test('a share link grants access and disabling it revokes the old URL', async () => {
@@ -1108,20 +1108,41 @@ describe('Assay OIDC sessions', () => {
   });
 });
 
-describe('owner share button on served pages', () => {
+describe('owner share menu on served pages', () => {
   async function servedBody(setup: Awaited<ReturnType<typeof accountEnv>>, url: string) {
     const response = await worker.fetch(new Request(url), setup.env);
     expect(response.status).toBe(200);
     return response.text();
   }
 
-  test('the owner sees a share button pointing at the dashboard card', async () => {
+  function ownerShare(access: string, enabled: boolean, origin = PAGES_URL, slug = 'private-page') {
+    return new Request(`${PAGES_URL}/api/pages/${slug}/share`, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${access}`,
+        'content-type': 'application/json',
+        origin,
+      },
+      body: JSON.stringify({ enabled }),
+    });
+  }
+
+  async function ownerAccessToken(setup: Awaited<ReturnType<typeof accountEnv>>, session = 'session-a') {
+    const { location } = await pageAccessUrl(setup, 'private-page', session);
+    return new URL(location!).searchParams.get('access')!;
+  }
+
+  test('the owner gets the menu; its response alone allows same-origin fetch', async () => {
     const setup = await accountEnv();
     expect((await worker.fetch(publish('device-a'), setup.env)).status).toBe(200);
     const { location } = await pageAccessUrl(setup);
-    const body = await servedBody(setup, location!);
+    const response = await worker.fetch(new Request(location!), setup.env);
+    expect(response.status).toBe(200);
+    const body = await response.text();
+    expect(body).toStartWith('<h1>private</h1>');
+    expect(body.split('id="agentkit-share"')).toHaveLength(2);
     expect(body).toContain(`${ACCOUNT_URL}/dashboard#page-private-page`);
-    expect(body).toContain('>Share</a>');
+    expect(response.headers.get('content-security-policy')).toContain("connect-src 'self'");
   });
 
   test('a literal </body> in page content is never a splice point', async () => {
@@ -1131,10 +1152,10 @@ describe('owner share button on served pages', () => {
     const { location } = await pageAccessUrl(setup);
     const body = await servedBody(setup, location!);
     expect(body).toStartWith(doc);
-    expect(body.split('>Share</a>')).toHaveLength(2);
+    expect(body.split('id="agentkit-share"')).toHaveLength(2);
   });
 
-  test('an invited reader gets the page without the button', async () => {
+  test('an invited reader gets the page without the menu or connect-src', async () => {
     const setup = await accountEnv();
     expect((await worker.fetch(publish('device-a'), setup.env)).status).toBe(200);
     const invite = await worker.fetch(
@@ -1143,11 +1164,12 @@ describe('owner share button on served pages', () => {
     );
     expect([200, 303]).toContain(invite.status);
     const { location } = await pageAccessUrl(setup, 'private-page', 'session-b');
-    const body = await servedBody(setup, location!);
-    expect(body).not.toContain('>Share</a>');
+    const response = await worker.fetch(new Request(location!), setup.env);
+    expect(await response.text()).toBe('<h1>private</h1>');
+    expect(response.headers.get('content-security-policy')).not.toContain('connect-src');
   });
 
-  test('a share-link reader gets the page without the button', async () => {
+  test('a share-link reader gets the page without the menu', async () => {
     const setup = await accountEnv();
     expect((await worker.fetch(publish('device-a'), setup.env)).status).toBe(200);
     const share = await worker.fetch(
@@ -1160,21 +1182,55 @@ describe('owner share button on served pages', () => {
     );
     expect(share.status).toBe(200);
     const { url } = await share.json() as { url: string };
-    const body = await servedBody(setup, url);
-    expect(body).not.toContain('>Share</a>');
+    expect(await servedBody(setup, url)).toBe('<h1>private</h1>');
   });
 
   test('a legacy page with no metadata row is served unmodified', async () => {
     const setup = await accountEnv();
     setup.pages.writes.set('pages/legacy-page/index.html', { body: '<h1>legacy</h1>' });
-    const body = await servedBody(setup, `${PAGES_URL}/legacy-page`);
-    expect(body).toBe('<h1>legacy</h1>');
+    expect(await servedBody(setup, `${PAGES_URL}/legacy-page`)).toBe('<h1>legacy</h1>');
   });
 
-  test('the dashboard card carries the anchor the button targets', async () => {
+  test('the dashboard card carries the anchor the menu links to', async () => {
     const setup = await accountEnv();
     expect((await worker.fetch(publish('device-a'), setup.env)).status).toBe(200);
     const dashboard = await worker.fetch(signedIn(`${ACCOUNT_URL}/dashboard`), setup.env);
     expect(await dashboard.text()).toContain('id="page-private-page"');
+  });
+
+  test('the owner access token can flip the share link from the pages origin', async () => {
+    const setup = await accountEnv();
+    expect((await worker.fetch(publish('device-a'), setup.env)).status).toBe(200);
+    const access = await ownerAccessToken(setup);
+
+    const on = await worker.fetch(ownerShare(access, true), setup.env);
+    expect(on.status).toBe(200);
+    const { enabled, url } = await on.json() as { enabled: boolean; url: string };
+    expect(enabled).toBe(true);
+    expect(await servedBody(setup, url)).toBe('<h1>private</h1>');
+
+    const off = await worker.fetch(ownerShare(access, false), setup.env);
+    expect(off.status).toBe(200);
+    expect((await worker.fetch(new Request(url), setup.env)).status).toBe(302);
+  });
+
+  test('an invitee access token cannot manage sharing', async () => {
+    const setup = await accountEnv();
+    expect((await worker.fetch(publish('device-a'), setup.env)).status).toBe(200);
+    await worker.fetch(
+      accountPost(`${ACCOUNT_URL}/api/pages/private-page/invites`, { email: 'other@example.com' }, 'session-a'),
+      setup.env,
+    );
+    const access = await ownerAccessToken(setup, 'session-b');
+    expect((await worker.fetch(ownerShare(access, true), setup.env)).status).toBe(401);
+  });
+
+  test('an expired or foreign-origin request cannot manage sharing', async () => {
+    const setup = await accountEnv();
+    expect((await worker.fetch(publish('device-a'), setup.env)).status).toBe(200);
+    const access = await ownerAccessToken(setup);
+    expect((await worker.fetch(ownerShare(access, true, 'https://evil.example'), setup.env)).status).toBe(403);
+    setup.database.sqlite.run('UPDATE page_access_tokens SET expires_at = 0');
+    expect((await worker.fetch(ownerShare(access, true), setup.env)).status).toBe(401);
   });
 });

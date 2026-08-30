@@ -9,6 +9,13 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+- Pages: the owner Share affordance is now an in-page menu (right-edge tab →
+  toggle/rotate/copy the share link, dashboard link for invites) instead of a
+  dashboard redirect, and moved off the top-right corner where it collided
+  with page and theme controls. Backed by a pages-origin share endpoint
+  authorized by the owner's own access capability; only the owner's response
+  gains `connect-src 'self'` (#400).
+
 - Pages: pages served to their owner now carry a fixed Share button linking to
   that page's card on the account dashboard (`#page-<slug>` anchor, highlighted
   on arrival). Share-link readers, invitees, and legacy pages are served

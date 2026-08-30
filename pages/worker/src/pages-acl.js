@@ -42,13 +42,17 @@ export async function pageReadGrant(request, env, page) {
   if (share && page.share_token_hash === await sha256(share)) return { allowed: true, owner: false };
   const access = new URL(request.url).searchParams.get("access");
   if (!access) return { allowed: false, owner: false };
-  const grant = await env.DB.prepare(
-    `SELECT user_id FROM page_access_tokens
-      WHERE token_hash = ? AND page_slug = ? AND expires_at > ?`,
-  ).bind(await sha256(access), page.slug, Math.floor(Date.now() / 1000)).first();
+  const grant = await ownerByAccess(env, page.slug, access);
   if (!grant) return { allowed: false, owner: false };
   return { allowed: true, owner: grant.user_id === page.owner_id };
 }
+export async function ownerByAccess(env, slug, token) {
+  return env.DB.prepare(
+    `SELECT user_id FROM page_access_tokens
+      WHERE token_hash = ? AND page_slug = ? AND expires_at > ?`,
+  ).bind(await sha256(token), slug, Math.floor(Date.now() / 1000)).first();
+}
+
 async function userCanReadPage(env, user, page) {
   if (!user || !page) return false;
   if (user.id === page.owner_id) return true;
