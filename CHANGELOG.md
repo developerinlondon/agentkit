@@ -9,56 +9,32 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
-- **New `prose-police` write hook, on by default.** Flags AI writing tells in
-  the ADDED prose of markdown and text writes — stock vocabulary (delve,
-  tapestry, leverage), significance inflation, negative parallelism, chatbot
-  filler, em-dash pile-ups — and blocks with exit 2 like the other write-time
-  police. Fenced and inline code, changelogs, and the artifacts that teach the
-  patterns are exempt. Off switches: `AGENTKIT_SKIP_HOOKS=prose-police`, per
-  repo `git config agentkit.prosepolice.enabled false`, or `enabled: false`
-  under `prose-police:` in `config.yaml`. Ships with a `writing-discipline`
-  rule (the always-loaded floor for prose no hook can reach) and a `humanize`
-  core skill (on-demand wholesale rewrite of slop-marked text). Pattern
-  content adapted from blader/humanizer and conorbronsdon/avoid-ai-writing
-  (both MIT, credited in NOTICE).
+## v0.8.0 — 2026-09-01
 
-- Pages: **for generated slugs, the page URL is the share link.** Default
-  publishes get HMAC-derived hex slugs that are already unguessable, so when
-  sharing is on, the bare page URL serves to anyone — no `?share=` token to
-  copy, lose, or explain; the shell, dashboard, and CLI hand back the bare
-  URL, and legacy-shared generated slugs shed their "unrecoverable link"
-  state. Readable custom slugs are guessable, so they keep requiring the
-  derived token; private pages of every slug shape stay private.
-
-- Pages: **share links are now derivable and the address bar is honest.** The
-  share token is HMAC(secret, slug:generation) instead of an unrecoverable
-  stored hash, so enabling is idempotent and always hands back the live link,
-  the shell menu and dashboard show it persistently, and rotation is an
-  explicit generation bump (links minted before the scheme keep working until
-  rotated). The owner shell becomes a slim top bar — the content frame starts
-  below it, so the chrome can no longer cover a page's own controls — and
-  rewrites the address bar to the durable share URL when sharing is on (clean
-  page URL when off), so copying what you see always yields a link that works
-  indefinitely, never the personal ten-minute access pass. Owners reopening
-  their own share link get upgraded back into the shell; strangers holding a
-  share link are never walled behind login; signed-in strangers on a private
-  page get an explanation instead of a bare 404 (#402, #403, #404).
-
-- Pages: owners now land on a trusted shell — their page in a sandboxed
-  frame, plus a right-edge Share menu that turns the share link on
-  (idempotently), rotates it, copies it, or turns it off in place. The menu
-  is driven by a separate short-lived manage capability the content frame
-  can never read, so page-authored script gets no share authority and no
-  overlay can collide with page controls. Backed by a pages-origin share
-  endpoint (manage-token auth, origin-checked, rate-limited per user) and
-  migrations 0004/0005; the test harness now enforces foreign keys like D1
-  (#400).
-
-- Pages: pages served to their owner now carry a fixed Share button linking to
-  that page's card on the account dashboard (`#page-<slug>` anchor, highlighted
-  on arrival). Share-link readers, invitees, and legacy pages are served
-  byte-identical output. Page ACL helpers moved from `accounts.js` into
-  `pages-acl.js` (#398).
+- feat(hooks): **`prose-police` polices the prose, on by default.** A new PostToolUse write hook
+  flags AI writing tells in the ADDED prose of markdown and text writes — stock vocabulary,
+  significance inflation, negative parallelism, chatbot filler, em-dash pile-ups — and blocks with
+  exit 2, naming the matched phrase. Fenced and inline code, changelogs, and the artifacts that
+  teach the patterns are exempt; the density check needs 150 words and 4 dashes before a 3-per-100
+  ratio applies, so the repo corpus it was calibrated on trips it exactly never (0 of 194 files).
+  Off per session (`AGENTKIT_SKIP_HOOKS=prose-police`), per repo
+  (`git config agentkit.prosepolice.enabled false`), or globally (`enabled: false` under
+  `prose-police:` in `config.yaml`). Every pattern and structural check is mutation-pinned by a
+  named test. Adapted from blader/humanizer and conorbronsdon/avoid-ai-writing (MIT, see NOTICE).
+- feat(rules, skills): **the prose discipline travels in three tiers.** The `writing-discipline`
+  rule is the always-loaded floor for prose no hook can reach (chat, commit messages), and the
+  `humanize` core skill is the on-demand wholesale rewrite — facts immutable, voice preserved,
+  code untouched, length goes down.
+- feat(pages): **a page's URL is its share link, and the address bar is honest.** Generated slugs
+  are already unguessable, so sharing serves the bare URL — no token to copy or lose; custom
+  readable slugs keep the HMAC-derived token, which is now recomputable (idempotent enable, live
+  link always shown, rotation is an explicit generation bump). Legacy-shared pages shed their
+  unrecoverable-link state; private pages of every slug shape stay private (#402, #403, #404).
+- feat(pages): **owners land on a trusted shell with share controls in hand.** The page renders in
+  a sandboxed frame under a slim top bar with a Share menu (enable, rotate, copy, disable) driven
+  by a manage capability the content frame can never read; owner-served pages link to their
+  dashboard card. Backed by an origin-checked, rate-limited share endpoint and migrations
+  0004/0005; the test harness now enforces foreign keys like D1 (#398, #400).
 
 ## v0.7.18 — 2026-08-24
 
