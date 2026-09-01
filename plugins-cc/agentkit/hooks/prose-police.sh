@@ -88,11 +88,9 @@ strip_code_spans() {
 # body is a quoted argument containing everything a regex would have to
 # survive. Missing python3 fails open, matching issue-police.
 extract_inline_forge_text() {
-  local stripped
-  stripped=$(printf '%s\n' "$COMMAND" |
-    sed -E "s/\"([^\"\\\\]|\\\\.)*\"/\"\"/g" |
-    sed -E "s/'[^']*'/''/g")
-  printf '%s' "$stripped" | grep -qE '\b(gh|glab)([[:space:]]|$)' || return 1
+  # Cheap trigger only — segmentation below is what decides ownership, since a
+  # quoted gh collapses into one token and can never be a segment head.
+  printf '%s' "$COMMAND" | grep -qE '\b(gh|glab)([[:space:]]|$)' || return 1
   command -v python3 >/dev/null 2>&1 || return 1
   COMMAND="$COMMAND" python3 -c '
 import os, shlex, sys

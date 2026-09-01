@@ -292,6 +292,9 @@ describe('prose-police hook', () => {
     deny('gh issue close 7 --comment "A groundbreaking paradigm shift resolved this."');
 
     deny('GH_TOKEN=x gh issue create --body "We delve into a rich tapestry."');
+    deny('gh release create v1 --notes "A groundbreaking cutting-edge release."');
+    deny('gh issue create -b "We delve into a rich tapestry." --title t');
+    deny('glab mr create --description "This stands as a testament to synergy." --title t');
     deny('cd /tmp && gh issue create --body "We delve into a rich tapestry."');
     deny('gh api repos/o/r/issues -F body="We delve into a rich tapestry."');
 
