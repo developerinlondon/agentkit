@@ -23,16 +23,16 @@ AGENTKIT_ALLOW_DELEGATED=1 docker build .
 
 ## The overrides
 
-| Variable                           | Clears                                                                                   |
-| ---------------------------------- | ---------------------------------------------------------------------------------------- |
-| `AGENTKIT_ALLOW_SHARED_BRANCH=1`   | branching in a clone that has other worktrees                                            |
-| `AGENTKIT_ALLOW_BRANCH_STACKING=1` | cutting a branch off another feature branch                                              |
-| `AGENTKIT_ALLOW_STALE_PUSH=1`      | pushing a feature branch that is behind the default branch                               |
-| `AGENTKIT_MR_POLICE_MAX=<n>`       | the one-open-authored-MR limit                                                           |
-| `AGENTKIT_ALLOW_PKG=1`             | the bun-only rule (`npm`, `npx`, `yarn`, `pnpm`)                                         |
-| `AGENTKIT_ALLOW_DELEGATED=1`       | a _direct_ delegated command (`docker`, `ssh`, `systemctl`, …)                           |
-| `AGENTKIT_ALLOW_BARE_SVG=1`        | the figure-legibility lint on a published page                                           |
-| `AGENTKIT_SKIP_HOOKS=<names>`      | `coding-police`, `comment-police`, `format-police`, `version-police` — by name, or `all` |
+| Variable                           | Clears                                                                                                   |
+| ---------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `AGENTKIT_ALLOW_SHARED_BRANCH=1`   | branching in a clone that has other worktrees                                                            |
+| `AGENTKIT_ALLOW_BRANCH_STACKING=1` | cutting a branch off another feature branch                                                              |
+| `AGENTKIT_ALLOW_STALE_PUSH=1`      | pushing a feature branch that is behind the default branch                                               |
+| `AGENTKIT_MR_POLICE_MAX=<n>`       | the one-open-authored-MR limit                                                                           |
+| `AGENTKIT_ALLOW_PKG=1`             | the bun-only rule (`npm`, `npx`, `yarn`, `pnpm`)                                                         |
+| `AGENTKIT_ALLOW_DELEGATED=1`       | a _direct_ delegated command (`docker`, `ssh`, `systemctl`, …)                                           |
+| `AGENTKIT_ALLOW_BARE_SVG=1`        | the figure-legibility lint on a published page                                                           |
+| `AGENTKIT_SKIP_HOOKS=<names>`      | `coding-police`, `comment-police`, `prose-police`, `format-police`, `version-police` — by name, or `all` |
 
 ## Inline assignment counts
 

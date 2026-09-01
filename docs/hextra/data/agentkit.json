@@ -108,6 +108,15 @@
       ]
     },
     {
+      "name": "prose",
+      "mechanisms": [
+        "hook"
+      ],
+      "claudePlugins": [
+        "agentkit"
+      ]
+    },
+    {
       "name": "resource",
       "mechanisms": [
         "hook",
@@ -212,6 +221,13 @@
     {
       "unit": "plan",
       "event": "PreToolUse",
+      "matcher": "Edit|Write",
+      "timeout": 15,
+      "failClosedBudget": null
+    },
+    {
+      "unit": "prose",
+      "event": "PostToolUse",
       "matcher": "Edit|Write",
       "timeout": 15,
       "failClosedBudget": null
@@ -371,6 +387,12 @@
       "kit": "workspace",
       "explicit": false,
       "description": "Issue-first workflow and lifecycle hygiene for teams tracking work in Huly: every piece of work runs against an issue, statuses stay current on every touch, branches and PRs reference the issue, and issues close with a verification note. Applies only in repositories configured with agentkit.huly.* git config, so it stays inert everywhere else. Triggers: starting tracked work in a Huly-backed repo, updating issue status, milestone planning, linking a branch or PR to an issue, closing an issue."
+    },
+    {
+      "name": "humanize",
+      "kit": "core",
+      "explicit": false,
+      "description": "Rewrite text so it reads like a person wrote it — strip AI writing tells (stock vocabulary, significance inflation, negative parallelism, chatbot filler, em-dash pile-ups, formulaic structure) while preserving every fact, claim, and the author's voice. Use on drafts, docs, READMEs, issue and MR bodies, announcements, or any prose that smells generated. Triggers: \"humanize this\", \"make this sound human\", \"remove the AI tells\", \"this reads like AI\", \"deslop this text\"."
     },
     {
       "name": "issue-raiser",
@@ -535,6 +557,16 @@
       "name": "issue-tracking",
       "file": "rules/issue-tracking.md",
       "globs": "**/*"
+    },
+    {
+      "name": "ssh-first-transport",
+      "file": "rules/ssh-first-transport.md",
+      "globs": null
+    },
+    {
+      "name": "writing-discipline",
+      "file": "rules/writing-discipline.md",
+      "globs": "**/*.{md,mdx,markdown,txt}"
     }
   ],
   "instructions": [
@@ -589,15 +621,15 @@
     "resource-police.rules"
   ],
   "counts": {
-    "units": 15,
-    "skills": 28,
-    "coreSkills": 18,
+    "units": 16,
+    "skills": 29,
+    "coreSkills": 19,
     "kits": 8,
     "tools": 7,
-    "rules": 5,
+    "rules": 7,
     "instructions": 6,
     "plugins": 9,
     "codexPolicies": 6,
-    "wiring": 14
+    "wiring": 15
   }
 }
