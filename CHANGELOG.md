@@ -9,6 +9,13 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+- feat(hooks): **prose-police reads inline forge text too.** A second registration as a
+  PreToolUse Bash guard runs the same pattern scan over the inline `--body`, `--description`,
+  `--title`, and `--notes` values of `gh`/`glab` commands (and the REST `--field body=…`
+  spelling), denying with the same report. Bodies passed by `--body-file` were already covered
+  by the write arm; prose that merely quotes a forge command is not a forge command. Same off
+  switches; fails open without `python3`, matching issue-police.
+
 ## v0.8.0 — 2026-09-01
 
 - feat(hooks): **`prose-police` polices the prose, on by default.** A new PostToolUse write hook

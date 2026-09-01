@@ -32,6 +32,19 @@ function run(
 
 const flagged = (out: string) => out.includes('PROSE DISCIPLINE VIOLATION');
 
+function runBash(
+  command: string,
+  env: Record<string, string> = {},
+): { out: string; status: number | null } {
+  const payload = JSON.stringify({ tool_name: 'Bash', tool_input: { command } });
+  const result = spawnSync('bash', [hook], {
+    input: payload,
+    encoding: 'utf-8',
+    env: { ...process.env, ...env },
+  });
+  return { out: `${result.stdout ?? ''}${result.stderr ?? ''}`, status: result.status };
+}
+
 describe('prose-police hook', () => {
   test('stock AI phrasing is rejected in the forms agents actually write', () => {
     const forms = [
@@ -249,6 +262,38 @@ describe('prose-police hook', () => {
     expect(run(slop, '/tmp/prose-subject/docs/marketing/post.md', hook, { XDG_CONFIG_HOME: dir }).status).toBe(0);
     expect(run(slop, '/tmp/prose-subject/docs/plain.md', hook, { XDG_CONFIG_HOME: dir }).status).toBe(2);
     rmSync(dir, { recursive: true, force: true });
+  });
+
+  test('inline gh/glab text is policed through the Bash arm', () => {
+    const deny = (cmd: string) => {
+      const r = runBash(cmd);
+      expect(r.status, cmd).toBe(0);
+      const parsed = JSON.parse(r.out);
+      expect(parsed.hookSpecificOutput.permissionDecision).toBe('deny');
+      expect(parsed.reason).toContain('PROSE DISCIPLINE VIOLATION');
+      return parsed.reason as string;
+    };
+    const allow = (cmd: string) => {
+      const r = runBash(cmd);
+      expect(r.status, cmd).toBe(0);
+      expect(r.out.trim(), cmd).toBe('');
+    };
+
+    expect(deny('gh issue create --title "t" --body "We delve into a rich tapestry of synergy."')).toContain('"delve"');
+    deny('gh pr create --title "A groundbreaking game-changer" --body "plain"');
+    deny('glab mr create -d "This stands as a testament to synergy." -t "ok"');
+    deny('gh api --method POST repos/o/r/issues --field body="We delve into a tapestry."');
+
+    allow('gh issue create --title "prose-police inline arm" --body "Reads inline forge text through shlex."');
+    allow('gh issue create --body-file /tmp/body.md --title "plain title"');
+    allow('curl -d "we delve into a tapestry" https://example.com');
+    allow('echo "gh issue create --body \\"we delve into a tapestry\\""');
+  });
+
+  test('the Bash arm honours the kill switch', () => {
+    const r = runBash('gh issue create --body "We delve into a rich tapestry."', { AGENTKIT_SKIP_HOOKS: 'prose-police' });
+    expect(r.status).toBe(0);
+    expect(r.out.trim()).toBe('');
   });
 
   test('the plugin copy behaves identically to the claude copy', () => {

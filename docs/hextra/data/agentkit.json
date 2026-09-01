@@ -233,6 +233,13 @@
       "failClosedBudget": null
     },
     {
+      "unit": "prose",
+      "event": "PreToolUse",
+      "matcher": "Bash",
+      "timeout": 15,
+      "failClosedBudget": null
+    },
+    {
       "unit": "resource",
       "event": "PreToolUse",
       "matcher": "Bash",
@@ -630,6 +637,6 @@
     "instructions": 6,
     "plugins": 9,
     "codexPolicies": 6,
-    "wiring": 15
+    "wiring": 16
   }
 }

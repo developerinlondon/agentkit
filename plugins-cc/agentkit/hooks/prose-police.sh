@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
-# prose-police.sh — Claude Code PostToolUse hook (matcher: Edit|Write)
-# Flags AI writing tells in ADDED prose only — a document's pre-existing slop
-# is not the business of whoever touched one paragraph of it. Pattern content
-# adapted from blader/humanizer and conorbronsdon/avoid-ai-writing (both MIT;
-# see NOTICE).
+# prose-police.sh — registered twice: PostToolUse (Edit|Write) for file prose,
+# PreToolUse (Bash) for inline gh/glab --body/--title text. Flags AI writing
+# tells in ADDED prose only — pre-existing slop is not this edit's business.
+# Patterns adapted from blader/humanizer and avoid-ai-writing (MIT; NOTICE).
 set -euo pipefail
 
 if [[ -n "${AGENTKIT_SKIP_HOOKS:-}" ]]; then
@@ -55,43 +54,117 @@ command -v jq >/dev/null 2>&1 || exit 0
 # shellcheck source=lib/hook-input.sh
 source "${BASH_SOURCE[0]%/*}/lib/hook-input.sh"
 agentkit_slurp_input
-if ! agentkit_is_file_write_tool; then
+
+MODE=""
+COMMAND=$(agentkit_command)
+if [[ -n "$COMMAND" ]]; then
+  MODE="bash"
+elif agentkit_is_file_write_tool; then
+  MODE="file"
+else
   exit 0
 fi
 
-FILE_PATH=$(agentkit_file_path)
-[[ -z "$FILE_PATH" ]] && exit 0
-
-case "$FILE_PATH" in
-  *.md|*.mdx|*.markdown|*.txt) ;;
-  *) exit 0 ;;
-esac
-
-# Self-exemption: the rule, skill, and config that TEACH these patterns must
-# quote them, and a changelog quotes history it cannot rewrite.
-case "$FILE_PATH" in
-  *CHANGELOG*|*LICENSE*|*NOTICE*|*node_modules/*|*/.omc/*) exit 0 ;;
-  *writing-discipline*|*prose-police*|*humanize*|*anti-glaze*) exit 0 ;;
-esac
-for pattern in "${EXCLUDE_PATTERNS[@]+"${EXCLUDE_PATTERNS[@]}"}"; do
-  [[ "$FILE_PATH" == *"$pattern"* ]] && exit 0
-done
-
-repo_dir="${FILE_PATH%/*}"
-if repo_flag=$(git -C "$repo_dir" config --get agentkit.prosepolice.enabled 2>/dev/null); then
-  case "$repo_flag" in false|0|no) exit 0 ;; esac
-fi
-
-ADDED=$(agentkit_edit_text)
-[[ -z "$ADDED" ]] && exit 0
+prosepolice_repo_off() {
+  local flag
+  if flag=$(git "$@" config --get agentkit.prosepolice.enabled 2>/dev/null); then
+    case "$flag" in false|0|no) return 0 ;; esac
+  fi
+  return 1
+}
 
 # Fenced code and inline code spans are not prose; a snippet may legitimately
 # name anything.
-# shellcheck disable=SC2016 # sed pattern strips literal backtick code spans.
-PROSE=$(printf '%s\n' "$ADDED" | awk '
-  /^[[:space:]]*(```|~~~)/ { in_fence = !in_fence; next }
-  !in_fence
-' | sed 's/`[^`]*`//g')
+strip_code_spans() {
+  # shellcheck disable=SC2016 # sed pattern strips literal backtick code spans.
+  awk '
+    /^[[:space:]]*(```|~~~)/ { in_fence = !in_fence; next }
+    !in_fence
+  ' | sed 's/`[^`]*`//g'
+}
+
+# The inline text a forge command carries: --body/-b, --description/-d,
+# --title/-t, --notes, and the REST spelling --field body=… . Bodies passed by
+# file arrive through the Edit|Write arm when the file is written. shlex,
+# because a body is a quoted argument containing everything a regex would have
+# to survive. Missing python3 fails open, matching issue-police.
+extract_inline_forge_text() {
+  local stripped
+  stripped=$(printf '%s\n' "$COMMAND" |
+    sed -E "s/\"([^\"\\\\]|\\\\.)*\"/\"\"/g" |
+    sed -E "s/'[^']*'/''/g")
+  printf '%s' "$stripped" | grep -qE '\b(gh|glab)[[:space:]]' || return 1
+  command -v python3 >/dev/null 2>&1 || return 1
+  COMMAND="$COMMAND" python3 -c '
+import os, shlex, sys
+flags = ("--body", "-b", "--description", "-d", "--title", "-t", "--notes")
+fields = ("body", "description", "title", "notes")
+try:
+    parts = shlex.split(os.environ["COMMAND"], comments=False)
+except ValueError:
+    sys.exit(0)
+out = []
+for i, part in enumerate(parts):
+    if part in flags and i + 1 < len(parts):
+        out.append(parts[i + 1])
+        continue
+    matched = False
+    for f in flags:
+        if part.startswith(f + "="):
+            out.append(part[len(f) + 1:])
+            matched = True
+            break
+    if matched:
+        continue
+    pair = None
+    if part in ("--field", "-f", "--raw-field") and i + 1 < len(parts):
+        pair = parts[i + 1]
+    elif part.startswith("--field=") or part.startswith("--raw-field="):
+        pair = part.split("=", 1)[1]
+    if pair and "=" in pair:
+        key, value = pair.split("=", 1)
+        if key in fields:
+            out.append(value)
+print("\n".join(out))
+' 2>/dev/null
+}
+
+PROSE=""
+CONTEXT_LABEL=""
+
+if [[ "$MODE" == "file" ]]; then
+  FILE_PATH=$(agentkit_file_path)
+  [[ -z "$FILE_PATH" ]] && exit 0
+
+  case "$FILE_PATH" in
+    *.md|*.mdx|*.markdown|*.txt) ;;
+    *) exit 0 ;;
+  esac
+
+  # Self-exemption: the rule, skill, and config that TEACH these patterns must
+  # quote them, and a changelog quotes history it cannot rewrite.
+  case "$FILE_PATH" in
+    *CHANGELOG*|*LICENSE*|*NOTICE*|*node_modules/*|*/.omc/*) exit 0 ;;
+    *writing-discipline*|*prose-police*|*humanize*|*anti-glaze*) exit 0 ;;
+  esac
+  for pattern in "${EXCLUDE_PATTERNS[@]+"${EXCLUDE_PATTERNS[@]}"}"; do
+    [[ "$FILE_PATH" == *"$pattern"* ]] && exit 0
+  done
+
+  prosepolice_repo_off -C "${FILE_PATH%/*}" && exit 0
+
+  ADDED=$(agentkit_edit_text)
+  [[ -z "$ADDED" ]] && exit 0
+  PROSE=$(printf '%s\n' "$ADDED" | strip_code_spans)
+  CONTEXT_LABEL="added prose"
+else
+  prosepolice_repo_off && exit 0
+  INLINE_TEXT=$(extract_inline_forge_text) || exit 0
+  [[ -z "${INLINE_TEXT//[[:space:]]/}" ]] && exit 0
+  PROSE=$(printf '%s\n' "$INLINE_TEXT" | strip_code_spans)
+  CONTEXT_LABEL="inline forge text"
+fi
+
 [[ -z "${PROSE//[[:space:]]/}" ]] && exit 0
 
 SLOP_PATTERNS=(
@@ -149,7 +222,7 @@ check_slop_phrases() {
   done
   [[ -z "$hits" ]] && return 0
   hits=$(printf '%s' "$hits" | awk '!seen[$0]++' | head -12)
-  VIOLATIONS+=("AI-TELL PHRASING in the added prose:
+  VIOLATIONS+=("AI-TELL PHRASING in the ${CONTEXT_LABEL}:
 ${hits}
   These constructions (delve/tapestry vocabulary, significance inflation, negative parallelism, chatbot filler) read as generated text. Say the specific thing plainly instead.")
 }
@@ -170,24 +243,28 @@ check_slop_phrases
 check_emdash_density
 
 if (( ${#VIOLATIONS[@]} > 0 )); then
-  {
-    echo ""
-    echo "PROSE DISCIPLINE VIOLATION (prose-police)"
-    echo "=================================================="
-    for i in "${!VIOLATIONS[@]}"; do
-      echo "$(( i + 1 )). ${VIOLATIONS[$i]}"
-      echo ""
-    done
-    echo "REQUIRED ACTIONS:"
-    echo "- Rewrite the flagged lines in plain, specific language (the humanize skill does this wholesale)."
-    echo "- State facts directly; cut inflation, hedging, and formula."
-    echo "- Off switches: AGENTKIT_SKIP_HOOKS=prose-police (session); git config agentkit.prosepolice.enabled false (repo); or in agentkit config.yaml (global), an 'enabled: false' line nested under a 'prose-police:' section."
-    echo ""
-    echo "Fix these before proceeding."
-  } >&2
-  # Exit 2 is what delivers this. Claude Code discards a PostToolUse
-  # hook's stderr at exit 0, so the check ran and nobody heard it.
-  exit 2
+  REPORT="PROSE DISCIPLINE VIOLATION (prose-police)
+==================================================
+"
+  for i in "${!VIOLATIONS[@]}"; do
+    REPORT+="$(( i + 1 )). ${VIOLATIONS[$i]}"$'\n\n'
+  done
+  REPORT+="REQUIRED ACTIONS:
+- Rewrite the flagged text in plain, specific language (the humanize skill does this wholesale).
+- State facts directly; cut inflation, hedging, and formula.
+- Off switches: AGENTKIT_SKIP_HOOKS=prose-police (session); git config agentkit.prosepolice.enabled false (repo); or in agentkit config.yaml (global), an 'enabled: false' line nested under a 'prose-police:' section.
+
+Fix these before proceeding."
+
+  if [[ "$MODE" == "file" ]]; then
+    # Exit 2 is what delivers this. Claude Code discards a PostToolUse
+    # hook's stderr at exit 0, so the check ran and nobody heard it.
+    printf '\n%s\n' "$REPORT" >&2
+    exit 2
+  fi
+  # PreToolUse refuses by data, not status.
+  agentkit_deny_json "$REPORT"
+  exit 0
 fi
 
 exit 0
