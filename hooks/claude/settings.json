@@ -106,6 +106,12 @@
           },
           {
             "type": "command",
+            "command": "$HOME/.claude/hooks/prose-police.sh",
+            "timeout": 15,
+            "statusMessage": "prose-police: checking for AI writing tells..."
+          },
+          {
+            "type": "command",
             "command": "$HOME/.claude/hooks/memory-index.sh",
             "timeout": 10,
             "statusMessage": "memory-index: syncing the vault index..."

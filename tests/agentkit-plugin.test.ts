@@ -105,7 +105,7 @@ const PRE_TOOL_USE_HOOKS = [
 ];
 // Not a Bash gate: it judges the content an Edit or Write is about to land.
 const PRE_TOOL_USE_WRITE_HOOKS = ['plan-police.sh'];
-const POST_TOOL_USE_HOOKS = ['format-police.sh', 'coding-police.sh', 'comment-police.sh'];
+const POST_TOOL_USE_HOOKS = ['format-police.sh', 'coding-police.sh', 'comment-police.sh', 'prose-police.sh'];
 const ALL_POLICE_HOOKS = [...PRE_TOOL_USE_HOOKS, ...PRE_TOOL_USE_WRITE_HOOKS, ...POST_TOOL_USE_HOOKS];
 // The merge gate is consent-gated: it ships in agentkit-adversarial-review, never in core.
 const REVIEW_HOOKS = ['fail-closed-hook.sh', 'review-police.sh'];

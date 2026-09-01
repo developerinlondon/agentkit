@@ -450,6 +450,7 @@ one command; they are deliberately not config.
 | ---------------- | ---------- | ---------------------------------- |
 | `coding-police`  | yes        | yes                                |
 | `comment-police` | yes        | yes                                |
+| `prose-police`   | yes        | yes                                |
 | `format-police`  | yes        | yes                                |
 | `version-police` | yes        | **no** — matches its own name only |
 | everything else  | **no**     | —                                  |

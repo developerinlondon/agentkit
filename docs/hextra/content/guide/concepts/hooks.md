@@ -3,7 +3,7 @@ title: Police hooks
 weight: 2
 ---
 
-A police hook is a script the harness runs *before* it executes a tool call, or *after* it writes a
+A police hook is a script the harness runs _before_ it executes a tool call, or _after_ it writes a
 file. It gets the tool payload on stdin and it gets to say no.
 
 ```mermaid
@@ -21,10 +21,10 @@ flowchart TD
 
 Two events, two incompatible contracts. Mixing them up silently disables a hook.
 
-| Event | To refuse | To allow |
-| --- | --- | --- |
-| `PreToolUse` | **exit 0** *and* print a JSON decision on stdout | exit 0, print nothing |
-| `PostToolUse` | **exit 2** with the findings on stderr | exit 0 |
+| Event         | To refuse                                        | To allow              |
+| ------------- | ------------------------------------------------ | --------------------- |
+| `PreToolUse`  | **exit 0** _and_ print a JSON decision on stdout | exit 0, print nothing |
+| `PostToolUse` | **exit 2** with the findings on stderr           | exit 0                |
 
 `PreToolUse` denial is carried by data, not by status. One JSON object holds both harnesses' deny
 shapes at once, so a single script blocks in either:
@@ -55,7 +55,7 @@ non-blocking status code. [Verify the install](/guide/start/verify/) is the rout
 ### Why the write hooks exit 2
 
 Claude Code discards a `PostToolUse` hook's stderr when it exits 0, so findings printed on a zero
-exit reach nobody. `format-police`, `coding-police` and `comment-police` therefore exit 2, blocking
+exit reach nobody. `format-police`, `coding-police`, `comment-police` and `prose-police` therefore exit 2, blocking
 the write, which is how their findings get in front of the agent. The OpenCode plugins take the other
 route by design: they are advisory, appending findings to the tool output instead of throwing.
 
@@ -63,13 +63,13 @@ route by design: they are advisory, appending findings to the tool output instea
 
 The object on stdin is small. The fields the shared helper reads:
 
-| Field | Read as | Notes |
-| --- | --- | --- |
-| `tool_name` / `toolName` | which tool is being called | Grok names are mapped onto `Bash`/`Edit`/`Write` families |
-| `tool_input.command` | the shell command, for `Bash` | the whole call is seen once, before anything runs |
-| `tool_input.file_path` and friends | the target path, for `Edit`/`Write` | five spellings are accepted |
-| `tool_input.new_string` / `content` | the text about to be written | what `plan-police` judges |
-| `session_id` / `sessionId` | the session | used for per-session state |
+| Field                               | Read as                             | Notes                                                     |
+| ----------------------------------- | ----------------------------------- | --------------------------------------------------------- |
+| `tool_name` / `toolName`            | which tool is being called          | Grok names are mapped onto `Bash`/`Edit`/`Write` families |
+| `tool_input.command`                | the shell command, for `Bash`       | the whole call is seen once, before anything runs         |
+| `tool_input.file_path` and friends  | the target path, for `Edit`/`Write` | five spellings are accepted                               |
+| `tool_input.new_string` / `content` | the text about to be written        | what `plan-police` judges                                 |
+| `session_id` / `sessionId`          | the session                         | used for per-session state                                |
 
 {{< callout type="info" >}}
 The payload carries no reliable working directory. Detection that needs a project — the lockfile
@@ -111,7 +111,7 @@ which:
 - passes empty output straight through, since that is the allow signal.
 
 The child deadline is **45s inside the host's 60s**. Harness-side hook cancellation is non-blocking,
-so the child has to time out *first* and emit the denial itself — otherwise the host gives up on a
+so the child has to time out _first_ and emit the denial itself — otherwise the host gives up on a
 hook that never said anything, and the merge proceeds.
 
 Every other police hook runs bare. Only the gate is supervised, because only the gate's silence is
@@ -121,13 +121,13 @@ worth a denial.
 
 Several guards deliberately fail open, and they differ in how loudly:
 
-| Unit | When it cannot run | What it does |
-| --- | --- | --- |
-| `resource-police` | a parser dependency (`jq`, `awk`, `cat`) is missing | says so **once, loudly**, and allows |
-| `mr-police` | `glab` is unavailable or cannot identify you | exits quietly — there is nothing to compare against |
-| `version-police` | any registry error | allows, with a short lookup timeout and a day's cache |
-| `format-police` | `dprint` or `dprint.json` is missing | skips with a warning |
-| `review-police` | anything at all | **denies** |
+| Unit              | When it cannot run                                  | What it does                                          |
+| ----------------- | --------------------------------------------------- | ----------------------------------------------------- |
+| `resource-police` | a parser dependency (`jq`, `awk`, `cat`) is missing | says so **once, loudly**, and allows                  |
+| `mr-police`       | `glab` is unavailable or cannot identify you        | exits quietly — there is nothing to compare against   |
+| `version-police`  | any registry error                                  | allows, with a short lookup timeout and a day's cache |
+| `format-police`   | `dprint` or `dprint.json` is missing                | skips with a warning                                  |
+| `review-police`   | anything at all                                     | **denies**                                            |
 
 The rule is not "never fail open". It is **never fail silent**. A guard that cannot run and does not
 say so is indistinguishable from a guard that approved.

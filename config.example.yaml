@@ -197,6 +197,24 @@ comment-police:
   #     - vendor/
   #     - generated/
 
+prose-police:
+  # Flags AI writing tells (stock vocabulary, significance inflation, negative
+  # parallelism, chatbot filler, em-dash pile-ups) in ADDED prose on markdown
+  # and text writes. Blocks with exit 2, like the other write-time police.
+  # Per-repo off switch: git config agentkit.prosepolice.enabled false
+  enabled: true
+
+  # Em dashes allowed per 100 added words before the density check fires.
+  # Edits under 60 words are never density-checked.
+  max-em-dash-per-100-words: 2
+
+  # File path patterns to exclude from checks.
+  exclude-patterns: []
+  # Example:
+  #   exclude-patterns:
+  #     - docs/marketing/
+  #     - vendor/
+
 # Read by the `wip` status surface, the `plan-gate` checker, and the
 # plan-police hook. A repository's own .agentkit/config.yaml overrides this.
 wip:

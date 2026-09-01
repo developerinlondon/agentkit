@@ -9,6 +9,19 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+- **New `prose-police` write hook, on by default.** Flags AI writing tells in
+  the ADDED prose of markdown and text writes — stock vocabulary (delve,
+  tapestry, leverage), significance inflation, negative parallelism, chatbot
+  filler, em-dash pile-ups — and blocks with exit 2 like the other write-time
+  police. Fenced and inline code, changelogs, and the artifacts that teach the
+  patterns are exempt. Off switches: `AGENTKIT_SKIP_HOOKS=prose-police`, per
+  repo `git config agentkit.prosepolice.enabled false`, or `enabled: false`
+  under `prose-police:` in `config.yaml`. Ships with a `writing-discipline`
+  rule (the always-loaded floor for prose no hook can reach) and a `humanize`
+  core skill (on-demand wholesale rewrite of slop-marked text). Pattern
+  content adapted from blader/humanizer and conorbronsdon/avoid-ai-writing
+  (both MIT, credited in NOTICE).
+
 - Pages: **for generated slugs, the page URL is the share link.** Default
   publishes get HMAC-derived hex slugs that are already unguessable, so when
   sharing is on, the bare page URL serves to anyone — no `?share=` token to
