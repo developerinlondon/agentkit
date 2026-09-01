@@ -69,6 +69,10 @@ describe('prose-police hook', () => {
     expect(flagged(run('The debugger is called `delve` and the crate is `tapestry`.\n').out)).toBe(false);
   });
 
+  test('.txt prose is covered, not just markdown', () => {
+    expect(run('We delve into a rich tapestry.\n', '/tmp/prose-subject/notes.txt').status).toBe(2);
+  });
+
   test("code files are not this hook's business", () => {
     const slop = 'const s = "we delve into a rich tapestry";\n';
     expect(run(slop, '/tmp/prose-subject/code.ts').out).toBe('');
