@@ -287,10 +287,29 @@ describe('prose-police hook', () => {
     expect(deny('glab mr note 12 -m "We delve into a rich tapestry."')).toContain('backticks');
     deny('gh issue close 7 --comment "A groundbreaking paradigm shift resolved this."');
 
+    deny('GH_TOKEN=x gh issue create --body "We delve into a rich tapestry."');
+    deny('cd /tmp && gh issue create --body "We delve into a rich tapestry."');
+    deny('gh api repos/o/r/issues -F body="We delve into a rich tapestry."');
+
     allow('gh issue create --title "prose-police inline arm" --body "Reads inline forge text through shlex."');
-    allow('gh issue create --body-file /tmp/body.md --title "plain title"');
+    allow('gh issue create --body-file - --title "plain title"');
     allow('curl -d "we delve into a tapestry" https://example.com');
     allow('echo "gh issue create --body \\"we delve into a tapestry\\""');
+    // Scoping: text belonging to a DIFFERENT simple command on the line is
+    // not forge text, even with gh/glab present.
+    allow('git commit -m "We delve into a rich tapestry of synergy." && gh pr create --title t --body "plain"');
+    allow('gh pr list && curl -X POST -d "We delve into a rich tapestry." https://x.example');
+    allow('gh issue list | grep -b "we delve into a tapestry"');
+  });
+
+  test('a readable --body-file is scanned; slop in it denies', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'agentkit-prose-bodyfile-'));
+    const file = join(dir, 'body');
+    writeFileSync(file, 'We delve into a rich tapestry of synergy.\n');
+    const r = runBash(`gh issue create --title t --body-file ${file}`);
+    expect(r.status).toBe(0);
+    expect(JSON.parse(r.out).hookSpecificOutput.permissionDecision).toBe('deny');
+    rmSync(dir, { recursive: true, force: true });
   });
 
   test('the Bash arm honours the kill switch', () => {

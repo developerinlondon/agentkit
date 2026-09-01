@@ -83,49 +83,79 @@ strip_code_spans() {
   ' | sed 's/`[^`]*`//g'
 }
 
-# The inline text a forge command carries: --body/-b, --description/-d,
-# --title/-t, --notes, and the REST spelling --field body=… . Bodies passed by
-# file arrive through the Edit|Write arm when the file is written. shlex,
-# because a body is a quoted argument containing everything a regex would have
-# to survive. Missing python3 fails open, matching issue-police.
+# Scanning is scoped to the simple command whose head is gh/glab — a commit
+# message or curl payload sharing the line is not forge text. shlex, because a
+# body is a quoted argument containing everything a regex would have to
+# survive. Missing python3 fails open, matching issue-police.
 extract_inline_forge_text() {
   local stripped
   stripped=$(printf '%s\n' "$COMMAND" |
     sed -E "s/\"([^\"\\\\]|\\\\.)*\"/\"\"/g" |
     sed -E "s/'[^']*'/''/g")
-  printf '%s' "$stripped" | grep -qE '\b(gh|glab)[[:space:]]' || return 1
+  printf '%s' "$stripped" | grep -qE '\b(gh|glab)([[:space:]]|$)' || return 1
   command -v python3 >/dev/null 2>&1 || return 1
   COMMAND="$COMMAND" python3 -c '
 import os, shlex, sys
+
 flags = ("--body", "-b", "--description", "-d", "--title", "-t", "--notes",
          "--message", "-m", "--comment")
 fields = ("body", "description", "title", "notes")
+file_flags = ("--body-file", "--description-file", "-F")
+
+def tokens(text):
+    lex = shlex.shlex(text, posix=True, punctuation_chars=True)
+    lex.whitespace_split = True
+    return list(lex)
+
 try:
-    parts = shlex.split(os.environ["COMMAND"], comments=False)
+    parts = tokens(os.environ["COMMAND"])
 except ValueError:
     sys.exit(0)
+
+segments, current = [], []
+for part in parts:
+    if part and all(c in ";|&(){}<>" for c in part):
+        segments.append(current)
+        current = []
+    else:
+        current.append(part)
+segments.append(current)
+
 out = []
-for i, part in enumerate(parts):
-    if part in flags and i + 1 < len(parts):
-        out.append(parts[i + 1])
+for seg in segments:
+    head = 0
+    while head < len(seg) and "=" in seg[head] and not seg[head].startswith("-"):
+        head += 1
+    if head >= len(seg) or seg[head] not in ("gh", "glab"):
         continue
-    matched = False
-    for f in flags:
-        if part.startswith(f + "="):
-            out.append(part[len(f) + 1:])
-            matched = True
-            break
-    if matched:
-        continue
-    pair = None
-    if part in ("--field", "-f", "--raw-field") and i + 1 < len(parts):
-        pair = parts[i + 1]
-    elif part.startswith("--field=") or part.startswith("--raw-field="):
-        pair = part.split("=", 1)[1]
-    if pair and "=" in pair:
-        key, value = pair.split("=", 1)
-        if key in fields:
-            out.append(value)
+    for i, part in enumerate(seg):
+        if part in flags and i + 1 < len(seg):
+            out.append(seg[i + 1])
+            continue
+        if any(part.startswith(f + "=") for f in flags):
+            out.append(part.split("=", 1)[1])
+            continue
+        pair = None
+        if part in ("--field", "-f", "--raw-field", "-F") and i + 1 < len(seg):
+            pair = seg[i + 1]
+        elif part.startswith(("--field=", "--raw-field=")):
+            pair = part.split("=", 1)[1]
+        if pair and "=" in pair:
+            key, value = pair.split("=", 1)
+            if key in fields:
+                out.append(value)
+            continue
+        path = None
+        if part in file_flags and i + 1 < len(seg):
+            path = seg[i + 1]
+        elif part.startswith(("--body-file=", "--description-file=")):
+            path = part.split("=", 1)[1]
+        if path and path != "-" and "=" not in path and os.path.isfile(path):
+            try:
+                with open(path, encoding="utf-8", errors="replace") as fh:
+                    out.append(fh.read(65536))
+            except OSError:
+                pass
 print("\n".join(out))
 ' 2>/dev/null
 }

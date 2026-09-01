@@ -11,10 +11,12 @@ release PR — "publish this" authorizes a release, never the tier.
 
 - feat(hooks): **prose-police reads inline forge text too.** A second registration as a
   PreToolUse Bash guard runs the same pattern scan over the inline `--body`, `--description`,
-  `--title`, and `--notes` values of `gh`/`glab` commands (and the REST `--field body=…`
-  spelling), denying with the same report. Bodies passed by `--body-file` were already covered
-  by the write arm; prose that merely quotes a forge command is not a forge command. Same off
-  switches; fails open without `python3`, matching issue-police.
+  `--title`, `--notes`, `--message`, and `--comment` values of `gh`/`glab` commands, the REST
+  `--field body=…` spellings, and the contents of a readable `--body-file` (stdin `-` is not
+  readable and passes). Scanning is scoped to the simple command whose head is `gh`/`glab` — a
+  commit message or curl payload sharing the line is not forge text, and prose that merely
+  quotes a forge command is not a forge command. Same off switches; fails open without
+  `python3`, matching issue-police.
 
 ## v0.8.0 — 2026-09-01
 
