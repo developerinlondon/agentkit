@@ -85,6 +85,7 @@ describe('prose-police hook', () => {
       '/tmp/repo/rules/writing-discipline.md',
       '/tmp/repo/skills/humanize/SKILL.md',
       '/tmp/repo/docs/prose-police.md',
+      '/tmp/repo/instructions/anti-glaze.md',
     ]) {
       expect(run(slop, path).out).toBe('');
     }
@@ -117,6 +118,26 @@ describe('prose-police hook', () => {
 
   test('short edits are never density-checked', () => {
     expect(flagged(run('a — b — c — d — e\n').out)).toBe(false);
+  });
+
+  test('the word floor is pinned from below: 4 dashes under 150 words stays silent', () => {
+    const words = (n: number) => Array.from({ length: n }, (_, i) => `word${i}`).join(' ');
+    const fourDashesUnderFloor = Array.from({ length: 5 }, () => words(19)).join(' — ') + '.\n';
+    expect(flagged(run(fourDashesUnderFloor).out)).toBe(false);
+  });
+
+  test('missing jq fails open, as the FAQ promises', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'agentkit-prose-nojq-'));
+    const r = spawnSync('/bin/bash', [hook], {
+      input: JSON.stringify({
+        tool_name: 'Write',
+        tool_input: { file_path: '/tmp/prose-subject/doc.md', content: 'We delve into a rich tapestry.\n' },
+      }),
+      encoding: 'utf-8',
+      env: { PATH: '', HOME: dir, XDG_CONFIG_HOME: dir },
+    });
+    rmSync(dir, { recursive: true, force: true });
+    expect(r.status).toBe(0);
   });
 
   test('long dash-free prose does not kill the hook under pipefail', () => {
