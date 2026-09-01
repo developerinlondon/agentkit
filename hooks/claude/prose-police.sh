@@ -97,7 +97,8 @@ extract_inline_forge_text() {
   command -v python3 >/dev/null 2>&1 || return 1
   COMMAND="$COMMAND" python3 -c '
 import os, shlex, sys
-flags = ("--body", "-b", "--description", "-d", "--title", "-t", "--notes")
+flags = ("--body", "-b", "--description", "-d", "--title", "-t", "--notes",
+         "--message", "-m", "--comment")
 fields = ("body", "description", "title", "notes")
 try:
     parts = shlex.split(os.environ["COMMAND"], comments=False)
@@ -236,7 +237,7 @@ check_emdash_density() {
   dashes=$(printf '%s' "$PROSE" | grep -o '—' | wc -l | tr -d '[:space:]') || dashes=0
   (( dashes >= MIN_DASHES_FOR_DENSITY )) || return 0
   (( dashes * 100 > MAX_EMDASH_PER_100_WORDS * words )) || return 0
-  VIOLATIONS+=("EM-DASH PILE-UP: ${dashes} em dashes in ${words} added words (limit: ${MAX_EMDASH_PER_100_WORDS} per 100). Vary the joinery — most of these want a period, a comma, or a plain sentence.")
+  VIOLATIONS+=("EM-DASH PILE-UP: ${dashes} em dashes in ${words} words of ${CONTEXT_LABEL} (limit: ${MAX_EMDASH_PER_100_WORDS} per 100). Vary the joinery — most of these want a period, a comma, or a plain sentence.")
 }
 
 check_slop_phrases
@@ -251,6 +252,7 @@ if (( ${#VIOLATIONS[@]} > 0 )); then
   done
   REPORT+="REQUIRED ACTIONS:
 - Rewrite the flagged text in plain, specific language (the humanize skill does this wholesale).
+- Quoting someone else's words, or code? Put the quotation in backticks or a fenced block — code spans are exempt.
 - State facts directly; cut inflation, hedging, and formula.
 - Off switches: AGENTKIT_SKIP_HOOKS=prose-police (session); git config agentkit.prosepolice.enabled false (repo); or in agentkit config.yaml (global), an 'enabled: false' line nested under a 'prose-police:' section.
 

@@ -284,6 +284,9 @@ describe('prose-police hook', () => {
     deny('glab mr create -d "This stands as a testament to synergy." -t "ok"');
     deny('gh api --method POST repos/o/r/issues --field body="We delve into a tapestry."');
 
+    expect(deny('glab mr note 12 -m "We delve into a rich tapestry."')).toContain('backticks');
+    deny('gh issue close 7 --comment "A groundbreaking paradigm shift resolved this."');
+
     allow('gh issue create --title "prose-police inline arm" --body "Reads inline forge text through shlex."');
     allow('gh issue create --body-file /tmp/body.md --title "plain title"');
     allow('curl -d "we delve into a tapestry" https://example.com');
