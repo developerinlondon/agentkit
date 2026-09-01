@@ -280,9 +280,16 @@ if (( ${#VIOLATIONS[@]} > 0 )); then
   for i in "${!VIOLATIONS[@]}"; do
     REPORT+="$(( i + 1 )). ${VIOLATIONS[$i]}"$'\n\n'
   done
+  if [[ "$MODE" == "file" ]]; then
+    QUOTE_REMEDY="- Quoting someone else's words, or code? Put the quotation in backticks or a fenced block — code spans are exempt."
+  else
+    # In a double-quoted shell argument a backtick is command substitution:
+    # advice to add one would execute the quotation instead of posting it.
+    QUOTE_REMEDY="- Quoting someone else's words, or code? Code spans (backticks) are exempt — but in a shell command, single-quote the whole body so the backticks stay literal, or pass the text with --body-file."
+  fi
   REPORT+="REQUIRED ACTIONS:
 - Rewrite the flagged text in plain, specific language (the humanize skill does this wholesale).
-- Quoting someone else's words, or code? Put the quotation in backticks or a fenced block — code spans are exempt.
+${QUOTE_REMEDY}
 - State facts directly; cut inflation, hedging, and formula.
 - Off switches: AGENTKIT_SKIP_HOOKS=prose-police (session); git config agentkit.prosepolice.enabled false (repo); or in agentkit config.yaml (global), an 'enabled: false' line nested under a 'prose-police:' section.
 

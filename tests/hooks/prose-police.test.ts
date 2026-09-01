@@ -284,7 +284,11 @@ describe('prose-police hook', () => {
     deny('glab mr create -d "This stands as a testament to synergy." -t "ok"');
     deny('gh api --method POST repos/o/r/issues --field body="We delve into a tapestry."');
 
-    expect(deny('glab mr note 12 -m "We delve into a rich tapestry."')).toContain('backticks');
+    // The Bash-arm remedy must never tell an agent to add backticks inside a
+    // double-quoted body — that is command substitution, not quoting.
+    const noteReason = deny('glab mr note 12 -m "We delve into a rich tapestry."');
+    expect(noteReason).toContain('single-quote the whole body');
+    expect(noteReason).not.toContain('Put the quotation in backticks');
     deny('gh issue close 7 --comment "A groundbreaking paradigm shift resolved this."');
 
     deny('GH_TOKEN=x gh issue create --body "We delve into a rich tapestry."');
