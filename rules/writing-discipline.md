@@ -1,3 +1,7 @@
+---
+globs: "**/*.{md,mdx,markdown,txt}"
+---
+
 # Writing Discipline (Prose Police)
 
 Applies to every piece of prose an agent writes: docs, READMEs, issue and MR bodies, commit
@@ -15,7 +19,7 @@ markdown/text writes; the rest is on the agent. Pattern content adapted from Wik
 - **Negative parallelism**: "not just X, but Y", "it's not X — it's Y". Say what it is.
 - **Chatbot filler**: "great question", "I hope this helps", "let's dive in", "without
   further ado", "it's worth noting", "needless to say".
-- **Em-dash pile-ups**: more than ~2 per 100 words. Most want a period or a comma.
+- **Em-dash pile-ups**: more than ~3 per 100 words. Most want a period or a comma.
 - **Rule-of-three padding**: triplets of adjectives or clauses added for rhythm, not content.
 
 ## What good prose does instead

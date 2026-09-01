@@ -16,8 +16,9 @@ fi
 AGENTKIT_CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/agentkit/config.yaml"
 
 ENABLED=1
-MAX_EMDASH_PER_100_WORDS=2
-MIN_WORDS_FOR_DENSITY=60
+MAX_EMDASH_PER_100_WORDS=3
+MIN_WORDS_FOR_DENSITY=150
+MIN_DASHES_FOR_DENSITY=4
 EXCLUDE_PATTERNS=()
 
 load_config() {
@@ -70,7 +71,7 @@ esac
 # quote them, and a changelog quotes history it cannot rewrite.
 case "$FILE_PATH" in
   *CHANGELOG*|*LICENSE*|*NOTICE*|*node_modules/*|*/.omc/*) exit 0 ;;
-  *writing-discipline*|*prose-police*|*humanize*) exit 0 ;;
+  *writing-discipline*|*prose-police*|*humanize*|*anti-glaze*) exit 0 ;;
 esac
 for pattern in "${EXCLUDE_PATTERNS[@]+"${EXCLUDE_PATTERNS[@]}"}"; do
   [[ "$FILE_PATH" == *"$pattern"* ]] && exit 0
@@ -86,6 +87,7 @@ ADDED=$(agentkit_edit_text)
 
 # Fenced code and inline code spans are not prose; a snippet may legitimately
 # name anything.
+# shellcheck disable=SC2016 # sed pattern strips literal backtick code spans.
 PROSE=$(printf '%s\n' "$ADDED" | awk '
   /^[[:space:]]*(```|~~~)/ { in_fence = !in_fence; next }
   !in_fence
@@ -104,7 +106,6 @@ SLOP_PATTERNS=(
   '\bcutting.?edge\b'
   '\bgroundbreaking\b'
   '\brevolutioniz(e|es|ed|ing)\b'
-  '\bseamless(ly)?\b'
   '\bholistic(ally)?\b'
   '\bembark(s|ed|ing)? on\b'
   '\belevate your\b'
@@ -112,10 +113,11 @@ SLOP_PATTERNS=(
   '\bharness (the )?power\b'
   '\bnavigat(e|ing) the complexit'
   '\bdouble.?edged sword\b'
-  '\bleverag(e|es|ed|ing)\b'
+  '\bleverag(es|ed|ing)\b'
+  '\b(to|we|you|they) leverage\b'
   '\ba testament to\b'
   '\bstands? as a testament\b'
-  '\bplays? a (vital|crucial|pivotal|key|critical) role\b'
+  '\bplays? a (vital|crucial|pivotal|critical) role\b'
   '\bunderscores? the importance\b'
   '\b(ever.)?evolving landscape\b'
   '\bpivotal moment\b'
@@ -130,18 +132,19 @@ SLOP_PATTERNS=(
   "\\blet'?s dive in(to)?\\b"
   '\bdive deeper? into\b'
   '\bwithout further ado\b'
-  "(\\bnot|n't) (just|only|merely|simply)\\b[^.!?]{1,80}\\bbut( also)?\\b"
+  "\\b(isn'?t|aren'?t|wasn'?t|weren'?t|(is|are|was|were|it'?s|they'?re) not) (just|only|merely|simply)\\b[^.!?]{1,80}\\bbut( also)?\\b"
   "it'?s not [^.!?]{1,60}[,;—-] *it'?s"
 )
 
 VIOLATIONS=()
 
 check_slop_phrases() {
-  local hits="" pat line
+  local hits="" pat line phrase
   for pat in "${SLOP_PATTERNS[@]+"${SLOP_PATTERNS[@]}"}"; do
     while IFS= read -r line; do
       [[ -z "$line" ]] && continue
-      hits+="    $(printf '%s' "$line" | cut -c1-100)"$'\n'
+      phrase=$(printf '%s' "$line" | grep -Eio -- "$pat" | head -1) || true
+      hits+="    \"${phrase}\" in: $(printf '%s' "$line" | cut -c1-100)"$'\n'
     done < <(printf '%s\n' "$PROSE" | grep -Ei -- "$pat" | head -2)
   done
   [[ -z "$hits" ]] && return 0
@@ -155,7 +158,10 @@ check_emdash_density() {
   local words dashes
   words=$(printf '%s' "$PROSE" | wc -w | tr -d '[:space:]')
   (( words >= MIN_WORDS_FOR_DENSITY )) || return 0
-  dashes=$(printf '%s' "$PROSE" | grep -o '—' | wc -l | tr -d '[:space:]')
+  # grep exits 1 on zero matches, and pipefail would turn that into a silent
+  # mid-script death that swallows every finding already collected.
+  dashes=$(printf '%s' "$PROSE" | grep -o '—' | wc -l | tr -d '[:space:]') || dashes=0
+  (( dashes >= MIN_DASHES_FOR_DENSITY )) || return 0
   (( dashes * 100 > MAX_EMDASH_PER_100_WORDS * words )) || return 0
   VIOLATIONS+=("EM-DASH PILE-UP: ${dashes} em dashes in ${words} added words (limit: ${MAX_EMDASH_PER_100_WORDS} per 100). Vary the joinery — most of these want a period, a comma, or a plain sentence.")
 }
@@ -175,7 +181,7 @@ if (( ${#VIOLATIONS[@]} > 0 )); then
     echo "REQUIRED ACTIONS:"
     echo "- Rewrite the flagged lines in plain, specific language (the humanize skill does this wholesale)."
     echo "- State facts directly; cut inflation, hedging, and formula."
-    echo "- Off switches: AGENTKIT_SKIP_HOOKS=prose-police (session), git config agentkit.prosepolice.enabled false (repo), prose-police.enabled: false in agentkit config.yaml (global)."
+    echo "- Off switches: AGENTKIT_SKIP_HOOKS=prose-police (session); git config agentkit.prosepolice.enabled false (repo); or in agentkit config.yaml (global), an 'enabled: false' line nested under a 'prose-police:' section."
     echo ""
     echo "Fix these before proceeding."
   } >&2

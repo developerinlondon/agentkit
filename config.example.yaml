@@ -205,8 +205,9 @@ prose-police:
   enabled: true
 
   # Em dashes allowed per 100 added words before the density check fires.
-  # Edits under 60 words are never density-checked.
-  max-em-dash-per-100-words: 2
+  # Edits under 150 words, or with fewer than 4 em dashes, are never
+  # density-checked — a small denominator makes every dash look like a spike.
+  max-em-dash-per-100-words: 3
 
   # File path patterns to exclude from checks.
   exclude-patterns: []

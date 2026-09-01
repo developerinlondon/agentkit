@@ -177,7 +177,7 @@ The shipped `forbidden-patterns` catch references that rot: `Plan-?\d+`, `PR\s*#
 | Key                         | Type | Default |
 | --------------------------- | ---- | ------- |
 | `enabled`                   | bool | `true`  |
-| `max-em-dash-per-100-words` | int  | `2`     |
+| `max-em-dash-per-100-words` | int  | `3`     |
 | `exclude-patterns`          | list | `[]`    |
 
 Flags AI writing tells in the ADDED prose of markdown and text writes. Repositories opt out

@@ -566,7 +566,7 @@
     {
       "name": "writing-discipline",
       "file": "rules/writing-discipline.md",
-      "globs": null
+      "globs": "**/*.{md,mdx,markdown,txt}"
     }
   ],
   "instructions": [

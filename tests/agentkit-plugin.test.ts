@@ -90,9 +90,7 @@ describe('OpenCode policy plugin modules', () => {
 });
 
 // The police hooks wired by hooks/claude/settings.json — exactly what the plugin
-// must re-wire under ${CLAUDE_PLUGIN_ROOT}. There is no comment-police.sh: the
-// comment-police police ships only as an OpenCode plugin (plugins/comment-police.ts),
-// so it is intentionally absent from both settings.json and this plugin.
+// must re-wire under ${CLAUDE_PLUGIN_ROOT}.
 const PRE_TOOL_USE_HOOKS = [
   'git-police.sh',
   'issue-police.sh',
