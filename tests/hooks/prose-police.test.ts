@@ -49,7 +49,7 @@ describe('prose-police hook', () => {
       expect(flagged(out), form).toBe(true);
       expect(out).toContain('AI-TELL PHRASING');
     }
-  });
+  }, 20000);
 
   test('plain specific prose passes', () => {
     const clean = [
@@ -199,7 +199,8 @@ describe('prose-police hook', () => {
     for (const sentence of exemplars) {
       expect(flagged(run(`${sentence}\n`).out), sentence).toBe(true);
     }
-  });
+    // 39 hook spawns: well over bun's 5s default under full-suite load.
+  }, 60000);
 
   test('ordinary engineering prose the patterns must NOT catch', () => {
     const clean = [
@@ -212,7 +213,7 @@ describe('prose-police hook', () => {
     for (const sentence of clean) {
       expect(flagged(run(`${sentence}\n`).out), sentence).toBe(false);
     }
-  });
+  }, 20000);
 
   test('global config can disable the hook and add excludes', () => {
     const dir = mkdtempSync(join(tmpdir(), 'agentkit-prose-gcfg-'));
