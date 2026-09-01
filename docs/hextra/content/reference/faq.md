@@ -23,7 +23,8 @@ It depends on which one, and the difference matters.
 | change a threshold permanently          | edit `~/.config/agentkit/config.yaml`                         |
 
 `AGENTKIT_SKIP_HOOKS` is honoured by exactly five units: `coding-police`, `comment-police`,
-`prose-police` and `format-police` (the `PostToolUse` write hooks) and `version-police` (OpenCode). `version-police`
+`prose-police` and `format-police` (the `PostToolUse` write hooks; `prose-police` honours it in its
+`PreToolUse` Bash arm too) and `version-police` (OpenCode). `version-police`
 matches only its own name — `all` does not reach it. The `PreToolUse` guards ignore the variable
 entirely; that is why each of them ships its own single-command override instead.
 

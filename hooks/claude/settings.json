@@ -54,6 +54,12 @@
           },
           {
             "type": "command",
+            "command": "$HOME/.claude/hooks/prose-police.sh",
+            "timeout": 15,
+            "statusMessage": "prose-police: checking inline forge text..."
+          },
+          {
+            "type": "command",
             "command": "$HOME/.claude/hooks/fail-closed-hook.sh 45 $HOME/.claude/hooks/review-police.sh",
             "timeout": 60,
             "statusMessage": "review-police: verifying the review gate..."
