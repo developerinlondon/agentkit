@@ -172,6 +172,17 @@ The shipped `forbidden-patterns` catch references that rot: `Plan-?\d+`, `PR\s*#
 `closes\s*#\d+`, `fixes\s*#\d+`, `TODO[: ]+(for|after|once)\b`, and
 `as part of (this|the) (PR|MR|fix)`.
 
+## `prose-police`
+
+| Key                         | Type | Default |
+| --------------------------- | ---- | ------- |
+| `enabled`                   | bool | `true`  |
+| `max-em-dash-per-100-words` | int  | `3`     |
+| `exclude-patterns`          | list | `[]`    |
+
+Flags AI writing tells in the ADDED prose of markdown and text writes. Repositories opt out
+without touching the global config: `git config agentkit.prosepolice.enabled false`.
+
 ## `wip`
 
 Read by the `wip` surface, the `plan-gate` checker and the `plan-police` hook.

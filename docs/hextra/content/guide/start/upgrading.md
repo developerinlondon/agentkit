@@ -22,6 +22,13 @@ the marker blocks it writes into files you also own.
 removed and re-copied. Edit the clone, not the install.
 {{< /callout >}}
 
+Upgrading also adds any newly shipped core artifacts. Most recently: the `prose-police` write hook
+(on by default — it blocks AI writing tells in added markdown/text prose), the `writing-discipline`
+rule, and the `humanize` skill. Your preserved `config.yaml` is not rewritten, so it will not gain
+the new `prose-police:` section; the hook's defaults apply until you add one. Turn the hook off with
+`AGENTKIT_SKIP_HOOKS=prose-police`, per repo with `git config agentkit.prosepolice.enabled false`,
+or add the section from `config.example.yaml` with `enabled: false`.
+
 Config files carrying your own content are guarded by markers, so re-runs do not duplicate blocks.
 In `CLAUDE.md` those markers look like `<!-- agentkit:<name>:start -->` /
 `<!-- agentkit:<name>:end -->`; removal strips exactly that span. Blocks that older versions appended

@@ -86,6 +86,12 @@
             "command": "${CLAUDE_PLUGIN_ROOT}/hooks/comment-police.sh",
             "timeout": 15,
             "statusMessage": "comment-police: checking comment discipline..."
+          },
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/prose-police.sh",
+            "timeout": 15,
+            "statusMessage": "prose-police: checking for AI writing tells..."
           }
         ]
       }

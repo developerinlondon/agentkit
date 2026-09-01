@@ -18,12 +18,12 @@ It depends on which one, and the difference matters.
 | Want                                    | Do                                                            |
 | --------------------------------------- | ------------------------------------------------------------- |
 | skip one write-time check for a session | `AGENTKIT_SKIP_HOOKS=coding-police`                           |
-| skip all three write-time checks        | `AGENTKIT_SKIP_HOOKS=all`                                     |
+| skip all four write-time checks         | `AGENTKIT_SKIP_HOOKS=all`                                     |
 | get past a `PreToolUse` guard once      | prefix the one command with that guard's `AGENTKIT_ALLOW_*=1` |
 | change a threshold permanently          | edit `~/.config/agentkit/config.yaml`                         |
 
-`AGENTKIT_SKIP_HOOKS` is honoured by exactly four units: `coding-police`, `comment-police` and
-`format-police` (the `PostToolUse` write hooks) and `version-police` (OpenCode). `version-police`
+`AGENTKIT_SKIP_HOOKS` is honoured by exactly five units: `coding-police`, `comment-police`,
+`prose-police` and `format-police` (the `PostToolUse` write hooks) and `version-police` (OpenCode). `version-police`
 matches only its own name — `all` does not reach it. The `PreToolUse` guards ignore the variable
 entirely; that is why each of them ships its own single-command override instead.
 
@@ -66,6 +66,7 @@ Check for a missing dependency, and note that the two failure directions are cho
 | `resource-police` | prints `DISABLED — missing …. Heavy commands are NOT being bounded.` and allows  |
 | `review-police`   | **denies** the merge: it cannot check the record, so it does not let one through |
 | `comment-police`  | exits 0 silently                                                                 |
+| `prose-police`    | exits 0 silently                                                                 |
 
 The asymmetry is intentional. A detection guard that wedges every `Bash` call over a missing utility
 gets deleted; a merge gate that permits when it cannot evaluate is worse than no gate.
