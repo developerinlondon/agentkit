@@ -26,9 +26,10 @@ Generic boxes-and-arrows is what comes out when this step was skipped, and a
 figure that mixes two altitudes is misclassified rather than thorough.
 
 The type also picks the register. **ERD, C4 context, C4 container and
-deployment topology** route to the technical register below; every other type
-stays in the sketch register this file describes, where a correct glyph teaches
-more than any icon. Then set the depth, which the audience term drives:
+deployment topology** route to the technical register below — and one narrowing
+of deployment topology goes on to the stencil register after it; every other
+type stays in the sketch register this file describes, where a correct glyph
+teaches more than any icon. Then set the depth, which the audience term drives:
 
 - **Conceptual**: mental models, philosophies, quick overviews. Abstract shapes
   and relationships are enough.
@@ -100,10 +101,35 @@ The fetch is opt-in — no install step runs it — and prints the vendor's term
 unless `--accept-terms` is given. Referencing an unfetched pack fails the render
 naming this command. See `references/VENDOR-LICENSES.md`.
 
+### The stencil register
+
+One narrowing of deployment topology leaves D2: a figure whose argument is the
+reader recognising a **vendor's own mark** — an AWS ALB, an Azure Front Door, a
+Cisco switch — where no extractor covers the source and the CC0 packs do not
+carry the mark. That renders `.drawio` through draw.io Desktop:
+
+```bash
+bun <skill-dir>/scripts/drawio-render.ts --in topology.drawio --out topology.svg \
+  --png topology.png --label "Cloud topology — ALB to EKS to RDS"
+```
+
+Pinned to **draw.io Desktop v31.3.2**; the wrapper refuses any other version,
+screens the source for label styles that would export as `<foreignObject>`
+(GitHub and GitLab render neither), and fails the render if the output is not
+self-contained — the same gate D2 output passes. draw.io is **shelled out to,
+never vendored**: its stencil licence exempts exported diagram output but grants
+no redistribution, so no draw.io artwork is committed here.
+
+It is the last resort of the three, not the first. `references/selection.md`
+holds the three questions that route a topology to it, and
+`references/stencil-register.md` holds the install recipe, how to find a style
+string, and the authoring rules.
+
 Steps 2–6 below are the sketch register's. A technical figure leaves here and
 follows `references/technical-register.md` end to end — authoring rules,
 notation conventions, the icon manifest, the trademark rule and how the SVG is
-inlined into a page.
+inlined into a page. A stencil figure follows
+`references/stencil-register.md` the same way.
 
 ## 2 — Map each concept to a structural pattern
 

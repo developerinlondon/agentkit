@@ -1,0 +1,254 @@
+# Stencil register — draw.io authoring reference
+
+The stencil register renders **vendor-stencil topologies** — the figure whose
+argument depends on the reader recognising an AWS ALB, an Azure Front Door or a
+Kubernetes Ingress by its published mark — from `.drawio` mxGraph XML.
+
+It is the third register, and the narrowest. The [technical register](technical-register.md) still owns ERD, C4 context, C4 container and
+deployment topology; the sketch register in `SKILL.md` still owns everything
+else. draw.io is reached for **only** when vendor recognition is the point.
+
+Renderer is pinned to **draw.io Desktop v31.3.2** (Apache-2.0). The wrapper
+refuses any other version — a render is only reproducible on the build it was
+authored against.
+
+```bash
+bun skills/diagram/scripts/drawio-render.ts \
+  --in cloud-topology.drawio --out cloud-topology.svg --png cloud-topology.png \
+  --label "Cloud topology — ALB to EKS to RDS"
+```
+
+| Flag           | Default    | Use                                        |
+| -------------- | ---------- | ------------------------------------------ |
+| `--in`         | —          | the `.drawio` source, uncompressed XML     |
+| `--out`        | `<in>.svg` | the shipped SVG                            |
+| `--png`        | —          | raster twin at 2×, for the look-fix loop   |
+| `--label`      | filename   | becomes `aria-label`; match the figcaption |
+| `--border`     | `8`        | pixels around the diagram                  |
+| `--page-index` | `1`        | which page of a multi-page file to export  |
+
+## When draw.io, and when not
+
+| The figure needs…                                                         | Register |
+| ------------------------------------------------------------------------- | -------- |
+| a vendor's own stencil, recognised on sight (AWS, Azure, GCP, Cisco, K8s) | draw.io  |
+| a derived graph — module imports, a live schema, a state file             | D2       |
+| C4 boundaries, crow's-foot cardinality, `PK`/`FK` badges                  | D2       |
+| an argument carried by structure rather than by icons                     | sketch   |
+
+**D2 is still the default for deployment topology.** It derives topologies from
+`tofu show -json` and from a `k8s/` directory, and a derived figure beats an
+authored one every time. draw.io earns the figure only when the vendor marks
+themselves are load-bearing and no extractor covers the source — a
+cloud-provider network diagram drawn for an audience that reads it by icon.
+
+`selection.md` carries the routing rule; this file carries the mechanics.
+
+## Licence — shell out, never vendor
+
+Checked 2026-09-02:
+
+- draw.io's core is **Apache-2.0**.
+- `src/main/webapp/img/LICENSE` and `stencils/LICENSE` carry **only** an
+  Atlassian-products restriction, and state: _"This restriction does not apply
+  to end-user diagram output (such as exported images or documents) created
+  using this software."_
+- There is **no redistribution grant** for the stencils or images themselves.
+
+So the rule is the same one PlantUML gets in these notes: **shell out to draw.io
+to render; never copy its stencils, images or shape libraries into agentkit.**
+The exported SVG is end-user diagram output and is explicitly exempt from the
+restriction. A vendored stencil tree would not be.
+
+This is why the register has no fetch step and no `assets/` tree of its own. The
+artwork exists only inside the installed draw.io and inside the SVGs it exports.
+
+## Install (headless Linux)
+
+Nothing is wired into `install.sh` — like the vendor icon packs, installing is a
+deliberate act on the machine that needs it.
+
+```bash
+mkdir -p ~/.agentkit/diagram/drawio && cd ~/.agentkit/diagram/drawio
+curl -fsSLO https://github.com/jgraph/drawio-desktop/releases/download/v31.3.2/drawio-x86_64-31.3.2.AppImage
+echo 'ca06cbe33876d22e92fc397d12bc164501016d18d200093690be3b312feec791  drawio-x86_64-31.3.2.AppImage' \
+  | sha256sum -c -
+chmod +x drawio-x86_64-31.3.2.AppImage
+./drawio-x86_64-31.3.2.AppImage --appimage-extract   # 169 MB → 448 MB
+rm drawio-x86_64-31.3.2.AppImage
+```
+
+The wrapper looks for `$AGENTKIT_DRAWIO`, then
+`~/.agentkit/diagram/drawio/squashfs-root/drawio`, then `/opt/drawio/drawio`,
+`/usr/bin/drawio`, `/usr/local/bin/drawio`, and the macOS app bundle.
+
+Two things the wrapper handles that trip a first attempt:
+
+- **Electron initialises a display even for `--version`.** On Linux with no
+  `DISPLAY` or `WAYLAND_DISPLAY` the wrapper runs the binary under `xvfb-run`,
+  and says so if `xvfb-run` is missing (`apt install xvfb`).
+- **The AppImage ships `chrome-sandbox` unprivileged**, and Electron aborts
+  rather than run with a sandbox it cannot trust. The wrapper checks the
+  helper's ownership and mode, and adds `--no-sandbox` only when it is not
+  setuid root — a distro package installs it correctly and keeps the sandbox.
+
+Extraction rather than a FUSE mount is deliberate: `libfuse2` is absent from
+current Ubuntu, and `--appimage-extract` needs nothing.
+
+## Finding a style string
+
+A shape is a `style=` string, not an image reference. Never guess one — the
+shipped webapp is the authority, and it is a single archive in the install:
+
+```bash
+ASAR=~/.agentkit/diagram/drawio/squashfs-root/resources/app.asar
+grep -a -o 'resIcon=mxgraph\.aws4\.[a-z0-9_]*' "$ASAR" | sort -u | grep rds
+grep -a -o 'mxgraph\.kubernetes\.icon[0-9]*;prIcon=[a-z0-9_]*' "$ASAR" | sort -u
+grep -a -o 'shape=mxgraph\.aws4\.group;grIcon=mxgraph\.aws4\.group_[a-z0-9_]*' "$ASAR" | sort -u
+```
+
+Then pull the **whole** quoted style the library ships for that shape, so the
+node carries the vendor's own fill and gradient rather than colours you invented:
+
+```bash
+python3 - "$ASAR" <<'PY'
+import sys
+data = open(sys.argv[1], 'rb').read()
+i = data.find(b'resIcon=mxgraph.aws4.rds;')
+print(data[data.rfind(b'"', 0, i) + 1:data.find(b'"', i)].decode())
+PY
+```
+
+`jgraph/drawio-mcp`'s tool server exposes the same index as a `search_shapes`
+MCP tool over ~10,000 stencils. It is a nicer interface and Apache-2.0, but it
+is an extra dependency for a lookup two greps already answer — and see below for
+why the rest of that repo does not replace this wrapper.
+
+## Authoring rules
+
+Write the `.drawio` file as **uncompressed** mxGraph XML. The editor's default
+is a deflated `<diagram>` body; the wrapper refuses one, because it cannot
+screen styles it cannot read. In the editor: **File ▸ Properties ▸ Compressed
+off**, or edit through **Extras ▸ Edit Diagram**.
+
+### Every label must be plain SVG text
+
+**`html=1` is the defect that ruins this register.** draw.io exports an HTML
+label as a `<foreignObject>` with a rasterised PNG fallback and a "Text is not
+SVG" link — and GitHub and GitLab render neither inside an `<img>`. The label is
+simply gone for the reader, with no error anywhere.
+
+Three style tokens reach the HTML renderer. The wrapper screens the **source**
+for all three and names the offending cell, because the output only reports that
+a label was lost, not which one:
+
+| Token             | Write instead                  |
+| ----------------- | ------------------------------ |
+| `html=1`          | `html=0`                       |
+| `whiteSpace=wrap` | drop it, and shorten the label |
+| `overflow=fill`   | drop it                        |
+
+A label that needed wrapping is a label that is too long for the figure.
+
+### Notation
+
+The deployment-topology rules in `selection.md` apply unchanged, and the
+stencils do not excuse them:
+
+- Group by **trust or network boundary**, and name each with its real CIDR and
+  its rule — `Private subnet 10.20.10.0/24 — no inbound`, not "backend".
+  `mxgraph.aws4.group` with `grIcon=…group_vpc` / `…group_security_group` gives
+  the vendor's own boundary chrome; keep `grStroke=1` or the box has no border.
+- **Every boundary crossing carries protocol and auth**: `TLS 5432, IAM auth`,
+  not `db`. Set `verticalAlign=bottom` so the label sits above its line.
+- The ingress path is one continuous `strokeWidth=3` spine; everything else is 2.
+- Replicas are `×N` on one node, never N drawn copies.
+- Route edges with explicit `<Array as="points">` waypoints rather than letting
+  the router lay a label across a group title. The band between two sibling
+  groups is where a crossing label belongs.
+
+### Density
+
+SKILL.md's budget holds: at most 3 zones, ~12 labelled nodes. Nested vendor
+groups eat the budget fast — an AWS cloud around a VPC around a subnet is three
+already, before a single node is drawn.
+
+## Render, LOOK, fix
+
+Same mandatory loop, same reason: **an agent cannot see an SVG.** `--png` writes
+a 2× raster twin; open it with the Read tool, find the defect, fix the XML,
+re-render. Expect 2–4 rounds — the committed example took three, and every round
+found a label sitting on top of something.
+
+Sweep each round for: an edge label crossing a group title, a node label
+overlapping the group border below it, a stencil whose group box has no visible
+stroke, and dead vertical space inside a group that has outgrown its contents.
+
+## Theme handling — light only, on its own plate
+
+**draw.io's dark theme remaps every authored colour, brand fills included.** On
+this register's own example it turns the ALB's `#D05C17` into `#E07C41`, the
+RDS tile's `#3334B9` into `#AFB0FF` and the Kubernetes `#2875E2` into `#5597F5`.
+The trademark rule in `technical-register.md` — _vendor logos are never
+recoloured, distorted, or theme-filtered_ — forbids exactly that.
+
+So the figure is exported `--theme light`, always, and carries a full-bleed
+white plate of its own rather than borrowing the island's surface, which is dark
+on a dark page. It is a fixed-colour card in both themes: the brand marks are
+exact, and nothing about the page can alter them.
+
+Two consequences:
+
+- The publish-page themes exempt `.drawio` from the light-mode inversion filter,
+  beside `.d2`, for the same reason. A filtered figure would be a recoloured
+  logo.
+- The island lint (`svg-source:excalidraw|d2`) deliberately does **not** cover
+  `svg-source:drawio`. Its error tells the author to supply
+  `var(--diagram-bg)` so the figure stays legible — advice that is false for a
+  figure carrying its own plate. Wrap the SVG in a `.figure` island anyway for
+  the caption; nothing forces it.
+
+## What the wrapper refuses
+
+Each of these fails the render loudly rather than shipping a broken figure:
+
+- a draw.io binary that is absent or not v31.3.2
+- a compressed `.drawio` body, whose styles cannot be screened
+- `html=1`, `whiteSpace=wrap` or `overflow=fill` on any cell style
+- any `http(s)` reference that is not an XML namespace — including the SVG 1.1
+  DTD in draw.io's own DOCTYPE, which is stripped
+- `<script>` or `<foreignObject>` in the output
+- an `href` left as a file path instead of an inlined `data:` URI
+
+The last four run through `verifySelfContained` from `d2-svg.ts` — one gate for
+both registers, so a draw.io figure ships under exactly the containment rule a
+D2 figure does.
+
+## Why a wrapper and not `jgraph/drawio-mcp`
+
+The official repo (Apache-2.0) bundles four things. None of them replaces this
+wrapper, checked 2026-09-02:
+
+| Component            | Headless SVG export?                                              |
+| -------------------- | ----------------------------------------------------------------- |
+| MCP App Server       | no — renders an interactive viewer in chat, not a file            |
+| MCP Tool Server      | no — stdio only, and `open_drawio_xml` shells out to `xdg-open`   |
+| Claude Code skill    | yes — by shelling out to the same desktop CLI this wrapper drives |
+| Project Instructions | no — emits an `app.diagrams.net` URL                              |
+
+Their skill is a thinner prompt layer over `drawio -x -f svg`. It is worth
+reading, and its `search_shapes` tool is genuinely useful, but it does not carry
+the source screening, the pin, the plate, or the self-containment gate — which
+are the parts that decide whether the figure renders for a reader on GitHub. So:
+wrapper here, and borrow `search_shapes` if the two greps above ever stop being
+enough.
+
+`jgraph/draw-image-export2` was evaluated and rejected: **it has no SVG output
+format at all.** Its dispatcher branches on `png`/`jpg`/`pdf` and answers
+`400 Unsupported Format!` for `svg`.
+
+## Example
+
+`examples/cloud-topology.drawio` → `examples/cloud-topology.svg`: a customer
+reaching an EKS-hosted API through a public ALB, with the AWS and Kubernetes
+marks doing the recognition work and every crossing labelled with its protocol.

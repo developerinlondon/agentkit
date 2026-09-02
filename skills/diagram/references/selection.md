@@ -69,7 +69,7 @@ substrate — they select C4 container unless the prompt also says where it runs
 
 ## Register
 
-The type decides the register, and there are two.
+The type decides the register, and there are three.
 
 The **technical register** — crisp strokes, D2 source, vendored vendor icon
 stencils — carries exactly four types today: **ERD**, **C4 context**, **C4
@@ -91,6 +91,26 @@ has been met for exactly half of it. Derived from a module graph it has a
 mechanical recipe — group the modules, aggregate the imports — so it renders
 D2. Authored by hand it has none, so it stays a sketch. The register follows
 the recipe, not the type.
+
+The **stencil register** — draw.io source, the vendor's own shape libraries —
+is the third, and it is a narrowing of one row rather than a row of its own.
+**Deployment topology goes to draw.io when the vendor marks are the argument**:
+when the reader is meant to recognise an AWS ALB or an Azure Front Door on
+sight, and no extractor covers the source. Everything else about that row stays
+in D2, including every derived topology — `extract.ts infra` and `extract.ts
+k8s` read the real thing, and a hand-drawn figure with better icons is still a
+figure drawn from memory. Three questions decide it, in order:
+
+1. Does an extractor cover this source? → D2, always.
+2. Would the figure fail if the icons were plain boxes? If no, → D2; the
+   argument is structural and D2 is the cheaper, derivable register.
+3. Does the mark the argument needs exist in the vendored CC0 packs
+   (`find-icon.ts`)? If yes, → D2 with that icon. Only a mark that is genuinely
+   absent — most of AWS's 500-odd resource icons, all of Cisco's, the network
+   and P&ID sets — sends the figure to draw.io.
+
+Author it against `stencil-register.md`. The licence rule there is hard: draw.io
+is shelled out to, and its stencils are never vendored into this repository.
 
 ## Derive it before you draw it
 
@@ -116,7 +136,8 @@ and real ports, which an implementer needs and a non-engineering audience does
 not. Cap first, then derive.
 
 Full option reference, and an honest account of the edges these tools cannot
-recover, in `technical-register.md`.
+recover, in `technical-register.md`. Vendor-stencil topology, and why it is the
+last resort rather than the first, in `stencil-register.md`.
 
 **Type is not medium.** For **sequence** and **state machine** the destination
 picks the tool: publish-page's routing table owns those thresholds and sends
@@ -229,4 +250,13 @@ touching the parent.
 **"Show how a request gets from the browser to the worker."**
 → `container / deployment / on-call engineer → deployment topology`. No
 structural phrase and no inventory signal, so the tie-break never fires; add
-"the architecture of our k3s platform" and rule 1 lands on the same type.
+"the architecture of our k3s platform" and rule 1 lands on the same type. There
+is a `k8s/` directory, so `extract.ts k8s` derives it and it renders D2.
+
+**"Draw our AWS network for the solutions-architecture review — they want to
+see the ALB, the EKS cluster and the RDS instance."**
+→ `container / deployment / architecture reviewer → deployment topology`, same
+row. But there is no `terraform/` to derive from, and the audience reads the
+figure by vendor mark: question 1 has no answer, question 2 says the icons
+carry it, and question 3 finds no ALB mark in the CC0 packs. That is the
+stencil register.

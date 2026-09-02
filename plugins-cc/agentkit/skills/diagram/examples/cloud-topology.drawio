@@ -1,0 +1,58 @@
+<mxfile host="agentkit" type="device">
+  <diagram name="cloud-topology" id="cloud-topology">
+    <mxGraphModel dx="1400" dy="900" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="customer" value="Customer" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#232F3E;strokeColor=none;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=0;fontSize=14;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.user;" vertex="1" parent="1">
+          <mxGeometry x="20" y="148" width="62" height="62" as="geometry" />
+        </mxCell>
+        <mxCell id="cloud" value="AWS Cloud — eu-west-2" style="sketch=0;outlineConnect=0;gradientColor=none;html=0;fontSize=14;fontStyle=0;shape=mxgraph.aws4.group;grIcon=mxgraph.aws4.group_aws_cloud;verticalAlign=top;align=left;grIconSize=36;spacingLeft=44;spacingTop=4;fillColor=none;container=1;pointerEvents=0;collapsible=0;recursiveResize=0;" vertex="1" parent="1">
+          <mxGeometry x="140" y="20" width="820" height="536" as="geometry" />
+        </mxCell>
+        <mxCell id="vpc" value="VPC 10.20.0.0/16" style="sketch=0;outlineConnect=0;gradientColor=none;html=0;fontSize=14;fontStyle=0;shape=mxgraph.aws4.group;grIcon=mxgraph.aws4.group_vpc;verticalAlign=top;align=left;grIconSize=36;spacingLeft=44;spacingTop=4;fontColor=#2C8723;strokeColor=#2C8723;fillColor=none;container=1;pointerEvents=0;collapsible=0;recursiveResize=0;" vertex="1" parent="cloud">
+          <mxGeometry x="26" y="56" width="768" height="460" as="geometry" />
+        </mxCell>
+        <mxCell id="public" value="Public subnet 10.20.1.0/24" style="sketch=0;outlineConnect=0;gradientColor=none;html=0;fontSize=14;fontStyle=0;shape=mxgraph.aws4.group;grIcon=mxgraph.aws4.group_security_group;grStroke=1;verticalAlign=top;align=left;grIconSize=32;spacingLeft=40;spacingTop=4;strokeColor=#0E82B8;fontColor=#0E82B8;fillColor=none;container=1;pointerEvents=0;collapsible=0;recursiveResize=0;" vertex="1" parent="vpc">
+          <mxGeometry x="26" y="48" width="716" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="alb" value="public-alb" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=#F78E04;gradientDirection=north;fillColor=#D05C17;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=0;fontSize=14;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.application_load_balancer;labelPosition=right;verticalLabelPosition=middle;align=left;verticalAlign=middle;spacingLeft=8;" vertex="1" parent="public">
+          <mxGeometry x="430" y="25" width="60" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="private" value="Private subnet 10.20.10.0/24 — no inbound" style="sketch=0;outlineConnect=0;gradientColor=none;html=0;fontSize=14;fontStyle=0;shape=mxgraph.aws4.group;grIcon=mxgraph.aws4.group_security_group;grStroke=1;verticalAlign=top;align=left;grIconSize=32;spacingLeft=40;spacingTop=4;strokeColor=#2C8723;fontColor=#2C8723;fillColor=none;container=1;pointerEvents=0;collapsible=0;recursiveResize=0;" vertex="1" parent="vpc">
+          <mxGeometry x="26" y="204" width="716" height="236" as="geometry" />
+        </mxCell>
+        <mxCell id="eks" value="EKS 1.31 — namespace platform" style="sketch=0;outlineConnect=0;gradientColor=none;html=0;fontSize=14;fontStyle=0;shape=mxgraph.aws4.group;grIcon=mxgraph.aws4.group_security_group;grStroke=1;verticalAlign=top;align=left;grIconSize=32;spacingLeft=40;spacingTop=4;strokeColor=#2875E2;fontColor=#2875E2;fillColor=none;container=1;pointerEvents=0;collapsible=0;recursiveResize=0;" vertex="1" parent="private">
+          <mxGeometry x="24" y="50" width="360" height="160" as="geometry" />
+        </mxCell>
+        <mxCell id="ingress" value="ingress-nginx" style="sketch=0;html=0;dashed=0;outlineConnect=0;fillColor=#2875E2;strokeColor=#ffffff;verticalLabelPosition=bottom;verticalAlign=top;align=center;fontSize=14;shape=mxgraph.kubernetes.icon;prIcon=ing;" vertex="1" parent="eks">
+          <mxGeometry x="40" y="54" width="52" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="orders" value="orders-api ×3" style="sketch=0;html=0;dashed=0;outlineConnect=0;fillColor=#2875E2;strokeColor=#ffffff;verticalLabelPosition=bottom;verticalAlign=top;align=center;fontSize=14;shape=mxgraph.kubernetes.icon;prIcon=deploy;" vertex="1" parent="eks">
+          <mxGeometry x="270" y="54" width="52" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="rds" value="orders (Postgres 16)" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=#4D72F3;gradientDirection=north;fillColor=#3334B9;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=0;fontSize=14;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.rds;" vertex="1" parent="private">
+          <mxGeometry x="600" y="99" width="60" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="e-customer-alb" value="HTTPS 443" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=0;fontSize=13;fontColor=#232F3E;labelBackgroundColor=none;strokeColor=#232F3E;strokeWidth=3;endArrow=blockThin;endFill=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;verticalAlign=bottom;" edge="1" parent="1" source="customer" target="alb">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-alb-ingress" value="HTTP 30080 target group" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=0;fontSize=13;fontColor=#232F3E;labelBackgroundColor=none;strokeColor=#232F3E;strokeWidth=3;endArrow=blockThin;endFill=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;verticalAlign=bottom;" edge="1" parent="1" source="alb" target="ingress">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="652" y="257" />
+              <mxPoint x="180" y="257" />
+              <mxPoint x="180" y="409" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e-ingress-orders" value="HTTP 8080 Service" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=0;fontSize=13;fontColor=#2875E2;labelBackgroundColor=none;strokeColor=#2875E2;strokeWidth=3;endArrow=blockThin;endFill=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;verticalAlign=bottom;" edge="1" parent="1" source="ingress" target="orders">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-orders-rds" value="TLS 5432, IAM auth" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=0;fontSize=13;fontColor=#232F3E;labelBackgroundColor=none;strokeColor=#232F3E;strokeWidth=3;endArrow=blockThin;endFill=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;verticalAlign=bottom;" edge="1" parent="1" source="orders" target="rds">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

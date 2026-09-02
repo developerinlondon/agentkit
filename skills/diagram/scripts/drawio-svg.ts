@@ -1,0 +1,98 @@
+// Post-processing and source screening for draw.io SVG output.
+
+import { SvgError } from "./d2-svg.ts";
+
+export const DRAWIO_PIN = "31.3.2";
+export const SOURCE_MARK = "svg-source:drawio";
+
+// draw.io writes an XML prolog and a DOCTYPE pointing at the SVG 1.1 DTD. The
+// DTD is an external identifier the containment check reads as a network
+// reference, and neither survives being inlined into an HTML document anyway.
+const PROLOG_RE = /^\s*(?:<\?xml[^>]*\?>\s*)?(?:<!DOCTYPE[^>]*>\s*)?/;
+
+// The plate the figure paints for itself. draw.io's dark theme remaps every
+// authored colour, brand fills included, and the register forbids recolouring
+// vendor artwork — so the figure is exported light-only and carries its own
+// surface rather than borrowing the island's, which is dark on a dark page.
+export const PLATE = "#ffffff";
+
+export function stripPrologue(svg: string): string {
+  const out = svg.replace(PROLOG_RE, "");
+  if (!out.startsWith("<svg")) throw new SvgError("output does not start with an <svg> tag");
+  return out;
+}
+
+// A `--theme light` export still declares `color-scheme: light dark`, which
+// leaves the viewer's own UA styles free to reinterpret the figure.
+export function plateBackground(svg: string, fill = PLATE): string {
+  const root = svg.match(/^<svg\b[^>]*>/);
+  if (!root) throw new SvgError("cannot attach the plate — no <svg> root");
+  const box = root[0].match(/\bviewBox="([\d.eE+-]+) ([\d.eE+-]+) ([\d.eE+-]+) ([\d.eE+-]+)"/);
+  if (!box) throw new SvgError("cannot attach the plate — no viewBox on the rendered SVG");
+  const [, x, y, w, h] = box;
+  const tag = root[0].replace(/\s*color-scheme:\s*[^;"]*;?/, "");
+  const rect = `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fill}"/>`;
+  return tag + rect + svg.slice(root[0].length);
+}
+
+export function applyHouseAttributes(svg: string, ariaLabel: string): string {
+  const open = svg.match(/^<svg\b[^>]*>/);
+  if (!open) throw new SvgError("output does not start with an <svg> tag");
+  let tag = open[0];
+  // draw.io's own root style only paints a transparent backdrop, which the
+  // figure island already supplies; left in place it becomes a second style
+  // attribute on the tag and the house sizing silently loses to it.
+  tag = tag.replace(/\s*\bwidth="[^"]*"/, "").replace(/\s*\bheight="[^"]*"/, "")
+    .replace(/\s*\bstyle="[^"]*"/, "");
+  const escaped = ariaLabel.replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll(
+    "<",
+    "&lt;",
+  );
+  tag = tag.replace(
+    /^<svg\b/,
+    `<svg class="drawio" role="img" aria-label="${escaped}" width="100%" style="height:auto"`,
+  );
+  return `<!-- ${SOURCE_MARK} -->\n${tag}${svg.slice(open[0].length)}`;
+}
+
+// Every label style that reaches the HTML renderer exports as a <foreignObject>
+// with a rasterised <text> fallback, which GitHub and GitLab refuse to draw
+// inside an <img>. Both spellings are screened in the source rather than in the
+// output, because the output only reports that a label was lost, not which one.
+const LABEL_TRAPS: Array<{ token: RegExp; fix: string }> = [
+  { token: /\bhtml=1\b/, fix: "html=1 → html=0" },
+  { token: /\bwhiteSpace=wrap\b/, fix: "drop whiteSpace=wrap and shorten the label" },
+  { token: /\boverflow=(?:fill|width)\b/, fix: "drop overflow=fill/width" },
+];
+
+export interface SourceProblem {
+  cellId: string;
+  fix: string;
+}
+
+function attribute(tag: string, name: string): string | undefined {
+  return tag.match(new RegExp(`\\b${name}="([^"]*)"`))?.[1];
+}
+
+export function screenSource(xml: string): SourceProblem[] {
+  const problems: SourceProblem[] = [];
+  for (const m of xml.matchAll(/<(?:mxCell|object|UserObject)\b[^>]*>/g)) {
+    const style = attribute(m[0], "style");
+    if (style === undefined) continue;
+    const id = attribute(m[0], "id") ?? "(unnamed cell)";
+    for (const trap of LABEL_TRAPS) {
+      if (trap.token.test(style)) problems.push({ cellId: id, fix: trap.fix });
+    }
+  }
+  return problems;
+}
+
+// A .drawio file may carry its diagram as deflate+base64 rather than as XML, in
+// which case the style screen above sees nothing and passes a file it never
+// read. Refusing is the honest answer: the editor writes uncompressed on
+// request, and an unscreened file is exactly the one that ships a foreignObject.
+export function isCompressed(xml: string): boolean {
+  const diagram = xml.match(/<diagram\b[^>]*>([\s\S]*?)<\/diagram>/);
+  if (!diagram) return false;
+  return !/<mxGraphModel\b/.test(diagram[1]);
+}
