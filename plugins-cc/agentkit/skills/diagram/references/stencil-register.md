@@ -241,6 +241,15 @@ from the output filename, rewriting `url(#…)` and `href="#…"` alongside. So
 to the same bytes, and two figures coexist on one page. An id shape the strip
 does not recognise fails the render rather than shipping churn.
 
+**If you touch that rewrite, mind the second spelling.** draw.io writes each
+paint server twice — as `fill="url(#x)"` and again inside `style=` as
+`url(&quot;#x&quot;)` — and CSS honours the style copy. Rewriting only the
+attribute form leaves the shape unpainted with nothing else out of place, which
+is a defect no assertion about text or containment catches. It shipped that way
+once. `verifyReferences` now refuses any render whose `url(#…)` or `href="#…"`
+does not resolve to an id the figure defines, which is the check that catches
+it.
+
 ## What the wrapper refuses
 
 Each of these fails the render loudly rather than shipping a broken figure:
