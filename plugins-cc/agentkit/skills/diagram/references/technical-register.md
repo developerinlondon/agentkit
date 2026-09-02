@@ -23,7 +23,8 @@ tar xzf "d2-v$v-$a.tar.gz" && install -m 0755 "d2-v$v/bin/d2" ~/.local/bin/d2
 Set `D2_BIN` to render with a binary other than the `d2` on PATH. Testing a
 candidate build otherwise means replacing the PATH binary, which changes what
 every other renderer on the machine is pinned against. The version check applies
-to `D2_BIN` exactly as it does to PATH.
+to `D2_BIN` exactly as it does to PATH, and the skill's own test suite finds its
+binary the same way, so a candidate can be put through the suite as it is.
 
 ```bash
 bun skills/diagram/scripts/d2-render.ts \

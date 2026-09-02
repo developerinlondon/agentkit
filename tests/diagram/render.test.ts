@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { D2_PIN } from '../../skills/diagram/scripts/d2-svg.ts';
@@ -13,10 +13,14 @@ interface Run {
 }
 
 function run(dir: string, args: string[], path?: string, extra: Record<string, string> = {}): Run {
-  // An ambient D2_BIN would silently answer for PATH in every case below.
   const base = { ...process.env };
-  delete base.D2_BIN;
-  if (path !== undefined) base.PATH = path;
+  // A case that pins PATH is testing PATH discovery, and an ambient D2_BIN would
+  // answer for it. Every other case renders with whatever binary the operator
+  // pointed the wrapper at, D2_BIN included.
+  if (path !== undefined) {
+    delete base.D2_BIN;
+    base.PATH = path;
+  }
   const result = Bun.spawnSync({
     cmd: [process.execPath, wrapper, ...args],
     cwd: dir,
@@ -47,13 +51,16 @@ function withTemp<T>(fn: (dir: string) => T): T {
 }
 
 // Bun.spawnSync throws ENOENT for a missing executable rather than reporting a
-// non-zero exit, which would crash this file instead of skipping it.
-const available = Bun.which('d2') !== null;
+// non-zero exit, which would crash this file instead of skipping it. D2_BIN is
+// honoured here for the same reason the wrapper honours it: a candidate build
+// is tested without displacing the binary the rest of the machine renders with.
+const candidate = process.env.D2_BIN;
+const available = candidate === undefined ? Bun.which('d2') !== null : existsSync(candidate);
 if (!available) {
   console.error(
-    `SKIPPED tests/diagram/render.test.ts: no d2 on PATH — the render, icon-embedding, `
-      + `self-containment and committed-example cases did NOT run. This skill pins d2 `
-      + `v${D2_PIN}; CI installs it in .github/workflows/ci.yml.`,
+    `SKIPPED tests/diagram/render.test.ts: no d2 on PATH and no D2_BIN — the render, `
+      + `icon-embedding, self-containment and committed-example cases did NOT run. This skill `
+      + `pins d2 v${D2_PIN}; CI installs it in .github/workflows/ci.yml.`,
   );
 }
 
