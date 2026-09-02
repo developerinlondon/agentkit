@@ -9,6 +9,19 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+- chore(diagram): **the d2 renderer is pinned to v0.8.2, from its new `d2lang/d2` home.** 0.8.2
+  swaps the embedded JavaScript layout runtimes for Go ports — elk-go at ELK 0.12, dagro at
+  Dagre 3.1.1, rough-go at 4.6.6 — which moves geometry under unchanged source, so all four
+  committed examples are regenerated. ELK 0.12 cannot apply D2's previous nested model-order
+  profile: children of a compound container come out in a different order, visible in the
+  deployment topology and the C4 container view. Both still read correctly and no edge, label or
+  boundary was lost. The install recipe now verifies the release's `SHA256SUMS` manifest and its
+  signed build provenance instead of downloading on trust.
+- feat(diagram): **`D2_BIN` points the wrapper at a d2 other than the one on PATH.** Trying a
+  candidate build otherwise means replacing the PATH binary, which changes what every other
+  renderer on the machine is pinned against. The version check applies to the override the same
+  way, and its refusal names `D2_BIN` rather than PATH.
+
 ## v0.8.1 — 2026-09-01
 
 - feat(hooks): **prose-police reads inline forge text too.** A second registration as a
