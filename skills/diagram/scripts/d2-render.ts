@@ -43,6 +43,11 @@ function flag(name: string): boolean {
 
 const INSTALL_HINT = `install it from https://github.com/terrastruct/d2/releases/tag/v${D2_PIN}`;
 
+// A candidate build cannot go on PATH without displacing the pinned binary
+// every other agent on the machine renders against.
+const D2_BIN = process.env.D2_BIN || "d2";
+const D2_WHERE = process.env.D2_BIN ? `at D2_BIN=${D2_BIN}` : "on PATH";
+
 export function parseVersion(output: string): string {
   return output.trim().replace(/^v/, "");
 }
@@ -50,14 +55,14 @@ export function parseVersion(output: string): string {
 function checkPin(): void {
   let raw: string;
   try {
-    raw = execFileSync("d2", ["--version"], { encoding: "utf8" });
+    raw = execFileSync(D2_BIN, ["--version"], { encoding: "utf8" });
   } catch {
-    fail(`d2 not found on PATH — this skill pins d2 v${D2_PIN}; ${INSTALL_HINT}`);
+    fail(`d2 not found ${D2_WHERE} — this skill pins d2 v${D2_PIN}; ${INSTALL_HINT}`);
   }
   const found = parseVersion(raw);
   if (found !== D2_PIN) {
     fail(
-      `d2 v${found} on PATH but this skill pins v${D2_PIN} — renders are only `
+      `d2 v${found} ${D2_WHERE} but this skill pins v${D2_PIN} — renders are only `
         + `reproducible on the pinned build; ${INSTALL_HINT}`,
     );
   }
@@ -104,7 +109,7 @@ try {
   const salt = arg("salt");
   if (salt) d2Args.push(`--salt=${salt}`);
   try {
-    execFileSync("d2", [...d2Args, staged, rendered], { encoding: "utf8", stdio: "pipe" });
+    execFileSync(D2_BIN, [...d2Args, staged, rendered], { encoding: "utf8", stdio: "pipe" });
   } catch (e) {
     const err = e as { stderr?: string; message: string };
     fail(`d2 failed to compile ${input}:\n${(err.stderr ?? err.message).trim()}`);

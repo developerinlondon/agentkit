@@ -12,11 +12,15 @@ interface Run {
   stderr: string;
 }
 
-function run(dir: string, args: string[], path?: string): Run {
+function run(dir: string, args: string[], path?: string, extra: Record<string, string> = {}): Run {
+  // An ambient D2_BIN would silently answer for PATH in every case below.
+  const base = { ...process.env };
+  delete base.D2_BIN;
+  if (path !== undefined) base.PATH = path;
   const result = Bun.spawnSync({
     cmd: [process.execPath, wrapper, ...args],
     cwd: dir,
-    env: path === undefined ? process.env : { ...process.env, PATH: path },
+    env: { ...base, ...extra },
     stdout: 'pipe',
     stderr: 'pipe',
   });
@@ -82,6 +86,28 @@ describe('d2 version pin', () => {
       const result = run(dir, ['--in', join(dir, 'a.d2')], stubD2(dir, `v${D2_PIN}`));
       expect(result.stderr).not.toContain('pins v');
       expect(result.stderr).toContain('failed to compile');
+    });
+  });
+
+  test('D2_BIN supplies the binary when PATH does not', () => {
+    withTemp((dir) => {
+      writeFileSync(join(dir, 'a.d2'), 'x: y\n');
+      const bin = join(stubD2(dir, `v${D2_PIN}`), 'd2');
+      const result = run(dir, ['--in', join(dir, 'a.d2')], join(dir, 'empty'), { D2_BIN: bin });
+      expect(result.stderr).not.toContain('d2 not found');
+      expect(result.stderr).toContain('failed to compile');
+    });
+  });
+
+  test('a mismatched D2_BIN is refused, naming the override rather than PATH', () => {
+    withTemp((dir) => {
+      writeFileSync(join(dir, 'a.d2'), 'x: y\n');
+      const bin = join(stubD2(dir, 'v0.6.0'), 'd2');
+      const result = run(dir, ['--in', join(dir, 'a.d2')], join(dir, 'empty'), { D2_BIN: bin });
+      expect(result.code).toBe(1);
+      expect(result.stderr).toContain(`D2_BIN=${bin}`);
+      expect(result.stderr).toContain('v0.6.0');
+      expect(result.stderr).not.toContain('on PATH');
     });
   });
 
