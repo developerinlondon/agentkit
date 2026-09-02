@@ -82,7 +82,12 @@ The refusal names the character and says which font, if any, carries it.
 - A **character no embedded font carries**, as above.
 - A **spec key it does not recognise**, because the usual cause is an unquoted
   comma that swallowed half a label.
-- A figure **past the density budget or the canvas ceiling**.
+- A figure **past the density budget or the canvas ceiling** (see the rank table
+  below).
+
+Newlines in a label are not refused: a `label: "one\ntwo"` grows its box to fit
+the lines, and so does a wrapped note. What it will not do is wrap for you, so
+the line breaks are yours to place.
 
 ## What it cannot draw
 
@@ -91,10 +96,25 @@ tree built from trunk lines and free-floating labels, overlapping ellipses for
 fuzzy state, a pipe that narrows to show backpressure, or any of the invented
 metaphors step 2 of `SKILL.md` asks for. Those stay hand-placed.
 
-It also cannot wrap a long chain. Six ranks of ordinary boxes runs past 1600 px
-left to right, so a deep flow has to be authored with `direction: down`. There
-is no equivalent of the hand-placed trick of bending a row down into a second
-row.
+It also cannot wrap a long chain. A rank costs its own box width plus 92 px of
+gap, and the canvas adds 30 px each side, so a left-to-right run is
+
+```
+width = sum(box widths) + (ranks - 1) x 92 + 60
+```
+
+Measured against the 1000 px page budget and the 1200 px ceiling:
+
+| Chain                          | 4 ranks        | 5 ranks          | 6 ranks          |
+| ------------------------------ | -------------- | ---------------- | ---------------- |
+| minimum-width boxes (140 px)   | 896 px         | 1128 px, warns   | 1360 px, refused |
+| boxes carrying a note (190 px) | 1096 px, warns | 1378 px, refused | refused          |
+
+So four ranks is the working limit and five is the hard one, sooner if the
+labels are long. The remedy is `direction: down`, which restacks the same spec
+with no other edit; vertical space is free and horizontal space is not. There is
+no equivalent of the hand-placed trick of bending a row down into a second row,
+which is how a five-step flow used to fit inside 1000 px.
 
 ## Regenerating the font metrics
 

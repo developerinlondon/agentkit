@@ -47,6 +47,13 @@ function overlap(a: Box, b: Box): number {
   return w > 0 && h > 0 ? w * h : 0;
 }
 
+function chain(ranks: number): string {
+  const nodes = Array.from({ length: ranks }, (_, i) => `{ id: n${i}, label: s${i} }`);
+  const edges = 'edges:\n'
+    + Array.from({ length: ranks - 1 }, (_, i) => `  - { from: n${i}, to: n${i + 1} }\n`).join('');
+  return specWith(nodes, edges);
+}
+
 function specWith(nodes: string[], extra = ''): string {
   return `nodes:\n${nodes.map((n) => `  - ${n}\n`).join('')}${extra}`;
 }
@@ -139,6 +146,21 @@ describe('the register budget is enforced, not suggested', () => {
     const nodes = Array.from({ length: 6 }, (_, i) => `{ id: n${i}, label: "a rather long node label ${i}" }`);
     const edges = 'edges:\n' + Array.from({ length: 5 }, (_, i) => `  - { from: n${i}, to: n${i + 1} }\n`).join('');
     expect(() => build(parseSpec(specWith(nodes, edges)))).toThrow(/past the 1200x1400 ceiling/);
+  });
+
+  // The reference doc's rank table is only true while these hold, and a wrong
+  // number in it sent an author down the wrong remedy once already.
+  test.each([
+    [4, 896, false],
+    [5, 1128, true],
+  ])('a %i-rank chain of minimum-width boxes is %i px wide', (ranks, width, warns) => {
+    const built = build(parseSpec(chain(ranks)));
+    expect(built.width).toBe(width);
+    expect(built.warnings.length > 0).toBe(warns);
+  });
+
+  test('a six-rank chain is refused, and the refusal names the restack', () => {
+    expect(() => build(parseSpec(chain(6)))).toThrow(/1360x.*ceiling.*direction: down/s);
   });
 
   test('a figure past the page budget warns without failing', () => {

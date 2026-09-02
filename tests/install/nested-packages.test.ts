@@ -101,9 +101,10 @@ describe('nested skill packages are installed by a root install', () => {
   });
 
   test('a pinned nested install only means anything where a lockfile exists', () => {
-    // skills/diagram has none, so --frozen-lockfile there succeeds while pinning
-    // nothing. Whoever adds it to the postinstall must commit a lockfile first,
-    // or inherit the false assurance rather than the guarantee.
+    // Both packages carry one now, so the pin would bite either way. It is the
+    // ordering that matters and still can go wrong: naming a package here
+    // before committing its lockfile buys the false assurance, not the
+    // guarantee. skills/diagram is not named, so its lockfile pins nothing yet.
     for (const pkg of nestedPackages()) {
       const named = installCommands.some((l) => l.includes(`--cwd skills/${pkg}`));
       const locked = existsSync(join(repo, 'skills', pkg, 'bun.lock'));
