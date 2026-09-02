@@ -19,11 +19,11 @@ runs:
         case "${RUNNER_OS}-${RUNNER_ARCH}" in
           Linux-X64)
             asset='linux-amd64'
-            sha='eb172adf59f38d1e5a70ab177591356754ffaf9bebb84e0ca8b767dfb421dad7'
+            sha='0ea49e35f17c3ac00ffa5d0a1fa571f5c344cd38127dbaa4bf6158fcd0c7bfb0'
             ;;
           macOS-ARM64)
             asset='macos-arm64'
-            sha='80de85f3b0ac7d9569acac0780ed65dd994ea78969b6b230c58bbb2c6113465b'
+            sha='73ddb07c636bd5c5723e4bf8569a90b7329ea35dc32af2155650e1f572e823b2'
             ;;
           *)
             echo "no pinned d2 checksum recorded for ${RUNNER_OS}-${RUNNER_ARCH}" >&2
@@ -33,7 +33,7 @@ runs:
 
         tarball="d2-v${D2_VERSION}-${asset}.tar.gz"
         curl -fsSL --retry 3 -o "${RUNNER_TEMP}/${tarball}" \
-          "https://github.com/terrastruct/d2/releases/download/v${D2_VERSION}/${tarball}"
+          "https://github.com/d2lang/d2/releases/download/v${D2_VERSION}/${tarball}"
         echo "${sha}  ${RUNNER_TEMP}/${tarball}" | shasum -a 256 -c -
 
         tar xzf "${RUNNER_TEMP}/${tarball}" -C "${RUNNER_TEMP}"

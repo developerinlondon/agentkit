@@ -1,6 +1,6 @@
 // Post-processing and verification for d2 SVG output.
 
-export const D2_PIN = "0.7.1";
+export const D2_PIN = "0.8.2";
 export const SOURCE_MARK = "svg-source:d2";
 
 export class SvgError extends Error {}

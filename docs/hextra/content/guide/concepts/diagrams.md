@@ -77,7 +77,7 @@ legend inside the zone.
 
 A declarative diagram language run through a wrapper that refuses anything it cannot reproduce.
 
-The renderer is pinned to a single version — **D2 v0.7.1** — defined once as `D2_PIN` in the skill's own
+The renderer is pinned to a single version — **D2 v0.8.2** — defined once as `D2_PIN` in the skill's own
 source and mirrored into its docs and the CI workflow. The wrapper shells the binary, compares the
 version, and refuses any other build: a render is only reproducible on the build it was authored against.
 An absent binary fails with the pin and the release URL in the message.
