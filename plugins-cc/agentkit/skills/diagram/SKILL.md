@@ -183,6 +183,27 @@ guarantee, so check both renderings before keeping one):
 - Two semantic colors adjacent at the same size need a legend (≥14 px), placed
   inside the zone it explains.
 
+### Auto-layout (opt-in)
+
+Hand placement stays the default. When the figure really is a graph, though —
+nodes, edges, at most three zones, no invented metaphor — write the spec and let
+dagre compute every coordinate:
+
+```bash
+bun <skill-dir>/scripts/layout.ts --in figure.diagram.yaml --out figure.excalidraw
+bun <skill-dir>/render.ts --in figure.excalidraw --out figure.svg --png figure.png
+```
+
+The layout measures each label against the font the renderer actually embeds,
+sizes each box to its own text, draws the zone frames, routes the arrows and
+binds them at both ends. It refuses a spec that breaks the density budget below
+instead of quietly drawing it. `references/auto-layout.md` is the field
+reference and the honest list of what it cannot draw;
+`examples/sketch-pipeline.diagram.yaml` is a worked spec.
+
+Step 5 still applies. Auto-layout removes the placement round, not the judgement
+about whether the figure argues anything.
+
 ## Size & density budget
 
 - **Canvas ≤ 1000 × 1400 px** for a page figure, **1000 × 620** for a deck

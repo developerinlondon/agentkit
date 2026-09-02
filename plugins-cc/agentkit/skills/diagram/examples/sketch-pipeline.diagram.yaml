@@ -1,0 +1,28 @@
+title: How a signed request becomes an answer
+direction: down
+palette: dark
+zones:
+  - { id: edge, label: Edge }
+  - { id: core, label: Core }
+nodes:
+  - {
+      id: client,
+      label: client,
+      note: signs with its device key,
+      role: start,
+      shape: ellipse,
+      zone: edge,
+    }
+  - { id: gateway, label: gateway, note: "POST /v1/answer", role: neutral, zone: edge }
+  - { id: verify, label: signature valid?, role: decision, shape: diamond, zone: core }
+  - { id: reject, label: "401 bad_signature", role: error, mono: true, zone: core }
+  - { id: plan, label: planner, note: picks the tool chain, role: agent, zone: core }
+  - { id: answer, label: answer, note: "audited, then streamed", role: success }
+edges:
+  - { from: client, to: gateway, label: mTLS }
+  - { from: gateway, to: verify }
+  - { from: verify, to: reject, label: "no", dashed: true, role: error }
+  - { from: verify, to: plan, label: "yes" }
+  - { from: plan, to: answer }
+notes:
+  - "the gateway never sees a key — verification happens once, in core"

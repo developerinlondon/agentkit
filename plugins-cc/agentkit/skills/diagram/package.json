@@ -2,6 +2,7 @@
   "name": "diagram-skill",
   "private": true,
   "dependencies": {
+    "@dagrejs/dagre": "^3.1.1",
     "@excalidraw/excalidraw": "0.18.1",
     "react": "19.2.8",
     "react-dom": "19.2.8"
