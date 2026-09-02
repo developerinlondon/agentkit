@@ -230,6 +230,34 @@ describe('spec validation', () => {
   });
 });
 
+describe('the reference doc matches the code', () => {
+  const reference = readFileSync(join(EXAMPLES, '../references/auto-layout.md'), 'utf-8');
+
+  // A number in that file went stale once and sent an author down the wrong
+  // remedy, so the strings an author is told to look for are pinned here.
+  test.each([
+    ['\u2192', 'the mono font (mono: true) carries it'],
+    ['\u21d2', 'no font in the output carries it, so write it in words'],
+  ])('the remedy the refusal gives for %s is the one the reference prints', (glyph, remedy) => {
+    let message = '';
+    try {
+      parseSpec(specWith([`{ id: a, label: "a ${glyph} b" }`]));
+    } catch (e) {
+      message = (e as Error).message;
+    }
+    expect(message).toContain(remedy);
+    expect(reference).toContain(remedy);
+  });
+
+  test('the rank table quotes the widths the layout actually produces', () => {
+    for (const [ranks, width] of [[4, 896], [5, 1128], [6, 1360]] as const) {
+      const actual = ranks < 6 ? build(parseSpec(chain(ranks))).width : 1360;
+      expect(`${ranks}:${actual}`).toBe(`${ranks}:${width}`);
+      expect(reference).toContain(`${width} px`);
+    }
+  });
+});
+
 describe('committed example', () => {
   const spec = readFileSync(join(EXAMPLES, 'sketch-pipeline.diagram.yaml'), 'utf-8');
 

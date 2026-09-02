@@ -52,7 +52,15 @@ What that leaves you:
 - **No CJK.** The renderer declares no CJK fallback, so it would render
   differently for every reader.
 
-The refusal names the character and says which font, if any, carries it.
+The refusal names the character and says which font, if any, carries it, so the
+remedy comes with the error rather than out of this file:
+
+```
+"→" is not in the font metrics table for the hand-drawn font
+    — the mono font (mono: true) carries it
+"⇒" is not in the font metrics table for the hand-drawn font
+    — no font in the output carries it, so write it in words
+```
 
 ## What it guarantees
 
@@ -79,7 +87,12 @@ The refusal names the character and says which font, if any, carries it.
 - A **self-edge**. A layered layout has no rank for one: dagre returns a
   polyline that lands nowhere near the node, bound at both ends to it. Draw the
   repetition as a cycle through a second node, or say it in the label.
-- A **character no embedded font carries**, as above.
+- A **glyph the embedded fonts do not carry**, named in the refusal along with
+  the way out. Two remedies, and the message says which one applies: if the
+  other font has the glyph it says so, and `mono: true` on that node's label
+  gets it (this is how `->` becomes a real arrow); if no font has it, it says
+  `no font in the output carries it, so write it in words`. See the character
+  list above.
 - A **spec key it does not recognise**, because the usual cause is an unquoted
   comma that swallowed half a label.
 - A figure **past the density budget or the canvas ceiling** (see the rank table
