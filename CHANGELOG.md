@@ -15,12 +15,18 @@ release PR — "publish this" authorizes a release, never the tier.
   committed examples are regenerated. ELK 0.12 cannot apply D2's previous nested model-order
   profile: children of a compound container come out in a different order, visible in the
   deployment topology and the C4 container view. Both still read correctly and no edge, label or
-  boundary was lost. The install recipe now verifies the release's `SHA256SUMS` manifest and its
-  signed build provenance instead of downloading on trust.
+  boundary was lost. The documented install recipe verifies the release's `SHA256SUMS` manifest and
+  its signed build provenance rather than downloading on trust; CI keeps verifying a per-platform
+  digest recorded in the composite action, which is a different check and does not read provenance.
+  The pin is now a generated docs fact, so prose that drifts from the constant fails a test instead
+  of going stale, as the site's copy had.
 - feat(diagram): **`D2_BIN` points the wrapper at a d2 other than the one on PATH.** Trying a
   candidate build otherwise means replacing the PATH binary, which changes what every other
   renderer on the machine is pinned against. The version check applies to the override the same
-  way, and its refusal names `D2_BIN` rather than PATH.
+  way, and its refusal names `D2_BIN` rather than PATH. The render suite discovers a binary the
+  same way, so a candidate is tested rather than reported as a failure of PATH.
+- fix(diagram): **a d2 that reports success and writes nothing is named as such.** It surfaced as a
+  raw `ENOENT` naming a temporary path instead of the input that failed to render.
 
 ## v0.8.1 — 2026-09-01
 
