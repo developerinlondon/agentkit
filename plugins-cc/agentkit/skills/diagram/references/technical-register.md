@@ -5,8 +5,25 @@ C4 context/container, ERD) from [D2](https://d2lang.com) source. It is the
 counterpart to the hand-drawn sketch register: **engineering notation goes
 here; concepts and arguments stay in Excalidraw.**
 
-Renderer is pinned to **d2 v0.7.1** (MPL-2.0). The wrapper refuses any other
+Renderer is pinned to **d2 v0.8.2** (MPL-2.0). The wrapper refuses any other
 version — a render is only reproducible on the build it was authored against.
+
+Install it from the [d2lang/d2](https://github.com/d2lang/d2/releases/tag/v0.8.2)
+release. Every archive is listed in a `SHA256SUMS` manifest and carries a signed
+build provenance attestation; verify both before extracting:
+
+```bash
+v=0.8.2 a=linux-amd64   # or linux-arm64, macos-amd64, macos-arm64
+gh release download "v$v" -R d2lang/d2 -p "d2-v$v-$a.tar.gz" -p SHA256SUMS
+sha256sum -c --ignore-missing SHA256SUMS
+gh attestation verify "d2-v$v-$a.tar.gz" --repo d2lang/d2
+tar xzf "d2-v$v-$a.tar.gz" && install -m 0755 "d2-v$v/bin/d2" ~/.local/bin/d2
+```
+
+Set `D2_BIN` to render with a binary other than the `d2` on PATH. Testing a
+candidate build otherwise means replacing the PATH binary, which changes what
+every other renderer on the machine is pinned against. The version check applies
+to `D2_BIN` exactly as it does to PATH.
 
 ```bash
 bun skills/diagram/scripts/d2-render.ts \
@@ -360,7 +377,7 @@ unknown surface.
 
 Each of these fails the render loudly rather than shipping a broken figure:
 
-- a `d2` binary that is absent or not v0.7.1
+- a `d2` binary that is absent or not v0.8.2
 - any `http(s)` reference that is not an XML namespace
 - `<script>` or `<foreignObject>` — **`|md|` markdown blocks emit
   `foreignObject`**, so use `shape: text` for titles and prose

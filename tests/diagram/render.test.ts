@@ -65,7 +65,7 @@ describe('d2 version pin', () => {
       expect(result.code).toBe(1);
       expect(result.stderr).toContain('v0.6.0');
       expect(result.stderr).toContain(D2_PIN);
-      expect(result.stderr).toContain('github.com/terrastruct/d2/releases');
+      expect(result.stderr).toContain('github.com/d2lang/d2/releases');
     });
   });
 

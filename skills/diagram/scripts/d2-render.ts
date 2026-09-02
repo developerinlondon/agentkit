@@ -41,7 +41,8 @@ function flag(name: string): boolean {
   return process.argv.includes(`--${name}`);
 }
 
-const INSTALL_HINT = `install it from https://github.com/terrastruct/d2/releases/tag/v${D2_PIN}`;
+const INSTALL_HINT = `install it from https://github.com/d2lang/d2/releases/tag/v${D2_PIN}, `
+  + "verifying the archive against that release SHA256SUMS";
 
 // A candidate build cannot go on PATH without displacing the pinned binary
 // every other agent on the machine renders against.
