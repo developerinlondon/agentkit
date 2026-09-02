@@ -79,8 +79,9 @@ const problems = screenSource(source);
 if (problems.length > 0) {
   const shown = problems.slice(0, 6).map((p) => `  ${p.cellId}: ${p.fix}`).join("\n");
   fail(
-    `${input} carries ${problems.length} label style(s) that export as <foreignObject>, which `
-      + `GitHub and GitLab will not render inside an <img>:\n${shown}`,
+    `${input} carries ${problems.length} label style(s) that export as <foreignObject> `
+      + `beside a base64 raster twin and a drawio.com link, which the containment gate `
+      + `refuses:\n${shown}`,
   );
 }
 

@@ -107,9 +107,9 @@ export function saltFor(name: string): string {
 }
 
 // Every label style that reaches the HTML renderer exports as a <foreignObject>
-// with a rasterised <text> fallback, which GitHub and GitLab refuse to draw
-// inside an <img>. Both spellings are screened in the source rather than in the
-// output, because the output only reports that a label was lost, not which one.
+// beside a base64 raster twin and a link to drawio.com — 7x the bytes, and an
+// external URL the containment gate refuses. Screened in the source rather than
+// the output, which reports the count but never which cell caused it.
 const LABEL_TRAPS: Array<{ token: RegExp; fix: string }> = [
   { token: /\bhtml=1\b/, fix: "html=1 → html=0" },
   { token: /\bwhiteSpace=wrap\b/, fix: "drop whiteSpace=wrap and shorten the label" },

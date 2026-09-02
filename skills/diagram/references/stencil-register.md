@@ -135,13 +135,29 @@ off**, or edit through **Extras ▸ Edit Diagram**.
 ### Every label must be plain SVG text
 
 **`html=1` is the defect that ruins this register.** draw.io exports an HTML
-label as a `<foreignObject>` with a rasterised PNG fallback and a "Text is not
-SVG" link — and GitHub and GitLab render neither inside an `<img>`. The label is
-simply gone for the reader, with no error anywhere.
+label as a `<foreignObject>` inside a `<switch>`, beside a rasterised PNG twin
+and a link back to drawio.com reading "Text is not SVG - cannot display".
+
+Measured on this register's own example, that costs:
+
+|                        | `html=1`                                      | `html=0`, no wrap |
+| ---------------------- | --------------------------------------------- | ----------------- |
+| bytes                  | 193,635                                       | 26,924            |
+| `<foreignObject>`      | 11                                            | 0                 |
+| base64 PNG label twins | 11                                            | 0                 |
+| real `<text>` labels   | 1                                             | 11                |
+| external URLs          | `drawio.com/doc/faq/svg-export-text-problems` | none              |
+
+The external link alone fails the containment gate, and the technical register
+already refuses `<foreignObject>` outright — `|md|` blocks get the same
+treatment there. Beyond the rule: which branch of the `<switch>` a reader gets
+is the renderer's choice, and the raster branch is text that cannot be selected,
+searched, or scaled. Chrome draws the `foreignObject` branch in an `<img>`;
+that is not something to rely on, and it is not worth 7× the bytes either way.
 
 Three style tokens reach the HTML renderer. The wrapper screens the **source**
-for all three and names the offending cell, because the output only reports that
-a label was lost, not which one:
+for all three and names the offending cell, because the rendered SVG reports a
+count and never which cell produced it:
 
 | Token             | Write instead                  |
 | ----------------- | ------------------------------ |

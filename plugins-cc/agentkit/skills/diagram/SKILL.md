@@ -114,9 +114,9 @@ bun <skill-dir>/scripts/drawio-render.ts --in topology.drawio --out topology.svg
 ```
 
 Pinned to **draw.io Desktop v31.3.2**; the wrapper refuses any other version,
-screens the source for label styles that would export as `<foreignObject>`
-(GitHub and GitLab render neither), and fails the render if the output is not
-self-contained — the same gate D2 output passes. draw.io is **shelled out to,
+screens the source for label styles that would export as `<foreignObject>`,
+which the technical register already refuses, and fails the render if the output
+is not self-contained — the same gate D2 output passes. draw.io is **shelled out to,
 never vendored**: its stencil licence exempts exported diagram output but grants
 no redistribution, so no draw.io artwork is committed here.
 

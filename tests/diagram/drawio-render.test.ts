@@ -128,6 +128,7 @@ describe('the wrapper refuses a source it cannot ship', () => {
       expect(result.code).toBe(1);
       expect(result.stderr).toContain('foreignObject');
       expect(result.stderr).toContain('a: html=1 → html=0');
+      expect(result.stderr).toContain('containment gate');
     });
   });
 

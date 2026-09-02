@@ -138,8 +138,9 @@ describe('house attributes', () => {
 });
 
 describe('source screening refuses what would export as foreignObject', () => {
-  // GitHub and GitLab will not draw a foreignObject inside an <img>, and the
-  // export gives no sign it happened — the label is simply gone for readers.
+  // The HTML-label export costs 7x the bytes, a base64 raster twin per label and
+  // a drawio.com link the containment gate refuses. The output reports a count,
+  // never which cell caused it, so the source is what gets screened.
   test('html=1 is named with the cell it sits on', () => {
     const xml = '<mxCell id="alb" style="shape=x;html=1;" vertex="1"/>';
     expect(screenSource(xml)).toEqual([{ cellId: 'alb', fix: 'html=1 → html=0' }]);
