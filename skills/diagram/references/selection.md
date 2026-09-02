@@ -243,20 +243,59 @@ own mermaid runtime:
   `elk.cycleBreakingStrategy: "MODEL_ORDER"`;
 - **a tree or fan-out hierarchy** → `layout: elk.mrtree`.
 
-Both are per-diagram, never global. `MODEL_ORDER` applied to an acyclic
-subgraph diagram banishes its entry node outside the boundary and wraps the
-edges around the whole canvas. `elk.mrtree` **crashes** on any flowchart
-containing a `subgraph` (`TypeError: Cannot read properties of undefined
-(reading 'filter')` in `insertEdge`) and silently drops every edge label on a
-gated flow. Reach for either only when the figure is too big for the sketch
-register's ~25-text budget; a hand-drawn figure that fits still wins.
+Both must apply to one diagram only — `MODEL_ORDER` on an acyclic subgraph
+diagram banishes its entry node outside the boundary and wraps the edges around
+the whole canvas — and **the two are reached in different ways**, because
+mermaid sanitizes fence frontmatter against its own config schema and that
+schema declares `elk` as exactly six keys: `mergeEdges`,
+`nodePlacementStrategy`, `nodePlacementAlignment`, `forceNodeModelOrder`,
+`considerModelOrder`, `keepEntryNodeOnTop`.
+
+- `layout: elk.mrtree` is a layout name, not an `elk` key, so **frontmatter
+  works** and the tree carve-out is genuinely per-fence:
+
+  ````
+  ```mermaid
+  ---
+  config:
+    layout: elk.mrtree
+  ---
+  flowchart TD
+  ```
+  ````
+
+- `cycleBreakingStrategy` is **not** one of the six, so frontmatter drops it
+  silently — measured, a fence carrying it renders to the same viewBox as the
+  unfixed diagram. It survives only through `--configFile`, which bypasses the
+  sanitizer. So a loop-back diagram needs its own `mmdc` invocation with a
+  config nothing else shares:
+
+  ```sh
+  mmdc -i loop-back-only.mmd -o loop-back.svg -I fig-loop-back -c elk-loopback.json
+  ```
+
+  **Never put `MODEL_ORDER` in a config shared across a multi-fence document.**
+  A `--configFile` applies to every fence `mmdc` renders from that input, and
+  the option that fixes the loop-back is the one that wrecks a sibling acyclic
+  subgraph fence. Split the loop-back into its own file.
+
+`elk.mrtree` also **crashes** on any flowchart containing a `subgraph`
+(`TypeError: Cannot read properties of undefined (reading 'filter')` in
+`insertEdge`), and on a gated flow it emits every edge label but places none of
+them: all of them land stacked on top of each other within ~30 px of the SVG
+origin, so the figure looks like it lost its labels when it has actually piled
+them in the corner. Reach for either carve-out only when the figure is too big
+for the sketch register's ~25-text budget; a hand-drawn figure that fits still
+wins.
 
 **ELK does not fit a self-contained page.** `@mermaid-js/layout-elk` ships ESM
-only, and its minified tree is 5.15 MB (elkjs alone is 1.59 MB) against the
-~1.4 MB publish-page has left once the mermaid runtime is inlined. So the
-carve-outs above apply to a shell that loads mermaid from a CDN — a Hugo or
-Hextra site — and to `mmdc` rendering an SVG offline, never to an inlined
-artifact.
+only. Its shipped tree is 5.15 MB, but most of that is mermaid chunks it
+re-bundles — katex, the block, c4, wardley and architecture diagrams — which an
+inlined artifact already carries, so the honest figure is the **~1.6 MB
+marginal cost of elkjs itself**, against the ~1.4 MB publish-page has left once
+the 3.4 MB mermaid runtime is inlined. Still over. The carve-outs above apply
+to a shell that loads mermaid from a CDN — a Hugo or Hextra site — and to
+`mmdc` rendering an SVG offline, never to an inlined artifact.
 
 ### Registering ELK
 
@@ -279,8 +318,20 @@ A browser shell must register it explicitly, before `initialize`:
 import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
 import elkLayouts from "https://cdn.jsdelivr.net/npm/@mermaid-js/layout-elk@0/dist/mermaid-layout-elk.esm.min.mjs";
 mermaid.registerLayoutLoaders(elkLayouts);
-mermaid.initialize({ startOnLoad: false, layout: "elk" });
+mermaid.initialize({
+  startOnLoad: false,
+  layout: "elk",
+  elk: { cycleBreakingStrategy: "MODEL_ORDER" },
+});
 ```
+
+`initialize` is **not** sanitized the way fence frontmatter is — the option
+comes back out of `getConfig()` and the layout changes with it (measured on the
+loop-back figure: 627x217 without, 954x129 with). So the sanitizer is the one
+gap, and only fences fall in it. A page needing the loop-back fix for one
+figure and plain ELK for the rest must call `mermaid.run()` twice with
+different `initialize` config, or render that figure to SVG offline with
+`mmdc`.
 
 **An unknown layout name falls back to dagre silently, exit 0, no warning.**
 GitHub and GitLab render mermaid fences with a bundled mermaid that does not
