@@ -115,7 +115,7 @@ jobs:
       - name: Install the pinned d2 renderer
         uses: ./.github/actions/install-d2
         with:
-          version: 0.7.1
+          version: 0.8.2
 
       - name: Install the pinned dprint formatter
         uses: ./.github/actions/install-dprint
@@ -206,7 +206,7 @@ jobs:
         if: steps.reuse.outputs.tested != 'true'
         uses: ./.github/actions/install-d2
         with:
-          version: 0.7.1
+          version: 0.8.2
 
       - name: Install the pinned dprint formatter
         if: steps.reuse.outputs.tested != 'true'

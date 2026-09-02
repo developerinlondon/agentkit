@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { D2_PIN } from '../../skills/diagram/scripts/d2-svg.ts';
@@ -12,11 +12,19 @@ interface Run {
   stderr: string;
 }
 
-function run(dir: string, args: string[], path?: string): Run {
+function run(dir: string, args: string[], path?: string, extra: Record<string, string> = {}): Run {
+  const base = { ...process.env };
+  // A case that pins PATH is testing PATH discovery, and an ambient D2_BIN would
+  // answer for it. Every other case renders with whatever binary the operator
+  // pointed the wrapper at, D2_BIN included.
+  if (path !== undefined) {
+    delete base.D2_BIN;
+    base.PATH = path;
+  }
   const result = Bun.spawnSync({
     cmd: [process.execPath, wrapper, ...args],
     cwd: dir,
-    env: path === undefined ? process.env : { ...process.env, PATH: path },
+    env: { ...base, ...extra },
     stdout: 'pipe',
     stderr: 'pipe',
   });
@@ -24,11 +32,14 @@ function run(dir: string, args: string[], path?: string): Run {
 }
 
 // A stub keeps the pin check honest on a machine that has the real binary.
-function stubD2(dir: string, version: string): string {
+function stubD2(dir: string, version: string, renderExit = 1): string {
   const bin = join(dir, 'bin');
   Bun.spawnSync({ cmd: ['mkdir', '-p', bin] });
   const exe = join(bin, 'd2');
-  writeFileSync(exe, `#!/bin/sh\n[ "$1" = "--version" ] && echo "${version}" && exit 0\nexit 1\n`);
+  writeFileSync(
+    exe,
+    `#!/bin/sh\n[ "$1" = "--version" ] && echo "${version}" && exit 0\nexit ${renderExit}\n`,
+  );
   chmodSync(exe, 0o755);
   return bin;
 }
@@ -43,13 +54,16 @@ function withTemp<T>(fn: (dir: string) => T): T {
 }
 
 // Bun.spawnSync throws ENOENT for a missing executable rather than reporting a
-// non-zero exit, which would crash this file instead of skipping it.
-const available = Bun.which('d2') !== null;
+// non-zero exit, which would crash this file instead of skipping it. D2_BIN is
+// honoured here for the same reason the wrapper honours it: a candidate build
+// is tested without displacing the binary the rest of the machine renders with.
+const candidate = process.env.D2_BIN;
+const available = candidate === undefined ? Bun.which('d2') !== null : existsSync(candidate);
 if (!available) {
   console.error(
-    `SKIPPED tests/diagram/render.test.ts: no d2 on PATH — the render, icon-embedding, `
-      + `self-containment and committed-example cases did NOT run. This skill pins d2 `
-      + `v${D2_PIN}; CI installs it in .github/workflows/ci.yml.`,
+    `SKIPPED tests/diagram/render.test.ts: no d2 on PATH and no D2_BIN — the render, `
+      + `icon-embedding, self-containment and committed-example cases did NOT run. This skill `
+      + `pins d2 v${D2_PIN}; CI installs it in .github/workflows/ci.yml.`,
   );
 }
 
@@ -61,7 +75,7 @@ describe('d2 version pin', () => {
       expect(result.code).toBe(1);
       expect(result.stderr).toContain('v0.6.0');
       expect(result.stderr).toContain(D2_PIN);
-      expect(result.stderr).toContain('github.com/terrastruct/d2/releases');
+      expect(result.stderr).toContain('github.com/d2lang/d2/releases');
     });
   });
 
@@ -82,6 +96,38 @@ describe('d2 version pin', () => {
       const result = run(dir, ['--in', join(dir, 'a.d2')], stubD2(dir, `v${D2_PIN}`));
       expect(result.stderr).not.toContain('pins v');
       expect(result.stderr).toContain('failed to compile');
+    });
+  });
+
+  test('D2_BIN supplies the binary when PATH does not', () => {
+    withTemp((dir) => {
+      writeFileSync(join(dir, 'a.d2'), 'x: y\n');
+      const bin = join(stubD2(dir, `v${D2_PIN}`), 'd2');
+      const result = run(dir, ['--in', join(dir, 'a.d2')], join(dir, 'empty'), { D2_BIN: bin });
+      expect(result.stderr).not.toContain('d2 not found');
+      expect(result.stderr).toContain('failed to compile');
+    });
+  });
+
+  test('a mismatched D2_BIN is refused, naming the override rather than PATH', () => {
+    withTemp((dir) => {
+      writeFileSync(join(dir, 'a.d2'), 'x: y\n');
+      const bin = join(stubD2(dir, 'v0.6.0'), 'd2');
+      const result = run(dir, ['--in', join(dir, 'a.d2')], join(dir, 'empty'), { D2_BIN: bin });
+      expect(result.code).toBe(1);
+      expect(result.stderr).toContain(`D2_BIN=${bin}`);
+      expect(result.stderr).toContain('v0.6.0');
+      expect(result.stderr).not.toContain('on PATH');
+    });
+  });
+
+  test('a d2 that exits clean without writing an SVG is named, not an ENOENT', () => {
+    withTemp((dir) => {
+      writeFileSync(join(dir, 'a.d2'), 'x: y\n');
+      const result = run(dir, ['--in', join(dir, 'a.d2')], stubD2(dir, `v${D2_PIN}`, 0));
+      expect(result.code).toBe(1);
+      expect(result.stderr).toContain('wrote no SVG');
+      expect(result.stderr).not.toContain('ENOENT');
     });
   });
 
