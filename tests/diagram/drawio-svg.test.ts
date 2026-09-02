@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { inspect, SvgError, verifySelfContained } from '../../skills/diagram/scripts/d2-svg.ts';
 import {
   applyHouseAttributes,
-  isCompressed,
+  compressedPages,
   namespaceIds,
   PLATE,
   plateBackground,
@@ -94,6 +94,16 @@ describe('ids are namespaced per figure', () => {
     expect(out).toContain('style="fill: url(&quot;#fig-g&quot;);"');
   });
 
+  test('namespaceIds runs the check itself, so a broken rewrite cannot ship', () => {
+    // Without the call, a rewrite that misses a spelling produces a figure whose
+    // stencils are unpainted and whose every other assertion still passes.
+    const attr = '<svg viewBox="0 0 10 10"><g id="a"/><path fill="url(#missing)"/></svg>';
+    expect(() => namespaceIds(attr, 'fig')).toThrow(/does not define: missing/);
+    const styled = '<svg viewBox="0 0 10 10"><g id="a"/>'
+      + '<path style="fill: url(&quot;#absent&quot;);"/></svg>';
+    expect(() => namespaceIds(styled, 'fig')).toThrow(/does not define: absent/);
+  });
+
   test('a reference to an id the figure does not define is refused', () => {
     expect(() => verifyReferences('<svg><path fill="url(#gone)"/></svg>')).toThrow(SvgError);
     expect(() => verifyReferences('<svg><path fill="url(&quot;#gone&quot;)"/></svg>'))
@@ -112,6 +122,15 @@ describe('ids are namespaced per figure', () => {
     expect(saltFor('cloud-topology.svg')).toBe('cloud-topology');
     expect(saltFor('My Figure (2).svg')).toBe('my-figure-2');
     expect(saltFor('.svg')).toBe('drawio');
+  });
+
+  test('a salt carrying a quote cannot break out of the attribute it lands in', () => {
+    // It is interpolated into id=" and url(#…), so an unsanitised quote closes
+    // the attribute and yields markup no gate downstream inspects.
+    expect(saltFor('a"b')).toBe('a-b');
+    const out = namespaceIds('<svg viewBox="0 0 1 1"><g id="x"/></svg>', saltFor('a"b'));
+    expect(out).toContain('id="a-b-x"');
+    expect(out).not.toContain('a"b');
   });
 });
 
@@ -163,14 +182,26 @@ describe('source screening refuses what would export as foreignObject', () => {
 });
 
 describe('a compressed diagram is refused rather than passed unscreened', () => {
-  test('deflated payload is detected', () => {
-    expect(isCompressed('<mxfile><diagram id="a" name="p">7Vpbc9o4</diagram></mxfile>'))
-      .toBe(true);
+  const plain = '<diagram name="ok"><mxGraphModel><root/></mxGraphModel></diagram>';
+
+  test('deflated payload is detected and the page is named', () => {
+    expect(compressedPages('<mxfile><diagram id="a" name="p">7Vpbc9o4</diagram></mxfile>'))
+      .toEqual(['1 (p)']);
   });
 
   test('plain XML is not', () => {
-    expect(isCompressed('<mxfile><diagram><mxGraphModel><root/></mxGraphModel></diagram></mxfile>'))
-      .toBe(false);
+    expect(compressedPages(`<mxfile>${plain}</mxfile>`)).toEqual([]);
+  });
+
+  test('a later page is screened too, not just the first', () => {
+    // Matching only the first <diagram> let a two-page file through the screen
+    // and fail downstream on a message about d2, of all things.
+    const xml = `<mxfile>${plain}<diagram name="second">7Vpbc9o4</diagram></mxfile>`;
+    expect(compressedPages(xml)).toEqual(['2 (second)']);
+  });
+
+  test('an unnamed page is reported by its position', () => {
+    expect(compressedPages('<mxfile><diagram>7Vpbc9o4</diagram></mxfile>')).toEqual(['1']);
   });
 });
 
@@ -197,7 +228,7 @@ describe('the committed example', () => {
 
   test('its source stays screenable and screened', () => {
     const xml = readFileSync(source, 'utf-8');
-    expect(isCompressed(xml)).toBe(false);
+    expect(compressedPages(xml)).toEqual([]);
     expect(screenSource(xml)).toEqual([]);
   });
 

@@ -6,10 +6,13 @@ import { inspect } from '../../skills/diagram/scripts/d2-svg.ts';
 import { DRAWIO_PIN } from '../../skills/diagram/scripts/drawio-svg.ts';
 import {
   binaryCandidates,
+  DrawioError,
   needsNoSandbox,
   needsXvfb,
   parseVersion,
+  readableStderr,
   resolveLauncher,
+  run as launch,
 } from '../../skills/diagram/scripts/drawio-binary.ts';
 
 const wrapper = join(import.meta.dir, '../../skills/diagram/scripts/drawio-render.ts');
@@ -46,6 +49,26 @@ function stubDrawio(dir: string, version: string): string {
   writeFileSync(exe, `#!/bin/sh\n[ "$1" = "--version" ] && echo "${version}" && exit 0\nexit 1\n`);
   chmodSync(exe, 0o755);
   return exe;
+}
+
+// Signal 0 tests for existence without delivering anything; a killed process is
+// reaped by this process only if it was our child, so ESRCH is the real answer.
+function alive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function withTempAsync<T>(fn: (dir: string) => Promise<T>): Promise<T> {
+  const dir = mkdtempSync(join(tmpdir(), 'drawio-test-'));
+  try {
+    return await fn(dir);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 function withTemp<T>(fn: (dir: string) => T): T {
@@ -104,6 +127,45 @@ describe('headless preconditions', () => {
         .toThrow('no draw.io Desktop binary found');
     });
   });
+});
+
+describe('a failed launch is reported in full', () => {
+  test('Chromium noise is dropped when there is a real message under it', () => {
+    const text = '[1:ERROR:dbus/bus.cc:405] Failed\nno such file: a.drawio\n[2] zygote died';
+    expect(readableStderr(text)).toBe('no such file: a.drawio');
+  });
+
+  test('noise is kept when it is the only account of the failure there is', () => {
+    // Filtering to nothing left the operator with "draw.io failed:" and a blank
+    // line, which says less than the noise would have.
+    const onlyNoise = '[1:ERROR:ui/ozone:257] Missing X server or $DISPLAY';
+    expect(readableStderr(onlyNoise)).toBe(onlyNoise);
+    expect(readableStderr('   ')).toBe('');
+  });
+});
+
+describe('a hung render takes its whole process group with it', () => {
+  test('the browser xvfb-run wrapped is killed too, not just the wrapper', async () => {
+    // xvfb-run is a shell script: signalling it alone leaves the browser running
+    // with its X server pulled away. Both survived that on this host.
+    await withTempAsync(async (dir) => {
+      const marker = join(dir, 'child.pid');
+      const exe = join(dir, 'drawio');
+      writeFileSync(exe, `#!/bin/sh\nsleep 120 &\necho $! > ${marker}\nsleep 120\n`);
+      chmodSync(exe, 0o755);
+
+      const started = Date.now();
+      const failure = await launch({ binary: exe, sandbox: [] }, [], 1500)
+        .then(() => null, (e: unknown) => e as Error);
+      expect(failure).toBeInstanceOf(DrawioError);
+      expect(failure?.message).toContain('process group was killed');
+      expect(Date.now() - started).toBeLessThan(30_000);
+
+      const grandchild = Number(readFileSync(marker, 'utf-8').trim());
+      expect(Number.isFinite(grandchild)).toBe(true);
+      expect(alive(grandchild)).toBe(false);
+    });
+  }, 60_000);
 });
 
 describe('the wrapper refuses a source it cannot ship', () => {

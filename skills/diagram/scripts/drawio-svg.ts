@@ -101,6 +101,9 @@ export function verifyReferences(svg: string): void {
   }
 }
 
+// Every salt goes through this, an explicit --salt included: it lands inside an
+// id attribute and a url() reference, so a quote in it would close the attribute
+// and produce markup no gate downstream inspects.
 export function saltFor(name: string): string {
   const slug = name.replace(/\.svg$/, "").replaceAll(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "");
   return slug === "" ? "drawio" : slug.toLowerCase();
@@ -138,12 +141,18 @@ export function screenSource(xml: string): SourceProblem[] {
   return problems;
 }
 
-// A .drawio file may carry its diagram as deflate+base64 rather than as XML, in
-// which case the style screen above sees nothing and passes a file it never
-// read. Refusing is the honest answer: the editor writes uncompressed on
-// request, and an unscreened file is exactly the one that ships a foreignObject.
-export function isCompressed(xml: string): boolean {
-  const diagram = xml.match(/<diagram\b[^>]*>([\s\S]*?)<\/diagram>/);
-  if (!diagram) return false;
-  return !/<mxGraphModel\b/.test(diagram[1]);
+// A .drawio page may carry its diagram as deflate+base64 rather than as XML, in
+// which case the style screen above sees nothing and passes a page it never
+// read. Every page is checked, not just the first: a file whose second page is
+// compressed would otherwise reach the renderer unscreened.
+export function compressedPages(xml: string): string[] {
+  const pages: string[] = [];
+  let index = 0;
+  for (const m of xml.matchAll(/<diagram\b([^>]*)>([\s\S]*?)<\/diagram>/g)) {
+    index += 1;
+    if (/<mxGraphModel\b/.test(m[2])) continue;
+    const name = m[1].match(/\bname="([^"]*)"/)?.[1];
+    pages.push(name ? `${index} (${name})` : `${index}`);
+  }
+  return pages;
 }

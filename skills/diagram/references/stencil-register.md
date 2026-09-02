@@ -18,15 +18,15 @@ bun skills/diagram/scripts/drawio-render.ts \
   --label "Cloud topology — ALB to EKS to RDS"
 ```
 
-| Flag           | Default    | Use                                         |
-| -------------- | ---------- | ------------------------------------------- |
-| `--in`         | —          | the `.drawio` source, uncompressed XML      |
-| `--out`        | `<in>.svg` | the shipped SVG                             |
-| `--png`        | —          | raster twin at 2×, for the look-fix loop    |
-| `--label`      | filename   | becomes `aria-label`; match the figcaption  |
-| `--border`     | `8`        | pixels around the diagram                   |
-| `--page-index` | `1`        | which page of a multi-page file to export   |
-| `--salt`       | filename   | id namespace; override only to force a name |
+| Flag           | Default    | Use                                                      |
+| -------------- | ---------- | -------------------------------------------------------- |
+| `--in`         | —          | the `.drawio` source, uncompressed XML                   |
+| `--out`        | `<in>.svg` | the shipped SVG                                          |
+| `--png`        | —          | raster twin at 2×, for the look-fix loop                 |
+| `--label`      | filename   | becomes `aria-label`; match the figcaption               |
+| `--border`     | `8`        | pixels around the diagram                                |
+| `--page-index` | `1`        | which page of a multi-page file to export                |
+| `--salt`       | filename   | id namespace; slugged either way, so `A b` becomes `a-b` |
 
 ## When draw.io, and when not
 
@@ -133,6 +133,10 @@ Write the `.drawio` file as **uncompressed** mxGraph XML. The editor's default
 is a deflated `<diagram>` body; the wrapper refuses one, because it cannot
 screen styles it cannot read. In the editor: **File ▸ Properties ▸ Compressed
 off**, or edit through **Extras ▸ Edit Diagram**.
+
+Every page is checked, not only the first, and the refusal names the page —
+`--page-index` can export a later one, so a file whose second page is compressed
+would otherwise reach the renderer unscreened.
 
 ### Every label must be plain SVG text
 
@@ -255,7 +259,7 @@ it.
 Each of these fails the render loudly rather than shipping a broken figure:
 
 - a draw.io binary that is absent or not v31.3.2
-- a compressed `.drawio` body, whose styles cannot be screened
+- any compressed `.drawio` page, whose styles cannot be screened
 - `html=1`, `whiteSpace=wrap` or `overflow=fill` on any cell style
 - any `http(s)` reference that is not an XML namespace — including the SVG 1.1
   DTD in draw.io's own DOCTYPE, which is stripped

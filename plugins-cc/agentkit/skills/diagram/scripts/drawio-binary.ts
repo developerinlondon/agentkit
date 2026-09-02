@@ -1,6 +1,6 @@
 // Locating and launching draw.io Desktop headlessly.
 
-import { execFileSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 
@@ -66,17 +66,64 @@ export function resolveLauncher(
   return { binary, wrapper, sandbox: needsNoSandbox(binary) ? ["--no-sandbox"] : [] };
 }
 
-export function run(launcher: Launcher, args: string[]): string {
+export const RUN_TIMEOUT_MS = 180000;
+
+// Chromium narrates dbus and zygote failures on every headless start, so the
+// real message is whatever is left. When nothing is, the noise is the only
+// account of the failure there is and dropping it leaves the operator with
+// "draw.io failed:" and a blank line.
+export function readableStderr(text: string): string {
+  const trimmed = text.trim();
+  const kept = trimmed.split("\n").filter((l) => !/ERROR:|zygote/.test(l)).join("\n").trim();
+  return kept === "" ? trimmed : kept;
+}
+
+// Killed as a group, not as a process: xvfb-run is a shell script, so signalling
+// it leaves the browser it wrapped running with the X server pulled away.
+// Measured on this host — both survived a SIGTERM to the wrapper alone.
+function killGroup(pid: number | undefined): void {
+  if (pid === undefined) return;
+  try {
+    process.kill(-pid, "SIGKILL");
+  } catch {
+    try {
+      process.kill(pid, "SIGKILL");
+    } catch {
+      // already gone
+    }
+  }
+}
+
+export function run(
+  launcher: Launcher,
+  args: string[],
+  timeoutMs = RUN_TIMEOUT_MS,
+): Promise<string> {
   const { binary, wrapper, sandbox } = launcher;
   const cmd = wrapper ?? binary;
   const argv = wrapper ? ["-a", binary, ...sandbox, ...args] : [...sandbox, ...args];
-  try {
-    return execFileSync(cmd, argv, { encoding: "utf8", stdio: "pipe", timeout: 180000 });
-  } catch (e) {
-    const err = e as { stderr?: string; message: string };
-    const text = (err.stderr ?? err.message).trim();
-    throw new DrawioError(
-      `draw.io failed:\n${text.split("\n").filter((l) => !/ERROR:|zygote/.test(l)).join("\n")}`,
-    );
-  }
+  // detached makes the child a process-group leader, which is what lets the
+  // timeout reach everything it spawned.
+  const child = spawn(cmd, argv, { detached: true, stdio: ["ignore", "pipe", "pipe"] });
+  let out = "";
+  let err = "";
+  let timedOut = false;
+  child.stdout.on("data", (d: Buffer) => void (out += d.toString()));
+  child.stderr.on("data", (d: Buffer) => void (err += d.toString()));
+  const timer = setTimeout(() => {
+    timedOut = true;
+    killGroup(child.pid);
+  }, timeoutMs);
+  return new Promise<string>((resolve, reject) => {
+    child.on("error", (e: Error) => reject(new DrawioError(`could not start ${cmd}: ${e.message}`)));
+    child.on("close", (code) => {
+      if (timedOut) {
+        reject(new DrawioError(`draw.io timed out after ${timeoutMs}ms and its process group was killed`));
+      } else if (code === 0) {
+        resolve(out);
+      } else {
+        reject(new DrawioError(`draw.io failed:\n${readableStderr(err || out)}`));
+      }
+    });
+  }).finally(() => clearTimeout(timer));
 }

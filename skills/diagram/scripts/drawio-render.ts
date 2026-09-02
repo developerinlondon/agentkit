@@ -16,7 +16,7 @@ import {
 import {
   applyHouseAttributes,
   DRAWIO_PIN,
-  isCompressed,
+  compressedPages,
   namespaceIds,
   plateBackground,
   saltFor,
@@ -40,18 +40,18 @@ function arg(name: string): string | undefined {
 // correctly is refused on any machine, not only where draw.io is installed.
 let launcher: Launcher | undefined;
 
-function drawio(args: string[]): string {
+async function drawio(args: string[]): Promise<string> {
   try {
     launcher ??= resolveLauncher(process.env, homedir(), process.platform);
-    return run(launcher, args);
+    return await run(launcher, args);
   } catch (e) {
     if (e instanceof DrawioError) fail(e.message);
     throw e;
   }
 }
 
-function checkPin(): void {
-  const found = parseVersion(drawio(["--version"]));
+async function checkPin(): Promise<void> {
+  const found = parseVersion(await drawio(["--version"]));
   if (found !== DRAWIO_PIN) {
     fail(
       `draw.io v${found || "?"} at ${launcher?.binary} but this skill pins v${DRAWIO_PIN} — `
@@ -69,10 +69,11 @@ const page = arg("page-index") ?? "1";
 const label = arg("label") ?? basename(input).replace(/\.drawio$/, "").replaceAll("-", " ");
 
 const source = readFileSync(input, "utf8");
-if (isCompressed(source)) {
+const compressed = compressedPages(source);
+if (compressed.length > 0) {
   fail(
-    `${input} stores its diagram compressed, so its cell styles cannot be screened — `
-      + "re-save with Extras ▸ Edit Diagram, or File ▸ Properties ▸ Compressed off.",
+    `${input} stores page ${compressed.join(", ")} compressed, so those cell styles cannot be `
+      + "screened — re-save with Extras ▸ Edit Diagram, or File ▸ Properties ▸ Compressed off.",
   );
 }
 const problems = screenSource(source);
@@ -85,7 +86,7 @@ if (problems.length > 0) {
   );
 }
 
-checkPin();
+await checkPin();
 
 // Light, always: draw.io's dark theme remaps every authored colour, and the
 // register forbids recolouring the vendor artwork those fills carry.
@@ -108,7 +109,7 @@ const work = mkdtempSync(join(tmpdir(), "drawio-render-"));
 let svg: string;
 try {
   const rendered = join(work, "out.svg");
-  drawio(exportArgs("svg", rendered, ["--embed-svg-fonts=false"]));
+  await drawio(exportArgs("svg", rendered, ["--embed-svg-fonts=false"]));
   if (!existsSync(rendered)) fail("draw.io reported success but wrote no SVG");
   svg = readFileSync(rendered, "utf8");
 } finally {
@@ -117,7 +118,7 @@ try {
 
 try {
   svg = stripPrologue(svg);
-  svg = namespaceIds(svg, arg("salt") ?? saltFor(basename(output)));
+  svg = namespaceIds(svg, saltFor(arg("salt") ?? basename(output)));
   svg = plateBackground(svg);
   svg = applyHouseAttributes(svg, label);
   svg = flattenForMarkdown(svg);
@@ -130,7 +131,7 @@ try {
 writeFileSync(output, svg);
 
 if (png) {
-  drawio(exportArgs("png", resolve(png), ["--scale=2"]));
+  await drawio(exportArgs("png", resolve(png), ["--scale=2"]));
   if (!existsSync(resolve(png))) fail(`draw.io produced no PNG at ${png}`);
 }
 
