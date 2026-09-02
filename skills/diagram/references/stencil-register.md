@@ -93,8 +93,10 @@ Two things the wrapper handles that trip a first attempt:
   helper's ownership and mode, and adds `--no-sandbox` only when it is not
   setuid root — a distro package installs it correctly and keeps the sandbox.
 
-Extraction rather than a FUSE mount is deliberate: `libfuse2` is absent from
-current Ubuntu, and `--appimage-extract` needs nothing.
+Extraction rather than a FUSE mount is deliberate. An AppImage mounts itself
+through FUSE 2, and on Ubuntu 25.04 there is no `libfuse2` to install — the
+package was renamed `libfuse2t64` and is not present by default, so the obvious
+`apt install libfuse2` fails. `--appimage-extract` needs none of it.
 
 ## Finding a style string
 
