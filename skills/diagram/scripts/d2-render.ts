@@ -115,6 +115,9 @@ try {
     const err = e as { stderr?: string; message: string };
     fail(`d2 failed to compile ${input}:\n${(err.stderr ?? err.message).trim()}`);
   }
+  // A d2 that reports success and writes nothing would surface as a raw ENOENT
+  // from the read below, which names the temp path rather than the input.
+  if (!existsSync(rendered)) fail(`d2 wrote no SVG for ${input} despite reporting success`);
   svg = readFileSync(rendered, "utf8");
 } finally {
   rmSync(work, { recursive: true, force: true });

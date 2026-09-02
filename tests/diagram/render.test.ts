@@ -32,11 +32,14 @@ function run(dir: string, args: string[], path?: string, extra: Record<string, s
 }
 
 // A stub keeps the pin check honest on a machine that has the real binary.
-function stubD2(dir: string, version: string): string {
+function stubD2(dir: string, version: string, renderExit = 1): string {
   const bin = join(dir, 'bin');
   Bun.spawnSync({ cmd: ['mkdir', '-p', bin] });
   const exe = join(bin, 'd2');
-  writeFileSync(exe, `#!/bin/sh\n[ "$1" = "--version" ] && echo "${version}" && exit 0\nexit 1\n`);
+  writeFileSync(
+    exe,
+    `#!/bin/sh\n[ "$1" = "--version" ] && echo "${version}" && exit 0\nexit ${renderExit}\n`,
+  );
   chmodSync(exe, 0o755);
   return bin;
 }
@@ -115,6 +118,16 @@ describe('d2 version pin', () => {
       expect(result.stderr).toContain(`D2_BIN=${bin}`);
       expect(result.stderr).toContain('v0.6.0');
       expect(result.stderr).not.toContain('on PATH');
+    });
+  });
+
+  test('a d2 that exits clean without writing an SVG is named, not an ENOENT', () => {
+    withTemp((dir) => {
+      writeFileSync(join(dir, 'a.d2'), 'x: y\n');
+      const result = run(dir, ['--in', join(dir, 'a.d2')], stubD2(dir, `v${D2_PIN}`, 0));
+      expect(result.code).toBe(1);
+      expect(result.stderr).toContain('wrote no SVG');
+      expect(result.stderr).not.toContain('ENOENT');
     });
   });
 
