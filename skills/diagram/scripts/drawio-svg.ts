@@ -55,6 +55,57 @@ export function applyHouseAttributes(svg: string, ariaLabel: string): string {
   return `<!-- ${SOURCE_MARK} -->\n${tag}${svg.slice(open[0].length)}`;
 }
 
+// draw.io salts gradient ids with a fresh nanoid per render and emits mxCell ids
+// verbatim, so a figure ships `id="0"`. The salt churns the diff on every
+// re-render; `0` collides with the page, and with a second draw.io figure whose
+// cells are numbered from 0 too. One namespace per figure fixes both.
+const GENERATED_PREFIX = /drawio-svg-[A-Za-z0-9_-]{20}-/g;
+const ID_RE = /\bid="([^"]*)"/g;
+// draw.io writes a paint server twice — once as fill="url(#x)" and once inside
+// style= as url(&quot;#x&quot;), which is the one CSS actually honours. Missing
+// either spelling leaves the shape unpainted with nothing else out of place.
+const REF_RE = /url\(\s*(&quot;|&#39;|["'])?#([^)"'&\s]+)\1?\s*\)/g;
+const HREF_RE = /((?:xlink:)?href)="#([^"]+)"/g;
+
+export function namespaceIds(svg: string, salt: string): string {
+  const stripped = svg.replace(GENERATED_PREFIX, "");
+  const ids = new Set([...stripped.matchAll(ID_RE)].map((m) => m[1]).filter(Boolean));
+  for (const id of ids) {
+    // An upstream change to the salt format would render fine and churn forever.
+    if (id.includes("drawio-svg-")) {
+      throw new SvgError(`generated id "${id}" did not match the salt draw.io v${DRAWIO_PIN} writes`);
+    }
+  }
+  const rename = (name: string): string => ids.has(name) ? `${salt}-${name}` : name;
+  const out = stripped
+    .replace(ID_RE, (_m, id: string) => `id="${rename(id)}"`)
+    .replace(REF_RE, (_m, q: string | undefined, name: string) => `url(${q ?? ""}#${rename(name)}${q ?? ""})`)
+    .replace(HREF_RE, (_m, attr: string, name: string) => `${attr}="#${rename(name)}"`);
+  verifyReferences(out);
+  return out;
+}
+
+// The escaped spelling above was missed once and both gradient-filled stencils
+// silently disappeared, so resolution is checked rather than assumed.
+export function verifyReferences(svg: string): void {
+  const ids = new Set([...svg.matchAll(ID_RE)].map((m) => m[1]));
+  const refs = [
+    ...[...svg.matchAll(REF_RE)].map((m) => m[2]),
+    ...[...svg.matchAll(HREF_RE)].map((m) => m[2]),
+  ];
+  const dangling = [...new Set(refs.filter((r) => !ids.has(r)))];
+  if (dangling.length > 0) {
+    throw new SvgError(
+      `render references ${dangling.length} id(s) it does not define: ${dangling.slice(0, 5).join(", ")}`,
+    );
+  }
+}
+
+export function saltFor(name: string): string {
+  const slug = name.replace(/\.svg$/, "").replaceAll(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  return slug === "" ? "drawio" : slug.toLowerCase();
+}
+
 // Every label style that reaches the HTML renderer exports as a <foreignObject>
 // with a rasterised <text> fallback, which GitHub and GitLab refuse to draw
 // inside an <img>. Both spellings are screened in the source rather than in the

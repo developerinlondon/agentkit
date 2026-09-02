@@ -5,11 +5,14 @@ import { inspect, SvgError, verifySelfContained } from '../../skills/diagram/scr
 import {
   applyHouseAttributes,
   isCompressed,
+  namespaceIds,
   PLATE,
   plateBackground,
+  saltFor,
   screenSource,
   SOURCE_MARK,
   stripPrologue,
+  verifyReferences,
 } from '../../skills/diagram/scripts/drawio-svg.ts';
 
 const example = join(import.meta.dir, '../../skills/diagram/examples/cloud-topology.svg');
@@ -52,6 +55,63 @@ describe('the figure carries its own plate', () => {
   test('a render with no viewBox is refused rather than plated at the wrong size', () => {
     expect(() => plateBackground('<svg xmlns="http://www.w3.org/2000/svg"></svg>'))
       .toThrow(SvgError);
+  });
+});
+
+describe('ids are namespaced per figure', () => {
+  const RAW = '<svg viewBox="0 0 10 10"><defs><linearGradient '
+    + 'id="drawio-svg-J-gA13gOpOlOpL6JsM29-gradient-a"/></defs>'
+    + '<g id="0"><rect id="alb" fill="url(#drawio-svg-J-gA13gOpOlOpL6JsM29-gradient-a)"/></g></svg>';
+
+  test("draw.io's per-render salt is replaced, so the same source renders the same bytes", () => {
+    const once = namespaceIds(RAW, 'fig');
+    const twice = namespaceIds(RAW.replaceAll('J-gA13gOpOlOpL6JsM29', 'xFBTcgfvkFDSNSb7E4t-'), 'fig');
+    expect(once).toBe(twice);
+    expect(once).not.toContain('drawio-svg-');
+  });
+
+  test('bare mxCell ids are namespaced, because id="0" collides with the page', () => {
+    expect(namespaceIds(RAW, 'fig')).toContain('id="fig-0"');
+    expect(namespaceIds(RAW, 'fig')).toContain('id="fig-alb"');
+  });
+
+  test('every reference is rewritten with its id, leaving nothing dangling', () => {
+    const out = namespaceIds(RAW, 'fig');
+    const refs = [...out.matchAll(/url\(#([^)]*)\)/g)].map((m) => m[1]);
+    expect(refs).toEqual(['fig-gradient-a']);
+    expect(refs.filter((r) => !out.includes(`id="${r}"`))).toEqual([]);
+  });
+
+  test('the escaped spelling inside style= is rewritten, not just the attribute', () => {
+    // draw.io writes the paint server twice and CSS honours the style copy, so
+    // rewriting only fill="url(#x)" leaves the shape unpainted and nothing else
+    // out of place — which is exactly how it shipped once.
+    const raw = '<svg viewBox="0 0 10 10"><linearGradient id="drawio-svg-J-gA13gOpOlOpL6JsM29-g"/>'
+      + '<path fill="url(#drawio-svg-J-gA13gOpOlOpL6JsM29-g)" '
+      + 'style="fill: url(&quot;#drawio-svg-J-gA13gOpOlOpL6JsM29-g&quot;);"/></svg>';
+    const out = namespaceIds(raw, 'fig');
+    expect(out).toContain('fill="url(#fig-g)"');
+    expect(out).toContain('style="fill: url(&quot;#fig-g&quot;);"');
+  });
+
+  test('a reference to an id the figure does not define is refused', () => {
+    expect(() => verifyReferences('<svg><path fill="url(#gone)"/></svg>')).toThrow(SvgError);
+    expect(() => verifyReferences('<svg><path fill="url(&quot;#gone&quot;)"/></svg>'))
+      .toThrow(SvgError);
+    expect(() => verifyReferences('<svg><g id="a"/><use href="#a"/></svg>')).not.toThrow();
+  });
+
+  test('an unrecognised generated id is refused rather than shipped churning', () => {
+    // The strip is length-bound to the nanoid draw.io writes today; if upstream
+    // changes it the figure still renders, and only this check notices.
+    expect(() => namespaceIds('<svg id="drawio-svg-short-gradient-a"></svg>', 'fig'))
+      .toThrow(SvgError);
+  });
+
+  test('the salt comes from the output filename, so two figures cannot collide', () => {
+    expect(saltFor('cloud-topology.svg')).toBe('cloud-topology');
+    expect(saltFor('My Figure (2).svg')).toBe('my-figure-2');
+    expect(saltFor('.svg')).toBe('drawio');
   });
 });
 
@@ -138,6 +198,16 @@ describe('the committed example', () => {
     const xml = readFileSync(source, 'utf-8');
     expect(isCompressed(xml)).toBe(false);
     expect(screenSource(xml)).toEqual([]);
+  });
+
+  test('every paint-server reference in it resolves to an id it defines', () => {
+    expect(() => verifyReferences(svg)).not.toThrow();
+  });
+
+  test('every id it ships is namespaced to the figure', () => {
+    const ids = [...svg.matchAll(/\bid="([^"]*)"/g)].map((m) => m[1]);
+    expect(ids.length).toBeGreaterThan(8);
+    expect(ids.filter((id) => !id.startsWith('cloud-topology-'))).toEqual([]);
   });
 
   test('uses real vendor stencils rather than look-alike boxes', () => {

@@ -159,7 +159,14 @@ describe.if(hasDepcruise)('a live cruise of this repository', () => {
     const raw = cruised.stdout.toString();
     expect(JSON.parse(raw).summary.totalCruised).toBeGreaterThan(20);
 
-    const result = run(['deps', '--focus', 'skills/diagram', '--group-depth', '2'], raw);
+    // --max-nodes because this case proves grouping, not the budget: the skill's
+    // own scripts directory outgrew 12 nodes when the draw.io register landed,
+    // and the refusal has its own case below with real data either side of it.
+    // Without the raise, adding one file to the skill fails a test about naming.
+    const result = run(
+      ['deps', '--focus', 'skills/diagram', '--group-depth', '2', '--max-nodes', '24'],
+      raw,
+    );
     expect(result.stderr).toBe('');
     expect(result.code).toBe(0);
     // The extract modules are one component of the diagram skill, reached from

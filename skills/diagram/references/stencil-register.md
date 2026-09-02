@@ -18,14 +18,15 @@ bun skills/diagram/scripts/drawio-render.ts \
   --label "Cloud topology — ALB to EKS to RDS"
 ```
 
-| Flag           | Default    | Use                                        |
-| -------------- | ---------- | ------------------------------------------ |
-| `--in`         | —          | the `.drawio` source, uncompressed XML     |
-| `--out`        | `<in>.svg` | the shipped SVG                            |
-| `--png`        | —          | raster twin at 2×, for the look-fix loop   |
-| `--label`      | filename   | becomes `aria-label`; match the figcaption |
-| `--border`     | `8`        | pixels around the diagram                  |
-| `--page-index` | `1`        | which page of a multi-page file to export  |
+| Flag           | Default    | Use                                         |
+| -------------- | ---------- | ------------------------------------------- |
+| `--in`         | —          | the `.drawio` source, uncompressed XML      |
+| `--out`        | `<in>.svg` | the shipped SVG                             |
+| `--png`        | —          | raster twin at 2×, for the look-fix loop    |
+| `--label`      | filename   | becomes `aria-label`; match the figcaption  |
+| `--border`     | `8`        | pixels around the diagram                   |
+| `--page-index` | `1`        | which page of a multi-page file to export   |
+| `--salt`       | filename   | id namespace; override only to force a name |
 
 ## When draw.io, and when not
 
@@ -207,6 +208,20 @@ Two consequences:
   `var(--diagram-bg)` so the figure stays legible — advice that is false for a
   figure carrying its own plate. Wrap the SVG in a `.figure` island anyway for
   the caption; nothing forces it.
+
+## Reproducible bytes, non-colliding ids
+
+draw.io salts its gradient ids with a fresh nanoid on every render and emits each
+mxCell id verbatim, so a raw export ships `id="0"` and changes on every run. Both
+matter for a figure meant to be inlined: a diff that churns cannot be reviewed,
+and `0` collides with whatever else the page carries — including a second draw.io
+figure, whose cells are numbered from 0 too.
+
+The wrapper replaces the generated salt and namespaces every id with one derived
+from the output filename, rewriting `url(#…)` and `href="#…"` alongside. So
+`cloud-topology.svg` carries `cloud-topology-alb`, the same source always renders
+to the same bytes, and two figures coexist on one page. An id shape the strip
+does not recognise fails the render rather than shipping churn.
 
 ## What the wrapper refuses
 

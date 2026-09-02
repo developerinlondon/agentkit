@@ -180,4 +180,24 @@ describe.if(Boolean(installed))('rendering', () => {
       expect(svg).toContain('<text');
     });
   });
+
+  test('the committed example is exactly what the renderer produces from its source', () => {
+    withTemp((dir) => {
+      const out = join(dir, 'cloud-topology.svg');
+      const result = run(dir, [
+        '--in',
+        join(import.meta.dir, '../../skills/diagram/examples/cloud-topology.drawio'),
+        '--out',
+        out,
+        '--label',
+        'Cloud topology — ALB to EKS to RDS',
+      ], { DISPLAY: '' });
+      expect({ code: result.code, stderr: result.stderr }).toEqual({ code: 0, stderr: '' });
+      // Byte-equal, not merely equivalent: draw.io salts its gradient ids per
+      // render, and a figure that churns on every re-render cannot be reviewed.
+      expect(readFileSync(out, 'utf-8')).toBe(
+        readFileSync(join(import.meta.dir, '../../skills/diagram/examples/cloud-topology.svg'), 'utf-8'),
+      );
+    });
+  }, 120_000);
 });

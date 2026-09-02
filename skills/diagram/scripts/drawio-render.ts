@@ -17,7 +17,9 @@ import {
   applyHouseAttributes,
   DRAWIO_PIN,
   isCompressed,
+  namespaceIds,
   plateBackground,
+  saltFor,
   screenSource,
   stripPrologue,
 } from "./drawio-svg.ts";
@@ -114,6 +116,7 @@ try {
 
 try {
   svg = stripPrologue(svg);
+  svg = namespaceIds(svg, arg("salt") ?? saltFor(basename(output)));
   svg = plateBackground(svg);
   svg = applyHouseAttributes(svg, label);
   svg = flattenForMarkdown(svg);
