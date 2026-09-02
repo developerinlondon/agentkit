@@ -224,11 +224,14 @@ export function build(spec: DiagramSpec): Built {
     freeText(`note_${i}`, n, MARGIN, bottom + 24 + i * noteStep, FONT.pageNote, t.note, spec.roughness)
   );
 
-  const width = b.right + dx + MARGIN;
+  const title = spec.title ? [freeText("figure_title", spec.title, MARGIN, MARGIN, FONT.title, t.title, spec.roughness)] : [];
+  // A caption wider than the graph still has to fit inside the canvas, or the
+  // backdrop stops short of it and the budget check reads a figure too narrow.
+  const textRight = [...title, ...notes].map((e) => (e.x as number) + (e.width as number));
+  const width = Math.max(b.right + dx, ...textRight) + MARGIN;
   const last = notes.at(-1);
   const height = (last ? (last.y as number) + (last.height as number) : bottom) + MARGIN;
   const warnings = checkCanvas(width, height);
-  const title = spec.title ? [freeText("figure_title", spec.title, MARGIN, MARGIN, FONT.title, t.title, spec.roughness)] : [];
   const backdrop = spec.background
     ? [shape("backdrop", "rectangle", {
       x: 0,

@@ -107,6 +107,14 @@ describe('emitted scene', () => {
     expect(JSON.stringify(build(parseSpec(FIXTURE)).scene)).toBe(JSON.stringify(built.scene));
   });
 
+  test('a caption wider than the graph still fits the canvas', () => {
+    const caption = 'a caption far longer than any of the boxes it sits underneath, by some margin';
+    const wide = build(parseSpec(`nodes:\n  - { id: a, label: a }\nnotes:\n  - ${caption}\n`));
+    const note = (wide.scene.elements as Record<string, unknown>[]).find((e) => e.id === 'note_0')!;
+    expect((note.x as number) + (note.width as number)).toBeLessThanOrEqual(wide.width);
+    expect(wide.width).toBeGreaterThan(400);
+  });
+
   test('no text is placed outside the canvas', () => {
     for (const e of elements.filter((t) => t.type === 'text')) {
       const right = (e.x as number) + (e.width as number);

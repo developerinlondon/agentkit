@@ -112,5 +112,5 @@ for (const fontFamily of [1, 3]) {
 }
 
 await browser.close();
-writeFileSync(METRICS_PATH, `${JSON.stringify({ unit: UNIT, families }, null, 1)}\n`);
+writeFileSync(METRICS_PATH, `${JSON.stringify({ unit: UNIT, families }, null, 2)}\n`);
 console.log(METRICS_PATH);
