@@ -213,6 +213,144 @@ threshold for them is restated here.
   measured value per edge or hop, one unit, at the thing it measures; when
   ranking the numbers is the point rather than locating them, use a chart.
 
+## Mermaid + ELK — retested 2026-09-02, mostly still demoted
+
+Mermaid's demotion predates `@mermaid-js/layout-elk`, so the opt-in ELK engine
+was retested against the five heaviest real flowcharts in the estate (68 fences
+scanned across the neutron plans, the NSM wiki and the knowledgebase; ranked by
+subgraphs, edges and nodes). Twenty renders, dagre and ELK, PNG and SVG, read
+visually. Do not repeat this; read the table.
+
+| Diagram (class)                             | dagre                                                              | ELK, default                                                               | Option that helped                                             | Fixed   |
+| ------------------------------------------- | ------------------------------------------------------------------ | -------------------------------------------------------------------------- | -------------------------------------------------------------- | ------- |
+| nested subgraphs, cross-boundary edges      | boundaries drawn right, misaligned vertically; dead column         | 4% shorter, tighter boundaries; children reordered against source order    | none — `forceNodeModelOrder` changed nothing                   | partial |
+| gated decision chain, two convergence sinks | 2.4:1 ribbon; bypass labels stranded mid-edge; crossings at a sink | **3.0:1** — taller; same stranded labels                                   | `mergeEdges` → 2.63:1, labels back at their gate, no crossings | no      |
+| long chain, subgraph header, side exits     | 2.5:1; chain drifts diagonally; dead column bottom-left            | 3.2:1 — 21% narrower, 2% taller; same dead column                          | none                                                           | no      |
+| flow with a true loop-back                  | correct left-to-right spine, short labeled return arrow            | **regression** — the gate lands left of the entry node, reading order gone | `cycleBreakingStrategy: "MODEL_ORDER"` → correct, 208 vs 210px | **yes** |
+| wide fan-out tree                           | near-perfect; parents centred over children                        | **regression** — root pushed hard left, right-angle busbars tangle         | `layout: "elk.mrtree"` → centred tree, 6% shorter than dagre   | **yes** |
+
+**The demotion's stated reason was wrong; the demotion survives anyway.**
+Neither engine destroyed boundary semantics — both drew the nested subgraphs
+correctly. What both engines do badly is the shape of a gated flow: a decision
+chain with early exits comes out a three-to-one vertical ribbon with its
+bypass labels stranded halfway along an edge, and ELK makes the ratio worse,
+not better. That is the real complaint, and ELK does not answer it.
+
+ELK earns exactly two carve-outs, and only where the destination controls its
+own mermaid runtime:
+
+- **a flow with a loop-back** → `layout: elk` plus
+  `elk.cycleBreakingStrategy: "MODEL_ORDER"`;
+- **a tree or fan-out hierarchy** → `layout: elk.mrtree`.
+
+Both must apply to one diagram only — `MODEL_ORDER` on an acyclic subgraph
+diagram banishes its entry node outside the boundary and wraps the edges around
+the whole canvas — and **the two are reached in different ways**, because
+mermaid sanitizes fence frontmatter against its own config schema and that
+schema declares `elk` as exactly six keys: `mergeEdges`,
+`nodePlacementStrategy`, `nodePlacementAlignment`, `forceNodeModelOrder`,
+`considerModelOrder`, `keepEntryNodeOnTop`.
+
+- `layout: elk.mrtree` is a layout name, not an `elk` key, so **frontmatter
+  works** and the tree carve-out is genuinely per-fence:
+
+  ````
+  ```mermaid
+  ---
+  config:
+    layout: elk.mrtree
+  ---
+  flowchart TD
+  ```
+  ````
+
+- `cycleBreakingStrategy` is **not** one of the six, so frontmatter drops it
+  silently — measured, a fence carrying it renders to the same viewBox as the
+  unfixed diagram. It survives only through `--configFile`, which bypasses the
+  sanitizer. So a loop-back diagram needs its own `mmdc` invocation with a
+  config nothing else shares:
+
+  ```sh
+  mmdc -i loop-back-only.mmd -o loop-back.svg -I fig-loop-back -c elk-loopback.json
+  ```
+
+  **Never put `MODEL_ORDER` in a config shared across a multi-fence document.**
+  A `--configFile` applies to every fence `mmdc` renders from that input, and
+  the option that fixes the loop-back is the one that wrecks a sibling acyclic
+  subgraph fence. Split the loop-back into its own file.
+
+`elk.mrtree` also **crashes** on any flowchart containing a `subgraph`
+(`TypeError: Cannot read properties of undefined (reading 'filter')` in
+`insertEdge`), and on a gated flow it emits every edge label but places none of
+them: all of them land stacked on top of each other within ~30 px of the SVG
+origin, so the figure looks like it lost its labels when it has actually piled
+them in the corner. Reach for either carve-out only when the figure is too big
+for the sketch register's ~25-text budget; a hand-drawn figure that fits still
+wins.
+
+**ELK does not fit a self-contained page.** `@mermaid-js/layout-elk` ships ESM
+only. Its shipped tree is 5.15 MB, but most of that is mermaid chunks it
+re-bundles — katex, the block, c4, wardley and architecture diagrams — which an
+inlined artifact already carries, so the honest figure is the **~1.6 MB
+marginal cost of elkjs itself**, against the ~1.4 MB publish-page has left once
+the 3.4 MB mermaid runtime is inlined. Still over. The carve-outs above apply
+to a shell that loads mermaid from a CDN — a Hugo or Hextra site — and to
+`mmdc` rendering an SVG offline, never to an inlined artifact.
+
+### Registering ELK
+
+`mmdc` needs no extra install — `@mermaid-js/layout-elk` is already a direct
+dependency of `@mermaid-js/mermaid-cli` (verified on 11.16.0), which resolves
+it and calls `registerLayoutLoaders` itself. Pass the layout in `--configFile`:
+
+```json
+{
+  "htmlLabels": false,
+  "flowchart": { "htmlLabels": false },
+  "layout": "elk",
+  "elk": { "cycleBreakingStrategy": "MODEL_ORDER" }
+}
+```
+
+A browser shell must register it explicitly, before `initialize`:
+
+```js
+import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+import elkLayouts from "https://cdn.jsdelivr.net/npm/@mermaid-js/layout-elk@0/dist/mermaid-layout-elk.esm.min.mjs";
+mermaid.registerLayoutLoaders(elkLayouts);
+mermaid.initialize({
+  startOnLoad: false,
+  layout: "elk",
+  elk: { cycleBreakingStrategy: "MODEL_ORDER" },
+});
+```
+
+`initialize` is **not** sanitized the way fence frontmatter is — the option
+comes back out of `getConfig()` and the layout changes with it (measured on the
+loop-back figure: 627x217 without, 954x129 with). So the sanitizer is the one
+gap, and only fences fall in it. A page needing the loop-back fix for one
+figure and plain ELK for the rest must call `mermaid.run()` twice with
+different `initialize` config, or render that figure to SVG offline with
+`mmdc`.
+
+**An unknown layout name falls back to dagre silently, exit 0, no warning.**
+GitHub and GitLab render mermaid fences with a bundled mermaid that does not
+ship layout-elk, so a `config: layout: elk` fence there renders as dagre and
+looks like the option was ignored. Never route a diagram to ELK on a surface
+whose runtime you do not control.
+
+### Committing the SVG
+
+`mmdc` SVG is self-contained — no webfont, no `@import`, no `<image>`, no CDN
+reference, and a `"trebuchet ms",verdana,arial,sans-serif` system stack — with
+two edits:
+
+- Set `htmlLabels: false` at both the root and under `flowchart`. The default
+  puts every label inside a `foreignObject` and emits zero `<text>` elements;
+  `htmlLabels: false` emits real `<text>` and the layout survives.
+- Pass `-I <id>`. Every file otherwise carries the id `my-svg` and ~82
+  internal references to it, so two inlined figures on one page collide.
+
 ## Worked classifications
 
 **"Can you draw how our onboarding actually works, end to end? It's for the

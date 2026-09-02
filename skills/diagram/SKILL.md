@@ -68,7 +68,7 @@ system and one that documents your memory of it. Reach for hand-written D2 only
 when no such source exists, and see `references/technical-register.md` for what
 these tools genuinely cannot know.
 
-Renderer is pinned to **d2 v0.7.1**; the wrapper refuses any other version,
+Renderer is pinned to **d2 v0.8.2**; the wrapper refuses any other version,
 inlines vendored CC0 icons (`icon: @postgres`), and fails the render if the
 output is not self-contained. The render-LOOK-fix discipline of step 5 applies
 unchanged — read the PNG, never the SVG. Full-colour vendor logos are never
