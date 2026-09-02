@@ -34,11 +34,33 @@ role unless it names one. Every key is checked: an unknown key fails the run
 rather than being ignored, because the usual cause is an unquoted comma
 swallowing half a label.
 
+## Which characters you can write
+
+Boxes are sized from a measured table, so a character the table does not hold
+cannot be sized for and is refused by name. The table is generated from the
+woff2 faces the renderer embeds, and it keeps a glyph only when those faces
+genuinely carry it: a glyph the font lacks falls through to whatever the
+viewer's system supplies, at a width nothing here can predict.
+
+What that leaves you:
+
+- **Printable ASCII and Latin-1**, in both fonts. Accented letters are fine.
+- **`x . - _ ... , en and em dashes`** and the other typographic marks in both.
+- **Arrows and set notation are NOT in Excalifont.** `->` and `<-` in ASCII
+  read fine in a sketch. The mono font does carry the real glyphs, so a label
+  with `mono: true` may use them; a note or a caption may not.
+- **No CJK.** The renderer declares no CJK fallback, so it would render
+  differently for every reader.
+
+The refusal names the character and says which font, if any, carries it.
+
 ## What it guarantees
 
 - **Text fits.** Every label is measured against the font the renderer embeds,
   using `assets/font-metrics.json`. The table is exact, not an estimate:
-  measured widths match the browser's `measureText` to the last decimal.
+  measured widths match the browser's `measureText` to the last decimal. Boxes
+  grow with the line count, and the canvas is sized from every element drawn,
+  so a caption wider than the graph still lands inside it.
 - **Boxes do not collide.** Ranks and cross-axis separation come from dagre.
   Zone frames are padded for their own titles, and the run widens the ranks and
   retries if a padded frame still touches a node that is not its own.
@@ -51,6 +73,16 @@ swallowing half a label.
   a canvas past 1200x1400 is refused with the reason. Past 1000 px wide it warns.
 - **Renders are reproducible.** Seeds are derived from element ids, so the same
   spec produces byte-identical JSON every time.
+
+## What it refuses
+
+- A **self-edge**. A layered layout has no rank for one: dagre returns a
+  polyline that lands nowhere near the node, bound at both ends to it. Draw the
+  repetition as a cycle through a second node, or say it in the label.
+- A **character no embedded font carries**, as above.
+- A **spec key it does not recognise**, because the usual cause is an unquoted
+  comma that swallowed half a label.
+- A figure **past the density budget or the canvas ceiling**.
 
 ## What it cannot draw
 

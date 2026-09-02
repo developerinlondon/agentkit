@@ -1,5 +1,5 @@
 import dagre from "@dagrejs/dagre";
-import { textWidth } from "./measure.ts";
+import { textHeight, textWidth } from "./measure.ts";
 import type { DiagramSpec, NodeSpec } from "./spec.ts";
 
 export const FONT = { title: 24, zoneTitle: 20, label: 16, note: 13, edgeLabel: 14, pageNote: 14 };
@@ -11,6 +11,8 @@ const H_LABEL = 48;
 const H_NOTE = 66;
 const SHAPE_INFLATE: Record<string, [number, number]> = { rect: [1, 1], ellipse: [1.3, 1.45], diamond: [1.6, 1.9] };
 const ZONE_PAD = { x: 22, bottom: 22 };
+const PAD_Y = 28;
+export const NOTE_GAP = 4;
 
 export interface Box {
   x: number;
@@ -46,7 +48,9 @@ export function nodeSize(n: NodeSpec): { width: number; height: number } {
   const noteW = n.note ? textWidth(n.note, 1, FONT.note) : 0;
   const [fx, fy] = SHAPE_INFLATE[n.shape];
   const width = Math.max(MIN_W, Math.ceil((Math.max(labelW, noteW) + PAD_X) * fx / 10) * 10);
-  return { width, height: Math.round((n.note ? H_NOTE : H_LABEL) * fy) };
+  const textH = textHeight(n.label, FONT.label) + (n.note ? NOTE_GAP + textHeight(n.note, FONT.note) : 0);
+  const floor = n.note ? H_NOTE : H_LABEL;
+  return { width, height: Math.round(Math.max(floor, textH + PAD_Y) * fy) };
 }
 
 function edgeLabelSize(label: string | undefined): { width: number; height: number } {

@@ -100,10 +100,20 @@ for (const fontFamily of [1, 3]) {
         await face.load();
         (document as unknown as { fonts: { add: (f: FontFace) => void } }).fonts.add(face);
       }
+      const embedded = faces.map((f) => `"${f.family}"`).join(", ");
       const ctx = document.createElement("canvas").getContext("2d")!;
-      ctx.font = `${unit}px ${faces.map((f) => `"${f.family}"`).join(", ")}`;
+      // A glyph the embedded faces lack falls through to whichever font the
+      // stack ends in, and two different tails disagree on its advance. Only a
+      // glyph the faces really carry measures the same behind both.
+      const measure = (c: string, tail: string) => {
+        ctx.font = `${unit}px ${embedded}, ${tail}`;
+        return ctx.measureText(c).width;
+      };
       const out: Record<string, number> = {};
-      for (const c of chars) out[c] = ctx.measureText(c).width;
+      for (const c of chars) {
+        const serif = measure(c, "serif");
+        if (serif === measure(c, "monospace")) out[c] = serif;
+      }
       return out;
     },
     { faces, chars, unit: UNIT },

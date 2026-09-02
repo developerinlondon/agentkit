@@ -2,8 +2,8 @@ import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { build } from '../../skills/diagram/scripts/layout/build.ts';
-import { CHARSET, METRICS_PATH, textWidth } from '../../skills/diagram/scripts/layout/measure.ts';
-import { layout } from '../../skills/diagram/scripts/layout/geometry.ts';
+import { carriedBy, CHARSET, METRICS_PATH, textWidth } from '../../skills/diagram/scripts/layout/measure.ts';
+import { layout, MARGIN } from '../../skills/diagram/scripts/layout/geometry.ts';
 import { parseSpec } from '../../skills/diagram/scripts/layout/spec.ts';
 
 const EXAMPLES = join(import.meta.dir, '../../skills/diagram/examples');
@@ -148,6 +148,48 @@ describe('the register budget is enforced, not suggested', () => {
   });
 });
 
+describe('a spec that cannot be drawn is refused, not drawn wrong', () => {
+  test('a self-edge is refused: dagre routes it nowhere near its node', () => {
+    expect(() => parseSpec(specWith(['{ id: a, label: retry }'], 'edges:\n  - { from: a, to: a }\n')))
+      .toThrow(/edge from "a" to itself/);
+  });
+
+  test('a multi-line label gets a box tall enough to hold it', () => {
+    const built = build(parseSpec('nodes:\n  - { id: a, label: "one\\ntwo\\nthree\\nfour" }\n'));
+    const elements = built.scene.elements as Record<string, unknown>[];
+    const box = elements.find((e) => e.id === 'a')!;
+    const label = elements.find((e) => e.id === 'a__label')!;
+    expect(label.height as number).toBeGreaterThan(60);
+    expect((label.y as number) >= (box.y as number)).toBe(true);
+    expect((label.y as number) + (label.height as number) <= (box.y as number) + (box.height as number)).toBe(true);
+  });
+
+  test('every element sits inside the canvas margins, text included', () => {
+    // contentBounds covered the graph only, so a text element taller or wider
+    // than its box escaped the margin the canvas was sized from.
+    // The title and the notes are the elements that live outside every shape,
+    // so they are the ones a graph-only bound leaves hanging off the canvas.
+    const built = build(parseSpec(
+      'title: a title much longer than the single box beneath it\n'
+        + 'nodes:\n  - { id: a, label: "one\\ntwo\\nthree\\nfour", note: a long trailing note }\n'
+        + 'notes:\n  - and a caption longer still, running past the right edge of that box\n',
+    ));
+    for (const e of (built.scene.elements as Record<string, unknown>[]).filter((el) => el.id !== 'backdrop')) {
+      const inside = (e.x as number) >= MARGIN && (e.y as number) >= MARGIN
+        && (e.x as number) + (e.width as number) <= built.width - MARGIN
+        && (e.y as number) + (e.height as number) <= built.height - MARGIN;
+      expect(`${e.id}:${inside}`).toBe(`${e.id}:true`);
+    }
+  });
+
+  test('a character the metrics table does not cover is refused, not guessed', () => {
+    // Substituting another glyph's advance measured "Zürich" NARROWER than
+    // "Zurich", so the box came out too small for the text it holds.
+    expect(() => parseSpec(specWith(['{ id: a, label: "日本語" }'])))
+      .toThrow(/not in the font metrics table/);
+  });
+});
+
 describe('spec validation', () => {
   test.each([
     ['an undeclared zone', '{ id: a, label: A, zone: nope }', /names zone "nope"/],
@@ -184,15 +226,32 @@ describe('committed example', () => {
 });
 
 describe('font metrics', () => {
-  test('the table covers every character the charset promises', () => {
-    const table = JSON.parse(readFileSync(METRICS_PATH, 'utf-8')) as {
-      unit: number;
-      families: Record<string, Record<string, number>>;
-    };
+  const table = JSON.parse(readFileSync(METRICS_PATH, 'utf-8')) as {
+    unit: number;
+    families: Record<string, Record<string, number>>;
+  };
+
+  test('both measured families cover printable ASCII', () => {
+    const ascii = Array.from({ length: 95 }, (_, i) => String.fromCharCode(32 + i));
     expect(Object.keys(table.families).sort()).toEqual(['1', '3']);
     for (const [family, widths] of Object.entries(table.families)) {
-      const missing = [...CHARSET].filter((c) => typeof widths[c] !== 'number');
+      const missing = ascii.filter((c) => typeof widths[c] !== 'number');
       expect(`${family}:${missing.join('')}`).toBe(`${family}:`);
     }
+  });
+
+  test('the table holds only characters the charset offered', () => {
+    // The generator keeps a glyph only when the embedded faces really carry it,
+    // so the table is a subset of CHARSET and never a superset.
+    const offered = new Set([...CHARSET]);
+    for (const [family, widths] of Object.entries(table.families)) {
+      const stray = Object.keys(widths).filter((c) => !offered.has(c));
+      expect(`${family}:${stray.join('')}`).toBe(`${family}:`);
+    }
+  });
+
+  test('a glyph no font carries is reported as carried by nothing', () => {
+    expect(carriedBy('\u65e5')).toEqual([]);
+    expect(carriedBy('a')).toEqual([1, 3]);
   });
 });

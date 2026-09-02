@@ -1,4 +1,5 @@
 import { YAML } from "bun";
+import { carriedBy } from "./measure.ts";
 
 export type Direction = "right" | "down";
 export type Palette = "light" | "dark";
@@ -100,6 +101,36 @@ function parseEdge(raw: unknown, i: number): EdgeSpec {
   };
 }
 
+const FAMILY_NAME: Record<number, string> = { 1: "the hand-drawn font", 3: "the mono font (mono: true)" };
+
+function unsupported(ch: string, family: number): string {
+  const elsewhere = carriedBy(ch).filter((f) => f !== family);
+  const remedy = elsewhere.length > 0
+    ? `${FAMILY_NAME[elsewhere[0]]} carries it`
+    : "no font in the output carries it, so write it in words";
+  return `"${ch}" is not in the font metrics table for ${FAMILY_NAME[family]} — ${remedy}`;
+}
+
+function checkText(spec: DiagramSpec): void {
+  const problems = new Set<string>();
+  const scan = (body: string | undefined, family: number) => {
+    for (const ch of body ?? "") {
+      if (ch !== "\n" && !carriedBy(ch).includes(family)) problems.add(unsupported(ch, family));
+    }
+  };
+  scan(spec.title, 1);
+  for (const n of spec.nodes) {
+    scan(n.label, n.mono ? 3 : 1);
+    scan(n.note, 1);
+  }
+  for (const z of spec.zones) scan(z.label, 1);
+  for (const e of spec.edges) scan(e.label, 1);
+  for (const n of spec.notes) scan(n, 1);
+  // Substituting another glyph's advance measured "Zurich" WIDER than "Zürich",
+  // so the box came out too small for the text it holds.
+  if (problems.size > 0) bad([...problems].join("; "));
+}
+
 function checkReferences(spec: DiagramSpec): void {
   const ids = new Set<string>();
   for (const n of spec.nodes) {
@@ -114,6 +145,11 @@ function checkReferences(spec: DiagramSpec): void {
   for (const e of spec.edges) {
     if (!ids.has(e.from)) bad(`edge ${e.from} -> ${e.to}: no node "${e.from}"`);
     if (!ids.has(e.to)) bad(`edge ${e.from} -> ${e.to}: no node "${e.to}"`);
+    // A layered layout has no rank for a self-edge: dagre returns a polyline
+    // that lands nowhere near the node, bound at both ends to it.
+    if (e.from === e.to) {
+      bad(`edge from "${e.from}" to itself cannot be laid out — draw the repetition as a cycle through a second node, or say it in the label`);
+    }
   }
 }
 
@@ -150,6 +186,7 @@ export function parseSpec(source: string): DiagramSpec {
     notes: asList(r.notes, "notes").map((n, i) => str(n, `notes[${i}]`)),
   };
   checkReferences(spec);
+  checkText(spec);
   checkBudget(spec);
   return spec;
 }

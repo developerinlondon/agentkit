@@ -1,5 +1,5 @@
 import { arrow, bindArrow, scene, shape, text } from "./elements.ts";
-import { type Box, FONT, type Layout, layout, MARGIN, type PlacedEdge } from "./geometry.ts";
+import { type Box, FONT, type Layout, layout, MARGIN, NOTE_GAP, type PlacedEdge } from "./geometry.ts";
 import { textHeight, textWidth } from "./measure.ts";
 import { labelInk, type Theme, theme } from "./palette.ts";
 import { BUDGET, type DiagramSpec, type NodeSpec } from "./spec.ts";
@@ -7,7 +7,6 @@ import { BUDGET, type DiagramSpec, type NodeSpec } from "./spec.ts";
 type Json = Record<string, unknown>;
 
 const SHAPE_TYPE = { rect: "rectangle", ellipse: "ellipse", diamond: "diamond" } as const;
-const NOTE_GAP = 4;
 const ARROW_GAP = 5;
 const LABEL_CLEARANCE = 7;
 
@@ -113,6 +112,36 @@ function edgeElements(e: PlacedEdge, i: number, shapes: Map<string, Json>, t: Th
   })];
 }
 
+function bboxOf(e: Json): Box {
+  const x = e.x as number;
+  const y = e.y as number;
+  if (e.type !== "arrow") return { x, y, width: e.width as number, height: e.height as number };
+  const pts = e.points as [number, number][];
+  const xs = pts.map((p) => p[0]);
+  const ys = pts.map((p) => p[1]);
+  return {
+    x: x + Math.min(...xs),
+    y: y + Math.min(...ys),
+    width: Math.max(...xs) - Math.min(...xs),
+    height: Math.max(...ys) - Math.min(...ys),
+  };
+}
+
+/** One pass over everything drawn, so a label wider or taller than its box
+ * still lands inside the canvas the budget is checked against. */
+function normalize(elements: Json[]): { width: number; height: number } {
+  const boxes = elements.map(bboxOf);
+  const minX = Math.min(...boxes.map((b) => b.x));
+  const minY = Math.min(...boxes.map((b) => b.y));
+  const maxX = Math.max(...boxes.map((b) => b.x + b.width));
+  const maxY = Math.max(...boxes.map((b) => b.y + b.height));
+  for (const e of elements) {
+    e.x = (e.x as number) + MARGIN - minX;
+    e.y = (e.y as number) + MARGIN - minY;
+  }
+  return { width: maxX - minX + 2 * MARGIN, height: maxY - minY + 2 * MARGIN };
+}
+
 /** dagre centres an edge label on its edge; the text has to clear the stroke. */
 function offEdge(box: Box, direction: DiagramSpec["direction"]): Box {
   return direction === "right"
@@ -132,10 +161,10 @@ function checkCanvas(width: number, height: number): string[] {
     : [];
 }
 
-function zoneElements(spec: DiagramSpec, l: Layout, t: Theme, move: <T extends Box>(o: T) => T): Json[] {
+function zoneElements(spec: DiagramSpec, l: Layout, t: Theme): Json[] {
   const out: Json[] = [];
   for (const [id, box] of l.zones) {
-    const z = move(box);
+    const z = box;
     out.push(shape(`zone_${id}`, "rectangle", {
       ...z,
       stroke: t.zoneStroke,
@@ -187,53 +216,52 @@ export function build(spec: DiagramSpec): Built {
   const l = layout(spec);
   const t = theme(spec.palette);
   const b = contentBounds(l);
-  const titleBand = spec.title ? textHeight(spec.title, FONT.title) + 26 : 0;
-  const dx = MARGIN - b.x;
-  const dy = MARGIN + titleBand - b.y;
-  const move = <T extends Box>(o: T): T => ({ ...o, x: o.x + dx, y: o.y + dy });
 
   const shapes = new Map<string, Json>();
   const labels: Json[] = [];
   for (const n of l.nodes.values()) {
-    const box = move(n);
     const ink = t.roles[n.spec.role];
     shapes.set(n.spec.id, shape(n.spec.id, SHAPE_TYPE[n.spec.shape], {
-      ...box,
+      x: n.x,
+      y: n.y,
+      width: n.width,
+      height: n.height,
       stroke: ink.stroke,
       fill: ink.fill,
       dashed: ink.dashed,
       rounded: n.spec.shape === "rect",
       roughness: spec.roughness,
     }));
-    labels.push(...nodeTexts(n.spec, box, t, spec.roughness));
+    labels.push(...nodeTexts(n.spec, n, t, spec.roughness));
   }
 
   const arrows: Json[] = [];
   l.edges.forEach((e, i) => {
-    const moved: PlacedEdge = {
-      ...e,
-      points: e.points.map(([x, y]) => [x + dx, y + dy] as [number, number]),
-      labelBox: e.labelBox ? offEdge(move(e.labelBox), spec.direction) : undefined,
-    };
-    arrows.push(...edgeElements(moved, i, shapes, t, spec));
+    const laid: PlacedEdge = { ...e, labelBox: e.labelBox ? offEdge(e.labelBox, spec.direction) : undefined };
+    arrows.push(...edgeElements(laid, i, shapes, t, spec));
   });
 
-  const bottom = b.bottom + dy;
+  const title = spec.title
+    ? [freeText(
+      "figure_title",
+      spec.title,
+      b.x,
+      b.y - textHeight(spec.title, FONT.title) - 26,
+      FONT.title,
+      t.title,
+      spec.roughness,
+    )]
+    : [];
   const noteStep = textHeight("x", FONT.pageNote) + 8;
   const notes = spec.notes.map((n, i) =>
-    freeText(`note_${i}`, n, MARGIN, bottom + 24 + i * noteStep, FONT.pageNote, t.note, spec.roughness)
+    freeText(`note_${i}`, n, b.x, b.bottom + 24 + i * noteStep, FONT.pageNote, t.note, spec.roughness)
   );
 
-  const title = spec.title ? [freeText("figure_title", spec.title, MARGIN, MARGIN, FONT.title, t.title, spec.roughness)] : [];
-  // A caption wider than the graph still has to fit inside the canvas, or the
-  // backdrop stops short of it and the budget check reads a figure too narrow.
-  const textRight = [...title, ...notes].map((e) => (e.x as number) + (e.width as number));
-  const width = Math.max(b.right + dx, ...textRight) + MARGIN;
-  const last = notes.at(-1);
-  const height = (last ? (last.y as number) + (last.height as number) : bottom) + MARGIN;
+  const elements = [...zoneElements(spec, l, t), ...arrows, ...shapes.values(), ...labels, ...title, ...notes];
+  const { width, height } = normalize(elements);
   const warnings = checkCanvas(width, height);
-  const backdrop = spec.background
-    ? [shape("backdrop", "rectangle", {
+  if (spec.background) {
+    elements.unshift(shape("backdrop", "rectangle", {
       x: 0,
       y: 0,
       width,
@@ -242,17 +270,7 @@ export function build(spec: DiagramSpec): Built {
       fill: spec.background,
       strokeWidth: 1,
       roughness: 0,
-    })]
-    : [];
-
-  const elements = [
-    ...backdrop,
-    ...zoneElements(spec, l, t, move),
-    ...arrows,
-    ...shapes.values(),
-    ...labels,
-    ...title,
-    ...notes,
-  ];
+    }));
+  }
   return { scene: scene(elements, spec.background), width, height, warnings };
 }

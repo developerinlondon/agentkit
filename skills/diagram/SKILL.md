@@ -187,18 +187,37 @@ guarantee, so check both renderings before keeping one):
 
 Hand placement stays the default. When the figure really is a graph, though —
 nodes, edges, at most three zones, no invented metaphor — write the spec and let
-dagre compute every coordinate:
+dagre compute every coordinate. The whole shape of one:
+
+```yaml
+title: How a signed request becomes an answer
+direction: down # right | down
+palette: dark # dark | light
+zones:
+  - { id: core, label: Core }
+nodes:
+  - { id: gateway, label: gateway, note: "POST /v1/answer", zone: core }
+  - { id: verify, label: signature valid?, role: decision, shape: diamond, zone: core }
+edges:
+  - { from: gateway, to: verify, label: mTLS }
+notes:
+  - a muted line stacked under the figure
+```
 
 ```bash
 bun <skill-dir>/scripts/layout.ts --in figure.diagram.yaml --out figure.excalidraw
 bun <skill-dir>/render.ts --in figure.excalidraw --out figure.svg --png figure.png
 ```
 
+**Read `references/auto-layout.md` before writing a spec.** It is the only
+complete field list — every `role`, `shape` and flag, which characters the
+fonts carry, what the layout guarantees, and the figures it refuses to draw.
+The eight lines above are the shape, not the vocabulary.
+
 The layout measures each label against the font the renderer actually embeds,
 sizes each box to its own text, draws the zone frames, routes the arrows and
-binds them at both ends. It refuses a spec that breaks the density budget below
-instead of quietly drawing it. `references/auto-layout.md` is the field
-reference and the honest list of what it cannot draw;
+binds them at both ends. It refuses rather than draws when it cannot be right:
+a broken density budget, a self-edge, a character no embedded font carries.
 `examples/sketch-pipeline.diagram.yaml` is a worked spec.
 
 Step 5 still applies. Auto-layout removes the placement round, not the judgement

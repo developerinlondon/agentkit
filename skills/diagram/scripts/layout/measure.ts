@@ -5,8 +5,10 @@ export const UNIT = 100;
 export const METRICS_PATH = join(import.meta.dir, "../../assets/font-metrics.json");
 
 const ASCII = Array.from({ length: 95 }, (_, i) => String.fromCharCode(32 + i)).join("");
+const LATIN1 = Array.from({ length: 96 }, (_, i) => String.fromCharCode(0xa0 + i)).join("");
 const SYMBOLS = "→←↔⇒⇐⇔∪∩⊂⊆∈≠≤≥×·•…—–✓✗▲▼◀▶°±§¶©®™†‡‹›«»“”‘’€£¥";
-export const CHARSET = ASCII + SYMBOLS;
+/** Candidates offered to the generator; only glyphs the font carries are kept. */
+export const CHARSET = ASCII + LATIN1 + SYMBOLS;
 
 interface MetricsFile {
   unit: number;
@@ -28,14 +30,23 @@ function metrics(): MetricsFile {
   return cache;
 }
 
+/** Families that carry this glyph. Empty means no font in the output has it. */
+export function carriedBy(ch: string): number[] {
+  const m = metrics();
+  return Object.entries(m.families).filter(([, t]) => typeof t[ch] === "number").map(([f]) => Number(f));
+}
+
 /** Advance-width sum of one line, in px, for an Excalidraw fontFamily id. */
 export function lineWidth(line: string, fontFamily: number, fontSize: number): number {
   const m = metrics();
   const table = m.families[String(fontFamily)];
   if (!table) throw new Error(`no font metrics for fontFamily ${fontFamily}`);
-  const fallback = table["n"] ?? m.unit * 0.5;
   let total = 0;
-  for (const ch of line) total += table[ch] ?? fallback;
+  for (const ch of line) {
+    const w = table[ch];
+    if (w === undefined) throw new Error(`"${ch}" is not in the font metrics table for fontFamily ${fontFamily}`);
+    total += w;
+  }
   return (total / m.unit) * fontSize;
 }
 
