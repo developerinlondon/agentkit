@@ -280,10 +280,10 @@ wrapper, checked 2026-09-02:
 
 Their skill is a thinner prompt layer over `drawio -x -f svg`. It is worth
 reading, and its `search_shapes` tool is genuinely useful, but it does not carry
-the source screening, the pin, the plate, or the self-containment gate — which
-are the parts that decide whether the figure renders for a reader on GitHub. So:
-wrapper here, and borrow `search_shapes` if the two greps above ever stop being
-enough.
+the version pin, the source screening, the plate, the id namespace or the
+self-containment gate — which are the parts that decide whether the figure ships
+self-contained, reproducible and legible on the page. So: wrapper here, and
+borrow `search_shapes` if the two greps above ever stop being enough.
 
 `jgraph/draw-image-export2` was evaluated and rejected: **it has no SVG output
 format at all.** Its dispatcher branches on `png`/`jpg`/`pdf` and answers
