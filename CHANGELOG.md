@@ -29,6 +29,24 @@ release PR — "publish this" authorizes a release, never the tier.
 - feat(instructions): **`wait-discipline.md`** states the rule the hook enforces — never wait on a
   notification alone, poll the artefact, act when the deadline passes, and tell the owner which
   deadline you are waiting to.
+- fix(tests): **the mermaid browser test reports Chrome's stderr and retries a stillborn launch.**
+  Its launch helper piped the browser's stdout and stderr and read neither, so every sandbox, D-Bus
+  or missing-library message Chrome wrote was discarded, and a launch that timed out on CI could say
+  only `port file never appeared`. The helper now reads both streams, keeps the last 200 lines of
+  stderr, and names the last 40 in the throw; it also re-spawns once on a fresh profile before giving
+  up, and states the ceiling it spent. A launch that fails throws a `BrowserLaunchError` rather than
+  the generic timeout an assertion produces, and the sanitiser case relabels it as never having run,
+  so a real sanitiser regression cannot be waved through as the flake. Closing a browser now waits
+  for it to be reaped before deleting its profile, and re-deletes while anything writes state back,
+  because Chrome's children outlive the process that was killed and restore the directory after the
+  delete — CI was accumulating partial profiles and dying browsers for the next launch to compete
+  with. Both waits are bounded and escalate to `SIGKILL`, so a browser ignoring `SIGTERM` cannot
+  outrun the ceiling and hand the case to bun's timeout instead. Reading the pipes is capture, not
+  unblocking: measured here, 1.2 MB into an unread `Bun.spawn` pipe does not stall the writer the way
+  a raw pipe does at 64 KB, so pipe backpressure is not the cause of the intermittent failure and
+  this does not claim to fix it.
+
+## v0.8.2 — 2026-09-03
 
 - chore(diagram): **the d2 renderer is pinned to v0.8.2, from its new `d2lang/d2` home.** 0.8.2
   swaps the embedded JavaScript layout runtimes for Go ports — elk-go at ELK 0.12, dagro at

@@ -5,6 +5,8 @@ import { basename, join, relative } from 'node:path';
 export const TEST_SLICES = {
   diagram: [
     'tests/diagram/d2-svg.test.ts',
+    'tests/diagram/drawio-render.test.ts',
+    'tests/diagram/drawio-svg.test.ts',
     'tests/diagram/extract-cli.test.ts',
     'tests/diagram/extract-model.test.ts',
     'tests/diagram/extract-sources.test.ts',
@@ -71,6 +73,7 @@ export const TEST_SLICES = {
     'tests/product-intelligence/render.test.ts',
     'tests/product-intelligence/schemas.test.ts',
     'tests/publish-page/accounts.test.ts',
+    'tests/publish-page/browser-launch.test.ts',
     'tests/publish-page/deck-template.test.ts',
     'tests/publish-page/device-login.test.ts',
     'tests/publish-page/lint.test.ts',

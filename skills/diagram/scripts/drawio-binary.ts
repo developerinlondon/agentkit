@@ -1,0 +1,162 @@
+// Locating and launching draw.io Desktop headlessly.
+
+import { spawn } from "node:child_process";
+import { existsSync, mkdtempSync, rmSync, statSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+
+export class DrawioError extends Error {}
+
+export const INSTALL_HINT = "see references/stencil-register.md for the headless install recipe";
+
+// Electron prints Chromium's dbus and zygote complaints to the same stream as
+// the version, so the version is the last line that looks like one.
+export function parseVersion(output: string): string {
+  const line = output.trim().split("\n").filter((l) => /^\s*v?\d+\.\d+\.\d+\s*$/.test(l)).pop();
+  return (line ?? "").trim().replace(/^v/, "");
+}
+
+export function binaryCandidates(env: NodeJS.ProcessEnv, home: string): string[] {
+  return [
+    env.AGENTKIT_DRAWIO,
+    join(home, ".agentkit/diagram/drawio/squashfs-root/drawio"),
+    "/opt/drawio/drawio",
+    "/usr/bin/drawio",
+    "/usr/local/bin/drawio",
+    "/Applications/draw.io.app/Contents/MacOS/draw.io",
+  ].filter((c): c is string => Boolean(c));
+}
+
+// The AppImage ships chrome-sandbox unprivileged, and Electron aborts rather
+// than run unsandboxed on its own. A distro package installs it setuid root, so
+// the flag is decided by what is actually on disk instead of being hardcoded.
+export function needsNoSandbox(binary: string): boolean {
+  const helper = join(dirname(binary), "chrome-sandbox");
+  if (!existsSync(helper)) return false;
+  const st = statSync(helper);
+  return !(st.uid === 0 && (st.mode & 0o4000) !== 0);
+}
+
+// Electron initialises a display even for --version, so a server with no X
+// server cannot run the CLI directly. xvfb-run supplies one for the process.
+export function needsXvfb(env: NodeJS.ProcessEnv, platform: string): boolean {
+  return platform === "linux" && !env.DISPLAY && !env.WAYLAND_DISPLAY;
+}
+
+function onPath(cmd: string, env: NodeJS.ProcessEnv): boolean {
+  return (env.PATH ?? "").split(":").filter(Boolean).some((dir) => existsSync(join(dir, cmd)));
+}
+
+export interface Launcher {
+  binary: string;
+  wrapper?: string;
+  sandbox: string[];
+}
+
+export function resolveLauncher(
+  env: NodeJS.ProcessEnv,
+  home: string,
+  platform: string,
+): Launcher {
+  const binary = binaryCandidates(env, home).find((c) => existsSync(c));
+  if (!binary) throw new DrawioError(`no draw.io Desktop binary found — ${INSTALL_HINT}`);
+  const wrapper = needsXvfb(env, platform) ? "xvfb-run" : undefined;
+  if (wrapper && !onPath(wrapper, env)) {
+    throw new DrawioError(`no X server and no xvfb-run on PATH — draw.io Desktop needs one; ${INSTALL_HINT}`);
+  }
+  return { binary, wrapper, sandbox: needsNoSandbox(binary) ? ["--no-sandbox"] : [] };
+}
+
+export const RUN_TIMEOUT_MS = 180000;
+export const KILL_GRACE_MS = 2000;
+
+// Chromium narrates dbus and zygote failures on every headless start, so the
+// real message is whatever is left. When nothing is, the noise is the only
+// account of the failure there is and dropping it leaves the operator with
+// "draw.io failed:" and a blank line.
+export function readableStderr(text: string): string {
+  const trimmed = text.trim();
+  const kept = trimmed.split("\n").filter((l) => !/ERROR:|zygote/.test(l)).join("\n").trim();
+  return kept === "" ? trimmed : kept;
+}
+
+// A silent non-zero exit is the case that reads as no failure at all: both
+// streams empty leaves "draw.io failed:" and a blank line, which tells the
+// operator less than the number the process actually returned.
+export function failureMessage(
+  code: number | null,
+  signal: NodeJS.Signals | null,
+  output: string,
+): string {
+  const how = signal ? `was killed by ${signal}` : `exited with code ${code ?? "unknown"}`;
+  return output === "" ? `draw.io ${how}` : `draw.io ${how}:\n${output}`;
+}
+
+// Killed as a group, not as a process: xvfb-run is a shell script, so signalling
+// it leaves the browser it wrapped running with the X server pulled away.
+// Measured on this host — both survived a SIGTERM to the wrapper alone.
+function killGroup(pid: number | undefined): void {
+  if (pid === undefined) return;
+  try {
+    process.kill(-pid, "SIGKILL");
+  } catch {
+    try {
+      process.kill(pid, "SIGKILL");
+    } catch {
+      // already gone
+    }
+  }
+}
+
+// Electron keeps one profile at ~/.config/draw.io and locks it, so two renders
+// at once contend for it — which is how moon turned red running the diagram
+// slice beside the full suite, timing out at 180s with the GPU process
+// unusable. Per invocation, not per process: a single wrapper run launches the
+// binary three times (version, export, PNG twin) and a shared temp profile can
+// still meet the previous instance's teardown.
+export function run(
+  launcher: Launcher,
+  args: string[],
+  timeoutMs = RUN_TIMEOUT_MS,
+): Promise<string> {
+  const { binary, wrapper, sandbox } = launcher;
+  const cmd = wrapper ?? binary;
+  const profile = mkdtempSync(join(tmpdir(), "drawio-profile-"));
+  const chromium = [`--user-data-dir=${profile}`, "--disable-gpu"];
+  const argv = wrapper
+    ? ["-a", binary, ...sandbox, ...chromium, ...args]
+    : [...sandbox, ...chromium, ...args];
+  // detached makes the child a process-group leader, which is what lets the
+  // timeout reach everything it spawned.
+  const child = spawn(cmd, argv, { detached: true, stdio: ["ignore", "pipe", "pipe"] });
+  let out = "";
+  let err = "";
+  child.stdout.on("data", (d: Buffer) => void (out += d.toString()));
+  child.stderr.on("data", (d: Buffer) => void (err += d.toString()));
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let grace: ReturnType<typeof setTimeout> | undefined;
+  return new Promise<string>((resolve, reject) => {
+    const expired = () =>
+      reject(new DrawioError(`draw.io timed out after ${timeoutMs}ms and its process group was killed`));
+    let timedOut = false;
+    timer = setTimeout(() => {
+      timedOut = true;
+      killGroup(child.pid);
+      // "close" waits for the inherited pipes, and a descendant that outlived
+      // the kill still holds them — so the timeout settles this itself rather
+      // than waiting on a stream nothing will close.
+      grace = setTimeout(expired, KILL_GRACE_MS);
+    }, timeoutMs);
+    child.on("error", (e: Error) => reject(new DrawioError(`could not start ${cmd}: ${e.message}`)));
+    child.on("close", (code, signal) => {
+      if (timedOut) expired();
+      else if (code === 0) resolve(out);
+      else reject(new DrawioError(failureMessage(code, signal, readableStderr(err || out))));
+    });
+  }).finally(() => {
+    clearTimeout(timer);
+    clearTimeout(grace);
+    rmSync(profile, { recursive: true, force: true });
+  });
+}
