@@ -239,6 +239,10 @@ describe('launching a browser for the devtools endpoint', () => {
     // not wait for the exit is undone by the browser it just killed.
     await launch.close();
     expect(existsSync(launch.profile)).toBe(false);
+    // Absence here proves nothing on its own: a delete that did not wait leaves
+    // the directory absent at this instant and back a moment later.
+    await Bun.sleep(1_500);
+    expect(existsSync(launch.profile)).toBe(false);
   }, 60_000);
   test('a profile written back to after the browser dies is still removed', async () => {
     const launch = await launchBrowser({
