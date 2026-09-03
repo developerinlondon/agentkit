@@ -9,6 +9,70 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+- fix(tests): **`skills/diagram/bun.lock` is now checked against its declared semver ranges, not
+  just structurally.** `bun install --frozen-lockfile --dry-run` only catches a dependency added or
+  removed from `package.json`; a resolved entry hand-edited to any version, in range or not, still
+  reported clean in under 5ms. A new check parses the lockfile and `Bun.semver.satisfies`-checks
+  every declared dependency's resolved version against its range, catching an out-of-range
+  resolution while still allowing a legitimate in-range bump through (that stays review's job).
+- fix(diagram): **pinned `playwright-core` at the root so the typecheck gate resolves it
+  deterministically.** `render.ts` and `scripts/layout/font-metrics.ts` both dynamically import
+  `playwright-core`; on a clean CI checkout that resolved to nothing and failed the new typecheck
+  with `TS2307` plus a cascade of implicit-any errors. Locally it had passed only because an
+  unrelated ancestor directory on the dev machine happened to carry the package. Adding it as a
+  root devDependency at the exact version `skills/diagram/package.json` pins (types only — no
+  browser binaries download for `-core`) makes resolution independent of what else happens to sit
+  above the repo, verified with `rm -rf skills/diagram/node_modules && bun install --frozen-lockfile`.
+- fix(diagram): **`skills/diagram` now typechecks in the diagram test slice**, including
+  `scripts/layout/`. A pinned `typescript` devDependency plus a new `skills/diagram/tsconfig.json`
+  (strict, bundler resolution, bun types) back a `tsc --noEmit` gate over the skill's scripts,
+  `scripts/layout/`, and `render.ts`. Nothing checked the skill's types before, so
+  `expandIconRefs()`'s `.staged` field silently missing from a local variable's type annotation
+  shipped undetected; fixed alongside two pre-existing errors the new gate also caught — `dagre`'s
+  namespace used in a type position against its default import, and an edge's role reaching
+  `Record<Role, Ink>` typed as a bare `string` instead of `Role`. Only `renderer/` stays excluded,
+  because it needs `@excalidraw/excalidraw` installed, which the skill's 271 MB dependency tree is
+  deliberately not part of a root install.
+- fix(diagram): **three ways the D2 and Excalidraw wrappers assumed a page they don't control,
+  closed.** D2's dark-theme guard assumed `html[data-theme]`; a class-toggling host (Hextra,
+  Tailwind, Docusaurus) never sets it, so the dark palette always won. `d2-render.ts --host class`
+  emits `html.dark` instead. D2's inlined stylesheet also shipped `.shape`, `.connection`, `.md` and
+  friends bare — unlike its colour classes, which it already scopes under the figure's own
+  `.d2-<hash>` carrier — so an inlined figure redefined them for the whole page; every rule is now
+  scoped the same way, automatically. `render.ts --background` (defaulting to the scene's
+  `appState.viewBackgroundColor`) gives the Excalidraw renderer a real ground rect, so a baked-ink
+  sketch is legible on a theme-switching host instead of vanishing when the ink and the page match.
+  Documents the three as an "embedding contract" in `references/technical-register.md`;
+  regenerates the affected committed D2 examples.
+- fix(tests): **the review-police probe helper can no longer read a silent hook as an allow.**
+  `runHook` ignored `spawnSync`'s exit status, error and stderr, so a hook that was killed, crashed
+  before writing, or never started produced the same empty string as one that deliberately allowed
+  the command — an `ALLOW` probe row would have gone green against a hook that never ran at all. It
+  now carries an explicit timeout and throws, naming the exit status and the stderr tail, whenever
+  the hook does not exit 0 (which every genuine review-police.sh path does, allow or deny).
+- fix(tools): **`bounded-run` passes `D2_BIN` through its environment allowlist.** The bounded env
+  `scripts/product-command` runs review under on Linux stripped it, so the pinned-d2 policy check
+  could not honour the escape hatch the technical register documents — a reviewer testing a
+  candidate build had to displace the pinned PATH binary instead, the exact thing `D2_BIN` exists
+  to avoid.
+- fix(tests): **draw.io's `--disable-gpu` launch flag is now pinned by a test**, and the
+  process-group-kill test polls for the killed descendant's death within a bounded window instead
+  of asserting immediately after the killer's promise settles — the kill signal and the kernel
+  reaping the process are two different moments, and asserting right after the first read as flaky
+  on a loaded host.
+- fix(ci): **the docs and docs-publish setup-go steps now cache `docs/hextra/go.mod`.**
+  `actions/setup-go`'s default cache key looks for a go.mod at the repo root, so with the module at
+  `docs/hextra/go.mod` the cache never primed and every docs build reinstalled its Go toolchain
+  dependencies cold.
+- fix(tests): **`skills/diagram/bun.lock` is now checked in the diagram test slice**, via
+  `bun install --frozen-lockfile --dry-run`, which settles in milliseconds against an in-sync
+  lockfile and never pays the skill's 271 MB dependency tree. Previously nothing installed
+  `skills/diagram` at all, so the lockfile could drift from `package.json` indefinitely unnoticed.
+- fix(tests): **the plugin mirror-parity check walks git-tracked files, not the filesystem.** A
+  gitignored build artifact (`skills/diagram/renderer/bundle.js`, which `SKILL.md` tells the author
+  to build locally) present on one side and not the other used to fail the whole "byte-identical"
+  check by name, blaming the mirror instead of the artifact.
+
 ## v0.8.3 — 2026-09-03
 
 - feat(hooks): **`wait-police` refuses to end a turn while delegated work runs unpolled.** A

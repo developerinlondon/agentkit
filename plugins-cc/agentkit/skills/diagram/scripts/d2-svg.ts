@@ -51,6 +51,57 @@ export function retargetDarkTheme(svg: string, prefix = 'html:not([data-theme="l
   return svg.slice(0, at) + prefixSelectors(rules, prefix) + svg.slice(close + 1);
 }
 
+const SCOPE_CARRIER_RE = /<svg\b[^>]*\bclass="(d2-\d+) d2-svg"/;
+const FONT_FACE_RE = /@font-face\s*\{[^{}]*\}/g;
+const STYLE_BLOCK_RE = /(<style type="text\/css"><!\[CDATA\[)([\s\S]*?)(\]\]><\/style>)/g;
+
+// d2 scopes its colour classes under the figure's own `.d2-<hash>` carrier
+// but ships `.shape`, `.connection`, `.blend` and `.md` bare, so an inlined
+// figure redefines them for the whole page. The dark-theme guard, when
+// present, must stay leftmost — it targets <html>, which cannot be a
+// descendant of the figure — so the scope is inserted after it, not before.
+function scopeSelector(selector: string, scope: string, darkPrefix: string): string {
+  const trimmed = selector.trim();
+  if (trimmed === "" || trimmed.includes(scope)) return trimmed;
+  if (trimmed === darkPrefix || trimmed.startsWith(`${darkPrefix} `)) {
+    return `${darkPrefix} ${scope} ${trimmed.slice(darkPrefix.length).trim()}`;
+  }
+  return `${scope} ${trimmed}`;
+}
+
+function scopeFlatRules(css: string, scope: string, darkPrefix: string): string {
+  return css.replace(/([^{}]+)\{([^{}]*)\}/g, (_m, selector: string, decls: string) => {
+    const scoped = selector.split(",").map((s) => scopeSelector(s, scope, darkPrefix)).join(",");
+    return `${scoped}{${decls}}`;
+  });
+}
+
+// @font-face carries no selector to scope, and matching it with the same flat
+// regex would split it on its own inner brace.
+function scopeStylesheet(css: string, scope: string, darkPrefix: string): string {
+  let out = "";
+  let last = 0;
+  FONT_FACE_RE.lastIndex = 0;
+  for (let m = FONT_FACE_RE.exec(css); m !== null; m = FONT_FACE_RE.exec(css)) {
+    out += scopeFlatRules(css.slice(last, m.index), scope, darkPrefix) + m[0];
+    last = FONT_FACE_RE.lastIndex;
+  }
+  return out + scopeFlatRules(css.slice(last), scope, darkPrefix);
+}
+
+// Runs after retargetDarkTheme, once the @media wrapper is gone and every
+// rule is a flat `selector{decls}` pair — the only shape this can safely
+// rewrite without a full CSS parser.
+export function scopeElementRules(svg: string, darkPrefix = 'html:not([data-theme="light"])'): string {
+  const carrier = svg.match(SCOPE_CARRIER_RE);
+  if (!carrier) return svg;
+  const scope = `.${carrier[1]}`;
+  return svg.replace(
+    STYLE_BLOCK_RE,
+    (_m, open: string, body: string, close: string) => `${open}${scopeStylesheet(body, scope, darkPrefix)}${close}`,
+  );
+}
+
 // The island supplies the surface; d2's own full-bleed backdrop would sit on
 // top of it as a slab. Presentation attributes lose to the class rule, so the
 // rect has to go rather than be overridden.

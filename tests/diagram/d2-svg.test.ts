@@ -4,6 +4,7 @@ import {
   dropBackgroundRect,
   inspect,
   retargetDarkTheme,
+  scopeElementRules,
   SvgError,
   verifySelfContained,
 } from '../../skills/diagram/scripts/d2-svg.ts';
@@ -33,6 +34,54 @@ describe('d2 dark-palette retargeting', () => {
   test('a single-palette render is passed through untouched', () => {
     const svg = '<svg><style>.d2-1 .fill-N1{fill:#000;}</style></svg>';
     expect(retargetDarkTheme(svg)).toBe(svg);
+  });
+});
+
+describe('d2 element-rule scoping', () => {
+  // d2 scopes colour classes under the figure's own carrier but ships .shape,
+  // .md and friends bare, so an inlined figure redefines them page-wide.
+  const svg = '<svg class="d2"><svg class="d2-1 d2-svg" viewBox="0 0 1 1">'
+    + '<style type="text/css"><![CDATA['
+    + '.shape{a:1;}.d2-1 .fill-N1{fill:red;}'
+    + '@font-face{font-family:x;src:url(#y);}'
+    + 'html:not([data-theme="light"]) .md{b:2;}'
+    + 'html:not([data-theme="light"]) .d2-1 .fill-N1{fill:blue;}'
+    + ']]></style></svg></svg>';
+
+  test('a bare element rule is scoped under the figure carrier', () => {
+    expect(scopeElementRules(svg)).toContain('.d2-1 .shape{a:1;}');
+  });
+
+  test('a rule already scoped is left alone, not double-prefixed', () => {
+    const out = scopeElementRules(svg);
+    expect(out).toContain('.d2-1 .fill-N1{fill:red;}');
+    expect(out).not.toContain('.d2-1 .d2-1');
+  });
+
+  test('@font-face has no selector and is passed through untouched', () => {
+    expect(scopeElementRules(svg)).toContain('@font-face{font-family:x;src:url(#y);}');
+  });
+
+  test('a dark-relocated bare rule is scoped after the theme guard, not before it', () => {
+    // The guard targets <html>, which cannot be a descendant of the figure —
+    // scoping in front would produce a selector that can never match.
+    expect(scopeElementRules(svg)).toContain('html:not([data-theme="light"]) .d2-1 .md{b:2;}');
+  });
+
+  test('a dark-relocated rule already scoped keeps its order and is not doubled', () => {
+    const out = scopeElementRules(svg);
+    expect(out).toContain('html:not([data-theme="light"]) .d2-1 .fill-N1{fill:blue;}');
+    expect(out).not.toContain('.d2-1 .d2-1');
+  });
+
+  test('a custom dark selector (--host class) is scoped the same way', () => {
+    const classHost = svg.replaceAll('html:not([data-theme="light"])', 'html.dark');
+    expect(scopeElementRules(classHost, 'html.dark')).toContain('html.dark .d2-1 .md{b:2;}');
+  });
+
+  test('with no scope carrier, the svg is passed through unchanged', () => {
+    const plain = '<svg><style type="text/css"><![CDATA[.shape{a:1;}]]></style></svg>';
+    expect(scopeElementRules(plain)).toBe(plain);
   });
 });
 

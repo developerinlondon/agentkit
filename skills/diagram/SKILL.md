@@ -193,6 +193,14 @@ variant to produce and it must be the dark one: strokes `#eeeeee`, muted
 or `#1b1d22`, background transparent. For READMEs/light surfaces:
 near-black strokes with classic pastel fills (`#a5d8ff`, `#b2f2bb`, `#ffec99`).
 
+The ink above is baked into the export either way — there is no page-driven
+theme switch on this side of the register. A host that toggles its own theme
+(not Pages, which supplies the island) needs a real ground under a baked
+palette or the wrong-theme case shows bare strokes on a page of the opposite
+color. Set the scene's `appState.viewBackgroundColor` (or pass `render.ts
+--background`) to the palette's own surface color; leave it `transparent`
+only when the destination is known to supply one, the way Pages does.
+
 Contrast rules — the governing worst case is the DERIVED light rendering
 (the filter darkens every color; the palette above was tuned so ink, muted
 and both accents stay ≥4.5:1 there — an off-palette color has no such
