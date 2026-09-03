@@ -29,20 +29,25 @@ the answer with `git config agentkit.issues.<key> <value>`.
 
 1. **Issue-first, and filing is not free.** Every piece of work runs against an issue.
    Find an existing one (`gh issue list --search`) or create it BEFORE branching. Trivial
-   fixes inside an existing issue's scope ride that issue. Three things look identical at
-   the moment you type `issue create`, and only the first is unambiguously right:
-   - **New work**, unrelated to anything in flight → file it, then branch.
-   - **Scope carved OUT of the issue you are working on now** → a **deferral**, not a
-     discovery. It needs the operator's explicit sign-off before you file it and walk
-     away; the default is to finish the scope you accepted.
-   - **A review finding** → the default disposition is _fix it in the PR that caused it_.
-     Filing is the exception and has to be justified in the issue itself: out of that
-     PR's scope, blocked on a decision, or blocked on other work. Auto-filing every
-     finding is what runs a backlog away from its readers — measured on one repository,
-     34 issues filed in three days with 21 still open.
+   fixes inside an existing issue's scope ride that issue. A finding hit mid-task (a bug,
+   a review comment) defaults to being fixed in the change that caused it, not filed —
+   filing every finding is what runs a backlog away from its readers, measured on one
+   repository at 34 issues filed in three days with 21 still open.
 
-   Whichever it is, say so. Every new issue carries a `Disposition:` line in its body
-   naming the case; the `issue-police` hook refuses a creation without one.
+   Every new issue carries a `Disposition:` line in its body naming exactly one of four
+   cases; `issue-police` refuses a creation with no line, or one whose value matches none
+   of these:
+   - `Disposition: in-progress — <scope, who is doing it now>`: new work, unrelated to
+     anything in flight, that you are about to build. File it, then branch; the PR closes
+     it.
+   - `Disposition: owner-deferred — <the owner's own words>`: scope carved OUT of the
+     issue you are working on now, deferred with the operator's explicit sign-off quoted.
+     The default is still to finish the scope you accepted.
+   - `Disposition: owner-request — <the owner's own words>`: the owner asked for this
+     issue to be filed.
+   - `Disposition: blocked-by <the external system, person, or permission>`: a finding you
+     cannot fix in the current change because something outside your control blocks it,
+     named.
 2. **PRs reference, never auto-close.** Write `Refs #N` in the PR body — never
    `Closes/Fixes/Resolves #N`. GitHub's closing keywords auto-close the issue the
    moment the PR merges to the default branch; the issue must stay open until the fix

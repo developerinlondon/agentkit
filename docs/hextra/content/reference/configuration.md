@@ -49,10 +49,11 @@ so `brain` matches `myorg/brain`.
 
 ## `issue-police`
 
-Two refusals need no configuration, because they are wrong everywhere: an issue filed with **no
-body at all**, and one whose body still carries an **unfilled template** — a guidance comment, an
-empty checkbox, or a bare quick action like `/milestone %`. The rest is what only a project can
-decide.
+Three refusals need no configuration, because they are wrong everywhere: an issue filed with **no
+body at all**, one whose body still carries an **unfilled template** — a guidance comment, an
+empty checkbox, or a bare quick action like `/milestone %` — and one whose `Disposition:` line is
+not `in-progress`, `owner-deferred`, `owner-request`, or `blocked-by` with non-empty text. The rest is what only a
+project can decide.
 
 | Key                      | Type   | Default | Effect                                                           |
 | ------------------------ | ------ | ------- | ---------------------------------------------------------------- |

@@ -69,7 +69,7 @@ What was blocked, quoting the offending fragment so the agent can see which part
 ### Redirection
 
 The command to run instead — literally, not a description of it. `issue-police` goes as far as
-printing three example `Disposition:` lines.
+printing the accepted `Disposition:` forms.
 
 ### Override
 

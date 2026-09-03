@@ -455,13 +455,14 @@ one command; they are deliberately not config.
 | `plan-police`    | yes        | yes                                |
 | `wait-police`    | yes        | yes                                |
 | `version-police` | yes        | **no** — matches its own name only |
+| `issue-police`   | yes        | yes                                |
 | everything else  | **no**     | —                                  |
 
 Four of those are the `PostToolUse` write hooks, `plan-police` guards a plan edit, `wait-police`
-runs on `Stop`, and `version-police` is an OpenCode plugin.
-The `PreToolUse` guards — `git-police`, `issue-police`, `pkg-police`, `resource-police`,
-`kubectl-police`, `mr-police`, `pages-police`, `review-police` — ignore `AGENTKIT_SKIP_HOOKS`
-entirely. Values are
+runs on `Stop`, `version-police` is an OpenCode plugin, and `issue-police` is the one blocking
+`PreToolUse` exception. The other `PreToolUse` guards — `git-police`, `pkg-police`,
+`resource-police`, `kubectl-police`, `mr-police`, `pages-police`, `review-police` — ignore
+`AGENTKIT_SKIP_HOOKS` entirely. Values are
 whitespace-stripped, so `a, b` behaves like `a,b`.
 
 ### Installer and bootstrap

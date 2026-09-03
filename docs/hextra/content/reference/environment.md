@@ -24,7 +24,7 @@ gave.
 | `AGENTKIT_ALLOW_BARE_SVG=1`        | `pages-police` — publishing a diagram outside a figure island                                                |
 | `AGENTKIT_BRANCH_WIP_MAX=<n>`      | raises `git-police`'s cap on open unfinished branches                                                        |
 | `AGENTKIT_MR_POLICE_MAX=<n>`       | raises `mr-police`'s cap on open authored merge requests                                                     |
-| `AGENTKIT_SKIP_HOOKS=<unit>,…`     | short-circuits the named advisory units, or `all`                                                            |
+| `AGENTKIT_SKIP_HOOKS=<unit>,…`     | short-circuits the units that honour it (see [hooks reference](/reference/hooks/#turning-one-off)), or `all` |
 | `AGENTKIT_TARGET_PRIVATE=1`        | permits vendoring a private source into a target that would otherwise refuse                                 |
 
 A unit's own override is named **inside its refusal message**. If a message does not name one, the
