@@ -6,6 +6,8 @@ import { join } from 'node:path';
 
 const HOOK = join(import.meta.dir, '..', '..', 'hooks', 'claude', 'issue-police.sh');
 
+const DISPOSITION = 'Disposition: owner-deferred — the owner said this waits';
+
 let root: string;
 
 function runHook(command: string, cwd?: string): string {
@@ -80,12 +82,12 @@ describe('issue-police: every disposition the refusal offers actually works', ()
 
 describe('issue-police: where the disposition may live', () => {
   test('inline in the body', () => {
-    expect(denied('gh issue create --title x --body "Disposition: new work"')).toBe(false);
+    expect(denied(`gh issue create --title x --body "${DISPOSITION}"`)).toBe(false);
   });
 
   test('in a --body-file the hook can read', () => {
     const body = join(root, 'body.md');
-    writeFileSync(body, 'Some detail.\n\nDisposition: new work, unrelated to anything in flight\n');
+    writeFileSync(body, `Some detail.\n\n${DISPOSITION}\n`);
     expect(denied(`gh issue create --title x --body-file ${body}`)).toBe(false);
   });
 
@@ -98,7 +100,7 @@ describe('issue-police: where the disposition may live', () => {
   test('a relative --body-file resolves against a cd prefix, not the hook cwd', () => {
     const dir = join(root, 'elsewhere');
     mkdirSync(dir, { recursive: true });
-    writeFileSync(join(dir, 'issue.md'), 'Disposition: new work\n');
+    writeFileSync(join(dir, 'issue.md'), `${DISPOSITION}\n`);
     expect(denied(`cd ${dir} && gh issue create --title x --body-file issue.md`)).toBe(false);
   });
 
@@ -106,7 +108,7 @@ describe('issue-police: where the disposition may live', () => {
     const command = `gh issue create --title x --body "$(cat <<'EOF'
 Root cause: unknown.
 
-Disposition: review finding, not fixable in the change that caused it because it needs a schema decision
+Disposition: blocked-by a schema decision the team has not made yet
 EOF
 )"`;
     expect(denied(command)).toBe(false);
@@ -120,7 +122,7 @@ EOF
 
   test('the short -F form is read as a body file', () => {
     const body = join(root, 'shortflag.md');
-    writeFileSync(body, 'Disposition: new work\n');
+    writeFileSync(body, `${DISPOSITION}\n`);
     expect(denied(`gh issue create --title x -F ${body}`)).toBe(false);
   });
 });
@@ -172,7 +174,7 @@ describe('issue-police: the REST spelling of a creation', () => {
   test('a disposition in the field body passes', () => {
     expect(
       denied(
-        `glab api --method POST ${url} --field description="Disposition: new work, unrelated to anything in flight"`,
+        `glab api --method POST ${url} --field description="${DISPOSITION}"`,
       ),
     ).toBe(false);
   });
@@ -197,8 +199,6 @@ describe('issue-police: the REST spelling of a creation', () => {
     expect(denied('glab api --method PUT "projects/g%2Fr/issues/140" --field labels="bug"')).toBe(false);
   });
 });
-
-const DISPOSITION = 'Disposition: new work, unrelated to anything in flight';
 
 function withConfig(body: string, command: string): boolean {
   const home = mkdtempSync(join(tmpdir(), 'agentkit-issuecfg-'));
@@ -367,5 +367,80 @@ Context:
   test('an empty checkbox that owns its line is still refused', () => {
     const unfilled = `${DISPOSITION}\n\n## Criteria\n\n- [ ]\n`;
     expect(denied(`glab issue create -R o/r -t x --description "${unfilled}"`)).toBe(true);
+  });
+});
+
+// Presence is not enough: the value has to be one of the three accepted
+// dispositions. Every case here fails if the value-gate in disposition_form_ok
+// is reverted to a presence-only check.
+describe('issue-police: the disposition value is gated, not just presence', () => {
+  const accepted = [
+    'Disposition: owner-deferred — the owner said this waits',
+    'Disposition: owner-deferred - the owner said this waits',
+    'Disposition: owner-deferred -- the owner said this waits',
+    'Disposition: OWNER-DEFERRED — the owner said this waits',
+    'Disposition: Owner-Deferred - the owner said this waits',
+    'Disposition: owner-request — the owner asked for this to be filed',
+    'Disposition: owner-request - the owner asked for this to be filed',
+    'Disposition: blocked-by legal sign-off on the license text',
+    'Disposition: BLOCKED-BY legal sign-off on the license text',
+  ];
+
+  for (const line of accepted) {
+    test(`accepted: ${line}`, () => {
+      expect(denied(`gh issue create --title x --body "${line}"`)).toBe(false);
+    });
+  }
+
+  test('accepted: the free text may be quoted, as the owner\'s exact words', () => {
+    const command = `gh issue create --title x --body 'Disposition: owner-request — "please create a rule so no issue is left out" (2026-09-03).'`;
+    expect(denied(command)).toBe(false);
+  });
+
+  const refused = [
+    'Disposition: follow-up',
+    'Disposition: later',
+    'Disposition: future',
+    'Disposition: non-blocking',
+    'Disposition: nice to have',
+    'Disposition: tech debt',
+    'Disposition: fix later',
+    'Disposition: new work, unrelated to anything in flight',
+    'Disposition: carved out of #12, deferral approved by the operator',
+    'Disposition: owner-deferred —',
+    'Disposition: owner-deferred — ',
+    'Disposition: blocked-by',
+    'Disposition: owner-deferredsomething',
+    'Disposition: x',
+  ];
+
+  for (const line of refused) {
+    test(`refused: ${line}`, () => {
+      const out = runHook(`gh issue create --title x --body "${line}"`);
+      expect(out).toContain('"deny"');
+      expect(out).toContain('is not a way to end a lane');
+    });
+  }
+
+  test('a refused value in a --body-file is caught the same way', () => {
+    const body = join(root, 'wrongform.md');
+    writeFileSync(body, 'Disposition: follow-up, low priority\n');
+    const out = runHook(`gh issue create --title x --body-file ${body}`);
+    expect(out).toContain('"deny"');
+    expect(out).toContain('is not a way to end a lane');
+  });
+
+  test('an accepted value in a --body-file passes', () => {
+    const body = join(root, 'rightform.md');
+    writeFileSync(body, 'Disposition: blocked-by a pending decision from the platform team\n');
+    expect(denied(`gh issue create --title x --body-file ${body}`)).toBe(false);
+  });
+
+  test('a refused value over the REST field spelling is caught the same way', () => {
+    const out = runHook(
+      'glab api --method POST "projects/o%2Fr/issues" --field description="Disposition: follow-up"',
+    );
+    expect(out).toContain('"deny"');
+    expect(out).toContain('is not a way to end a lane');
   });
 });
