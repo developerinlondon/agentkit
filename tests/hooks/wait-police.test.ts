@@ -48,12 +48,12 @@ function bgStart(id: string, command: string, toolUseId = `toolu_${id}`): Entry[
   ];
 }
 
+function taskNotificationText(id: string): string {
+  return `<task-notification>\n<task-id>${id}</task-id>\n<status>completed</status>\n<summary>done</summary>\n</task-notification>`;
+}
+
 function bgDone(id: string): Entry {
-  return user({
-    type: 'text',
-    text:
-      `<task-notification>\n<task-id>${id}</task-id>\n<status>completed</status>\n<summary>done</summary>\n</task-notification>`,
-  });
+  return user({ type: 'text', text: taskNotificationText(id) });
 }
 
 function spawnAgent(name: string): Entry[] {
@@ -72,16 +72,31 @@ function spawnAgent(name: string): Entry[] {
   ];
 }
 
+function idleNotificationText(name: string): string {
+  return `Another Claude session sent a message:\n<teammate-message teammate_id="${name}">\n{"type":"idle_notification","from":"${name}","idleReason":"available","result":"done"}\n</teammate-message>`;
+}
+
 function agentIdle(name: string): Entry {
-  return user({
-    type: 'text',
-    text:
-      `Another Claude session sent a message:\n<teammate-message teammate_id="${name}">\n{"type":"idle_notification","from":"${name}","idleReason":"available","result":"done"}\n</teammate-message>`,
-  });
+  return user({ type: 'text', text: idleNotificationText(name) });
 }
 
 function sendMessage(to: string): Entry {
   return assistant({ type: 'tool_use', id: `toolu_msg_${to}`, name: 'SendMessage', input: { to, message: 'more' } });
+}
+
+// A teammate poll (Monitor, SendMessage) can relay a completion signal verbatim
+// inside its own tool_result rather than as a top-level text block — the shape
+// that slipped past the original detector.
+function relayedToolResult(text: string, asArray: boolean, label: string): Entry[] {
+  const toolUseId = `toolu_relay_${label}`;
+  return [
+    assistant({ type: 'tool_use', id: toolUseId, name: 'Monitor', input: {} }),
+    user({
+      type: 'tool_result',
+      tool_use_id: toolUseId,
+      content: asArray ? [{ type: 'text', text }] : text,
+    }),
+  ];
 }
 
 function transcript(entries: Entry[]): string {
@@ -148,6 +163,51 @@ describe('wait-police detects live delegated work', () => {
     const out = run([...spawnAgent('lane-a'), agentIdle('lane-a'), sendMessage('lane-a')]);
     expect(blocked(out)).toBe(true);
     expect(reason(out)).toContain('lane-a');
+  });
+});
+
+describe('wait-police finds notifications relayed inside a tool_result', () => {
+  test('an idle notification relayed as a tool_result string clears the subagent', () => {
+    const out = run([
+      ...spawnAgent('lane-a'),
+      ...relayedToolResult(idleNotificationText('lane-a'), false, 'idle-str'),
+    ]);
+    expect(out).toBe('');
+  });
+
+  test('an idle notification relayed as a tool_result text-block array clears the subagent', () => {
+    const out = run([
+      ...spawnAgent('lane-a'),
+      ...relayedToolResult(idleNotificationText('lane-a'), true, 'idle-arr'),
+    ]);
+    expect(out).toBe('');
+  });
+
+  test('a task notification relayed as a tool_result string clears the background task', () => {
+    const out = run([
+      ...bgStart('bxyz123', 'bun run build'),
+      ...relayedToolResult(taskNotificationText('bxyz123'), false, 'task-str'),
+    ]);
+    expect(out).toBe('');
+  });
+
+  test('a task notification relayed as a tool_result text-block array clears the background task', () => {
+    const out = run([
+      ...bgStart('bxyz123', 'bun run build'),
+      ...relayedToolResult(taskNotificationText('bxyz123'), true, 'task-arr'),
+    ]);
+    expect(out).toBe('');
+  });
+
+  test('a relayed idle notification does not mask a different subagent still running', () => {
+    const out = run([
+      ...spawnAgent('lane-a'),
+      ...spawnAgent('lane-b'),
+      ...relayedToolResult(idleNotificationText('lane-a'), false, 'idle-partial'),
+    ]);
+    expect(blocked(out)).toBe(true);
+    expect(reason(out)).toContain('lane-b');
+    expect(reason(out)).not.toContain('lane-a —');
   });
 });
 

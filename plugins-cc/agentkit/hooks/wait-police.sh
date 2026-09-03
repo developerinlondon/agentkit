@@ -64,7 +64,7 @@ repo_disabled() {
 	return 1
 }
 
-command -v jq >/dev/null 2>&1 || exit 0
+command -v jq >/dev/null 2>&1 || fail_open "jq not found"
 agentkit_slurp_input
 
 SESSION=$(agentkit_session_id)
@@ -98,6 +98,16 @@ EVENTS=$(
 			| def txt: if type == "string" then .
 				elif type == "array" then (map(select(type == "object") | .text // "") | join("\n"))
 				else "" end;
+			# A completion signal is text the harness writes wherever a block happens to
+			# carry text — a top-level "text" block, or embedded in a "tool_result" whose
+			# own content a teammate poll (Monitor, SendMessage) relayed verbatim. Both
+			# sources feed the same three checks so a signal is never format-specific.
+			def notif_sig($t):
+				if ($t | test("<task-id>[^<]+</task-id>"))
+					then "BGEND\t\($t | capture("<task-id>(?<i>[^<]+)</task-id>").i)"
+				elif ($t | test("idle_notification") and ($t | test("\"from\":\"[^\"]+\"")))
+					then "IDLE\t\($t | capture("\"from\":\"(?<n>[^\"]+)\"").n)"
+					else empty end;
 			(.message.content // null)
 			| if type == "array" then .[]
 				elif type == "string" then {type: "text", text: .}
@@ -112,14 +122,9 @@ EVENTS=$(
 				then ((.content | txt) as $t
 					| if ($t | test("running in background with ID: [A-Za-z0-9_-]+"))
 						then "BGSTART\t\($t | capture("ID: (?<i>[A-Za-z0-9_-]+)").i)\t\(.tool_use_id // "")"
-						else empty end)
+						else notif_sig($t) end)
 			elif (.type == "text")
-				then ((.text // "") as $t
-					| if ($t | test("<task-id>[^<]+</task-id>"))
-						then "BGEND\t\($t | capture("<task-id>(?<i>[^<]+)</task-id>").i)"
-					elif ($t | test("idle_notification") and ($t | test("\"from\":\"[^\"]+\"")))
-						then "IDLE\t\($t | capture("\"from\":\"(?<n>[^\"]+)\"").n)"
-						else empty end)
+				then notif_sig(.text // "")
 			else empty end' 2>/dev/null
 ) || fail_open "transcript scan failed"
 
