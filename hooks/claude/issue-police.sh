@@ -101,11 +101,18 @@ disposition_trim() {
 	printf '%s' "$s"
 }
 
+# bash 3.2 (stock macOS) cannot parse `(` inside [[ =~ ]], so both patterns are
+# held in variables — see git-police.sh for the same workaround.
+RE_DISPOSITION_OWNER='^[[:space:]]*owner-(deferred|request)[[:space:]]*(-{1,2}|—)[[:space:]]*(.*)$'
+RE_DISPOSITION_BLOCKED='^[[:space:]]*blocked-by[[:space:]]+(.*)$'
+
 disposition_form_ok() {
-	local lower="${1,,}" text
-	if [[ "$lower" =~ ^[[:space:]]*owner-(deferred|request)[[:space:]]*(-{1,2}|—)[[:space:]]*(.*)$ ]]; then
+	local lower text
+	# `${VAR,,}` is bash 4+ and a hard parse error under macOS's stock bash 3.2.
+	lower="$(printf '%s' "$1" | LC_ALL=C tr '[:upper:]' '[:lower:]')"
+	if [[ "$lower" =~ $RE_DISPOSITION_OWNER ]]; then
 		text="$(disposition_trim "${BASH_REMATCH[3]}")"
-	elif [[ "$lower" =~ ^[[:space:]]*blocked-by[[:space:]]+(.*)$ ]]; then
+	elif [[ "$lower" =~ $RE_DISPOSITION_BLOCKED ]]; then
 		text="$(disposition_trim "${BASH_REMATCH[1]}")"
 	else
 		return 1
