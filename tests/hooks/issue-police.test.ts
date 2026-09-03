@@ -498,6 +498,57 @@ describe('issue-police: a repeated body flag is read the way the forge reads it'
   });
 });
 
+// gh reads --body-file's content whenever the flag is present, ignoring an
+// inline --body/--description entirely, in either flag order — verified
+// against the real gh 2.88.1 binary with `BROWSER=echo … --web`.
+describe('issue-police: --body-file wins over an inline --body, in either flag order', () => {
+  let refused: string;
+  let accepted: string;
+  let empty: string;
+
+  beforeAll(() => {
+    refused = join(root, 'precedence-refused.md');
+    accepted = join(root, 'precedence-accepted.md');
+    empty = join(root, 'precedence-empty.md');
+    writeFileSync(refused, 'Disposition: follow-up\n');
+    writeFileSync(accepted, 'Disposition: owner-deferred — the real reason\n');
+    writeFileSync(empty, '');
+  });
+
+  test('a passing inline --body first, refused --body-file last: denied', () => {
+    const out = runHook(`gh issue create --title x --body "Disposition: owner-deferred — x" --body-file ${refused}`);
+    expect(out).toContain('"deny"');
+  });
+
+  test('a refused --body-file first, passing inline --body last: still denied', () => {
+    const out = runHook(`gh issue create --title x --body-file ${refused} --body "Disposition: owner-deferred — x"`);
+    expect(out).toContain('"deny"');
+  });
+
+  test('a refused inline --body, accepted --body-file: passes either order', () => {
+    expect(denied(`gh issue create --title x --body "Disposition: follow-up" --body-file ${accepted}`)).toBe(false);
+    expect(denied(`gh issue create --title x --body-file ${accepted} --body "Disposition: follow-up"`)).toBe(false);
+  });
+
+  test('an empty --body-file wins too, over a passing inline --body', () => {
+    const out = runHook(`gh issue create --title x --body "Disposition: owner-deferred — x" --body-file ${empty}`);
+    expect(out).toContain('"deny"');
+    expect(out).toContain('why it is being filed rather than fixed');
+  });
+
+  test('a refused inline --body next to an unreadable --body-file (stdin) is not smuggled through', () => {
+    const out = runHook('gh issue create --title x --body "Disposition: owner-deferred — decoy" --body-file -');
+    expect(out).toContain('"deny"');
+    expect(out).toContain('stdin');
+  });
+
+  test('glab issue create has no file-based --description, so only --description is read', () => {
+    expect(
+      denied(`glab issue create -R o/r -t x --description "Disposition: owner-deferred — the real reason"`),
+    ).toBe(false);
+  });
+});
+
 describe('issue-police: a Disposition line that only illustrates the syntax is not an answer', () => {
   test('a Disposition line inside inline backticks is not read as the disposition', () => {
     const body = 'Some text. `Disposition: owner-deferred — x` is the syntax, not a real answer.';
