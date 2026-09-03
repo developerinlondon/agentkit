@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'bun:test';
+import { afterAll, beforeAll, beforeEach, describe, expect, test as bunTest } from 'bun:test';
 import { execSync, spawnSync } from 'node:child_process';
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -57,6 +57,19 @@ function hookDidNotAnswer(res: ReturnType<typeof spawnSync>): string | null {
   return `review-police.sh did not answer — ${how}${stderrTail ? `\nstderr:\n${stderrTail}` : ''}`;
 }
 
+interface HookDiagnostics {
+  stdin: string;
+  stdout: string;
+  stderr: string;
+  exitCode: number | null;
+  signal: NodeJS.Signals | null;
+  elapsedMs: number;
+}
+
+// Overwritten on every runHook() call, read back only if the test that made
+// the call goes on to fail — see the test() wrapper below.
+let lastHookCall: HookDiagnostics | null = null;
+
 function runHook(
   command: string,
   opts: {
@@ -87,6 +100,7 @@ function runHook(
   });
   const hookPath = opts.hookPath ?? HOOK;
   const args = opts.supervised ? [SUPERVISOR, '5', hookPath] : [hookPath];
+  const startedAt = Date.now();
   const res = spawnSync('bash', args, {
     cwd: opts.cwd ?? repo,
     input,
@@ -94,9 +108,72 @@ function runHook(
     timeout: HOOK_TIMEOUT_MS,
     env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, HOME: home },
   });
+  lastHookCall = {
+    stdin: input,
+    stdout: res.stdout ?? '',
+    stderr: (res.stderr ?? '').toString(),
+    exitCode: res.status,
+    signal: res.signal,
+    elapsedMs: Date.now() - startedAt,
+  };
   const failure = hookDidNotAnswer(res);
   if (failure) throw new Error(failure);
   return res.stdout ?? '';
+}
+
+// Read with the same PATH/HOME runHook() gave the hook, so a fallthrough to a
+// real system glab/gh instead of the fixture stub (a PATH-resolution race)
+// shows up here rather than staying invisible.
+function forgeVersionAsSeenByHook(cli: 'glab' | 'gh'): string {
+  const res = spawnSync(cli, ['--version'], {
+    encoding: 'utf-8',
+    timeout: 5_000,
+    env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, HOME: home },
+  });
+  if (res.error) return `<spawn failed: ${res.error.message}>`;
+  const out = (res.stdout || res.stderr || '').toString().trim();
+  return out || `<empty output, exit ${res.status ?? 'null'}>`;
+}
+
+function dumpLastHookCall(c: HookDiagnostics): string {
+  return [
+    '----- runHook diagnostics (most recent call in this test) -----',
+    `stdin sent to the hook:\n${c.stdin}`,
+    `exit: ${c.exitCode ?? 'null'}${c.signal ? ` (signal ${c.signal})` : ''}, elapsed: ${c.elapsedMs}ms`,
+    `glab --version as seen by the hook: ${forgeVersionAsSeenByHook('glab')}`,
+    `gh --version as seen by the hook: ${forgeVersionAsSeenByHook('gh')}`,
+    `hook stdout:\n${c.stdout}`,
+    `hook stderr:\n${c.stderr}`,
+    '-----------------------------------------------------------------',
+  ].join('\n');
+}
+
+// The part of the test() wrapper below that can be exercised directly, without
+// registering a real (deliberately failing) case with the test framework —
+// see "review-police test probe: failure diagnostics" for the proof.
+function runProbedTest(fn: () => void): void {
+  lastHookCall = null;
+  try {
+    fn();
+  } catch (err) {
+    // No runHook() call happened in this test: nothing to add, and no
+    // "no call recorded" filler either — the block is either useful or absent.
+    if (!lastHookCall) throw err;
+    const diagnostics = dumpLastHookCall(lastHookCall);
+    if (err instanceof Error) {
+      err.message = `${err.message}\n\n${diagnostics}`;
+      throw err;
+    }
+    throw new Error(`${String(err)}\n\n${diagnostics}`);
+  }
+}
+
+// Shadows the imported test() for every test() call in this file (lexical
+// scoping resolves the bare identifier to this declaration), so a failing
+// assertion anywhere carries the last runHook() call's full diagnostics in
+// its message without touching each test body. Passing tests are unaffected.
+function test(name: string, fn: () => void): void {
+  bunTest(name, () => runProbedTest(fn));
 }
 
 /** Fake forge CLI: MR 12 -> feat/thing@HEAD, MR 999 -> other/branch. */
@@ -1275,5 +1352,68 @@ describe('review-police: bypasses found in adversarial review', () => {
     // which over-matches. A merge must never slip through because the line
     // failed to parse.
     expect(runHook('glab mr merge 999 --squash "oops')).toContain('"deny"');
+  });
+});
+
+describe('review-police test probe: failure diagnostics', () => {
+  // A probe that only reports pass/fail leaves a runner-only flake
+  // unreproducible: nothing but "expected '' received '...'". This proves the
+  // failure message explains itself instead.
+  function writeStubHook(): { dir: string; path: string } {
+    const dir = mkdtempSync(join(tmpdir(), 'review-police-probe-diag-'));
+    const path = join(dir, 'stub-hook.sh');
+    writeFileSync(path, '#!/usr/bin/env bash\ncat >/dev/null\necho -n \'{"decision":"allow"}\'\n');
+    chmodSync(path, 0o755);
+    return { dir, path };
+  }
+
+  test('a failing assertion on the probe result carries stdin, output, exit code, elapsed time, and CLI versions', () => {
+    const { dir, path } = writeStubHook();
+    try {
+      let caught: Error | undefined;
+      try {
+        runProbedTest(() => {
+          expect(runHook(MERGE, { hookPath: path })).toBe('this-value-never-matches');
+        });
+      } catch (err) {
+        caught = err as Error;
+      }
+      if (!caught) throw new Error('expected the forced assertion to fail');
+      expect(caught.message).toContain('runHook diagnostics');
+      expect(caught.message).toContain(MERGE);
+      expect(caught.message).toContain('exit: 0');
+      expect(caught.message).toMatch(/elapsed: \d+ms/);
+      expect(caught.message).toContain('{"decision":"allow"}');
+      expect(caught.message).toContain('glab --version as seen by the hook');
+      expect(caught.message).toContain('gh --version as seen by the hook');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('a passing assertion on the probe result carries no diagnostic block', () => {
+    const { dir, path } = writeStubHook();
+    try {
+      expect(() =>
+        runProbedTest(() => {
+          expect(runHook(MERGE, { hookPath: path })).toBe('{"decision":"allow"}');
+        })
+      ).not.toThrow();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('a failure with no runHook call in the test carries no diagnostic block', () => {
+    let caught: Error | undefined;
+    try {
+      runProbedTest(() => {
+        expect(true).toBe(false);
+      });
+    } catch (err) {
+      caught = err as Error;
+    }
+    if (!caught) throw new Error('expected the forced assertion to fail');
+    expect(caught.message).not.toContain('runHook diagnostics');
   });
 });
