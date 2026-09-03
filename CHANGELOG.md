@@ -9,6 +9,12 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+- fix(tests): **the review-police probe helper can no longer read a silent hook as an allow.**
+  `runHook` ignored `spawnSync`'s exit status, error and stderr, so a hook that was killed, crashed
+  before writing, or never started produced the same empty string as one that deliberately allowed
+  the command — an `ALLOW` probe row would have gone green against a hook that never ran at all. It
+  now carries an explicit timeout and throws, naming the exit status and the stderr tail, whenever
+  the hook does not exit 0 (which every genuine review-police.sh path does, allow or deny).
 - fix(tools): **`bounded-run` passes `D2_BIN` through its environment allowlist.** The bounded env
   `scripts/product-command` runs review under on Linux stripped it, so the pinned-d2 policy check
   could not honour the escape hatch the technical register documents — a reviewer testing a
