@@ -246,7 +246,9 @@ verify_host_headroom() {
 	[[ -r "$PROC_ROOT/meminfo" && -r "$PROC_ROOT/loadavg" \
 		&& -r "$PROC_ROOT/pressure/memory" ]] \
 		|| die 'host memory, load, or pressure metrics are unavailable'
+	# shellcheck disable=SC2016  # awk field variable, not shell expansion.
 	available_kib="$("$AWK_BIN" '/^MemAvailable:/ {print $2; exit}' "$PROC_ROOT/meminfo")"
+	# shellcheck disable=SC2016  # awk field variable, not shell expansion.
 	total_kib="$("$AWK_BIN" '/^MemTotal:/ {print $2; exit}' "$PROC_ROOT/meminfo")"
 	[[ "$available_kib" =~ ^[0-9]+$ && "$total_kib" =~ ^[0-9]+$ ]] \
 		|| die 'host total or available memory could not be read'
