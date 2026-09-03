@@ -222,6 +222,11 @@ jobs:
     name: Docs site
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    env:
+      # Hugo's build fetches Go modules for the Hextra theme; without a pinned
+      # toolchain that silently downloads one through the module proxy on
+      # every build, which is what intermittently fails.
+      GOTOOLCHAIN: local
     steps:
       - name: Check out the commit
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -230,6 +235,11 @@ jobs:
           # a manual publish from main would show a bare "Latest".
           fetch-tags: true
           fetch-depth: 0
+
+      - name: Install Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: docs/hextra/go.mod
 
       - name: Install pinned Moon, Bun and Node toolchains
         uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
@@ -345,6 +355,11 @@ jobs:
     # The publish builds every archived version from its tag and uploads all of
     # them; at the archive cap that is well past the old 20-minute bound.
     timeout-minutes: 45
+    env:
+      # Hugo's build fetches Go modules for the Hextra theme; without a pinned
+      # toolchain that silently downloads one through the module proxy on
+      # every build, which is what intermittently fails.
+      GOTOOLCHAIN: local
     steps:
       - name: Check out the commit
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -353,6 +368,11 @@ jobs:
           # a manual publish from main would show a bare "Latest".
           fetch-tags: true
           fetch-depth: 0
+
+      - name: Install Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: docs/hextra/go.mod
 
       - name: Install pinned Moon, Bun and Node toolchains
         uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
