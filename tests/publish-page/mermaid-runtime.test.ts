@@ -1,8 +1,9 @@
 import { afterAll, describe, expect, test } from 'bun:test';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { bundledThemePath, mermaidRuntime, renderThemed } from '../../skills/publish-page/render-html.ts';
+import { launchBrowser } from './browser-launch.ts';
 
 // A diagram's source is author text, and in a product brief it is crawled text:
 // the fence reaches mermaid's parser verbatim by design. What mermaid then does
@@ -16,7 +17,10 @@ const HOSTILE = `<pre class="mermaid">flowchart LR
 // is for the diagram to exist — not for a duration. A 2-core CI runner spent
 // longer than any interval that looked generous on a developer machine.
 const RENDER_BUDGET_MS = 45_000;
-const CASE_TIMEOUT_MS = 120_000;
+// Two renders in the widest case, each able to spend two 20s launch attempts
+// before its 45s render budget. Below 170_000 the harness's own timeout fires
+// first and replaces the launcher's stderr report with a bare "timed out".
+const CASE_TIMEOUT_MS = 180_000;
 
 function chromePath(): string | null {
   const candidates = [
@@ -92,42 +96,6 @@ async function attach(url: string): Promise<Session> {
   };
 }
 
-async function devtoolsEndpoint(profile: string): Promise<string> {
-  const portFile = join(profile, 'DevToolsActivePort');
-  const deadline = Date.now() + 20_000;
-  let lastFailure = 'port file never appeared';
-  while (Date.now() < deadline) {
-    // Chrome writes the port file non-atomically and opens the socket after —
-    // an empty read or a refused connection is "not yet", never fatal. The
-    // unguarded fetch here once escaped the loop as a ConnectionRefused on
-    // 127.0.0.1:80 (empty port), wasting the whole retry budget on one race.
-    if (existsSync(portFile)) {
-      const [port] = readFileSync(portFile, 'utf-8').split('\n');
-      if (/^\d+$/.test(port)) {
-        try {
-          // The loop deadline only checks between iterations; an accepted-but-
-          // silent socket would otherwise pin a single fetch past all of it.
-          const reply = await fetch(`http://127.0.0.1:${port}/json/list`, {
-            signal: AbortSignal.timeout(1_000),
-          });
-          const targets = await reply.json() as any[];
-          const page = targets.find((t) => t.type === 'page');
-          if (page?.webSocketDebuggerUrl) return page.webSocketDebuggerUrl;
-          lastFailure = `no page target on port ${port} yet`;
-        } catch (error) {
-          lastFailure = `port ${port} not answering yet: ${error}`;
-        }
-      } else {
-        lastFailure = `port file present but holds ${JSON.stringify(port)}`;
-      }
-    } else if (lastFailure !== 'port file never appeared') {
-      lastFailure = 'port file vanished after appearing — the browser exited';
-    }
-    await Bun.sleep(50);
-  }
-  throw new Error(`browser never published a usable devtools endpoint in ${profile} (${lastFailure})`);
-}
-
 async function evaluate(session: Session, expression: string): Promise<unknown> {
   const reply = await session.send('Runtime.evaluate', { expression, returnByValue: true });
   return reply?.result?.result?.value;
@@ -137,22 +105,12 @@ async function evaluate(session: Session, expression: string): Promise<unknown> 
 // slows the renderer the way a loaded CI runner does, so the waiting itself is
 // exercised rather than assumed.
 async function renderedPage(html: string, throttle = 1): Promise<string> {
-  const profile = mkdtempSync(join(tmpdir(), 'agentkit-chrome-'));
-  const file = join(profile, 'page.html');
+  const launch = await launchBrowser({ binary: chrome as string });
+  const file = join(launch.profile, 'page.html');
   writeFileSync(file, html);
-  const browser = Bun.spawn([
-    chrome as string,
-    '--headless=new',
-    '--disable-gpu',
-    '--no-sandbox',
-    '--no-first-run',
-    '--remote-debugging-port=0',
-    `--user-data-dir=${profile}`,
-    'about:blank',
-  ], { stdout: 'pipe', stderr: 'pipe' });
   let session: Session | undefined;
   try {
-    session = await attach(await devtoolsEndpoint(profile));
+    session = await attach(launch.endpoint);
     await Promise.all([session.send('Runtime.enable'), session.send('Log.enable'), session.send('Page.enable')]);
     if (throttle > 1) await session.send('Emulation.setCPUThrottlingRate', { rate: throttle });
     await session.send('Page.navigate', { url: `file://${file}` });
@@ -172,12 +130,11 @@ async function renderedPage(html: string, throttle = 1): Promise<string> {
     throw new Error(
       `no diagram after ${RENDER_BUDGET_MS}ms (throttle ${throttle}x)\npage: ${state}\nerrors: ${
         session.logs.join('\n') || 'none'
-      }`,
+      }\nbrowser stderr: ${launch.stderrTail() || 'none'}`,
     );
   } finally {
     session?.close();
-    browser.kill();
-    rmSync(profile, { force: true, recursive: true });
+    launch.close();
   }
 }
 
