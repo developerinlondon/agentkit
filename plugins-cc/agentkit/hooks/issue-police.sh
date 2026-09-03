@@ -1,9 +1,14 @@
 #!/usr/bin/env bash
 # issue-police.sh — Claude Code PreToolUse hook (matcher: Bash)
-# Blocks: filing an issue that does not say why it is being filed instead of
-# fixed. Presence only — what a disposition should say is the lifecycle skills'
-# job, and this hook forms no opinion on the answer.
+# Blocks filing an issue whose Disposition: line is missing or not one of the four accepted forms.
 set -euo pipefail
+
+if [[ -n "${AGENTKIT_SKIP_HOOKS:-}" ]]; then
+	_skip=",$(printf '%s' "$AGENTKIT_SKIP_HOOKS" | tr -d '[:space:]'),"
+	case "$_skip" in
+	*",issue-police,"* | *",all,"*) exit 0 ;;
+	esac
+fi
 
 # shellcheck source=lib/hook-input.sh
 source "${BASH_SOURCE[0]%/*}/lib/hook-input.sh"
@@ -41,7 +46,7 @@ is_creation() {
 	# truncated at the first body flag: an issues URL quoted inside a description
 	# is not itself a creation.
 	url_part=$(echo "$COMMAND" |
-		sed -E 's/[[:space:]](--field|--raw-field|-f|--input|--body|--body-file|--description-file)[[:space:]=].*//')
+		sed -E 's/[[:space:]](--field|--raw-field|-f|--input|--body|--body-file)[[:space:]=].*//')
 	# Trailing segment only — /issues/7/notes and /issues_statistics create nothing.
 	echo "$url_part" | grep -qE '/issues([^/[:alnum:]_]|$)' && {
 		CREATION_KIND="issue"
@@ -69,9 +74,11 @@ deny() {
 TARGET_DIR=$(echo "$COMMAND" | sed -nE 's/(^|.*[;&|])[[:space:]]*cd[[:space:]]+([^[:space:];&|]+).*/\2/p' | head -1)
 TARGET_DIR="${TARGET_DIR/#\~/$HOME}"
 
+# glab issue create has no file-based --description equivalent (verified
+# against the installed glab binary's own --help); --body-file/-F is gh only.
 TEXT="$COMMAND"
 BODY_FILES=$(echo "$COMMAND" |
-	grep -oE -- '(--body-file|--description-file|-F)[[:space:]=]+[^[:space:]"'"'"']+' |
+	grep -oE -- '(--body-file|-F)[[:space:]=]+[^[:space:]"'"'"']+' |
 	sed -E 's/^[^[:space:]=]+[[:space:]=]+//' || true)
 
 for body_file in $BODY_FILES; do
@@ -87,6 +94,42 @@ done
 # on the quote character itself.
 DISPOSITION_RE="[Dd]isposition:[[:space:]]*[^[:space:]\"'\`]"
 
+# Fenced/backtick text is evidence, not an answer (has_unfilled_skeleton reads
+# it the same way); the LAST matching line wins, since a body may quote the
+# syntax before stating the real one.
+disposition_value() {
+	printf '%s\n' "$1" | strip_quoted | grep -ioE '[Dd]isposition:[[:space:]]*.*' | sed -n '$p' |
+		sed -E 's/^[Dd]isposition:[[:space:]]*//'
+}
+
+# Strips wrapping quotes/backticks/spaces so a bare closing quote left by the
+# shell argument (e.g. `owner-deferred —"`) doesn't itself count as text.
+disposition_trim() {
+	local s="$1"
+	while [[ "$s" == [\ \"\'\`]* ]]; do s="${s:1}"; done
+	while [[ "$s" == *[\ \"\'\`] ]]; do s="${s%?}"; done
+	printf '%s' "$s"
+}
+
+# bash 3.2 (stock macOS) cannot parse `(` inside [[ =~ ]], so both patterns are
+# held in variables — see git-police.sh for the same workaround.
+RE_DISPOSITION_KEYED='^[[:space:]]*(owner-deferred|owner-request|in-progress)[[:space:]]*(-{1,2}|—|–)[[:space:]]*(.*)$'
+RE_DISPOSITION_BLOCKED='^[[:space:]]*blocked-by[[:space:]]+(.*)$'
+
+disposition_form_ok() {
+	local lower text
+	# `${VAR,,}` is bash 4+ and a hard parse error under macOS's stock bash 3.2.
+	lower="$(printf '%s' "$1" | LC_ALL=C tr '[:upper:]' '[:lower:]')"
+	if [[ "$lower" =~ $RE_DISPOSITION_KEYED ]]; then
+		text="$(disposition_trim "${BASH_REMATCH[3]}")"
+	elif [[ "$lower" =~ $RE_DISPOSITION_BLOCKED ]]; then
+		text="$(disposition_trim "${BASH_REMATCH[1]}")"
+	else
+		return 1
+	fi
+	[[ -n "$text" ]]
+}
+
 BODY_TEXT=""
 for body_file in $BODY_FILES; do
 	[[ "$body_file" == "-" ]] && continue
@@ -98,7 +141,9 @@ for body_file in $BODY_FILES; do
 done
 
 # shlex, because a body is a quoted argument containing everything a regex would
-# have to survive: newlines, nested quotes, flags quoted inside prose.
+# have to survive: newlines, nested quotes, flags quoted inside prose. A single-
+# value pflag string flag overwrites on each occurrence, so the LAST one in the
+# command is what the forge actually receives — an earlier value is a decoy.
 forge_flag_value() {
 	command -v python3 >/dev/null 2>&1 || return 1
 	COMMAND="$COMMAND" python3 -c '
@@ -108,15 +153,16 @@ try:
     parts = shlex.split(os.environ["COMMAND"], comments=False)
 except ValueError:
     sys.exit(1)
+result = None
 for i, part in enumerate(parts):
     for name in names:
         if part == name and i + 1 < len(parts):
-            print(parts[i + 1])
-            sys.exit(0)
-        if part.startswith(name + "="):
-            print(part[len(name) + 1:])
-            sys.exit(0)
-sys.exit(1)
+            result = parts[i + 1]
+        elif part.startswith(name + "="):
+            result = part[len(name) + 1:]
+if result is None:
+    sys.exit(1)
+print(result)
 ' "$@" 2>/dev/null
 }
 
@@ -131,6 +177,7 @@ try:
     parts = shlex.split(os.environ["COMMAND"], comments=False)
 except ValueError:
     sys.exit(1)
+result = None
 for i, part in enumerate(parts):
     pair = None
     if part in flags and i + 1 < len(parts):
@@ -141,10 +188,28 @@ for i, part in enumerate(parts):
         continue
     key, value = pair.split("=", 1)
     if key in names:
-        print(value)
-        sys.exit(0)
-sys.exit(1)
+        result = value
+if result is None:
+    sys.exit(1)
+print(result)
 ' "$@" 2>/dev/null
+}
+
+# Verified against the real gh binary: --body-file wins over an inline
+# --body/--description unconditionally, in either flag order, even when the
+# file is empty. BODY_FILES non-empty means that flag was present at all, so
+# an unreadable file (missing, or "-" for stdin) yields an empty body here
+# rather than falling back to a decoy inline value.
+resolve_effective_body() {
+	local body
+	if [[ -n "$BODY_FILES" ]]; then
+		body="$BODY_TEXT"
+	else
+		body="$(forge_flag_value --description -d --body -b || true)"
+		[[ -z "$body" ]] && body="$(forge_field_value description body || true)"
+	fi
+	body="${body#"${body%%[![:space:]]*}"}"
+	printf '%s' "$body"
 }
 
 char_count() { printf '%s' "$1" | wc -c | tr -d ' '; }
@@ -179,10 +244,7 @@ completeness_checks() {
 		agentkit_advise_json "UNCHECKED: issue-police read no further than the disposition — python3 is missing, so the body and metadata of this issue were not examined. Install python3 to enforce issue completeness."
 		return 0
 	}
-	body="$(forge_flag_value --description -d --body -b || true)"
-	[[ -z "$body" ]] && body="$(forge_field_value description body || true)"
-	[[ -z "$body" ]] && body="$BODY_TEXT"
-	body="${body#"${body%%[![:space:]]*}"}"
+	body="$EFFECTIVE_BODY"
 
 	# An empty body is wrong everywhere; how short is too short is a house call,
 	# so the floor and the ceiling are both opt-in.
@@ -192,7 +254,7 @@ completeness_checks() {
 	if [[ -z "$body" ]]; then
 		deny "BLOCKED: this issue has no description.
 
-An issue with a title and nothing else asks the next reader to reconstruct what you already knew. Pass the body with --description (glab) or --body (gh), or write it to a file and pass --description-file / --body-file.
+An issue with a title and nothing else asks the next reader to reconstruct what you already knew. Pass the body with --description (glab) or --body (gh), or, on gh only, write it to a file and pass --body-file.
 
 State the problem, what done looks like, and the evidence you have — a few lines beat a heading with nothing under it."
 	fi
@@ -352,6 +414,8 @@ board_hygiene_advice() {
 	agentkit_advise_json "FILED, not finished — board metadata is what makes this findable. Before moving on: (1) set the work-item Status off Triage (GitLab: GraphQL statusWidget — boards filter on Status, and a status:: label does not move it); (2) link the parent epic or work item; (3) weight, milestone, assignee, labels; (4) read the item back and verify every field landed — a silent API failure leaves blanks the command line never showed. The complete-work-item-metadata taste is the policy; this reminder exists because it was missed twice."
 }
 
+EFFECTIVE_BODY="$(resolve_effective_body)"
+
 # An epic is a container: the filed-rather-than-fixed question does not apply,
 # and its fields travel as -f pairs no flag check can read. It gets the body
 # checks and the advisory, not the issue gates.
@@ -361,19 +425,41 @@ if [[ "$CREATION_KIND" == epic ]]; then
 	exit 0
 fi
 
-if echo "$TEXT" | grep -qE "$DISPOSITION_RE"; then
-	completeness_checks
-	board_hygiene_advice
-	exit 0
-fi
+# --body-file is authoritative once present, even unreadable, so raw command
+# text — which may still carry a decoy inline value — is not a safe fallback
+# then. Only fall back when no --body-file was given and python3 (needed to
+# resolve an inline flag) is unavailable.
+DISPOSITION_SOURCE="$EFFECTIVE_BODY"
+[[ -z "$EFFECTIVE_BODY" && -z "$BODY_FILES" ]] && DISPOSITION_SOURCE="$TEXT"
 
-deny "BLOCKED: this issue does not say why it is being filed rather than fixed.
+if ! printf '%s\n' "$DISPOSITION_SOURCE" | strip_quoted | grep -qE "$DISPOSITION_RE"; then
+	deny "BLOCKED: this issue does not say why it is being filed rather than fixed.
 
-Filing is not free. A review finding defaults to being fixed in the change that caused it, and scope carved out of the issue you are working on right now is a deferral needing the operator's sign-off — neither is a new issue by default.
+An issue is not a way to end a lane. Fix the finding in the current change, or file it only for work
+the owner explicitly deferred or asked for, or work blocked on something outside your control.
 
-Add a Disposition: line to the issue body naming which case this is, for example:
-  Disposition: new work, unrelated to anything in flight
-  Disposition: carved out of #<n>, deferral approved by the operator
-  Disposition: review finding, not fixable in the change that caused it because <reason>
+Add a Disposition: line to the issue body in one of these exact forms:
+  Disposition: in-progress — the scope, and who is building it right now
+  Disposition: owner-deferred — quote the owner's own words here
+  Disposition: owner-request — quote the owner's own words here
+  Disposition: blocked-by the external system, person, or permission
 
 A body arriving on stdin cannot be read here: pass it inline with --body, or write it to a file and pass --body-file <path>."
+fi
+
+if ! disposition_form_ok "$(disposition_value "$DISPOSITION_SOURCE")"; then
+	deny "BLOCKED: an issue is not a way to end a lane. Fix the finding in the current change, or file it
+with a Disposition: line in one of these exact forms:
+  Disposition: in-progress — the scope, and who is building it right now
+  Disposition: owner-deferred — quote the owner's own words here
+  Disposition: owner-request — quote the owner's own words here
+  Disposition: blocked-by the external system, person, or permission
+
+The key is case-insensitive; the separator before the free text is a hyphen (- or --) or a dash
+(– or —). follow-up, later, future, non-blocking, nice to have, and tech debt describe the deferral
+this gate exists to refuse, not a reason for it."
+fi
+
+completeness_checks
+board_hygiene_advice
+exit 0

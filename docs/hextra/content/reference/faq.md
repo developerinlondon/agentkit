@@ -22,12 +22,12 @@ It depends on which one, and the difference matters.
 | get past a `PreToolUse` guard once      | prefix the one command with that guard's `AGENTKIT_ALLOW_*=1` |
 | change a threshold permanently          | edit `~/.config/agentkit/config.yaml`                         |
 
-`AGENTKIT_SKIP_HOOKS` is honoured by seven units: `coding-police`, `comment-police`,
+`AGENTKIT_SKIP_HOOKS` is honoured by eight units: `coding-police`, `comment-police`,
 `prose-police` and `format-police` (the `PostToolUse` write hooks; `prose-police` honours it in its
-`PreToolUse` Bash arm too), `plan-police`, `wait-police` (the `Stop` hook) and `version-police`
-(OpenCode). `version-police`
-matches only its own name — `all` does not reach it. The `PreToolUse` guards ignore the variable
-entirely; that is why each of them ships its own single-command override instead.
+`PreToolUse` Bash arm too), `plan-police`, `wait-police` (the `Stop` hook), `version-police`
+(OpenCode), and `issue-police` (the one blocking `PreToolUse` exception). `version-police`
+matches only its own name — `all` does not reach it. The other `PreToolUse` guards ignore the
+variable entirely; that is why each of them ships its own single-command override instead.
 
 ## Why did the formatter touch more than the file I edited?
 

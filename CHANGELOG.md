@@ -9,6 +9,26 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+- feat(hooks): **`issue-police` gates the `Disposition:` value, not just its presence.** An issue
+  filed with `Disposition: follow-up`, `later`, `tech debt`, or any other label passed as if it were
+  an answer used to clear the hook; only `in-progress`, `owner-deferred`, `owner-request`, and
+  `blocked-by` — each with non-empty text after a hyphen or em-dash separator, case-insensitive —
+  now pass. Everything else is refused with the reason that an issue is not a way to end a lane.
+  `rules/issue-tracking.md` gains a "No Deferred Findings" section listing all four forms and their
+  meanings: a finding is fixed in the change that found it, filing is for new work starting now, an
+  owner's deferral or request, or an external blocker, quoted or named. `skills/github-issue-lifecycle`
+  and `skills/gitlab-issue-lifecycle` teach the same four forms in place of the old three-case framing.
+  Fixed against the real `gh`/`glab` binaries: `--body`/`--description`/`--field body=` repeated on one
+  command line is read the way the forge itself reads it — the LAST occurrence, not the first, so a
+  passing decoy earlier in the command could no longer smuggle a refused value past the gate. A
+  `Disposition:` line inside a fenced block or backtick span is evidence of the syntax, not an answer,
+  and no longer counts. `en-dash` (`–`) joins the hyphen and em-dash as an accepted separator.
+  `AGENTKIT_SKIP_HOOKS=issue-police` (or `all`) now works, matching `plan-police`/`comment-police`.
+  `--body-file` also won a second look: verified against the real `gh` binary, it is authoritative
+  over an inline `--body`/`--description` whenever present, in either flag order, even when the file
+  is empty — an unreadable one (missing, or `-` for stdin) is now read as an unknown body rather than
+  falling back to whatever inline value sits next to it. `--description-file`, matched in the same
+  regex as a guess at glab's file-based equivalent, does not exist on either forge CLI and is dropped.
 - fix(tests): **`skills/diagram/bun.lock` is now checked against its declared semver ranges, not
   just structurally.** `bun install --frozen-lockfile --dry-run` only catches a dependency added or
   removed from `package.json`; a resolved entry hand-edited to any version, in range or not, still
