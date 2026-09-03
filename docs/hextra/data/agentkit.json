@@ -152,6 +152,15 @@
         "plugin"
       ],
       "claudePlugins": []
+    },
+    {
+      "name": "wait",
+      "mechanisms": [
+        "hook"
+      ],
+      "claudePlugins": [
+        "agentkit"
+      ]
     }
   ],
   "wiring": [
@@ -264,6 +273,13 @@
       "unit": "taste",
       "event": "PreToolUse",
       "matcher": "Bash",
+      "timeout": 15,
+      "failClosedBudget": null
+    },
+    {
+      "unit": "wait",
+      "event": "Stop",
+      "matcher": "",
       "timeout": 15,
       "failClosedBudget": null
     }
@@ -493,6 +509,7 @@
     "plan-gate",
     "review-gate",
     "review-profile",
+    "wait-for",
     "wip"
   ],
   "d2Pin": "0.8.2",
@@ -529,6 +546,12 @@
     },
     {
       "name": "review-profile",
+      "platforms": [
+        "portable"
+      ]
+    },
+    {
+      "name": "wait-for",
       "platforms": [
         "portable"
       ]
@@ -607,6 +630,11 @@
       "name": "review-discipline",
       "file": "instructions/review-discipline.md",
       "globs": null
+    },
+    {
+      "name": "wait-discipline",
+      "file": "instructions/wait-discipline.md",
+      "globs": null
     }
   ],
   "plugins": [
@@ -629,15 +657,15 @@
     "resource-police.rules"
   ],
   "counts": {
-    "units": 16,
+    "units": 17,
     "skills": 29,
     "coreSkills": 19,
     "kits": 8,
-    "tools": 7,
+    "tools": 8,
     "rules": 7,
-    "instructions": 6,
+    "instructions": 7,
     "plugins": 9,
     "codexPolicies": 6,
-    "wiring": 16
+    "wiring": 17
   }
 }
