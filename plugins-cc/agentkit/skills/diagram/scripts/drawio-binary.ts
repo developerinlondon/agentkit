@@ -67,6 +67,7 @@ export function resolveLauncher(
 }
 
 export const RUN_TIMEOUT_MS = 180000;
+export const KILL_GRACE_MS = 2000;
 
 // Chromium narrates dbus and zygote failures on every headless start, so the
 // real message is whatever is left. When nothing is, the noise is the only
@@ -107,23 +108,31 @@ export function run(
   const child = spawn(cmd, argv, { detached: true, stdio: ["ignore", "pipe", "pipe"] });
   let out = "";
   let err = "";
-  let timedOut = false;
   child.stdout.on("data", (d: Buffer) => void (out += d.toString()));
   child.stderr.on("data", (d: Buffer) => void (err += d.toString()));
-  const timer = setTimeout(() => {
-    timedOut = true;
-    killGroup(child.pid);
-  }, timeoutMs);
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let grace: ReturnType<typeof setTimeout> | undefined;
   return new Promise<string>((resolve, reject) => {
+    const expired = () =>
+      reject(new DrawioError(`draw.io timed out after ${timeoutMs}ms and its process group was killed`));
+    let timedOut = false;
+    timer = setTimeout(() => {
+      timedOut = true;
+      killGroup(child.pid);
+      // "close" waits for the inherited pipes, and a descendant that outlived
+      // the kill still holds them — so the timeout settles this itself rather
+      // than waiting on a stream nothing will close.
+      grace = setTimeout(expired, KILL_GRACE_MS);
+    }, timeoutMs);
     child.on("error", (e: Error) => reject(new DrawioError(`could not start ${cmd}: ${e.message}`)));
     child.on("close", (code) => {
-      if (timedOut) {
-        reject(new DrawioError(`draw.io timed out after ${timeoutMs}ms and its process group was killed`));
-      } else if (code === 0) {
-        resolve(out);
-      } else {
-        reject(new DrawioError(`draw.io failed:\n${readableStderr(err || out)}`));
-      }
+      if (timedOut) expired();
+      else if (code === 0) resolve(out);
+      else reject(new DrawioError(`draw.io failed:\n${readableStderr(err || out)}`));
     });
-  }).finally(() => clearTimeout(timer));
+  }).finally(() => {
+    clearTimeout(timer);
+    clearTimeout(grace);
+  });
 }

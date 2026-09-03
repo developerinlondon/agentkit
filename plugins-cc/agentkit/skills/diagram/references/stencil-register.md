@@ -85,6 +85,12 @@ The wrapper looks for `$AGENTKIT_DRAWIO`, then
 
 Two things the wrapper handles that trip a first attempt:
 
+- **A hung render is killed as a process group, not as a process.** `xvfb-run`
+  is a shell script, so signalling it leaves the browser it wrapped running.
+  The child is spawned detached and the timeout kills its whole group; if a
+  descendant escapes into another session it keeps the inherited pipes open, so
+  the timeout settles the call itself rather than waiting on a stream nothing
+  will close.
 - **Electron initialises a display even for `--version`.** On Linux with no
   `DISPLAY` or `WAYLAND_DISPLAY` the wrapper runs the binary under `xvfb-run`,
   and says so if `xvfb-run` is missing (`apt install xvfb`).

@@ -9,6 +9,7 @@ import {
   DrawioError,
   needsNoSandbox,
   needsXvfb,
+  KILL_GRACE_MS,
   parseVersion,
   readableStderr,
   resolveLauncher,
@@ -49,6 +50,19 @@ function stubDrawio(dir: string, version: string): string {
   writeFileSync(exe, `#!/bin/sh\n[ "$1" = "--version" ] && echo "${version}" && exit 0\nexit 1\n`);
   chmodSync(exe, 0o755);
   return exe;
+}
+
+// The stub records its grandchild's pid before the timeout can fire, but a
+// loaded runner decides when that is. Waiting for the file means a runner too
+// slow to have written it fails on the wait, saying so, instead of on an ENOENT
+// from reading it — which would look like the kill misbehaving.
+async function waitForFile(path: string, deadlineMs: number): Promise<boolean> {
+  const until = Date.now() + deadlineMs;
+  while (Date.now() < until) {
+    if (existsSync(path)) return true;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  return existsSync(path);
 }
 
 // Signal 0 tests for existence without delivering anything; a killed process is
@@ -155,17 +169,62 @@ describe('a hung render takes its whole process group with it', () => {
       chmodSync(exe, 0o755);
 
       const started = Date.now();
-      const failure = await launch({ binary: exe, sandbox: [] }, [], 1500)
+      // Handled at creation: the wait below runs for seconds, and an unhandled
+      // rejection in that window would take the process down instead.
+      const pending = launch({ binary: exe, sandbox: [] }, [], 4000)
         .then(() => null, (e: unknown) => e as Error);
+
+      expect({ recorded: await waitForFile(marker, 3000) }).toEqual({ recorded: true });
+      const grandchild = Number(readFileSync(marker, 'utf-8').trim());
+      expect(Number.isFinite(grandchild)).toBe(true);
+      // Alive before, dead after — without the first half a stub that never
+      // started would pass the second.
+      expect({ when: 'before the timeout', alive: alive(grandchild) })
+        .toEqual({ when: 'before the timeout', alive: true });
+
+      const failure = await pending;
       expect(failure).toBeInstanceOf(DrawioError);
       expect(failure?.message).toContain('process group was killed');
       expect(Date.now() - started).toBeLessThan(30_000);
-
-      const grandchild = Number(readFileSync(marker, 'utf-8').trim());
-      expect(Number.isFinite(grandchild)).toBe(true);
-      expect(alive(grandchild)).toBe(false);
+      expect({ when: 'after the timeout', alive: alive(grandchild) })
+        .toEqual({ when: 'after the timeout', alive: false });
     });
   }, 60_000);
+});
+
+// setsid is what puts the escapee outside the group being killed; without it
+// there is no way to build the case this guards against.
+const hasSetsid = ['/usr/bin/setsid', '/bin/setsid'].some((p) => existsSync(p));
+if (!hasSetsid) {
+  console.error(
+    'SKIPPED the escaped-descendant case in tests/diagram/drawio-render.test.ts: no setsid.',
+  );
+}
+
+describe.if(hasSetsid)('a descendant that escapes the kill cannot hang the caller', () => {
+  test('the timeout settles the call even when nothing will close the pipes', async () => {
+    // "close" waits on the inherited stdio, and a process in another group
+    // still holds them after the group kill. Without a backstop the caller
+    // waits forever on a stream nothing is going to close — measured at 60s
+    // against the test harness before this existed.
+    await withTempAsync(async (dir) => {
+      const exe = join(dir, 'drawio');
+      // The escapee is deliberately outside the group being killed, so nothing
+      // reaps it — a short sleep bounds what this test leaves behind.
+      writeFileSync(exe, '#!/bin/sh\nsetsid sleep 20 &\nsleep 120\n');
+      chmodSync(exe, 0o755);
+
+      const started = Date.now();
+      const failure = await launch({ binary: exe, sandbox: [] }, [], 1000)
+        .then(() => null, (e: unknown) => e as Error);
+      const elapsed = Date.now() - started;
+
+      expect(failure).toBeInstanceOf(DrawioError);
+      expect(failure?.message).toContain('timed out');
+      // Settled by the backstop, not by a pipe close that never comes.
+      expect({ settled: elapsed < 1000 + KILL_GRACE_MS + 8000 }).toEqual({ settled: true });
+    });
+  }, 40_000);
 });
 
 describe('the wrapper refuses a source it cannot ship', () => {
