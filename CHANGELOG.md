@@ -9,6 +9,8 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+## v0.8.2 — 2026-09-03
+
 - chore(diagram): **the d2 renderer is pinned to v0.8.2, from its new `d2lang/d2` home.** 0.8.2
   swaps the embedded JavaScript layout runtimes for Go ports — elk-go at ELK 0.12, dagro at
   Dagre 3.1.1, rough-go at 4.6.6 — which moves geometry under unchanged source, so all four
