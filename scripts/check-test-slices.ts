@@ -19,6 +19,7 @@ export const TEST_SLICES = {
   ],
   docs: [
     'tests/docs/asset-types.test.ts',
+    'tests/docs/ci-go-cache.test.ts',
     'tests/docs/docs-tone.test.ts',
     'tests/docs/facts.test.ts',
   ],

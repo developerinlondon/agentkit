@@ -9,6 +9,10 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+- fix(ci): **the docs and docs-publish setup-go steps now cache `docs/hextra/go.mod`.**
+  `actions/setup-go`'s default cache key looks for a go.mod at the repo root, so with the module at
+  `docs/hextra/go.mod` the cache never primed and every docs build reinstalled its Go toolchain
+  dependencies cold.
 - fix(tests): **`skills/diagram/bun.lock` is now checked in the diagram test slice**, via
   `bun install --frozen-lockfile --dry-run`, which settles in milliseconds against an in-sync
   lockfile and never pays the skill's 271 MB dependency tree. Previously nothing installed
