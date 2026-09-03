@@ -85,6 +85,12 @@ The wrapper looks for `$AGENTKIT_DRAWIO`, then
 
 Two things the wrapper handles that trip a first attempt:
 
+- **Every launch gets a throwaway Electron profile.** draw.io keeps one at
+  `~/.config/draw.io` and locks it, so two renders at once contend for it —
+  which is how the diagram slice turned red running beside the full suite,
+  timing out with the GPU process unusable. A fresh `--user-data-dir` is passed
+  per invocation, not per process, since one render launches the binary three
+  times, and each is removed afterwards. `--disable-gpu` goes with it.
 - **A hung render is killed as a process group, not as a process.** `xvfb-run`
   is a shell script, so signalling it leaves the browser it wrapped running.
   The child is spawned detached and the timeout kills its whole group; if a

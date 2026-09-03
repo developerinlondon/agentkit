@@ -48,7 +48,12 @@ function stubDrawio(dir: string, version: string): string {
   const bin = join(dir, 'stub');
   mkdirSync(bin, { recursive: true });
   const exe = join(bin, 'drawio');
-  writeFileSync(exe, `#!/bin/sh\n[ "$1" = "--version" ] && echo "${version}" && exit 0\nexit 1\n`);
+  // Scans every argument rather than $1: the wrapper puts Chromium's switches
+  // ahead of draw.io's own, and the real binary does not care where they sit.
+  writeFileSync(
+    exe,
+    `#!/bin/sh\nfor a in "$@"; do [ "$a" = "--version" ] && echo "${version}" && exit 0; done\nexit 1\n`,
+  );
   chmodSync(exe, 0o755);
   return exe;
 }
@@ -179,6 +184,53 @@ describe('a silent failure still says what happened', () => {
       expect(failure?.message).toBe('draw.io exited with code 3');
     });
   }, 20_000);
+});
+
+describe('each launch gets a profile of its own', () => {
+  // Electron locks its one profile at ~/.config/draw.io, so concurrent renders
+  // contend for it. Spawning N renders does not bind — six passed on a quiet
+  // host — so this asserts the property instead: distinct paths, each removed.
+  test('concurrent launches receive distinct --user-data-dir paths, and clean up', async () => {
+    await withTempAsync(async (dir) => {
+      const seen = join(dir, 'seen');
+      const exe = join(dir, 'drawio');
+      // The stub records the profile it was handed; stripping the flag records
+      // nothing, and the distinctness assertion below has nothing to hold.
+      writeFileSync(
+        exe,
+        `#!/bin/sh\nfor a in "$@"; do\n  case "$a" in --user-data-dir=*) echo "\${a#--user-data-dir=}" >> ${seen};; esac\ndone\n`,
+      );
+      chmodSync(exe, 0o755);
+
+      const launcher = { binary: exe, sandbox: [] };
+      await Promise.all([1, 2, 3, 4, 5, 6].map(() => launch(launcher, [])));
+
+      const profiles = readFileSync(seen, 'utf-8').trim().split('\n').filter(Boolean);
+      expect({ recorded: profiles.length }).toEqual({ recorded: 6 });
+      expect({ distinct: new Set(profiles).size }).toEqual({ distinct: 6 });
+      expect(profiles.filter((p) => existsSync(p))).toEqual([]);
+    });
+  }, 30_000);
+
+  test('the version, export and PNG launches do not share one profile', async () => {
+    // Per invocation, not per process: three launches back to back through the
+    // same launcher must still not reuse a directory another one is tearing down.
+    await withTempAsync(async (dir) => {
+      const seen = join(dir, 'seen');
+      const exe = join(dir, 'drawio');
+      writeFileSync(
+        exe,
+        `#!/bin/sh\nfor a in "$@"; do\n  case "$a" in --user-data-dir=*) echo "\${a#--user-data-dir=}" >> ${seen};; esac\ndone\n`,
+      );
+      chmodSync(exe, 0o755);
+
+      const launcher = { binary: exe, sandbox: [] };
+      for (const args of [['--version'], ['--export'], ['--format=png']]) await launch(launcher, args);
+
+      const profiles = readFileSync(seen, 'utf-8').trim().split('\n').filter(Boolean);
+      expect({ distinct: new Set(profiles).size }).toEqual({ distinct: 3 });
+    });
+  }, 30_000);
 });
 
 describe('a hung render takes its whole process group with it', () => {

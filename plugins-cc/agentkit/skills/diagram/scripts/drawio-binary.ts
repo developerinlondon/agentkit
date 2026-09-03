@@ -1,7 +1,8 @@
 // Locating and launching draw.io Desktop headlessly.
 
 import { spawn } from "node:child_process";
-import { existsSync, statSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, statSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 export class DrawioError extends Error {}
@@ -107,6 +108,12 @@ function killGroup(pid: number | undefined): void {
   }
 }
 
+// Electron keeps one profile at ~/.config/draw.io and locks it, so two renders
+// at once contend for it — which is how moon turned red running the diagram
+// slice beside the full suite, timing out at 180s with the GPU process
+// unusable. Per invocation, not per process: a single wrapper run launches the
+// binary three times (version, export, PNG twin) and a shared temp profile can
+// still meet the previous instance's teardown.
 export function run(
   launcher: Launcher,
   args: string[],
@@ -114,7 +121,11 @@ export function run(
 ): Promise<string> {
   const { binary, wrapper, sandbox } = launcher;
   const cmd = wrapper ?? binary;
-  const argv = wrapper ? ["-a", binary, ...sandbox, ...args] : [...sandbox, ...args];
+  const profile = mkdtempSync(join(tmpdir(), "drawio-profile-"));
+  const chromium = [`--user-data-dir=${profile}`, "--disable-gpu"];
+  const argv = wrapper
+    ? ["-a", binary, ...sandbox, ...chromium, ...args]
+    : [...sandbox, ...chromium, ...args];
   // detached makes the child a process-group leader, which is what lets the
   // timeout reach everything it spawned.
   const child = spawn(cmd, argv, { detached: true, stdio: ["ignore", "pipe", "pipe"] });
@@ -146,5 +157,6 @@ export function run(
   }).finally(() => {
     clearTimeout(timer);
     clearTimeout(grace);
+    rmSync(profile, { recursive: true, force: true });
   });
 }
