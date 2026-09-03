@@ -17,11 +17,9 @@ an orphan.
   else could pick it up.
 - Trivial one-line fixes may ride an existing issue's scope instead of getting their own; if no
   related issue exists, file one anyway when the change is user-visible.
-- **Tracking work you are about to do is not the same as filing what you noticed.** A review
-  finding defaults to being fixed in the change that caused it, and scope carved out of the issue
-  in flight is a deferral needing the operator's sign-off. Both are exceptions that have to be
-  argued, which is what the `Disposition:` line on a new issue is for — filing is not free, and a
-  backlog nobody asked for costs more than the finding did.
+- **Filing before you build carries `Disposition: in-progress — <scope, who is doing it now>`.**
+  See §4 for this and the other three accepted forms. `issue-police` refuses a creation whose
+  `Disposition:` line is not one of the four.
 - If work started without an issue (it happens), file one **before** opening the PR/MR — never
   merge untracked work.
 
@@ -44,13 +42,16 @@ an orphan.
 - A finding surfaced while doing a job — a bug hit mid-task, a review comment, a gap noticed in
   passing — is fixed in the same change, or in one consolidating MR before the job is reported done.
   It is not filed and walked away from.
-- An issue may be filed for a finding only when: (a) the owner explicitly deferred it — quote their
-  words, or (b) it is blocked on something outside your control — name the blocker. Nothing else
-  qualifies, including "non-blocking", "tech debt", "nice to have", or "follow-up".
-- Say which case it is with a `Disposition:` line in the issue body:
-  - `Disposition: owner-deferred — <the owner's own words>`
-  - `Disposition: owner-request — <the owner's own words>` (the owner asked for this issue)
-  - `Disposition: blocked-by <the external system, person, or permission>`
+- Every new issue carries a `Disposition:` line naming exactly one of these four cases. Nothing
+  else qualifies, including "non-blocking", "tech debt", "nice to have", or "follow-up":
+  - `Disposition: in-progress — <scope, who is doing it now>`: new, non-deferred work you are
+    about to build. File it, then branch; the PR/MR closes it.
+  - `Disposition: owner-deferred — <the owner's own words>`: the owner explicitly deferred this,
+    quoted.
+  - `Disposition: owner-request — <the owner's own words>`: the owner asked for this issue to be
+    filed.
+  - `Disposition: blocked-by <the external system, person, or permission>`: blocked on something
+    outside your control, named.
 - Before reporting a job done, every issue the session opened is either closed by a merged change or
   carries one of those dispositions. `issue-police` enforces the `Disposition:` line and its form
   mechanically; it cannot tell whether the case claimed is true.
