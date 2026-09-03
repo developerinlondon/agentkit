@@ -47,8 +47,10 @@ What that leaves you:
 - **Printable ASCII and Latin-1**, in both fonts. Accented letters are fine.
 - **`x . - _ ... , en and em dashes`** and the other typographic marks in both.
 - **Arrows and set notation are NOT in Excalifont.** `->` and `<-` in ASCII
-  read fine in a sketch. The mono font does carry the real glyphs, so a label
-  with `mono: true` may use them; a note or a caption may not.
+  read fine in a sketch. The mono font does carry the real glyphs, and a node
+  label can ask for it with `mono: true`. Nothing else can: a title, a note, a
+  zone label, an edge label and a caption are all drawn in the hand-drawn font
+  with no way to switch, so for those the answer is words.
 - **No CJK.** The renderer declares no CJK fallback, so it would render
   differently for every reader.
 
@@ -56,8 +58,14 @@ The refusal names the character and says which font, if any, carries it, so the
 remedy comes with the error rather than out of this file:
 
 ```
+# a node label, which can switch fonts
 "→" is not in the font metrics table for the hand-drawn font
     — the mono font (mono: true) carries it
+# the same glyph in a note, which cannot
+"→" is not in the font metrics table for the hand-drawn font
+    — only the mono font carries it and a note cannot ask for it,
+      so write it in words
+# a glyph neither font has, anywhere
 "⇒" is not in the font metrics table for the hand-drawn font
     — no font in the output carries it, so write it in words
 ```
@@ -88,11 +96,13 @@ remedy comes with the error rather than out of this file:
   polyline that lands nowhere near the node, bound at both ends to it. Draw the
   repetition as a cycle through a second node, or say it in the label.
 - A **glyph the embedded fonts do not carry**, named in the refusal along with
-  the way out. Two remedies, and the message says which one applies: if the
-  other font has the glyph it says so, and `mono: true` on that node's label
-  gets it (this is how `->` becomes a real arrow); if no font has it, it says
-  `no font in the output carries it, so write it in words`. See the character
-  list above.
+  the way out. Three remedies, and the message picks the one that applies:
+  `mono: true` when the glyph is in the mono font and the text is a node label,
+  which is the only kind that can switch; `a note cannot ask for it, so write it
+  in words` (and likewise for a title, zone label, edge label or caption) when
+  the mono font has it but the text cannot reach it; and `no font in the output
+  carries it, so write it in words` when neither font has the glyph at all. See
+  the character list above.
 - A **spec key it does not recognise**, because the usual cause is an unquoted
   comma that swallowed half a label.
 - A figure **past the density budget or the canvas ceiling** (see the rank table

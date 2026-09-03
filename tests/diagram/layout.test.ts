@@ -54,6 +54,16 @@ function chain(ranks: number): string {
   return specWith(nodes, edges);
 }
 
+function notedChain(ranks: number): string {
+  const nodes = Array.from(
+    { length: ranks },
+    (_, i) => `{ id: n${i}, label: step ${i}, note: a typical one-line note }`,
+  );
+  const edges = 'edges:\n'
+    + Array.from({ length: ranks - 1 }, (_, i) => `  - { from: n${i}, to: n${i + 1} }\n`).join('');
+  return specWith(nodes, edges);
+}
+
 function specWith(nodes: string[], extra = ''): string {
   return `nodes:\n${nodes.map((n) => `  - ${n}\n`).join('')}${extra}`;
 }
@@ -163,6 +173,18 @@ describe('the register budget is enforced, not suggested', () => {
     expect(() => build(parseSpec(chain(6)))).toThrow(/1360x.*ceiling.*direction: down/s);
   });
 
+  // The second row of the reference's rank table: a note makes every box 190px,
+  // so both thresholds arrive a rank earlier than they do for bare labels.
+  test('a four-rank chain of note-carrying boxes is 1096 px and warns', () => {
+    const built = build(parseSpec(notedChain(4)));
+    expect(built.width).toBe(1096);
+    expect(built.warnings.join()).toMatch(/over the 1000px page budget/);
+  });
+
+  test('a five-rank chain of note-carrying boxes is refused at 1378 px', () => {
+    expect(() => build(parseSpec(notedChain(5)))).toThrow(/1378x.*ceiling.*direction: down/s);
+  });
+
   test('a figure past the page budget warns without failing', () => {
     const nodes = Array.from({ length: 3 }, (_, i) => `{ id: n${i}, label: "a rather long node label ${i}" }`);
     const edges = 'edges:\n' + Array.from({ length: 2 }, (_, i) => `  - { from: n${i}, to: n${i + 1} }\n`).join('');
@@ -231,30 +253,54 @@ describe('spec validation', () => {
 });
 
 describe('the reference doc matches the code', () => {
-  const reference = readFileSync(join(EXAMPLES, '../references/auto-layout.md'), 'utf-8');
+  // The reference hard-wraps its prose, so a remedy sentence spans lines there
+  // and never matches the one-line string the code emits until both are flat.
+  const reference = readFileSync(join(EXAMPLES, '../references/auto-layout.md'), 'utf-8')
+    .replace(/\s+/g, ' ');
+  const documents = (phrase: string) => `documented: ${reference.includes(phrase)}`;
 
   // A number in that file went stale once and sent an author down the wrong
   // remedy, so the strings an author is told to look for are pinned here.
   test.each([
-    ['\u2192', 'the mono font (mono: true) carries it'],
-    ['\u21d2', 'no font in the output carries it, so write it in words'],
-  ])('the remedy the refusal gives for %s is the one the reference prints', (glyph, remedy) => {
+    ['a node label may reach the mono font', '{ id: a, label: "a \u2192 b" }', 'the mono font (mono: true) carries it'],
+    // These five are rendered in the hand-drawn font with no way to ask for the
+    // other one, so telling them to set mono: true dead-ends the author.
+    ['a note may not', '{ id: a, label: A, note: "a \u2192 b" }', 'a note cannot ask for it, so write it in words'],
+    ['a glyph nothing carries', '{ id: a, label: "a \u21d2 b" }', 'no font in the output carries it, so write it in words'],
+  ])('%s', (_name, node, remedy) => {
     let message = '';
     try {
-      parseSpec(specWith([`{ id: a, label: "a ${glyph} b" }`]));
+      parseSpec(specWith([node]));
     } catch (e) {
       message = (e as Error).message;
     }
     expect(message).toContain(remedy);
-    expect(reference).toContain(remedy);
+    expect(documents(remedy)).toBe('documented: true');
   });
 
-  test('the rank table quotes the widths the layout actually produces', () => {
-    for (const [ranks, width] of [[4, 896], [5, 1128], [6, 1360]] as const) {
-      const actual = ranks < 6 ? build(parseSpec(chain(ranks))).width : 1360;
-      expect(`${ranks}:${actual}`).toBe(`${ranks}:${width}`);
-      expect(reference).toContain(`${width} px`);
+  test.each([
+    ['a title', 'title: "a \u2192 b"\nnodes:\n  - { id: a, label: A }\n'],
+    ['a zone label', 'zones:\n  - { id: z, label: "a \u2192 b" }\nnodes:\n  - { id: a, label: A, zone: z }\n'],
+    ['an edge label', 'nodes:\n  - { id: a, label: A }\n  - { id: b, label: B }\n'
+      + 'edges:\n  - { from: a, to: b, label: "a \u2192 b" }\n'],
+    ['a caption', 'nodes:\n  - { id: a, label: A }\nnotes:\n  - "a \u2192 b"\n'],
+  ])('%s is told to write it in words, never to set mono: true', (kind, spec) => {
+    let message = '';
+    try {
+      parseSpec(spec);
+    } catch (e) {
+      message = (e as Error).message;
     }
+    expect(message).toContain(`${kind} cannot ask for it, so write it in words`);
+    expect(message).not.toContain('mono: true');
+  });
+
+  test('the rank table quotes the widths both chains actually produce', () => {
+    for (const [ranks, width] of [[4, 896], [5, 1128]] as const) {
+      expect(`${ranks}:${build(parseSpec(chain(ranks))).width}`).toBe(`${ranks}:${width}`);
+    }
+    expect(build(parseSpec(notedChain(4))).width).toBe(1096);
+    for (const width of [896, 1128, 1360, 1096, 1378]) expect(documents(`${width} px`)).toBe('documented: true');
   });
 });
 

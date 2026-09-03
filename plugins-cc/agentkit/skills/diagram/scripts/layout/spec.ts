@@ -101,33 +101,35 @@ function parseEdge(raw: unknown, i: number): EdgeSpec {
   };
 }
 
-const FAMILY_NAME: Record<number, string> = { 1: "the hand-drawn font", 3: "the mono font (mono: true)" };
+const FAMILY_NAME: Record<number, string> = { 1: "the hand-drawn font", 3: "the mono font" };
 
-function unsupported(ch: string, family: number): string {
+/** Only a node label can ask for the mono font, so only it gets that remedy. */
+function unsupported(ch: string, family: number, kind: string, canMono: boolean): string {
   const elsewhere = carriedBy(ch).filter((f) => f !== family);
-  const remedy = elsewhere.length > 0
-    ? `${FAMILY_NAME[elsewhere[0]]} carries it`
-    : "no font in the output carries it, so write it in words";
-  return `"${ch}" is not in the font metrics table for ${FAMILY_NAME[family]} — ${remedy}`;
+  const head = `"${ch}" is not in the font metrics table for ${FAMILY_NAME[family]}`;
+  if (elsewhere.length === 0) return `${head} — no font in the output carries it, so write it in words`;
+  if (canMono) return `${head} — the mono font (mono: true) carries it`;
+  return `${head} — only the mono font carries it and ${kind} cannot ask for it, so write it in words`;
 }
 
 function checkText(spec: DiagramSpec): void {
   const problems = new Set<string>();
-  const scan = (body: string | undefined, family: number) => {
+  const scan = (body: string | undefined, family: number, kind: string, canMono = false) => {
     for (const ch of body ?? "") {
-      if (ch !== "\n" && !carriedBy(ch).includes(family)) problems.add(unsupported(ch, family));
+      if (ch !== "\n" && !carriedBy(ch).includes(family)) problems.add(unsupported(ch, family, kind, canMono));
     }
   };
-  scan(spec.title, 1);
+  scan(spec.title, 1, "a title");
   for (const n of spec.nodes) {
-    scan(n.label, n.mono ? 3 : 1);
-    scan(n.note, 1);
+    scan(n.label, n.mono ? 3 : 1, "a label", !n.mono);
+    scan(n.note, 1, "a note");
   }
-  for (const z of spec.zones) scan(z.label, 1);
-  for (const e of spec.edges) scan(e.label, 1);
-  for (const n of spec.notes) scan(n, 1);
-  // Substituting another glyph's advance measured "Zurich" WIDER than "Zürich",
-  // so the box came out too small for the text it holds.
+  for (const z of spec.zones) scan(z.label, 1, "a zone label");
+  for (const e of spec.edges) scan(e.label, 1, "an edge label");
+  for (const n of spec.notes) scan(n, 1, "a caption");
+  // An absent glyph borrowed the advance of "n" (46.7), where the real "ü" is
+  // 51.3, so every accented word came out a few px too wide for nothing and the
+  // box was sized from a number belonging to another letter.
   if (problems.size > 0) bad([...problems].join("; "));
 }
 
@@ -172,7 +174,7 @@ export function parseSpec(source: string): DiagramSpec {
   }
   const r = only(raw, ["title", "direction", "palette", "roughness", "background", "nodes", "zones", "edges", "notes"], "spec");
   const spec: DiagramSpec = {
-    title: r.title === undefined ? undefined : str(r.title, "title"),
+    title: r.title === undefined ? undefined : str(r.title, "a title"),
     direction: pick(r.direction, ["right", "down"] as Direction[], "right", "direction"),
     palette: pick(r.palette, ["light", "dark"] as Palette[], "dark", "palette"),
     roughness: r.roughness === 0 ? 0 : 1,
