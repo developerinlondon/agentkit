@@ -87,6 +87,32 @@ done
 # on the quote character itself.
 DISPOSITION_RE="[Dd]isposition:[[:space:]]*[^[:space:]\"'\`]"
 
+# Bash's own regex reads the value, so this gate needs no python3.
+disposition_value() {
+	printf '%s\n' "$1" | grep -m1 -ioE '[Dd]isposition:[[:space:]]*.*' | sed -E 's/^[Dd]isposition:[[:space:]]*//'
+}
+
+# Strips wrapping quotes/backticks/spaces so a bare closing quote left by the
+# shell argument (e.g. `owner-deferred —"`) doesn't itself count as text.
+disposition_trim() {
+	local s="$1"
+	while [[ "$s" == [\ \"\'\`]* ]]; do s="${s:1}"; done
+	while [[ "$s" == *[\ \"\'\`] ]]; do s="${s%?}"; done
+	printf '%s' "$s"
+}
+
+disposition_form_ok() {
+	local lower="${1,,}" text
+	if [[ "$lower" =~ ^[[:space:]]*owner-(deferred|request)[[:space:]]*(-{1,2}|—)[[:space:]]*(.*)$ ]]; then
+		text="$(disposition_trim "${BASH_REMATCH[3]}")"
+	elif [[ "$lower" =~ ^[[:space:]]*blocked-by[[:space:]]+(.*)$ ]]; then
+		text="$(disposition_trim "${BASH_REMATCH[1]}")"
+	else
+		return 1
+	fi
+	[[ -n "$text" ]]
+}
+
 BODY_TEXT=""
 for body_file in $BODY_FILES; do
 	[[ "$body_file" == "-" ]] && continue
@@ -361,19 +387,32 @@ if [[ "$CREATION_KIND" == epic ]]; then
 	exit 0
 fi
 
-if echo "$TEXT" | grep -qE "$DISPOSITION_RE"; then
-	completeness_checks
-	board_hygiene_advice
-	exit 0
-fi
+if ! echo "$TEXT" | grep -qE "$DISPOSITION_RE"; then
+	deny "BLOCKED: this issue does not say why it is being filed rather than fixed.
 
-deny "BLOCKED: this issue does not say why it is being filed rather than fixed.
+An issue is not a way to end a lane. Fix the finding in the current change, or file it only for work
+the owner explicitly deferred or asked for, or work blocked on something outside your control.
 
-Filing is not free. A review finding defaults to being fixed in the change that caused it, and scope carved out of the issue you are working on right now is a deferral needing the operator's sign-off — neither is a new issue by default.
-
-Add a Disposition: line to the issue body naming which case this is, for example:
-  Disposition: new work, unrelated to anything in flight
-  Disposition: carved out of #<n>, deferral approved by the operator
-  Disposition: review finding, not fixable in the change that caused it because <reason>
+Add a Disposition: line to the issue body in one of these exact forms:
+  Disposition: owner-deferred — quote the owner's own words here
+  Disposition: owner-request — quote the owner's own words here
+  Disposition: blocked-by the external system, person, or permission
 
 A body arriving on stdin cannot be read here: pass it inline with --body, or write it to a file and pass --body-file <path>."
+fi
+
+if ! disposition_form_ok "$(disposition_value "$TEXT")"; then
+	deny "BLOCKED: an issue is not a way to end a lane. Fix the finding in the current change, or file it
+with a Disposition: line in one of these exact forms:
+  Disposition: owner-deferred — quote the owner's own words here
+  Disposition: owner-request — quote the owner's own words here
+  Disposition: blocked-by the external system, person, or permission
+
+The key is case-insensitive; the separator before the free text is a hyphen (- or --) or an em-dash
+(—). follow-up, later, future, non-blocking, nice to have, and tech debt describe the deferral this
+gate exists to refuse, not a reason for it."
+fi
+
+completeness_checks
+board_hygiene_advice
+exit 0
