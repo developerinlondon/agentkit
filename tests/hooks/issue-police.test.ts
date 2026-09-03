@@ -449,4 +449,98 @@ describe('issue-police: the disposition value is gated, not just presence', () =
     expect(out).toContain('"deny"');
     expect(out).toContain('is not a way to end a lane');
   });
+
+  test('an en-dash separator is accepted alongside the hyphen and em-dash', () => {
+    expect(denied('gh issue create --title x --body "Disposition: owner-deferred – the owner said this waits"')).toBe(
+      false,
+    );
+  });
+});
+
+// gh/glab's flag parser overwrites a single-value string flag on each repeated
+// occurrence, so the LAST --body/--description/--field body= is what the
+// forge actually receives — an earlier one is a decoy that must not be read
+// as the effective value.
+describe('issue-police: a repeated body flag is read the way the forge reads it', () => {
+  test('a passing decoy first and the real refused value last is still denied', () => {
+    const out = runHook('gh issue create --title x --body "Disposition: owner-deferred — x" --body "Disposition: follow-up"');
+    expect(out).toContain('"deny"');
+  });
+
+  test('a refused decoy first and the real accepted value last passes', () => {
+    expect(
+      denied(
+        'gh issue create --title x --body "Disposition: follow-up" --body "Disposition: owner-deferred — the real reason"',
+      ),
+    ).toBe(false);
+  });
+
+  test('--description behaves the same as --body', () => {
+    const out = runHook(
+      'glab issue create -R o/r -t x --description "Disposition: owner-deferred — x" --description "Disposition: follow-up"',
+    );
+    expect(out).toContain('"deny"');
+  });
+
+  test('the REST --field body= spelling: refused value last is denied', () => {
+    const out = runHook(
+      'glab api --method POST "projects/o%2Fr/issues" --field body="Disposition: owner-deferred — real reason" --field body="Disposition: follow-up"',
+    );
+    expect(out).toContain('"deny"');
+  });
+
+  test('the REST --field body= spelling: accepted value last passes', () => {
+    expect(
+      denied(
+        'glab api --method POST "projects/o%2Fr/issues" --field body="Disposition: follow-up" --field body="Disposition: owner-deferred — real reason"',
+      ),
+    ).toBe(false);
+  });
+});
+
+describe('issue-police: a Disposition line that only illustrates the syntax is not an answer', () => {
+  test('a Disposition line inside inline backticks is not read as the disposition', () => {
+    const body = 'Some text. `Disposition: owner-deferred — x` is the syntax, not a real answer.';
+    const out = runHook(`gh issue create --title x --body "${body}"`);
+    expect(out).toContain('"deny"');
+    expect(out).toContain('why it is being filed rather than fixed');
+  });
+
+  test('a Disposition line inside a fenced block is not read as the disposition', () => {
+    const body = `See below:\n\n\`\`\`\nDisposition: owner-deferred — example text\n\`\`\`\n\nthat is the syntax to use.`;
+    const out = runHook(`gh issue create --title x --body "${body}"`);
+    expect(out).toContain('"deny"');
+    expect(out).toContain('why it is being filed rather than fixed');
+  });
+
+  test('a quoted example followed by the real line still passes, reading the real one', () => {
+    const body = 'Example: `Disposition: follow-up` is wrong.\n\nDisposition: owner-deferred — the actual reason';
+    expect(denied(`gh issue create --title x --body "${body}"`)).toBe(false);
+  });
+});
+
+describe('issue-police: AGENTKIT_SKIP_HOOKS', () => {
+  const undenied = 'gh issue create --title x --body "no disposition here"';
+
+  function runWithSkip(value: string): string {
+    const res = spawnSync('bash', [HOOK], {
+      cwd: root,
+      input: JSON.stringify({ tool_input: { command: undenied } }),
+      encoding: 'utf-8',
+      env: { ...process.env, AGENTKIT_SKIP_HOOKS: value },
+    });
+    return res.stdout ?? '';
+  }
+
+  test('AGENTKIT_SKIP_HOOKS=issue-police lets an otherwise-refused creation through', () => {
+    expect(runWithSkip('issue-police')).not.toContain('"deny"');
+  });
+
+  test('AGENTKIT_SKIP_HOOKS=all lets it through too', () => {
+    expect(runWithSkip('all')).not.toContain('"deny"');
+  });
+
+  test('a different hook name in the list does not skip issue-police', () => {
+    expect(runWithSkip('other-hook')).toContain('"deny"');
+  });
 });
