@@ -46,7 +46,7 @@ is_creation() {
 	# truncated at the first body flag: an issues URL quoted inside a description
 	# is not itself a creation.
 	url_part=$(echo "$COMMAND" |
-		sed -E 's/[[:space:]](--field|--raw-field|-f|--input|--body|--body-file|--description-file)[[:space:]=].*//')
+		sed -E 's/[[:space:]](--field|--raw-field|-f|--input|--body|--body-file)[[:space:]=].*//')
 	# Trailing segment only — /issues/7/notes and /issues_statistics create nothing.
 	echo "$url_part" | grep -qE '/issues([^/[:alnum:]_]|$)' && {
 		CREATION_KIND="issue"
@@ -74,9 +74,11 @@ deny() {
 TARGET_DIR=$(echo "$COMMAND" | sed -nE 's/(^|.*[;&|])[[:space:]]*cd[[:space:]]+([^[:space:];&|]+).*/\2/p' | head -1)
 TARGET_DIR="${TARGET_DIR/#\~/$HOME}"
 
+# glab issue create has no file-based --description equivalent (verified
+# against the installed glab binary's own --help); --body-file/-F is gh only.
 TEXT="$COMMAND"
 BODY_FILES=$(echo "$COMMAND" |
-	grep -oE -- '(--body-file|--description-file|-F)[[:space:]=]+[^[:space:]"'"'"']+' |
+	grep -oE -- '(--body-file|-F)[[:space:]=]+[^[:space:]"'"'"']+' |
 	sed -E 's/^[^[:space:]=]+[[:space:]=]+//' || true)
 
 for body_file in $BODY_FILES; do
@@ -193,14 +195,19 @@ print(result)
 ' "$@" 2>/dev/null
 }
 
-# pflag (gh/glab's flag parser) resolves a repeated --body/--description/
-# --field body= to the LAST occurrence, so an earlier decoy value must not be
-# read as the one the forge will actually receive.
+# Verified against the real gh binary: --body-file wins over an inline
+# --body/--description unconditionally, in either flag order, even when the
+# file is empty. BODY_FILES non-empty means that flag was present at all, so
+# an unreadable file (missing, or "-" for stdin) yields an empty body here
+# rather than falling back to a decoy inline value.
 resolve_effective_body() {
 	local body
-	body="$(forge_flag_value --description -d --body -b || true)"
-	[[ -z "$body" ]] && body="$(forge_field_value description body || true)"
-	[[ -z "$body" ]] && body="$BODY_TEXT"
+	if [[ -n "$BODY_FILES" ]]; then
+		body="$BODY_TEXT"
+	else
+		body="$(forge_flag_value --description -d --body -b || true)"
+		[[ -z "$body" ]] && body="$(forge_field_value description body || true)"
+	fi
 	body="${body#"${body%%[![:space:]]*}"}"
 	printf '%s' "$body"
 }
@@ -247,7 +254,7 @@ completeness_checks() {
 	if [[ -z "$body" ]]; then
 		deny "BLOCKED: this issue has no description.
 
-An issue with a title and nothing else asks the next reader to reconstruct what you already knew. Pass the body with --description (glab) or --body (gh), or write it to a file and pass --description-file / --body-file.
+An issue with a title and nothing else asks the next reader to reconstruct what you already knew. Pass the body with --description (glab) or --body (gh), or, on gh only, write it to a file and pass --body-file.
 
 State the problem, what done looks like, and the evidence you have — a few lines beat a heading with nothing under it."
 	fi
@@ -418,9 +425,12 @@ if [[ "$CREATION_KIND" == epic ]]; then
 	exit 0
 fi
 
-# Without python3 EFFECTIVE_BODY is empty, so this falls back to raw command text.
-DISPOSITION_SOURCE="$TEXT"
-[[ -n "$EFFECTIVE_BODY" ]] && DISPOSITION_SOURCE="$EFFECTIVE_BODY"
+# --body-file is authoritative once present, even unreadable, so raw command
+# text — which may still carry a decoy inline value — is not a safe fallback
+# then. Only fall back when no --body-file was given and python3 (needed to
+# resolve an inline flag) is unavailable.
+DISPOSITION_SOURCE="$EFFECTIVE_BODY"
+[[ -z "$EFFECTIVE_BODY" && -z "$BODY_FILES" ]] && DISPOSITION_SOURCE="$TEXT"
 
 if ! printf '%s\n' "$DISPOSITION_SOURCE" | strip_quoted | grep -qE "$DISPOSITION_RE"; then
 	deny "BLOCKED: this issue does not say why it is being filed rather than fixed.
