@@ -52,7 +52,7 @@ so `brain` matches `myorg/brain`.
 Three refusals need no configuration, because they are wrong everywhere: an issue filed with **no
 body at all**, one whose body still carries an **unfilled template** — a guidance comment, an
 empty checkbox, or a bare quick action like `/milestone %` — and one whose `Disposition:` line is
-not `owner-deferred`, `owner-request`, or `blocked-by` with non-empty text. The rest is what only a
+not `in-progress`, `owner-deferred`, `owner-request`, or `blocked-by` with non-empty text. The rest is what only a
 project can decide.
 
 | Key                      | Type   | Default | Effect                                                           |
