@@ -7,6 +7,7 @@ export const TEST_SLICES = {
     'tests/diagram/d2-svg.test.ts',
     'tests/diagram/drawio-render.test.ts',
     'tests/diagram/drawio-svg.test.ts',
+    'tests/diagram/excalidraw-svg.test.ts',
     'tests/diagram/extract-cli.test.ts',
     'tests/diagram/extract-model.test.ts',
     'tests/diagram/extract-sources.test.ts',

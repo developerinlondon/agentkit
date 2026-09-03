@@ -53,6 +53,12 @@ function withTemp<T>(fn: (dir: string) => T): T {
   }
 }
 
+function stageSource(dir: string): { src: string; out: string } {
+  const src = join(dir, 'a.d2');
+  writeFileSync(src, SOURCE);
+  return { src, out: join(dir, 'a.svg') };
+}
+
 // Bun.spawnSync throws ENOENT for a missing executable rather than reporting a
 // non-zero exit, which would crash this file instead of skipping it. D2_BIN is
 // honoured here for the same reason the wrapper honours it: a candidate build
@@ -163,9 +169,7 @@ describe.if(available)('rendering with the pinned d2', () => {
 
   test('a referenced icon is embedded as data, with no path left behind', () => {
     withTemp((dir) => {
-      const src = join(dir, 'a.d2');
-      writeFileSync(src, SOURCE);
-      const out = join(dir, 'a.svg');
+      const { src, out } = stageSource(dir);
       expect(run(dir, ['--in', src, '--out', out]).code).toBe(0);
       const svg = readFileSync(out, 'utf-8');
       expect(svg).toContain('href="data:image/svg+xml;base64,');
@@ -176,9 +180,7 @@ describe.if(available)('rendering with the pinned d2', () => {
 
   test('output is self-contained, house-attributed and theme-switchable', () => {
     withTemp((dir) => {
-      const src = join(dir, 'a.d2');
-      writeFileSync(src, SOURCE);
-      const out = join(dir, 'a.svg');
+      const { src, out } = stageSource(dir);
       expect(run(dir, ['--in', src, '--out', out, '--label', 'a caption']).code).toBe(0);
       const svg = readFileSync(out, 'utf-8');
       expect(svg).toContain('svg-source:d2');
@@ -188,6 +190,39 @@ describe.if(available)('rendering with the pinned d2', () => {
       expect(svg).not.toContain('<script');
       expect(svg).not.toContain('<foreignObject');
       expect(svg.match(/https?:\/\/(?!www\.w3\.org)/)).toBeNull();
+    });
+  });
+
+  test('the inlined stylesheet scopes bare element rules under the figure carrier', () => {
+    withTemp((dir) => {
+      const { src, out } = stageSource(dir);
+      expect(run(dir, ['--in', src, '--out', out]).code).toBe(0);
+      const svg = readFileSync(out, 'utf-8');
+      const carrier = svg.match(/<svg class="(d2-\d+) d2-svg"/);
+      expect(carrier).not.toBeNull();
+      const scoped = `.${carrier?.[1]} .shape{`;
+      expect(svg).toContain(scoped);
+      expect(svg.split('.shape{').length - 1).toBe(svg.split(scoped).length - 1);
+    });
+  });
+
+  test('--host class emits html.dark instead of the data-theme attribute guard', () => {
+    withTemp((dir) => {
+      const { src, out } = stageSource(dir);
+      expect(run(dir, ['--in', src, '--out', out, '--host', 'class']).code).toBe(0);
+      const svg = readFileSync(out, 'utf-8');
+      expect(svg).toContain('html.dark');
+      expect(svg).not.toContain('data-theme');
+    });
+  });
+
+  test('an unknown --host value is refused, naming the two it accepts', () => {
+    withTemp((dir) => {
+      const src = join(dir, 'a.d2');
+      writeFileSync(src, SOURCE);
+      const result = run(dir, ['--in', src, '--out', join(dir, 'a.svg'), '--host', 'iframe']);
+      expect(result.code).toBe(1);
+      expect(result.stderr).toContain('"attribute" or "class"');
     });
   });
 

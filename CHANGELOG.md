@@ -9,6 +9,17 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+- fix(diagram): **three ways the D2 and Excalidraw wrappers assumed a page they don't control,
+  closed.** D2's dark-theme guard assumed `html[data-theme]`; a class-toggling host (Hextra,
+  Tailwind, Docusaurus) never sets it, so the dark palette always won. `d2-render.ts --host class`
+  emits `html.dark` instead. D2's inlined stylesheet also shipped `.shape`, `.connection`, `.md` and
+  friends bare — unlike its colour classes, which it already scopes under the figure's own
+  `.d2-<hash>` carrier — so an inlined figure redefined them for the whole page; every rule is now
+  scoped the same way, automatically. `render.ts --background` (defaulting to the scene's
+  `appState.viewBackgroundColor`) gives the Excalidraw renderer a real ground rect, so a baked-ink
+  sketch is legible on a theme-switching host instead of vanishing when the ink and the page match.
+  Documents the three as an "embedding contract" in `references/technical-register.md`;
+  regenerates the affected committed D2 examples.
 - fix(tests): **the review-police probe helper can no longer read a silent hook as an allow.**
   `runHook` ignored `spawnSync`'s exit status, error and stderr, so a hook that was killed, crashed
   before writing, or never started produced the same empty string as one that deliberately allowed
