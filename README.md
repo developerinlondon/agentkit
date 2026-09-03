@@ -83,6 +83,7 @@ Reusable AI agent skills, rules, plugins, hooks, and tools for OpenCode, Claude 
 | **chime.sh**           | Notification/Stop        | Audible nudge when Claude needs you: springy boing on permission prompts/questions, soft ping when a turn finishes. Mute: `touch ~/.claude/.chime-off` or `CLAUDE_CHIME=0`                                                                                                                                                                                                                                                                                                                                                                                  |
 | **taste-police.sh**    | PreToolUse               | Refuses a command matching one of your own tastes at `enforce: block`, using that taste's `remedy` and its named override. The rules are your files, not this hook: it reads `.agentkit/tastes/` (the repository's own, with each declared source snapshotted under `.agentkit/tastes/external/`) and `~/.agentkit/tastes/`, resolves them project > external > user, and enforces nothing when `taste.enabled` is false. Needs `bun`; without it, it reports UNCHECKED rather than allowing quietly                                                        |
 | **mr-police.sh**       | PreToolUse               | Blocks opening a new MR while you already have an open MR you authored on the repo — stops unmerged MRs from stacking up                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| **wait-police.sh**     | Stop                     | Blocks ending the turn while a subagent or background task is still running and no bounded poll is armed. Liveness is read from the session transcript; it names what is live and the `wait-for` poll to arm. Off per session (`AGENTKIT_SKIP_HOOKS=wait-police`), per repo (`git config agentkit.waitpolice.enabled false`), or globally (`enabled: false` under `wait-police:` in config.yaml)                                                                                                                                                            |
 | **review-police.sh**   | PreToolUse               | Allows one standalone `gh pr merge`/`glab mr merge` only when evidence covers the forge's exact source and target; direct REST/GraphQL/MCP and compound/wrapped merges are refused. Strict policy comes from the target commit, risk comes from commit-bound paths, and critical records cannot use local consent. NOT security — forge protections are the trust boundary. Ships only with the explicit `adversarial-review` kit (`--with adversarial-review`); which severities block is configurable via `gate.blocking_severities` in the target policy |
 
 Codex receives the fail-closed `review-police` route through its trusted
@@ -118,6 +119,7 @@ and OpenCode `resource-police` remain the recursive command-analysis paths.
 | **collaboration-visibility.md** | Progress updates, checkpoint summaries, and compact ASCII diagrams for multi-step work                                                                                                                                                                                      |
 | **resource-safety.md**          | Mandatory bounded execution and live-connectivity preservation rules                                                                                                                                                                                                        |
 | **review-discipline.md**        | Advisory review mode: one non-authoring reviewer pass for substantive changes, merge on approval. Opt-in via `--with advisory-review` — an instruction costs prompt weight on every session, and a harness that already mandates a reviewer pass would carry the rule twice |
+| **wait-discipline.md**          | Never wait on a notification alone: poll the artefact with a deadline, act when the deadline passes, and tell the owner which deadline you are waiting to                                                                                                                   |
 | **evidence-gated-review.md**    | Evidence records + merge-gate doctrine (ships only with the explicit `adversarial-review` kit)                                                                                                                                                                              |
 
 ### Claude Code plugins (marketplace)
@@ -330,12 +332,13 @@ definition is installed or changed.
 On Linux, global installs place the bounded runner on `~/.local/bin/` and preserve a mirror in
 `~/.claude/tools/`. Portable tools install on every supported host.
 
-| Tool                   | Description                                                                          |
-| ---------------------- | ------------------------------------------------------------------------------------ |
-| **bounded-run**        | Linux-only direct-argv workload runner for the bounded `agent-work.slice` service    |
-| **review-gate**        | Portable strict review-policy and evidence-record validator used by `review-police`  |
-| **review-profile**     | Resolves configurable review lanes and verification effort for the current task      |
-| **fix-ascii-boxes.py** | Fixes ASCII box-drawing alignment in markdown files, handles nested boxes inside-out |
+| Tool                   | Description                                                                                                 |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------- |
+| **bounded-run**        | Linux-only direct-argv workload runner for the bounded `agent-work.slice` service                           |
+| **review-gate**        | Portable strict review-policy and evidence-record validator used by `review-police`                         |
+| **review-profile**     | Resolves configurable review lanes and verification effort for the current task                             |
+| **wait-for**           | Portable bounded poll on one artefact: a ref moving, PR checks concluding, a file matching, a URL answering |
+| **fix-ascii-boxes.py** | Fixes ASCII box-drawing alignment in markdown files, handles nested boxes inside-out                        |
 
 `bounded-run` fails closed unless the aggregate slice matches its expected limits (default
 20G/24G memory high/max, 800% CPU, 1536 tasks; hosts sized differently pin their values in

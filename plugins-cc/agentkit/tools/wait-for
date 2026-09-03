@@ -1,0 +1,142 @@
+#!/usr/bin/env bash
+# wait-for — poll one artefact until it moves, or until the cap expires.
+# Exit 0 when the predicate holds, 3 when the cap is reached, 2 on bad usage.
+# One line is printed either way, so the poll's own output says what happened.
+set -uo pipefail
+
+CAP=1800
+EVERY=30
+MODE=""
+ARG1=""
+ARG2=""
+STATUS=200
+
+usage() {
+	printf '%s\n' \
+		'usage: wait-for --cap SECONDS --every SECONDS PREDICATE' \
+		'' \
+		'predicates:' \
+		'  --sha REPO REF            the ref moves off the sha it had at start' \
+		'  --pr-checks REPO NUMBER   the pull request checks stop being pending' \
+		'  --file-match PATH REGEX   the file exists and matches the regex' \
+		'  --url URL [--status CODE] the URL answers with that status (default 200)' \
+		'' \
+		'exit 0 predicate held, 3 cap reached, 2 usage error' >&2
+	exit "${1:-2}"
+}
+
+need() { [[ $# -ge 2 ]] || usage; }
+
+while [[ $# -gt 0 ]]; do
+	case "$1" in
+	--cap)
+		need "$@"
+		CAP="$2"
+		shift 2
+		;;
+	--every)
+		need "$@"
+		EVERY="$2"
+		shift 2
+		;;
+	--status)
+		need "$@"
+		STATUS="$2"
+		shift 2
+		;;
+	--sha | --pr-checks | --file-match)
+		[[ $# -ge 3 ]] || usage
+		[[ -z "$MODE" ]] || usage
+		MODE="${1#--}"
+		ARG1="$2"
+		ARG2="$3"
+		shift 3
+		;;
+	--url)
+		need "$@"
+		[[ -z "$MODE" ]] || usage
+		MODE="url"
+		ARG1="$2"
+		shift 2
+		;;
+	--help) usage 0 ;;
+	*) usage ;;
+	esac
+done
+
+[[ -n "$MODE" ]] || usage
+case "$CAP$EVERY" in *[!0-9]* | '') usage ;; esac
+[[ "$CAP" -gt 0 && "$EVERY" -gt 0 ]] || usage
+
+RESULT=""
+
+# A ref that resolves through a remote-tracking name is stale until fetched, so
+# polling it without one would compare the local copy with itself forever.
+resolve_sha() {
+	local full
+	full=$(git -C "$ARG1" rev-parse --symbolic-full-name "$ARG2" 2>/dev/null || true)
+	if [[ "$full" == refs/remotes/* ]]; then
+		local remote="${full#refs/remotes/}"
+		git -C "$ARG1" fetch --quiet "${remote%%/*}" >/dev/null 2>&1 || true
+	fi
+	git -C "$ARG1" rev-parse --verify --quiet "$ARG2^{commit}" 2>/dev/null || true
+}
+
+BASELINE=""
+[[ "$MODE" == "sha" ]] && BASELINE=$(resolve_sha)
+
+check_sha() {
+	local now
+	now=$(resolve_sha)
+	[[ -n "$now" && "$now" != "$BASELINE" ]] || return 1
+	RESULT="sha: $ARG2 in $ARG1 moved ${BASELINE:-(absent)} -> $now"
+}
+
+# gh exits 8 while any check is still pending; every other status is a verdict,
+# including 1 for a failing run. Concluded is the event, not passing.
+check_pr_checks() {
+	local status=0
+	gh pr checks "$ARG2" -R "$ARG1" >/dev/null 2>&1 || status=$?
+	[[ "$status" -ne 8 ]] || return 1
+	RESULT="pr-checks: $ARG1#$ARG2 concluded (gh exit $status)"
+}
+
+check_file_match() {
+	[[ -r "$ARG1" ]] || return 1
+	grep -qE -- "$ARG2" "$ARG1" 2>/dev/null || return 1
+	RESULT="file-match: $ARG1 matched /$ARG2/"
+}
+
+check_url() {
+	local code
+	code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$ARG1" 2>/dev/null || true)
+	[[ "$code" == "$STATUS" ]] || return 1
+	RESULT="url: $ARG1 answered $code"
+}
+
+predicate() {
+	case "$MODE" in
+	sha) check_sha ;;
+	pr-checks) check_pr_checks ;;
+	file-match) check_file_match ;;
+	url) check_url ;;
+	esac
+}
+
+START=$(date +%s)
+DEADLINE=$((START + CAP))
+
+while :; do
+	if predicate; then
+		printf 'wait-for: %s after %ss\n' "$RESULT" "$(($(date +%s) - START))"
+		exit 0
+	fi
+	NOW=$(date +%s)
+	[[ "$NOW" -lt "$DEADLINE" ]] || break
+	NAP="$EVERY"
+	[[ "$NAP" -gt $((DEADLINE - NOW)) ]] && NAP=$((DEADLINE - NOW))
+	sleep "$NAP"
+done
+
+printf 'wait-for: cap %ss reached, %s still unmet — act on the deadline\n' "$CAP" "$MODE"
+exit 3

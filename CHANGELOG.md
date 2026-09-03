@@ -9,6 +9,26 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+- feat(hooks): **`wait-police` refuses to end a turn while delegated work runs unpolled.** A
+  session that delegates and then waits on the completion message alone can idle for hours with the
+  work already finished, because a notification can be dropped, delayed past a session-limit
+  window, or lost to a restart. The `Stop` hook reads liveness from the session transcript, which is
+  the only place the harness records it: a background task is live between its "running in
+  background" result and its task notification, a teammate between its spawn (or a message to it)
+  and its next idle notification. Nothing on disk carries a status field, so a transcript that
+  cannot be read allows the stop rather than trapping the session. It blocks only when something is
+  live and no bounded poll is armed, naming what is running; `stop_hook_active` suppresses a second
+  consecutive block, so it cannot loop. Off per session (`AGENTKIT_SKIP_HOOKS=wait-police`), per
+  repo (`git config agentkit.waitpolice.enabled false`), or globally under `wait-police:` in
+  config.yaml.
+- feat(tools): **`wait-for` makes a bounded poll one line.** It polls one artefact — a ref moving,
+  a pull request's checks concluding, a file matching a regex, a URL answering a status — until the
+  predicate holds (exit 0) or the cap expires (exit 3), printing one line either way. A poll counts
+  as bounded only when its command carries its own deadline, so `gh pr checks --watch` on its own
+  does not: it ends when the thing it watches ends, which is the failure being guarded against.
+- feat(instructions): **`wait-discipline.md`** states the rule the hook enforces — never wait on a
+  notification alone, poll the artefact, act when the deadline passes, and tell the owner which
+  deadline you are waiting to.
 - fix(ci): **the docs and docs-publish jobs pin Go via `actions/setup-go` and set
   `GOTOOLCHAIN=local`**, instead of letting Hugo's Go-module fetch for the Hextra theme
   silently download `docs/hextra/go.mod`'s toolchain through the module proxy on every

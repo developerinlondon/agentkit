@@ -452,10 +452,13 @@ one command; they are deliberately not config.
 | `comment-police` | yes        | yes                                |
 | `prose-police`   | yes        | yes                                |
 | `format-police`  | yes        | yes                                |
+| `plan-police`    | yes        | yes                                |
+| `wait-police`    | yes        | yes                                |
 | `version-police` | yes        | **no** — matches its own name only |
 | everything else  | **no**     | —                                  |
 
-The three that honour it are the `PostToolUse` write hooks; `version-police` is an OpenCode plugin.
+Four of those are the `PostToolUse` write hooks, `plan-police` guards a plan edit, `wait-police`
+runs on `Stop`, and `version-police` is an OpenCode plugin.
 The `PreToolUse` guards — `git-police`, `issue-police`, `pkg-police`, `resource-police`,
 `kubectl-police`, `mr-police`, `pages-police`, `review-police` — ignore `AGENTKIT_SKIP_HOOKS`
 entirely. Values are

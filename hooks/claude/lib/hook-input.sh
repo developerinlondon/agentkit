@@ -109,3 +109,21 @@ agentkit_advise_json() {
     }
   }'
 }
+
+# Stop-hook payload. `stop_hook_active` is true when the turn was already
+# continued by a Stop hook; blocking again from there is what loops a session.
+agentkit_transcript_path() {
+	agentkit_jq_raw -r '.transcript_path // .transcriptPath // empty'
+}
+
+agentkit_stop_hook_active() {
+	local flag
+	flag=$(agentkit_jq_raw -r '.stop_hook_active // .stopHookActive // false')
+	[[ "$flag" == "true" ]]
+}
+
+agentkit_block_json() {
+	local reason="$1"
+	# shellcheck disable=SC2016 # jq program; dollar-prefixed names are jq variables.
+	_agentkit_jq -n --arg r "$reason" '{decision: "block", reason: $r}'
+}

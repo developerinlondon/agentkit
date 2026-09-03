@@ -145,6 +145,12 @@
             "command": "$HOME/.claude/hooks/chime.sh done",
             "async": true,
             "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/wait-police.sh",
+            "timeout": 15,
+            "statusMessage": "wait-police: checking for unpolled delegated work..."
           }
         ]
       }
