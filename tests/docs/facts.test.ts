@@ -6,6 +6,7 @@ import {
   collectFacts,
   collectWiring,
   pluginHookDrift,
+  readD2Pin,
   serialise,
   spliceReadme,
 } from '../../scripts/sync-docs-facts.ts';
@@ -262,6 +263,40 @@ describe('the README skills table comes from the tree', () => {
 
     expect(() => spliceReadme('# no markers here\n', collectFacts(root)))
       .toThrow('marker pair');
+  });
+});
+
+describe('the D2 pin the docs state is the pin the wrapper enforces', () => {
+  const page = join(
+    import.meta.dir,
+    '..',
+    '..',
+    'docs',
+    'hextra',
+    'content',
+    'guide',
+    'concepts',
+    'diagrams.md',
+  );
+
+  test('the page names the pin from the skill source and no other D2 version', () => {
+    const pin = collectFacts().d2Pin;
+    expect(pin).toMatch(/^\d+\.\d+\.\d+$/);
+
+    const stated = [...readFileSync(page, 'utf-8').matchAll(/D2 v(\d+\.\d+\.\d+)/g)]
+      .map((match) => match[1]);
+    expect(stated.length).toBeGreaterThan(0);
+    expect([...new Set(stated)]).toEqual([pin]);
+  });
+
+  test('a renamed constant fails loudly rather than reading as no pin at all', () => {
+    write('skills/diagram/scripts/d2-svg.ts', 'export const PIN = "0.8.2";\n');
+
+    expect(() => readD2Pin(root)).toThrow('D2_PIN');
+  });
+
+  test('a tree without the diagram skill reports no pin instead of inventing one', () => {
+    expect(readD2Pin(root)).toBeNull();
   });
 });
 

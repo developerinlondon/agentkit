@@ -52,6 +52,8 @@ export interface KitFacts {
   kits: KitFact[];
   skills: SkillFact[];
   tools: string[];
+  // null only when the diagram skill is absent from the tree being read.
+  d2Pin: string | null;
 }
 
 function listDirectories(relative: string, root: string): string[] {
@@ -252,6 +254,23 @@ export function collectWiring(root: string = repoRoot): HookWiring[] {
   );
 }
 
+// The diagram skill's renderer pin is stated in its SKILL.md, its technical
+// register, the docs site and the CI workflow, and enforced from exactly one
+// constant. Reading that constant is what lets a test catch prose that has
+// drifted away from the binary the wrapper actually accepts.
+export function readD2Pin(root: string = repoRoot): string | null {
+  const path = join(root, 'skills', 'diagram', 'scripts', 'd2-svg.ts');
+  let source: string;
+  try {
+    source = readFileSync(path, 'utf-8');
+  } catch {
+    return null;
+  }
+  const match = /^export const D2_PIN = ['"]([^'"]+)['"];$/m.exec(source);
+  if (!match) throw new Error('skills/diagram/scripts/d2-svg.ts declares no D2_PIN');
+  return match[1] ?? '';
+}
+
 export function collectFacts(root: string = repoRoot): KitFacts {
   const { kits, membership } = readKits(root);
 
@@ -261,6 +280,7 @@ export function collectFacts(root: string = repoRoot): KitFacts {
     kits,
     skills: collectSkills(kits, membership, root),
     tools: listDirectory('tools', root).sort(),
+    d2Pin: readD2Pin(root),
   };
 }
 

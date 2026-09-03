@@ -69,7 +69,7 @@ system and one that documents your memory of it. Reach for hand-written D2 only
 when no such source exists, and see `references/technical-register.md` for what
 these tools genuinely cannot know.
 
-Renderer is pinned to **d2 v0.7.1**; the wrapper refuses any other version,
+Renderer is pinned to **d2 v0.8.2**; the wrapper refuses any other version,
 inlines vendored CC0 icons (`icon: @postgres`), and fails the render if the
 output is not self-contained. The render-LOOK-fix discipline of step 5 applies
 unchanged — read the PNG, never the SVG. Full-colour vendor logos are never
@@ -208,6 +208,60 @@ guarantee, so check both renderings before keeping one):
   color family; reserve the accent for a single data value.
 - Two semantic colors adjacent at the same size need a legend (≥14 px), placed
   inside the zone it explains.
+
+### Auto-layout (opt-in)
+
+Hand placement stays the default. When the figure really is a graph, though —
+nodes, edges, at most three zones, no invented metaphor — write the spec and let
+dagre compute every coordinate.
+
+**Open `references/auto-layout.md` before writing one.** It is the only complete
+field list: every `role`, `shape` and flag, which characters each font carries,
+the width each rank costs, what the layout guarantees and what it refuses. The
+grammar below is the shape, not the vocabulary.
+
+```yaml
+title: How a signed request becomes an answer # optional
+direction: down # right | down       (default right)
+palette: dark # dark | light       (default dark)
+roughness: 1 # 0 crisp | 1 sketch (default 1)
+background: "#ffffff" # optional backdrop; omit for transparent
+zones:
+  - { id: core, label: Core } # at most 3
+nodes:
+  - id: verify # at most 12
+    label: signature valid?
+    note: one line of detail under the label # optional
+    role: decision # neutral start success decision agent inactive error evidence
+    shape: diamond # rect | ellipse | diamond
+    zone: core # optional; must name a declared zone
+    mono: true # label in the mono font, for evidence artifacts
+edges:
+  - { from: gateway, to: verify, label: mTLS, dashed: false, role: error }
+notes:
+  - a muted line stacked under the figure
+```
+
+```bash
+bun <skill-dir>/scripts/layout.ts --in figure.diagram.yaml --out figure.excalidraw
+bun <skill-dir>/render.ts --in figure.excalidraw --out figure.svg --png figure.png
+```
+
+The layout measures each label against the font the renderer actually embeds,
+sizes each box to its own text, draws the zone frames, routes the arrows and
+binds them at both ends. It refuses rather than draws when it cannot be right: a
+broken density budget, a self-edge, a character no embedded font carries, a spec
+key it does not recognise.
+
+**Left to right fits four ranks, not five.** Each rank costs its own box width
+plus 92 px of gap, so a chain of minimum-width boxes warns at five ranks and is
+refused at six; boxes carrying a note warn at four and are refused at five.
+`direction: down` restacks the same spec, and vertical space is free.
+`examples/sketch-pipeline.diagram.yaml` is a worked spec that had to do exactly
+that.
+
+Step 5 still applies. Auto-layout removes the placement round, not the judgement
+about whether the figure argues anything.
 
 ## Size & density budget
 
