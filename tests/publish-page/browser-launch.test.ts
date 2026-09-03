@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { launchBrowser } from './browser-launch.ts';
+import { BrowserLaunchError, launchBrowser, rethrowLaunchFailure } from './browser-launch.ts';
 
 // More than a raw pipe's 64 KB buffer, so the capture is exercised at a volume
 // a launch going wrong can actually reach rather than a token line or two.
@@ -137,4 +137,41 @@ describe('launching a browser for the devtools endpoint', () => {
     });
     expect(attempts('never')).toBe(2);
   }, 60_000);
+  test('a launch that fails rejects as BrowserLaunchError, a class no assertion produces', async () => {
+    const promise = launchBrowser({ binary: stub('typed', {}), attemptMs: 1_000, attempts: 1 });
+    await expect(promise).rejects.toBeInstanceOf(BrowserLaunchError);
+    await promise.catch((error: Error) => expect(error.name).toBe('BrowserLaunchError'));
+  }, 60_000);
+
+  // The distinction that matters on CI: a sanitiser regression and a browser
+  // that never started must not read alike, or the real one gets rerun away.
+  test('a launch failure and a failed assertion are told apart by the caller', () => {
+    let assertionFailure: unknown;
+    try {
+      expect('drawn <script>').not.toContain('<script');
+    } catch (error) {
+      assertionFailure = error;
+    }
+    expect(assertionFailure).toBeInstanceOf(Error);
+    expect(assertionFailure).not.toBeInstanceOf(BrowserLaunchError);
+    expect(() => rethrowLaunchFailure(assertionFailure, 'the sanitiser assertions')).toThrow(
+      /<script/,
+    );
+    try {
+      rethrowLaunchFailure(assertionFailure, 'the sanitiser assertions');
+    } catch (error) {
+      expect(error).toBe(assertionFailure);
+    }
+
+    const stillborn = new BrowserLaunchError('port file never appeared');
+    expect(() => rethrowLaunchFailure(stillborn, 'the sanitiser assertions')).toThrow(
+      /the sanitiser assertions never ran: the browser did not launch/,
+    );
+    try {
+      rethrowLaunchFailure(stillborn, 'the sanitiser assertions');
+    } catch (error) {
+      expect(error).toBeInstanceOf(BrowserLaunchError);
+      expect((error as Error).message).toContain('port file never appeared');
+    }
+  });
 });

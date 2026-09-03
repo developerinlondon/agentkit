@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { bundledThemePath, mermaidRuntime, renderThemed } from '../../skills/publish-page/render-html.ts';
-import { launchBrowser } from './browser-launch.ts';
+import { launchBrowser, rethrowLaunchFailure } from './browser-launch.ts';
 
 // A diagram's source is author text, and in a product brief it is crawled text:
 // the fence reaches mermaid's parser verbatim by design. What mermaid then does
@@ -155,7 +155,9 @@ describe.if(chrome !== null)('a hostile diagram in a real browser', () => {
   }
 
   async function diagram(level: 'strict' | 'loose', throttle = 1): Promise<string> {
-    const dom = await renderedPage(await themed(level), throttle);
+    const dom = await renderedPage(await themed(level), throttle).catch((error: unknown) =>
+      rethrowLaunchFailure(error, `${level}: the sanitiser assertions`)
+    );
     const drawn = dom.match(/<pre class="mermaid"[^>]*>([\s\S]*?)<\/pre>/)?.[1] ?? '';
     // An empty match would let every assertion below pass without a diagram.
     expect(drawn, `${level}: no mermaid block in the rendered DOM`).toContain('<svg');

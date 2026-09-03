@@ -14,7 +14,9 @@ release PR — "publish this" authorizes a release, never the tier.
   or missing-library message Chrome wrote was discarded, and a launch that timed out on CI could say
   only `port file never appeared`. The helper now reads both streams, keeps the last 200 lines of
   stderr, and names the last 40 in the throw; it also re-spawns once on a fresh profile before giving
-  up, and states the ceiling it spent. Reading the pipes is capture, not unblocking: measured here,
+  up, and states the ceiling it spent. A launch that fails throws a `BrowserLaunchError` rather than
+  the generic timeout an assertion produces, and the sanitiser case relabels it as never having run,
+  so a real sanitiser regression cannot be waved through as the flake. Reading the pipes is capture, not unblocking: measured here,
   1.2 MB into an unread `Bun.spawn` pipe does not stall the writer the way a raw pipe does at 64 KB,
   so pipe backpressure is not the cause of the intermittent failure and this does not claim to fix
   it.

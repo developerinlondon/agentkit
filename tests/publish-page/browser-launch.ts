@@ -7,6 +7,13 @@ const ATTEMPTS = 2;
 const KEPT_LINES = 200;
 const TAIL_LINES = 40;
 
+export class BrowserLaunchError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'BrowserLaunchError';
+  }
+}
+
 export interface LaunchOptions {
   binary: string;
   args?: (profile: string) => string[];
@@ -135,8 +142,18 @@ export async function launchBrowser(options: LaunchOptions): Promise<Launched> {
       rmSync(profile, { force: true, recursive: true });
     }
   }
-  throw new Error(
+  throw new BrowserLaunchError(
     `browser never published a usable devtools endpoint after ${attempts} attempts of `
       + `${attemptMs}ms (${attempts * attemptMs}ms ceiling)\n${failures.join('\n')}`,
   );
+}
+
+// A case whose browser never started asserted nothing about its own subject. It
+// has to say so, or a real regression is indistinguishable from the flake in a
+// CI log and gets waved through on a rerun.
+export function rethrowLaunchFailure(error: unknown, subject: string): never {
+  if (error instanceof BrowserLaunchError) {
+    throw new BrowserLaunchError(`${subject} never ran: the browser did not launch\n${error.message}`);
+  }
+  throw error;
 }
