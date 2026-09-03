@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM"],
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "types": ["bun-types"],
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true
+  },
+  "include": ["render.ts", "scripts/**/*.ts"],
+  // renderer/ needs @excalidraw/excalidraw installed, which the skill's
+  // 271 MB dependency tree is deliberately not part of a root install.
+  "exclude": ["renderer"]
+}

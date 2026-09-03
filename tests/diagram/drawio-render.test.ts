@@ -71,6 +71,20 @@ async function waitForFile(path: string, deadlineMs: number): Promise<boolean> {
   return existsSync(path);
 }
 
+// The kill signal and the kernel actually reaping the process are two
+// different moments; asserting `alive()` right after the killer's promise
+// settles reads as flaky exactly when the host is loaded enough to delay the
+// second. Polling gives the reap its own bounded window instead of assuming
+// it already happened.
+async function waitForDeath(pid: number, deadlineMs: number): Promise<boolean> {
+  const until = Date.now() + deadlineMs;
+  while (Date.now() < until) {
+    if (!alive(pid)) return true;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  return !alive(pid);
+}
+
 // Signal 0 tests for existence without delivering anything; a killed process is
 // reaped by this process only if it was our child, so ESRCH is the real answer.
 function alive(pid: number): boolean {
@@ -233,6 +247,25 @@ describe('each launch gets a profile of its own', () => {
   }, 30_000);
 });
 
+describe('every launch disables the GPU process', () => {
+  // "FATAL: GPU process isn't usable. Goodbye." followed by "Illegal instruction"
+  // is the second symptom seen under load; CI never reproduces it because it
+  // does not install draw.io, so this pins the flag by recording the real argv.
+  test('the launched argv carries --disable-gpu', async () => {
+    await withTempAsync(async (dir) => {
+      const seen = join(dir, 'argv');
+      const exe = join(dir, 'drawio');
+      writeFileSync(exe, `#!/bin/sh\nfor a in "$@"; do echo "$a" >> ${seen}; done\n`);
+      chmodSync(exe, 0o755);
+
+      await launch({ binary: exe, sandbox: [] }, ['--export']);
+
+      const argv = readFileSync(seen, 'utf-8').trim().split('\n').filter(Boolean);
+      expect(argv).toContain('--disable-gpu');
+    });
+  }, 20_000);
+});
+
 describe('a hung render takes its whole process group with it', () => {
   test('the browser xvfb-run wrapped is killed too, not just the wrapper', async () => {
     // xvfb-run is a shell script: signalling it alone leaves the browser running
@@ -261,8 +294,8 @@ describe('a hung render takes its whole process group with it', () => {
       expect(failure).toBeInstanceOf(DrawioError);
       expect(failure?.message).toContain('process group was killed');
       expect(Date.now() - started).toBeLessThan(30_000);
-      expect({ when: 'after the timeout', alive: alive(grandchild) })
-        .toEqual({ when: 'after the timeout', alive: false });
+      expect({ when: 'after the timeout', dead: await waitForDeath(grandchild, 5000) })
+        .toEqual({ when: 'after the timeout', dead: true });
     });
   }, 60_000);
 });

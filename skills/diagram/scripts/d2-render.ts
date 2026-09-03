@@ -14,6 +14,7 @@ import {
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { expandIconRefs, IconError, monochromeFills, monochromeSources } from "./icons.ts";
+import type { StagedIcon } from "./icons.ts";
 import {
   applyHouseAttributes,
   D2_PIN,
@@ -21,9 +22,15 @@ import {
   flattenForMarkdown,
   inlineMonochromeIcons,
   retargetDarkTheme,
+  scopeElementRules,
   SvgError,
   verifySelfContained,
 } from "./d2-svg.ts";
+
+const DARK_SELECTORS = {
+  attribute: 'html:not([data-theme="light"])',
+  class: "html.dark",
+} as const;
 
 function fail(msg: string): never {
   console.error(`d2-render: ${msg}`);
@@ -74,10 +81,15 @@ if (!existsSync(input)) fail(`no such file: ${input}`);
 const output = arg("out") ?? input.replace(/\.d2$/, "") + ".svg";
 const png = arg("png");
 const label = arg("label") ?? basename(input).replace(/\.d2$/, "").replaceAll("-", " ");
+const host = arg("host") ?? "attribute";
+if (host !== "attribute" && host !== "class") {
+  fail(`--host must be "attribute" or "class", got "${host}"`);
+}
+const darkSelector = DARK_SELECTORS[host];
 
 checkPin();
 
-let expanded: { source: string; count: number };
+let expanded: { source: string; count: number; staged: StagedIcon[] };
 try {
   expanded = expandIconRefs(readFileSync(input, "utf8"));
 } catch (e) {
@@ -124,7 +136,8 @@ try {
 }
 
 try {
-  svg = retargetDarkTheme(svg);
+  svg = retargetDarkTheme(svg, darkSelector);
+  svg = scopeElementRules(svg, darkSelector);
   if (!flag("keep-background")) {
     const stripped = dropBackgroundRect(svg);
     if (!stripped.dropped) {
@@ -136,7 +149,7 @@ try {
   verifySelfContained(svg, expanded.count);
   // Counted while the marks are still <image> elements, then re-inlined; the
   // second pass re-checks containment on what actually ships.
-  const mono = inlineMonochromeIcons(svg, monochromeFills(), monochromeSources(expanded.staged));
+  const mono = inlineMonochromeIcons(svg, monochromeFills(), monochromeSources(expanded.staged), darkSelector);
   svg = flattenForMarkdown(mono.svg);
   verifySelfContained(svg, 0);
 } catch (e) {

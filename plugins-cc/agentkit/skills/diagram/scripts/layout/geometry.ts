@@ -1,6 +1,7 @@
 import dagre from "@dagrejs/dagre";
+import type { graphlib } from "@dagrejs/dagre";
 import { textHeight, textWidth } from "./measure.ts";
-import type { DiagramSpec, NodeSpec } from "./spec.ts";
+import type { DiagramSpec, NodeSpec, Role } from "./spec.ts";
 
 export const FONT = { title: 24, zoneTitle: 20, label: 16, note: 13, edgeLabel: 14, pageNote: 14 };
 export const MARGIN = 30;
@@ -30,7 +31,7 @@ export interface PlacedEdge {
   to: string;
   label?: string;
   dashed: boolean;
-  role?: string;
+  role?: Role;
   points: [number, number][];
   labelBox?: Box;
 }
@@ -58,7 +59,7 @@ function edgeLabelSize(label: string | undefined): { width: number; height: numb
   return { width: Math.ceil(textWidth(label, 1, FONT.edgeLabel)) + 12, height: Math.round(FONT.edgeLabel * 1.25) + 8 };
 }
 
-function runDagre(spec: DiagramSpec, sep: number): dagre.graphlib.Graph {
+function runDagre(spec: DiagramSpec, sep: number): graphlib.Graph {
   const g = new dagre.graphlib.Graph({ compound: true, multigraph: true });
   g.setGraph({
     rankdir: spec.direction === "right" ? "LR" : "TB",
@@ -105,7 +106,7 @@ function padZone(box: Box, children: Box[], titleSpace: number): Box {
   };
 }
 
-function collect(spec: DiagramSpec, g: dagre.graphlib.Graph): Layout {
+function collect(spec: DiagramSpec, g: graphlib.Graph): Layout {
   const nodes = new Map<string, PlacedNode>();
   for (const n of spec.nodes) nodes.set(n.id, { ...boxOf(g.node(n.id)), spec: n });
   const zones = new Map<string, Box>();

@@ -41,6 +41,22 @@ interface StrictReviewFixture {
   evidence_ref: string;
 }
 
+const HOOK_TIMEOUT_MS = 15_000;
+
+// review-police.sh exits 0 on every path — allow (empty stdout), deny (a JSON
+// decision), even its own missing-jq fallback. A non-zero exit, a kill signal,
+// or a spawn error (which covers a timeout) therefore never means "allow": it
+// means the gate never actually answered, which an empty string cannot be
+// told apart from otherwise. Returns null when the process answered normally.
+function hookDidNotAnswer(res: ReturnType<typeof spawnSync>): string | null {
+  if (!res.error && res.status === 0) return null;
+  const how = res.error
+    ? `spawn failed: ${res.error.message}`
+    : `exited ${res.status ?? 'null'}${res.signal ? ` (signal ${res.signal})` : ''}`;
+  const stderrTail = (res.stderr ?? '').toString().trim().split('\n').slice(-10).join('\n');
+  return `review-police.sh did not answer — ${how}${stderrTail ? `\nstderr:\n${stderrTail}` : ''}`;
+}
+
 function runHook(
   command: string,
   opts: {
@@ -51,6 +67,7 @@ function runHook(
     toolWorkdirField?: 'workdir' | 'cwd';
     camelToolInput?: boolean;
     payloadCwd?: string;
+    hookPath?: string;
   } = {},
 ): string {
   const toolInput =
@@ -68,13 +85,17 @@ function runHook(
       : { tool_name: opts.tool ?? 'Bash', tool_input: toolInput, session_id: 'test-session' }),
     ...(opts.payloadCwd === undefined ? {} : { cwd: opts.payloadCwd }),
   });
-  const args = opts.supervised ? [SUPERVISOR, '5', HOOK] : [HOOK];
+  const hookPath = opts.hookPath ?? HOOK;
+  const args = opts.supervised ? [SUPERVISOR, '5', hookPath] : [hookPath];
   const res = spawnSync('bash', args, {
     cwd: opts.cwd ?? repo,
     input,
     encoding: 'utf-8',
+    timeout: HOOK_TIMEOUT_MS,
     env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, HOME: home },
   });
+  const failure = hookDidNotAnswer(res);
+  if (failure) throw new Error(failure);
   return res.stdout ?? '';
 }
 
@@ -349,6 +370,24 @@ describe('review-police: evasion probe table', () => {
       else expect(out).toBe('');
     });
   }
+});
+
+describe('review-police: a silent hook is not read as an allow', () => {
+  // A hook that exits non-zero with empty stdout used to read as an ALLOW
+  // row's expected `''` — the gate never actually answered, and the probe
+  // could not tell the difference.
+  test('a stub that exits non-zero saying nothing is reported, not swallowed', () => {
+    const stubDir = mkdtempSync(join(tmpdir(), 'review-police-stub-'));
+    const stub = join(stubDir, 'silent-hook.sh');
+    writeFileSync(stub, '#!/usr/bin/env bash\nexit 7\n');
+    chmodSync(stub, 0o755);
+    try {
+      expect(() => runHook(MERGE, { hookPath: stub })).toThrow('did not answer');
+      expect(() => runHook(MERGE, { hookPath: stub })).toThrow('exited 7');
+    } finally {
+      rmSync(stubDir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('review-police: the hook itself cannot fail open', () => {

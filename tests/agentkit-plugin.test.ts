@@ -1,7 +1,8 @@
 import { describe, expect, test } from 'bun:test';
 import type { PluginInput } from '@opencode-ai/plugin';
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
-import { basename, join } from 'node:path';
+import { existsSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { basename, join, relative } from 'node:path';
 import {
   kitHasSkills,
   pluginIdFor,
@@ -10,18 +11,15 @@ import {
 } from '../scripts/skill-kits';
 
 // Recursive: some skills carry a references/ subdirectory, and a nested file
-// that drifts is exactly as misleading as a top-level one. node_modules is
-// gitignored, never reaches the plugin package, and a skill that documents
-// `bun install` would otherwise fail this walk on whichever copy the deps
-// landed in.
-const filesUnder = (dir: string, prefix = ''): string[] =>
-  readdirSync(join(dir, prefix), { withFileTypes: true }).flatMap((e) =>
-    e.name === 'node_modules'
-      ? []
-      : e.isDirectory()
-      ? filesUnder(dir, join(prefix, e.name))
-      : [join(prefix, e.name)]
-  );
+// that drifts is exactly as misleading as a top-level one. Walking git-tracked
+// files rather than the filesystem means a gitignored build artifact (e.g.
+// skills/diagram/renderer/bundle.js, which SKILL.md tells the author to build
+// locally) cannot break parity by existing on one side and not the other.
+const filesUnder = (dir: string): string[] => {
+  if (!existsSync(dir)) return [];
+  const out = execFileSync('git', ['ls-files', '--', dir], { cwd: repoRoot, encoding: 'utf-8' });
+  return out.split('\n').filter(Boolean).map((f) => relative(dir, join(repoRoot, f))).sort();
+};
 
 // The comprehensive "agentkit" Claude Code plugin bundles, in one install:
 //   - the enforcement police hooks (wired via hooks/hooks.json),
@@ -431,6 +429,26 @@ describe('agentkit plugin skills', () => {
           ).toBe(readFileSync(join(sourceSkills, name, file), 'utf-8'));
         }
       }
+    }
+  });
+
+  test('a gitignored build artifact present on only one side does not break parity', () => {
+    // skills/diagram/renderer/bundle.js is gitignored on both sides and
+    // SKILL.md tells the author to build it locally, so a fresh clone that
+    // builds it and never runs sync-cc-plugin.sh has it on the source side
+    // only. filesUnder must not see it on either side, so the file-list
+    // comparison stays unaffected.
+    const source = join(repoRoot, 'skills', 'diagram', 'renderer');
+    const mirror = join(repoRoot, 'plugins-cc', 'agentkit', 'skills', 'diagram', 'renderer');
+    const artifact = join(source, 'bundle.js');
+    const hadArtifact = existsSync(artifact);
+    if (!hadArtifact) writeFileSync(artifact, '// build artifact, not tracked by git\n');
+    try {
+      expect(existsSync(join(mirror, 'bundle.js'))).toBe(false);
+      expect(filesUnder(source)).not.toContain('bundle.js');
+      expect(filesUnder(source).sort()).toEqual(filesUnder(mirror).sort());
+    } finally {
+      if (!hadArtifact) rmSync(artifact);
     }
   });
 });
