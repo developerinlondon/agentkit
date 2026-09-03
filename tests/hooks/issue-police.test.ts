@@ -370,7 +370,7 @@ Context:
   });
 });
 
-// Presence is not enough: the value has to be one of the three accepted
+// Presence is not enough: the value has to be one of the four accepted
 // dispositions. Every case here fails if the value-gate in disposition_form_ok
 // is reverted to a presence-only check.
 describe('issue-police: the disposition value is gated, not just presence', () => {
@@ -384,6 +384,9 @@ describe('issue-police: the disposition value is gated, not just presence', () =
     'Disposition: owner-request - the owner asked for this to be filed',
     'Disposition: blocked-by legal sign-off on the license text',
     'Disposition: BLOCKED-BY legal sign-off on the license text',
+    'Disposition: in-progress — building the retry queue now, lane B',
+    'Disposition: in-progress - building the retry queue now, lane B',
+    'Disposition: IN-PROGRESS — building the retry queue now, lane B',
   ];
 
   for (const line of accepted) {
@@ -412,6 +415,9 @@ describe('issue-police: the disposition value is gated, not just presence', () =
     'Disposition: blocked-by',
     'Disposition: owner-deferredsomething',
     'Disposition: x',
+    'Disposition: in progress later',
+    'Disposition: in-progress',
+    'Disposition: in-progress —',
   ];
 
   for (const line of refused) {

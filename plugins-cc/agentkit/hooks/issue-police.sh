@@ -103,14 +103,14 @@ disposition_trim() {
 
 # bash 3.2 (stock macOS) cannot parse `(` inside [[ =~ ]], so both patterns are
 # held in variables — see git-police.sh for the same workaround.
-RE_DISPOSITION_OWNER='^[[:space:]]*owner-(deferred|request)[[:space:]]*(-{1,2}|—)[[:space:]]*(.*)$'
+RE_DISPOSITION_KEYED='^[[:space:]]*(owner-deferred|owner-request|in-progress)[[:space:]]*(-{1,2}|—)[[:space:]]*(.*)$'
 RE_DISPOSITION_BLOCKED='^[[:space:]]*blocked-by[[:space:]]+(.*)$'
 
 disposition_form_ok() {
 	local lower text
 	# `${VAR,,}` is bash 4+ and a hard parse error under macOS's stock bash 3.2.
 	lower="$(printf '%s' "$1" | LC_ALL=C tr '[:upper:]' '[:lower:]')"
-	if [[ "$lower" =~ $RE_DISPOSITION_OWNER ]]; then
+	if [[ "$lower" =~ $RE_DISPOSITION_KEYED ]]; then
 		text="$(disposition_trim "${BASH_REMATCH[3]}")"
 	elif [[ "$lower" =~ $RE_DISPOSITION_BLOCKED ]]; then
 		text="$(disposition_trim "${BASH_REMATCH[1]}")"
@@ -401,6 +401,7 @@ An issue is not a way to end a lane. Fix the finding in the current change, or f
 the owner explicitly deferred or asked for, or work blocked on something outside your control.
 
 Add a Disposition: line to the issue body in one of these exact forms:
+  Disposition: in-progress — the scope, and who is building it right now
   Disposition: owner-deferred — quote the owner's own words here
   Disposition: owner-request — quote the owner's own words here
   Disposition: blocked-by the external system, person, or permission
@@ -411,6 +412,7 @@ fi
 if ! disposition_form_ok "$(disposition_value "$TEXT")"; then
 	deny "BLOCKED: an issue is not a way to end a lane. Fix the finding in the current change, or file it
 with a Disposition: line in one of these exact forms:
+  Disposition: in-progress — the scope, and who is building it right now
   Disposition: owner-deferred — quote the owner's own words here
   Disposition: owner-request — quote the owner's own words here
   Disposition: blocked-by the external system, person, or permission
