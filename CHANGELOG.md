@@ -9,6 +9,19 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+- refactor(tests): **`review-police.test.ts` is split into `tests/review-police/`, under the file cap.**
+  At 1419 lines it was the largest test file in the repo and 419 lines past the 1000-line limit
+  `coding-police` enforces on every write. The 119 tests are unchanged — same names, same bodies,
+  same assertions — redistributed across eight files by their existing describe groups, over four
+  shared modules holding the fixture repo, the fake forge, the `runHook` probe and the strict-policy
+  fixtures. Each test file imports the diagnostics-wrapped `test()` rather than bun's, so a failing
+  assertion still carries the last hook call's stdin, stdout, exit code and CLI versions; the three
+  self-proof cases that assert this now prove it for the new layout. The fixture's mutable forge
+  state moved behind setters because an ES module import cannot be assigned to. `moon.yml`,
+  `scripts/check-test-slices.ts`, `tests/test-slices.test.ts`, `tests/review-gate.test.ts` and the
+  `review-governance` zone in `.agentkit/review-policy.json` follow the files to their new home, so
+  the split stays in the same CI slice and the same critical risk tier.
+
 - fix(tests): **`review-police.test.ts`'s probe now explains its own failures.** A hosted-runner-only
   denial with no local reproduction across 57 attempts left nothing to diagnose from. The `runHook`
   probe now captures the exact stdin JSON, the hook's full stdout/stderr, its exit code, elapsed time,
