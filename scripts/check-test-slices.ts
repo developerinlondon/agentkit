@@ -33,6 +33,8 @@ export const TEST_SLICES = {
     'tests/hooks/branch-wip-cap.test.ts',
     'tests/hooks/issue-police.test.ts',
     'tests/hooks/prose-police.test.ts',
+    'tests/hooks/wait-for.test.ts',
+    'tests/hooks/wait-police.test.ts',
     'tests/kubectl-police.test.ts',
     'tests/mr-police.test.ts',
     'tests/pkg-police.test.ts',

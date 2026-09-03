@@ -183,6 +183,16 @@ The shipped `forbidden-patterns` catch references that rot: `Plan-?\d+`, `PR\s*#
 Flags AI writing tells in the ADDED prose of markdown and text writes. Repositories opt out
 without touching the global config: `git config agentkit.prosepolice.enabled false`.
 
+## `wait-police`
+
+| Key       | Type | Default |
+| --------- | ---- | ------- |
+| `enabled` | bool | `true`  |
+
+Refuses to end a turn while delegated work is still running with no bounded poll armed on its
+artefact. Repositories opt out without touching the global config:
+`git config agentkit.waitpolice.enabled false`.
+
 ## `wip`
 
 Read by the `wip` surface, the `plan-gate` checker and the `plan-police` hook.

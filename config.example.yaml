@@ -216,6 +216,15 @@ prose-police:
   #     - docs/marketing/
   #     - vendor/
 
+wait-police:
+  # Refuses to end a turn while a subagent or background task is still running
+  # and no bounded poll is armed on the artefact it produces. Liveness is read
+  # from the session transcript; a poll counts when its command carries its own
+  # deadline (the `wait-for` helper, a `timeout <n>` cap, or a loop that
+  # computes one).
+  # Per-repo off switch: git config agentkit.waitpolice.enabled false
+  enabled: true
+
 # Read by the `wip` status surface, the `plan-gate` checker, and the
 # plan-police hook. A repository's own .agentkit/config.yaml overrides this.
 wip:
