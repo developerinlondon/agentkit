@@ -9,6 +9,12 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+- fix(tests): **`review-police.test.ts`'s probe now explains its own failures.** A hosted-runner-only
+  denial with no local reproduction across 57 attempts left nothing to diagnose from. The `runHook`
+  probe now captures the exact stdin JSON, the hook's full stdout/stderr, its exit code, elapsed time,
+  and `gh`/`glab --version` as seen from the test's `PATH`, and a failing assertion on the probe's
+  result now carries that block in the failure message — a passing assertion is unaffected.
+
 ## v0.8.4 — 2026-09-03
 
 - feat(hooks): **`issue-police` gates the `Disposition:` value, not just its presence.** An issue
