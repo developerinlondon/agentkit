@@ -9,6 +9,11 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+- fix(tests): **the plugin mirror-parity check walks git-tracked files, not the filesystem.** A
+  gitignored build artifact (`skills/diagram/renderer/bundle.js`, which `SKILL.md` tells the author
+  to build locally) present on one side and not the other used to fail the whole "byte-identical"
+  check by name, blaming the mirror instead of the artifact.
+
 ## v0.8.3 — 2026-09-03
 
 - feat(hooks): **`wait-police` refuses to end a turn while delegated work runs unpolled.** A
