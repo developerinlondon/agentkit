@@ -10,6 +10,42 @@ interface LockPackages {
   packages: Record<string, [string, ...unknown[]]>;
 }
 
+// bun.lock is JSONC (trailing commas, and comments are permitted by the
+// format even though this repo's committed lockfile has none) — not strict
+// JSON, so a plain JSON.parse throws on it. Bun.JSONC is not available on
+// the bun version this repo pins, so comments and trailing commas are
+// stripped by hand, respecting string boundaries so a `//` inside a sha512
+// hash is never read as one.
+function stripJsoncSyntax(text: string): string {
+  let out = '';
+  let inString = false;
+  for (let i = 0; i < text.length; i += 1) {
+    const c = text[i];
+    if (inString) {
+      out += c;
+      if (c === '\\') {
+        out += text[i + 1] ?? '';
+        i += 1;
+      } else if (c === '"') inString = false;
+      continue;
+    }
+    if (c === '"') {
+      inString = true;
+      out += c;
+    } else if (c === '/' && text[i + 1] === '/') {
+      while (i < text.length && text[i] !== '\n') i += 1;
+      out += '\n';
+    } else if (c === '/' && text[i + 1] === '*') {
+      i += 2;
+      while (i < text.length && !(text[i] === '*' && text[i + 1] === '/')) i += 1;
+      i += 1;
+    } else {
+      out += c;
+    }
+  }
+  return out.replace(/,(\s*[}\]])/g, '$1');
+}
+
 // `--frozen-lockfile --dry-run` only catches a structural package.json/lockfile
 // mismatch; a hand-edited resolved version still reports clean. This does NOT
 // catch an in-range resolved bump (^3.1.1 -> 3.1.2) — that is a legitimate
@@ -17,7 +53,7 @@ interface LockPackages {
 function outOfRangeResolutions(pkgPath: string, lockPath: string): string[] {
   const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
   const declared: Record<string, string> = { ...pkg.dependencies, ...pkg.devDependencies };
-  const lock = Bun.JSONC.parse(readFileSync(lockPath, 'utf-8')) as LockPackages;
+  const lock = JSON.parse(stripJsoncSyntax(readFileSync(lockPath, 'utf-8'))) as LockPackages;
 
   const problems: string[] = [];
   for (const [name, range] of Object.entries(declared)) {
