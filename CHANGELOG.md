@@ -9,6 +9,8 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+## v0.8.4 — 2026-09-03
+
 - feat(hooks): **`issue-police` gates the `Disposition:` value, not just its presence.** An issue
   filed with `Disposition: follow-up`, `later`, `tech debt`, or any other label passed as if it were
   an answer used to clear the hook; only `in-progress`, `owner-deferred`, `owner-request`, and
