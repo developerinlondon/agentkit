@@ -9,6 +9,14 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+- fix(diagram): **pinned `playwright-core` at the root so the typecheck gate resolves it
+  deterministically.** `render.ts` and `scripts/layout/font-metrics.ts` both dynamically import
+  `playwright-core`; on a clean CI checkout that resolved to nothing and failed the new typecheck
+  with `TS2307` plus a cascade of implicit-any errors. Locally it had passed only because an
+  unrelated ancestor directory on the dev machine happened to carry the package. Adding it as a
+  root devDependency at the exact version `skills/diagram/package.json` pins (types only — no
+  browser binaries download for `-core`) makes resolution independent of what else happens to sit
+  above the repo, verified with `rm -rf skills/diagram/node_modules && bun install --frozen-lockfile`.
 - fix(diagram): **`skills/diagram` now typechecks in the diagram test slice**, including
   `scripts/layout/`. A pinned `typescript` devDependency plus a new `skills/diagram/tsconfig.json`
   (strict, bundler resolution, bun types) back a `tsc --noEmit` gate over the skill's scripts,
