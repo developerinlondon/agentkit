@@ -94,6 +94,7 @@ fileGroups:
     - "plugins-cc/agentkit/skills/diagram/**/*"
     - "skills/diagram/**/*"
     - "skills/publish-page/lint.ts"
+    - "skills/publish-page/themes/deck.html"
     - "skills/publish-page/themes/doc.html"
     - "tests/diagram/**/*"
 

@@ -21,10 +21,13 @@ release PR — "publish this" authorizes a release, never the tier.
   because Chrome's children outlive the process that was killed and restore the directory after the
   delete — CI was accumulating partial profiles and dying browsers for the next launch to compete
   with. Both waits are bounded and escalate to `SIGKILL`, so a browser ignoring `SIGTERM` cannot
-  outrun the ceiling and hand the case to bun's timeout instead. Reading the pipes is capture, not unblocking: measured here,
-  1.2 MB into an unread `Bun.spawn` pipe does not stall the writer the way a raw pipe does at 64 KB,
-  so pipe backpressure is not the cause of the intermittent failure and this does not claim to fix
-  it.
+  outrun the ceiling and hand the case to bun's timeout instead. Reading the pipes is capture, not
+  unblocking: measured here, 1.2 MB into an unread `Bun.spawn` pipe does not stall the writer the way
+  a raw pipe does at 64 KB, so pipe backpressure is not the cause of the intermittent failure and
+  this does not claim to fix it.
+
+## v0.8.2 — 2026-09-03
+
 - chore(diagram): **the d2 renderer is pinned to v0.8.2, from its new `d2lang/d2` home.** 0.8.2
   swaps the embedded JavaScript layout runtimes for Go ports — elk-go at ELK 0.12, dagro at
   Dagre 3.1.1, rough-go at 4.6.6 — which moves geometry under unchanged source, so all four

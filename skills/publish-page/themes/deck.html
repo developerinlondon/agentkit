@@ -212,7 +212,7 @@
 
   /* Baked-palette diagram SVGs are authored navy-only; light mode derives a
      light rendering with a double flip — see the doc theme for rationale. */
-  html[data-theme="light"] svg[role="img"]:not(.edges):not(.d2) {
+  html[data-theme="light"] svg[role="img"]:not(.edges):not(.d2):not(.drawio) {
     filter: invert(0.93) hue-rotate(180deg);
   }
   @media print {
