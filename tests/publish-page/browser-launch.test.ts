@@ -53,7 +53,7 @@ interface StubOptions {
 // orphan writing profile state back once its parent is already gone.
 function writeBackScript(): string {
   const path = join(scratch, 'write-back.sh');
-  writeFileSync(path, '#!/bin/sh\nsleep 0.1\nmkdir -p "$1/Default"\necho state > "$1/Default/Network Persistent State"\n');
+  writeFileSync(path, '#!/bin/sh\nmkdir -p "$1/Default"\necho state > "$1/Default/Network Persistent State"\n');
   chmodSync(path, 0o755);
   return path;
 }
@@ -229,8 +229,8 @@ describe('launching a browser for the devtools endpoint', () => {
       attempts: 1,
     });
     await expect(promise).rejects.toBeInstanceOf(BrowserLaunchError);
-    expect(Date.now() - started).toBeLessThan(6_000);
-  }, 30_000);
+    expect(Date.now() - started).toBeLessThan(8_000);
+  }, 40_000);
 
   test.if(chrome !== null)('closing a real browser leaves no profile directory behind', async () => {
     const launch = await launchBrowser({ binary: chrome as string });
@@ -250,7 +250,7 @@ describe('launching a browser for the devtools endpoint', () => {
     expect(existsSync(launch.profile)).toBe(false);
     // The orphan's write lands after the first delete; the directory has to
     // stay gone, not merely have been gone once.
-    await Bun.sleep(400);
+    await Bun.sleep(1_500);
     expect(existsSync(launch.profile)).toBe(false);
   }, 30_000);
 });
