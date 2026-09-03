@@ -219,8 +219,11 @@
      svg[role="img"] is the baked-diagram convention; mermaid, edge overlays
      and UI icons never carry it.
      .d2 is exempt: it ships both palettes and switches on the same data-theme
-     attribute, and it embeds vendor logos that must never be filtered. */
-  html[data-theme="light"] svg[role="img"]:not(.edges):not(.d2) {
+     attribute, and it embeds vendor logos that must never be filtered.
+     .drawio is exempt for the second half of that reason alone: it is a
+     vendor-stencil figure exported light-only onto its own plate, so it has no
+     second palette to flip to and its brand fills must survive untouched. */
+  html[data-theme="light"] svg[role="img"]:not(.edges):not(.d2):not(.drawio) {
     filter: invert(0.93) hue-rotate(180deg);
   }
   @media print {

@@ -159,10 +159,14 @@ describe.if(hasDepcruise)('a live cruise of this repository', () => {
     const raw = cruised.stdout.toString();
     expect(JSON.parse(raw).summary.totalCruised).toBeGreaterThan(20);
 
-    // The skill outgrew twelve grouped modules, so the ceiling is lifted here
-    // on purpose: this case is about the grouping, and the budget refusal is
-    // proven against live data by the next one.
-    const result = run(['deps', '--focus', 'skills/diagram', '--group-depth', '2', '--max-nodes', '20'], raw);
+    // The ceiling is lifted on purpose: this case is about the grouping, and the
+    // budget refusal is proven against live data by the next one. Both the
+    // auto-layout and the draw.io register grew this directory past twelve
+    // grouped modules, independently — which is why it is a lever, not a limit.
+    const result = run(
+      ['deps', '--focus', 'skills/diagram', '--group-depth', '2', '--max-nodes', '20'],
+      raw,
+    );
     expect(result.stderr).toBe('');
     expect(result.code).toBe(0);
     // The extract modules are one component of the diagram skill, reached from

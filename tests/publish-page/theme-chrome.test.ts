@@ -387,13 +387,17 @@ describe('callout severities', () => {
   }
 });
 
-describe('d2 figures are exempt from the light-mode inversion', () => {
+describe('vendor-artwork figures are exempt from the light-mode inversion', () => {
   for (const theme of [['doc', doc], ['deck', deck]] as const) {
     const [name, css] = theme;
-    test(`${name} does not double-flip a D2 diagram`, () => {
+    test(`${name} does not double-flip a D2 or draw.io diagram`, () => {
       // D2 emits both palettes itself; inverting on top of that renders the
       // dark palette in light mode and recolours every embedded vendor logo.
-      expect(css).toContain('html[data-theme="light"] svg[role="img"]:not(.edges):not(.d2) {');
+      // draw.io ships one light palette on its own plate for the same reason —
+      // its stencils are brand artwork the filter must never touch.
+      expect(css).toContain(
+        'html[data-theme="light"] svg[role="img"]:not(.edges):not(.d2):not(.drawio) {',
+      );
     });
   }
 });
