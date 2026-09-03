@@ -39,7 +39,23 @@ an orphan.
 - Discovered follow-up work gets its **own** issue, linked from the note — never left as an
   unrecorded TODO in the conversation.
 
-## 4. No Tracker, No Rule
+## 4. No Deferred Findings
+
+- A finding surfaced while doing a job — a bug hit mid-task, a review comment, a gap noticed in
+  passing — is fixed in the same change, or in one consolidating MR before the job is reported done.
+  It is not filed and walked away from.
+- An issue may be filed for a finding only when: (a) the owner explicitly deferred it — quote their
+  words, or (b) it is blocked on something outside your control — name the blocker. Nothing else
+  qualifies, including "non-blocking", "tech debt", "nice to have", or "follow-up".
+- Say which case it is with a `Disposition:` line in the issue body:
+  - `Disposition: owner-deferred — <the owner's own words>`
+  - `Disposition: owner-request — <the owner's own words>` (the owner asked for this issue)
+  - `Disposition: blocked-by <the external system, person, or permission>`
+- Before reporting a job done, every issue the session opened is either closed by a merged change or
+  carries one of those dispositions. `issue-police` enforces the `Disposition:` line and its form
+  mechanically; it cannot tell whether the case claimed is true.
+
+## 5. No Tracker, No Rule
 
 - Repos without an issue tracker (scratch dirs, throwaway spikes) are exempt. If the repo has a
   tracker but you cannot write to it, say so explicitly and record the issue text in the PR
