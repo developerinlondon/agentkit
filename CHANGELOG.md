@@ -9,6 +9,8 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+## v0.8.3 — 2026-09-03
+
 - feat(hooks): **`wait-police` refuses to end a turn while delegated work runs unpolled.** A
   session that delegates and then waits on the completion message alone can idle for hours with the
   work already finished, because a notification can be dropped, delayed past a session-limit
