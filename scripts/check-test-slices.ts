@@ -16,6 +16,7 @@ export const TEST_SLICES = {
     'tests/diagram/lockfile.test.ts',
     'tests/diagram/mono-icons.test.ts',
     'tests/diagram/render.test.ts',
+    'tests/diagram/typecheck.test.ts',
     'tests/diagram/vendor-icons.test.ts',
   ],
   docs: [

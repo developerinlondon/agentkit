@@ -9,6 +9,13 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+- fix(diagram): **`skills/diagram` now typechecks in the diagram test slice.** A pinned
+  `typescript` devDependency plus a new `skills/diagram/tsconfig.json` (strict, bundler resolution,
+  bun types) back a `tsc --noEmit` gate over the skill's scripts and `render.ts`. Nothing checked
+  the skill's types before, so `expandIconRefs()`'s `.staged` field silently missing from a local
+  variable's type annotation shipped undetected. `scripts/layout/**` and `renderer/**` are excluded
+  for now — a pre-existing dagre typing gap and the skill's excluded 271 MB dependency tree,
+  respectively (tracked separately).
 - fix(diagram): **three ways the D2 and Excalidraw wrappers assumed a page they don't control,
   closed.** D2's dark-theme guard assumed `html[data-theme]`; a class-toggling host (Hextra,
   Tailwind, Docusaurus) never sets it, so the dark palette always won. `d2-render.ts --host class`
