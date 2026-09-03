@@ -79,6 +79,18 @@ export function readableStderr(text: string): string {
   return kept === "" ? trimmed : kept;
 }
 
+// A silent non-zero exit is the case that reads as no failure at all: both
+// streams empty leaves "draw.io failed:" and a blank line, which tells the
+// operator less than the number the process actually returned.
+export function failureMessage(
+  code: number | null,
+  signal: NodeJS.Signals | null,
+  output: string,
+): string {
+  const how = signal ? `was killed by ${signal}` : `exited with code ${code ?? "unknown"}`;
+  return output === "" ? `draw.io ${how}` : `draw.io ${how}:\n${output}`;
+}
+
 // Killed as a group, not as a process: xvfb-run is a shell script, so signalling
 // it leaves the browser it wrapped running with the X server pulled away.
 // Measured on this host — both survived a SIGTERM to the wrapper alone.
@@ -126,10 +138,10 @@ export function run(
       grace = setTimeout(expired, KILL_GRACE_MS);
     }, timeoutMs);
     child.on("error", (e: Error) => reject(new DrawioError(`could not start ${cmd}: ${e.message}`)));
-    child.on("close", (code) => {
+    child.on("close", (code, signal) => {
       if (timedOut) expired();
       else if (code === 0) resolve(out);
-      else reject(new DrawioError(`draw.io failed:\n${readableStderr(err || out)}`));
+      else reject(new DrawioError(failureMessage(code, signal, readableStderr(err || out))));
     });
   }).finally(() => {
     clearTimeout(timer);

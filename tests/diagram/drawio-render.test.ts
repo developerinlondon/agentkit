@@ -9,6 +9,7 @@ import {
   DrawioError,
   needsNoSandbox,
   needsXvfb,
+  failureMessage,
   KILL_GRACE_MS,
   parseVersion,
   readableStderr,
@@ -158,6 +159,28 @@ describe('a failed launch is reported in full', () => {
   });
 });
 
+describe('a silent failure still says what happened', () => {
+  test('the exit code carries the message when both streams are empty', () => {
+    // Without it the operator gets "draw.io failed:" and a blank line, which is
+    // indistinguishable from no failure at all.
+    expect(failureMessage(3, null, '')).toBe('draw.io exited with code 3');
+    expect(failureMessage(null, 'SIGSEGV', '')).toBe('draw.io was killed by SIGSEGV');
+    expect(failureMessage(1, null, 'no such file')).toBe('draw.io exited with code 1:\nno such file');
+  });
+
+  test('a stub that exits 3 saying nothing is reported by its code', async () => {
+    await withTempAsync(async (dir) => {
+      const exe = join(dir, 'drawio');
+      writeFileSync(exe, '#!/bin/sh\nexit 3\n');
+      chmodSync(exe, 0o755);
+      const failure = await launch({ binary: exe, sandbox: [] }, [])
+        .then(() => null, (e: unknown) => e as Error);
+      expect(failure).toBeInstanceOf(DrawioError);
+      expect(failure?.message).toBe('draw.io exited with code 3');
+    });
+  }, 20_000);
+});
+
 describe('a hung render takes its whole process group with it', () => {
   test('the browser xvfb-run wrapped is killed too, not just the wrapper', async () => {
     // xvfb-run is a shell script: signalling it alone leaves the browser running
@@ -263,6 +286,24 @@ describe('the wrapper refuses a source it cannot ship', () => {
       expect(result.stderr).toContain(`pins v${DRAWIO_PIN}`);
     });
   });
+
+  test('an explicit --salt is slugged, so it cannot break the ids it lands in', () => {
+    // Only the CLI wires saltFor to --salt, and the failure is invisible to the
+    // containment check: a raw salt emits id="a"b-0", which ID_RE reads as
+    // id="a" and whose url(#a"b-…) reference REF_RE does not match at all.
+    withTemp((dir) => {
+      const file = join(dir, 'a.drawio');
+      writeFileSync(file, DIAGRAM);
+      const out = join(dir, 'a.svg');
+      const result = run(dir, ['--in', file, '--out', out, '--salt', 'a"b'], { DISPLAY: '' });
+      expect({ code: result.code, stderr: result.stderr }).toEqual({ code: 0, stderr: '' });
+      const svg = readFileSync(out, 'utf-8');
+      const ids = [...svg.matchAll(/\bid="([^"]*)"/g)].map((m) => m[1]);
+      expect(ids.length).toBeGreaterThan(0);
+      expect(ids.filter((id) => !/^a-b-/.test(id))).toEqual([]);
+      expect(svg).not.toContain('a"b');
+    });
+  }, 120_000);
 
   test('a missing --in is named rather than crashing', () => {
     withTemp((dir) => {

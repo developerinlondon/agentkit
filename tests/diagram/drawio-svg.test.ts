@@ -124,6 +124,18 @@ describe('ids are namespaced per figure', () => {
     expect(saltFor('.svg')).toBe('drawio');
   });
 
+  test('a salt that is not already a slug is refused at the door', () => {
+    // Defence where the check cannot reach: id="a"b-0" reads as id="a" to ID_RE
+    // and its url(#a"b-…) reference matches REF_RE not at all, so a bad salt is
+    // the one breakage verifyReferences is structurally blind to.
+    expect(() => namespaceIds('<svg viewBox="0 0 1 1"><g id="x"/></svg>', 'a"b'))
+      .toThrow(/is not a slug/);
+    expect(() => namespaceIds('<svg viewBox="0 0 1 1"><g id="x"/></svg>', 'Fig A'))
+      .toThrow(SvgError);
+    expect(() => namespaceIds('<svg viewBox="0 0 1 1"><g id="x"/></svg>', saltFor('Fig A')))
+      .not.toThrow();
+  });
+
   test('a salt carrying a quote cannot break out of the attribute it lands in', () => {
     // It is interpolated into id=" and url(#…), so an unsanitised quote closes
     // the attribute and yields markup no gate downstream inspects.

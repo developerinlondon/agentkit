@@ -68,6 +68,12 @@ const REF_RE = /url\(\s*(&quot;|&#39;|["'])?#([^)"'&\s]+)\1?\s*\)/g;
 const HREF_RE = /((?:xlink:)?href)="#([^"]+)"/g;
 
 export function namespaceIds(svg: string, salt: string): string {
+  // A salt carrying a quote produces id="a"b-0", which ID_RE and REF_RE both
+  // read as ending at the quote — so the containment check cannot see the very
+  // breakage it exists to catch. Refusing the salt is what closes that.
+  if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/.test(salt)) {
+    throw new SvgError(`salt ${JSON.stringify(salt)} is not a slug — run it through saltFor first`);
+  }
   const stripped = svg.replace(GENERATED_PREFIX, "");
   const ids = new Set([...stripped.matchAll(ID_RE)].map((m) => m[1]).filter(Boolean));
   for (const id of ids) {

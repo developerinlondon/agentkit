@@ -251,6 +251,12 @@ from the output filename, rewriting `url(#…)` and `href="#…"` alongside. So
 to the same bytes, and two figures coexist on one page. An id shape the strip
 does not recognise fails the render rather than shipping churn.
 
+A salt is slugged whether it came from the filename or from `--salt`, and
+`namespaceIds` refuses one that is not already a slug. That refusal is not
+belt-and-braces: a quote in the salt emits `id="a"b-0"`, which the id and
+reference patterns both read as ending at the quote — so it is the one breakage
+the resolution check below is structurally blind to.
+
 **If you touch that rewrite, mind the second spelling.** draw.io writes each
 paint server twice — as `fill="url(#x)"` and again inside `style=` as
 `url(&quot;#x&quot;)` — and CSS honours the style copy. Rewriting only the
