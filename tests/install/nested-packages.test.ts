@@ -101,9 +101,10 @@ describe('nested skill packages are installed by a root install', () => {
   });
 
   test('a pinned nested install only means anything where a lockfile exists', () => {
-    // skills/diagram has none, so --frozen-lockfile there succeeds while pinning
-    // nothing. Whoever adds it to the postinstall must commit a lockfile first,
-    // or inherit the false assurance rather than the guarantee.
+    // Both packages carry one now, so the pin would bite either way. It is the
+    // ordering that matters and still can go wrong: naming a package here
+    // before committing its lockfile buys the false assurance, not the
+    // guarantee. skills/diagram is not named, so its lockfile pins nothing yet.
     for (const pkg of nestedPackages()) {
       const named = installCommands.some((l) => l.includes(`--cwd skills/${pkg}`));
       const locked = existsSync(join(repo, 'skills', pkg, 'bun.lock'));
@@ -118,15 +119,33 @@ describe('nested skill packages are installed by a root install', () => {
     // importer and no test path reaches it.
     const entries = diagramModulesTestsLoad();
     expect(entries.length).toBeGreaterThan(0);
+    // A package the ROOT manifest declares is installed by the root install and
+    // resolves from anywhere in the tree, so reaching it is not the failure this
+    // guards. The layout modules import dagre that way rather than putting the
+    // renderer's browser stack into every contributor's postinstall. A dep only
+    // skills/diagram declares is still unresolvable, and still fails here.
+    const rootDeclares = new Set(Object.keys({ ...root.dependencies, ...root.devDependencies }));
     const deps = Object.keys({
       ...JSON.parse(read('skills/diagram/package.json')).dependencies,
       ...JSON.parse(read('skills/diagram/package.json')).devDependencies,
-    }).filter((d) => !d.startsWith('@types/'));
+    }).filter((d) => !d.startsWith('@types/') && !rootDeclares.has(d));
     const alt = deps.map((d) => d.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')).join('|');
     const pattern = new RegExp(`(?:from|import|require)\\s*[(\\s]\\s*['"](?:${alt})(?:/[^'"]*)?['"]`);
     const offenders = reachable(entries).filter((f) => pattern.test(read(f)));
-    expect({ offenders, then: 'either install diagram in the postinstall, or move that import' })
-      .toEqual({ offenders: [], then: 'either install diagram in the postinstall, or move that import' });
+    const then = 'declare it in the root package.json too, install diagram in the postinstall, or move that import';
+    expect({ offenders, then }).toEqual({ offenders: [], then });
+  });
+
+  test('a dep shared with the root is pinned to the same version in both', () => {
+    // The exemption above is only sound while both manifests resolve to one
+    // package. Two ranges is two copies, and the tests would exercise the
+    // root's while the skill ships the other.
+    const skill = JSON.parse(read('skills/diagram/package.json'));
+    const rootAll = { ...root.dependencies, ...root.devDependencies } as Record<string, string>;
+    const shared = Object.entries({ ...skill.dependencies, ...skill.devDependencies } as Record<string, string>)
+      .filter(([name]) => name in rootAll);
+    expect(shared.length).toBeGreaterThan(0);
+    for (const [name, range] of shared) expect(`${name}@${range}`).toBe(`${name}@${rootAll[name]}`);
   });
 
   test('every nested package the postinstall names actually exists', () => {
