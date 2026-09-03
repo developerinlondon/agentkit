@@ -102,6 +102,6 @@ itself while it is happening, so confirm both dependencies resolve after an inst
 
 `AGENTKIT_SKIP_HOOKS` is honoured by the units whose refusal is advice rather than a gate —
 `coding-police`, `comment-police`, `prose-police`, `format-police`, `plan-police` and
-`wait-police` on the Claude side, `version-police` on the OpenCode side. The refusing units do not
-honour it; most take a per-command override variable instead. `issue-police` takes none, because the
-disposition line it asks for is the whole of what it wants.
+`wait-police` on the Claude side, `version-police` on the OpenCode side — and by `issue-police`,
+the one blocking exception. The rest of the refusing units do not honour it; most take a
+per-command override variable instead.

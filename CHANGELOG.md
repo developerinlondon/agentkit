@@ -18,6 +18,12 @@ release PR — "publish this" authorizes a release, never the tier.
   meanings: a finding is fixed in the change that found it, filing is for new work starting now, an
   owner's deferral or request, or an external blocker, quoted or named. `skills/github-issue-lifecycle`
   and `skills/gitlab-issue-lifecycle` teach the same four forms in place of the old three-case framing.
+  Fixed against the real `gh`/`glab` binaries: `--body`/`--description`/`--field body=` repeated on one
+  command line is read the way the forge itself reads it — the LAST occurrence, not the first, so a
+  passing decoy earlier in the command could no longer smuggle a refused value past the gate. A
+  `Disposition:` line inside a fenced block or backtick span is evidence of the syntax, not an answer,
+  and no longer counts. `en-dash` (`–`) joins the hyphen and em-dash as an accepted separator.
+  `AGENTKIT_SKIP_HOOKS=issue-police` (or `all`) now works, matching `plan-police`/`comment-police`.
 
 ## v0.8.3 — 2026-09-03
 
