@@ -9,6 +9,11 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+- fix(tests): **draw.io's `--disable-gpu` launch flag is now pinned by a test**, and the
+  process-group-kill test polls for the killed descendant's death within a bounded window instead
+  of asserting immediately after the killer's promise settles — the kill signal and the kernel
+  reaping the process are two different moments, and asserting right after the first read as flaky
+  on a loaded host.
 - fix(ci): **the docs and docs-publish setup-go steps now cache `docs/hextra/go.mod`.**
   `actions/setup-go`'s default cache key looks for a go.mod at the repo root, so with the module at
   `docs/hextra/go.mod` the cache never primed and every docs build reinstalled its Go toolchain
