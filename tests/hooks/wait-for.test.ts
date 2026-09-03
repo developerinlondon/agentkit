@@ -33,8 +33,16 @@ function run(args: string[]) {
   });
 }
 
+const gitIdentity = {
+  ...process.env,
+  GIT_AUTHOR_NAME: 'wait-for test',
+  GIT_AUTHOR_EMAIL: 'wait-for@test.invalid',
+  GIT_COMMITTER_NAME: 'wait-for test',
+  GIT_COMMITTER_EMAIL: 'wait-for@test.invalid',
+};
+
 function git(...args: string[]) {
-  const result = spawnSync('git', args, { encoding: 'utf-8' });
+  const result = spawnSync('git', args, { encoding: 'utf-8', env: gitIdentity });
   expect(result.status, result.stderr).toBe(0);
   return result.stdout.trim();
 }
