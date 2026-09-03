@@ -226,6 +226,32 @@ describe.if(available)('rendering with the pinned d2', () => {
     });
   });
 
+  test('a second figure on the same page cannot pick up the first one\'s .shape rule', () => {
+    withTemp((dir) => {
+      const srcA = join(dir, 'a.d2');
+      const srcB = join(dir, 'b.d2');
+      writeFileSync(srcA, 'x -> y: hello\n');
+      writeFileSync(srcB, 'p -> q: world\n');
+      const outA = join(dir, 'a.svg');
+      const outB = join(dir, 'b.svg');
+      expect(run(dir, ['--in', srcA, '--out', outA, '--salt', 'figure-a']).code).toBe(0);
+      expect(run(dir, ['--in', srcB, '--out', outB, '--salt', 'figure-b']).code).toBe(0);
+      const svgA = readFileSync(outA, 'utf-8');
+      const svgB = readFileSync(outB, 'utf-8');
+      const carrierA = svgA.match(/<svg class="(d2-\d+) d2-svg"/)?.[1];
+      const carrierB = svgB.match(/<svg class="(d2-\d+) d2-svg"/)?.[1];
+      expect({ carrierA, carrierB }).not.toEqual({ carrierA: undefined, carrierB: undefined });
+      expect(carrierA).not.toBe(carrierB);
+      // Without scoping both figures would emit the identical bare `.shape{…}`
+      // rule — one page carrying both would have whichever renders last apply
+      // to shapes in both, which is exactly the collision the carrier prevents.
+      expect(svgA).toContain(`.${carrierA} .shape{`);
+      expect(svgB).toContain(`.${carrierB} .shape{`);
+      expect(svgA).not.toContain(`.${carrierB}`);
+      expect(svgB).not.toContain(`.${carrierA}`);
+    });
+  }, 30000);
+
   test('an unknown icon fails the render instead of dropping the glyph', () => {
     withTemp((dir) => {
       const src = join(dir, 'a.d2');

@@ -70,7 +70,7 @@ function scopeSelector(selector: string, scope: string, darkPrefix: string): str
 }
 
 function scopeFlatRules(css: string, scope: string, darkPrefix: string): string {
-  return css.replace(/([^{}]+)\{([^{}]*)\}/g, (rule, selector: string, decls: string) => {
+  return css.replace(/([^{}]+)\{([^{}]*)\}/g, (_m, selector: string, decls: string) => {
     const scoped = selector.split(",").map((s) => scopeSelector(s, scope, darkPrefix)).join(",");
     return `${scoped}{${decls}}`;
   });
