@@ -4,10 +4,10 @@ import { join } from 'node:path';
 const repoRoot = join(import.meta.dir, '..', '..');
 const diagramDir = join(repoRoot, 'skills', 'diagram');
 
-// scripts/layout/** and renderer/** are excluded in tsconfig.json — the
-// former has a pre-existing dagre typing gap, the latter needs
-// @excalidraw/excalidraw installed, which the diagram skill's 271 MB
-// dependency tree is deliberately not part of a root install.
+// renderer/** is excluded in tsconfig.json — it needs @excalidraw/excalidraw
+// installed, which the diagram skill's 271 MB dependency tree is
+// deliberately not part of a root install. Everything else, scripts/layout/
+// included, is checked.
 describe('skills/diagram typechecks clean', () => {
   test('tsc --noEmit -p skills/diagram reports no errors', () => {
     const result = Bun.spawnSync({

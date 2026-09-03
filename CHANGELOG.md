@@ -9,6 +9,12 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+- fix(tests): **`skills/diagram/bun.lock` is now checked against its declared semver ranges, not
+  just structurally.** `bun install --frozen-lockfile --dry-run` only catches a dependency added or
+  removed from `package.json`; a resolved entry hand-edited to any version, in range or not, still
+  reported clean in under 5ms. A new check parses the lockfile and `Bun.semver.satisfies`-checks
+  every declared dependency's resolved version against its range, catching an out-of-range
+  resolution while still allowing a legitimate in-range bump through (that stays review's job).
 - fix(diagram): **pinned `playwright-core` at the root so the typecheck gate resolves it
   deterministically.** `render.ts` and `scripts/layout/font-metrics.ts` both dynamically import
   `playwright-core`; on a clean CI checkout that resolved to nothing and failed the new typecheck
