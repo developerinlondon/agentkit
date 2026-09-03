@@ -71,6 +71,7 @@ export const TEST_SLICES = {
     'tests/product-intelligence/render.test.ts',
     'tests/product-intelligence/schemas.test.ts',
     'tests/publish-page/accounts.test.ts',
+    'tests/publish-page/browser-launch.test.ts',
     'tests/publish-page/deck-template.test.ts',
     'tests/publish-page/device-login.test.ts',
     'tests/publish-page/lint.test.ts',

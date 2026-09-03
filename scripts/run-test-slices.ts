@@ -18,6 +18,7 @@ const repoRoot = join(import.meta.dir, '..');
 export const soloFiles = new Set([
   'tests/coding-police-hook.test.ts',
   'tests/hook-supervisor.test.ts',
+  'tests/publish-page/browser-launch.test.ts',
   'tests/publish-page/mermaid-runtime.test.ts',
   ...(process.env.AGENTKIT_RUN_INTEGRATION === '1'
     ? ['tests/resource-run.integration.test.ts']
