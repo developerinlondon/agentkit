@@ -9,6 +9,14 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+- feat(hooks): **`issue-police` gates the `Disposition:` value, not just its presence.** An issue
+  filed with `Disposition: follow-up`, `later`, `tech debt`, or any other label passed as if it were
+  an answer used to clear the hook; only `owner-deferred`, `owner-request`, and `blocked-by` — each
+  with non-empty text after a hyphen or em-dash separator, case-insensitive — now pass. Everything
+  else is refused with the reason that an issue is not a way to end a lane. `rules/issue-tracking.md`
+  gains a "No Deferred Findings" section stating the same rule: a finding is fixed in the change that
+  found it, and filing is for an owner's deferral or request, or an external blocker, quoted or named.
+
 ## v0.8.3 — 2026-09-03
 
 - feat(hooks): **`wait-police` refuses to end a turn while delegated work runs unpolled.** A
