@@ -29,6 +29,12 @@ release PR — "publish this" authorizes a release, never the tier.
 - feat(instructions): **`wait-discipline.md`** states the rule the hook enforces — never wait on a
   notification alone, poll the artefact, act when the deadline passes, and tell the owner which
   deadline you are waiting to.
+- fix(ci): **the docs and docs-publish jobs pin Go via `actions/setup-go` and set
+  `GOTOOLCHAIN=local`**, instead of letting Hugo's Go-module fetch for the Hextra theme
+  silently download `docs/hextra/go.mod`'s toolchain through the module proxy on every
+  build. That download intermittently failed, breaking the docs build and blocking
+  releases; a missing toolchain now fails immediately instead.
+
 - fix(tests): **the mermaid browser test reports Chrome's stderr and retries a stillborn launch.**
   Its launch helper piped the browser's stdout and stderr and read neither, so every sandbox, D-Bus
   or missing-library message Chrome wrote was discarded, and a launch that timed out on CI could say
