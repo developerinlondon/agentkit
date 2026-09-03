@@ -11,5 +11,7 @@
     "noEmit": true
   },
   "include": ["render.ts", "scripts/**/*.ts"],
-  "exclude": ["renderer", "scripts/layout.ts", "scripts/layout/**"]
+  // renderer/ needs @excalidraw/excalidraw installed, which the skill's
+  // 271 MB dependency tree is deliberately not part of a root install.
+  "exclude": ["renderer"]
 }
