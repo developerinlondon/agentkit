@@ -25,6 +25,10 @@ candidate build otherwise means replacing the PATH binary, which changes what
 every other renderer on the machine is pinned against. The version check applies
 to `D2_BIN` exactly as it does to PATH, and the skill's own test suite finds its
 binary the same way, so a candidate can be put through the suite as it is.
+`D2_BIN` is also on `tools/bounded-run`'s environment allowlist, so
+`scripts/product-command` (which runs review under it on Linux) honours the
+override too — most tool-override variables are not on that allowlist and are
+stripped.
 
 ```bash
 bun skills/diagram/scripts/d2-render.ts \

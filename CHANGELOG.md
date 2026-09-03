@@ -9,6 +9,11 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+- fix(tools): **`bounded-run` passes `D2_BIN` through its environment allowlist.** The bounded env
+  `scripts/product-command` runs review under on Linux stripped it, so the pinned-d2 policy check
+  could not honour the escape hatch the technical register documents — a reviewer testing a
+  candidate build had to displace the pinned PATH binary instead, the exact thing `D2_BIN` exists
+  to avoid.
 - fix(tests): **draw.io's `--disable-gpu` launch flag is now pinned by a test**, and the
   process-group-kill test polls for the killed descendant's death within a bounded window instead
   of asserting immediately after the killer's promise settles — the kill signal and the kernel
