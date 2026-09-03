@@ -9,6 +9,10 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+- fix(tests): **`skills/diagram/bun.lock` is now checked in the diagram test slice**, via
+  `bun install --frozen-lockfile --dry-run`, which settles in milliseconds against an in-sync
+  lockfile and never pays the skill's 271 MB dependency tree. Previously nothing installed
+  `skills/diagram` at all, so the lockfile could drift from `package.json` indefinitely unnoticed.
 - fix(tests): **the plugin mirror-parity check walks git-tracked files, not the filesystem.** A
   gitignored build artifact (`skills/diagram/renderer/bundle.js`, which `SKILL.md` tells the author
   to build locally) present on one side and not the other used to fail the whole "byte-identical"

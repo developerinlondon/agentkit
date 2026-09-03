@@ -12,6 +12,7 @@ export const TEST_SLICES = {
     'tests/diagram/extract-sources.test.ts',
     'tests/diagram/icons.test.ts',
     'tests/diagram/layout.test.ts',
+    'tests/diagram/lockfile.test.ts',
     'tests/diagram/mono-icons.test.ts',
     'tests/diagram/render.test.ts',
     'tests/diagram/vendor-icons.test.ts',
