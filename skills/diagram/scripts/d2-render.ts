@@ -14,6 +14,7 @@ import {
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { expandIconRefs, IconError, monochromeFills, monochromeSources } from "./icons.ts";
+import type { StagedIcon } from "./icons.ts";
 import {
   applyHouseAttributes,
   D2_PIN,
@@ -88,7 +89,7 @@ const darkSelector = DARK_SELECTORS[host];
 
 checkPin();
 
-let expanded: { source: string; count: number };
+let expanded: { source: string; count: number; staged: StagedIcon[] };
 try {
   expanded = expandIconRefs(readFileSync(input, "utf8"));
 } catch (e) {
