@@ -25,6 +25,10 @@ candidate build otherwise means replacing the PATH binary, which changes what
 every other renderer on the machine is pinned against. The version check applies
 to `D2_BIN` exactly as it does to PATH, and the skill's own test suite finds its
 binary the same way, so a candidate can be put through the suite as it is.
+`D2_BIN` is also on `tools/bounded-run`'s environment allowlist, so
+`scripts/product-command` (which runs review under it on Linux) honours the
+override too — most tool-override variables are not on that allowlist and are
+stripped.
 
 ```bash
 bun skills/diagram/scripts/d2-render.ts \
@@ -32,15 +36,16 @@ bun skills/diagram/scripts/d2-render.ts \
   --label "Production deployment topology"
 ```
 
-| Flag                | Default  | Use                                                                    |
-| ------------------- | -------- | ---------------------------------------------------------------------- |
-| `--layout`          | `elk`    | `dagre` is faster but overlaps sibling containers                      |
-| `--theme`           | `0`      | light palette; `303` is D2's C4 theme                                  |
-| `--dark-theme`      | `200`    | dark palette; must stay set or the page theme has nothing to switch to |
-| `--pad`             | `40`     | pixels around the diagram                                              |
-| `--salt`            | —        | set per diagram when two SVGs share one HTML document                  |
-| `--label`           | filename | becomes `aria-label`; match the figcaption                             |
-| `--keep-background` | off      | keeps D2's own backdrop instead of the figure island's                 |
+| Flag                | Default     | Use                                                                                    |
+| ------------------- | ----------- | -------------------------------------------------------------------------------------- |
+| `--layout`          | `elk`       | `dagre` is faster but overlaps sibling containers                                      |
+| `--theme`           | `0`         | light palette; `303` is D2's C4 theme                                                  |
+| `--dark-theme`      | `200`       | dark palette; must stay set or the page theme has nothing to switch to                 |
+| `--pad`             | `40`        | pixels around the diagram                                                              |
+| `--salt`            | —           | set per diagram when two SVGs share one HTML document                                  |
+| `--label`           | filename    | becomes `aria-label`; match the figcaption                                             |
+| `--keep-background` | off         | keeps D2's own backdrop instead of the figure island's                                 |
+| `--host`            | `attribute` | dark-theme guard: `attribute` for `html[data-theme]`, `class` for a `html.dark` toggle |
 
 ## Derive before you author
 
@@ -373,6 +378,24 @@ Two consequences worth keeping straight:
 D2's own full-bleed background rect is removed so the island's surface shows
 through. Pass `--keep-background` only when the SVG must stand alone on an
 unknown surface.
+
+### Embedding contract
+
+What the SVG assumes about its host, and which options adjust it:
+
+- **Dark-theme guard.** Defaults to `html:not([data-theme="light"])`, matching
+  Pages' attribute toggle. A host that toggles a class instead (Tailwind,
+  Hextra, Docusaurus) never sets `data-theme`, so the guard is always true and
+  the dark palette wins on both themes. Pass `--host class` to emit
+  `html.dark` instead.
+- **CSS scoping.** Every rule in the inlined stylesheet — including `.shape`,
+  `.connection`, `.md` and friends, which d2 itself ships bare — is scoped
+  under the figure's own `.d2-<hash>` class, the same carrier the colour
+  classes already use. Two figures on one page, or a figure sharing a page
+  with unrelated `.shape`/`.md` classes, cannot collide. Automatic; no flag.
+- **No background assumed.** D2's own backdrop is stripped (`--keep-background`
+  restores it) because the wrapper assumes a host that supplies its own
+  surface, the way the `.figure` island does.
 
 ## 7 — What the wrapper refuses
 

@@ -3,6 +3,7 @@ import { execSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { backgroundRect, resolveBackground } from "./scripts/excalidraw-svg.ts";
 
 declare global {
   interface Window {
@@ -26,7 +27,7 @@ const input = arg("in") ?? fail("--in <file.excalidraw> is required");
 const output = arg("out") ?? input.replace(/\.excalidraw$/, "") + ".svg";
 if (!existsSync(input)) fail(`no such file: ${input}`);
 
-let scene: { type?: string; elements?: unknown[] };
+let scene: { type?: string; elements?: unknown[]; appState?: Record<string, unknown> };
 try {
   scene = JSON.parse(await readFile(input, "utf8"));
 } catch (e) {
@@ -81,8 +82,10 @@ try {
     .catch(() => {
       throw new Error(`renderer bundle failed to initialize${errors.length ? `: ${errors[0]}` : ""}`);
     });
-  const svg: string = await page.evaluate((s) => window.renderExcalidrawToSvg(s), scene);
+  let svg: string = await page.evaluate((s) => window.renderExcalidrawToSvg(s), scene);
   if (!svg.startsWith("<svg")) throw new Error("renderer returned no SVG");
+  const background = resolveBackground(arg("background"), scene.appState?.viewBackgroundColor);
+  if (background) svg = backgroundRect(svg, background);
   await writeFile(output, svg).catch((e: Error) => {
     throw new Error(`cannot write ${output}: ${e.message}`);
   });

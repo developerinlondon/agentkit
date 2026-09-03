@@ -395,6 +395,26 @@ printf 'secret=<%s>\n' "\${UNSAFE_SECRET:-}" >> "${output}"
   });
 });
 
+describeLinux('bounded-run environment allowlist', () => {
+  test('passes D2_BIN through, so a candidate build can override the PATH binary', () => {
+    // Without this, a review testing a candidate d2 has to displace the pinned
+    // PATH binary to be seen at all — the exact thing D2_BIN exists to avoid.
+    const result = runRunner(['--profile', 'canary', '--', '/bin/true'], {
+      D2_BIN: '/opt/d2-candidate/d2',
+    });
+    expect(result.status, result.stderr).toBe(0);
+    expect(readFileSync(systemdLog, 'utf-8')).toContain('D2_BIN=/opt/d2-candidate/d2\n');
+  });
+
+  test('drops an unlisted variable, so the allowlist is not merely additive', () => {
+    const result = runRunner(['--profile', 'canary', '--', '/bin/true'], {
+      D2_BIN_TYPO: '/opt/d2-candidate/d2',
+    });
+    expect(result.status, result.stderr).toBe(0);
+    expect(readFileSync(systemdLog, 'utf-8')).not.toContain('D2_BIN_TYPO');
+  });
+});
+
 describeLinux('bounded-run Linux resource boundary', () => {
   test('maps every profile to explicit systemd cgroup and timeout properties', () => {
     const expected = {
