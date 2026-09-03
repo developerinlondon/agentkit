@@ -2,7 +2,12 @@ import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { BrowserLaunchError, launchBrowser, rethrowLaunchFailure } from './browser-launch.ts';
+import {
+  BrowserLaunchError,
+  chromePath,
+  launchBrowser,
+  rethrowLaunchFailure,
+} from './browser-launch.ts';
 
 // More than a raw pipe's 64 KB buffer, so the capture is exercised at a volume
 // a launch going wrong can actually reach rather than a token line or two.
@@ -11,6 +16,7 @@ const NOISE_LINE = 'stub-noise 0123456789012345678901234567890123456789012345678
 const FLOOD_BYTES = NOISE_LINES * (NOISE_LINE.length + 6);
 
 const scratch = mkdtempSync(join(tmpdir(), 'agentkit-launch-'));
+const chrome = chromePath();
 let debugPort = 0;
 let server: ReturnType<typeof Bun.serve> | undefined;
 
@@ -39,12 +45,23 @@ afterAll(() => {
 interface StubOptions {
   flood?: boolean;
   publishOnAttempt?: number;
-  counter?: string;
+  ignoreTerm?: boolean;
+  writeBackAfterDeath?: boolean;
+}
+
+// Stands in for the renderer and GPU children that outlive a killed Chrome: an
+// orphan writing profile state back once its parent is already gone.
+function writeBackScript(): string {
+  const path = join(scratch, 'write-back.sh');
+  writeFileSync(path, '#!/bin/sh\nsleep 0.1\nmkdir -p "$1/Default"\necho state > "$1/Default/Network Persistent State"\n');
+  chmodSync(path, 0o755);
+  return path;
 }
 
 function stub(name: string, options: StubOptions = {}): string {
   const path = join(scratch, `${name}.sh`);
-  const counter = options.counter ?? join(scratch, `${name}.count`);
+  const counter = join(scratch, `${name}.count`);
+  const log = join(scratch, `${name}.log`);
   const flood = options.flood
     ? `i=0\nwhile [ \$i -lt ${NOISE_LINES} ]; do\n  echo "${NOISE_LINE} \$i" >&2\n  i=\$((i + 1))\ndone\n`
     : `echo "${NOISE_LINE} solitary" >&2\n`;
@@ -62,15 +79,37 @@ function stub(name: string, options: StubOptions = {}): string {
       + `done\n`
       + `attempt=\$(( \$(cat "${counter}" 2>/dev/null || echo 0) + 1 ))\n`
       + `echo "\$attempt" > "${counter}"\n`
+      // Each run records its own pid and profile, and whether the run before it
+      // was still alive — the retry's two claims, observed where they happen.
+      + `previous=PREV_DEAD\n`
+      + `if [ -s "${log}" ]; then\n`
+      + `  if kill -0 "\$(head -n 1 "${log}" | cut -d' ' -f2)" 2>/dev/null; then previous=PREV_ALIVE; fi\n`
+      + `else\n`
+      + `  previous=FIRST\n`
+      + `fi\n`
+      + `echo "\$attempt \$\$ \$profile \$previous" >> "${log}"\n`
       + flood
       + publish
-      // exec so a kill reaches this process: a lingering child would hold the
-      // stderr pipe open and the launcher would wait on an EOF that never came.
-      + `exec sleep 60\n`,
+      + (options.ignoreTerm
+        ? `trap '' TERM\nwhile : ; do sleep 0.2; done\n`
+        : options.writeBackAfterDeath
+        ? `trap '${writeBackScript()} "\$profile" & exit 0' TERM\nwhile : ; do sleep 0.1; done\n`
+        // exec so a kill reaches this process: a lingering child would hold the
+        // stderr pipe open and the launcher would wait on an EOF that never came.
+        : `exec sleep 60\n`),
   );
   chmodSync(path, 0o755);
-  if (existsSync(counter)) rmSync(counter);
+  for (const stale of [counter, log]) if (existsSync(stale)) rmSync(stale);
   return path;
+}
+
+function runs(name: string): { attempt: string; pid: string; profile: string; previous: string }[] {
+  const log = join(scratch, `${name}.log`);
+  if (!existsSync(log)) return [];
+  return readFileSync(log, 'utf-8').trim().split('\n').filter(Boolean).map((line) => {
+    const [attempt, pid, profile, previous] = line.split(' ');
+    return { attempt: attempt ?? '', pid: pid ?? '', profile: profile ?? '', previous: previous ?? '' };
+  });
 }
 
 function attempts(name: string): number {
@@ -93,7 +132,7 @@ describe('launching a browser for the devtools endpoint', () => {
       expect(launch.stderrTail(40).split('\n')).toHaveLength(40);
       expect(launch.stderrTail(40)).not.toContain(`${NOISE_LINE} 0\n`);
     } finally {
-      launch.close();
+      await launch.close();
     }
   }, 60_000);
 
@@ -110,7 +149,7 @@ describe('launching a browser for the devtools endpoint', () => {
     });
   }, 60_000);
 
-  test('a stillborn first launch is retried on a fresh profile', async () => {
+  test('a stillborn first launch is retried on a fresh profile, the first one dead', async () => {
     const launch = await launchBrowser({
       binary: stub('second-time-lucky', { publishOnAttempt: 2 }),
       attemptMs: 1_500,
@@ -119,8 +158,13 @@ describe('launching a browser for the devtools endpoint', () => {
     try {
       expect(attempts('second-time-lucky')).toBe(2);
       expect(launch.endpoint).toBe(pageTarget());
+      const [first, second] = runs('second-time-lucky');
+      // A retry into the same profile would inherit the failed launch's lock
+      // files, and a retry alongside a live browser competes with it for them.
+      expect(second?.profile).not.toBe(first?.profile);
+      expect(second?.previous).toBe('PREV_DEAD');
     } finally {
-      launch.close();
+      await launch.close();
     }
   }, 60_000);
 
@@ -174,4 +218,39 @@ describe('launching a browser for the devtools endpoint', () => {
       expect((error as Error).message).toContain('port file never appeared');
     }
   });
+  // SIGTERM only asks. A browser that declines and is waited on unbounded runs
+  // past the stated ceiling, and bun's case timeout then discards the stderr
+  // report and the error type this file exists to provide.
+  test('a browser ignoring SIGTERM does not outlast the ceiling the error states', async () => {
+    const started = Date.now();
+    const promise = launchBrowser({
+      binary: stub('stubborn', { ignoreTerm: true }),
+      attemptMs: 500,
+      attempts: 1,
+    });
+    await expect(promise).rejects.toBeInstanceOf(BrowserLaunchError);
+    expect(Date.now() - started).toBeLessThan(6_000);
+  }, 30_000);
+
+  test.if(chrome !== null)('closing a real browser leaves no profile directory behind', async () => {
+    const launch = await launchBrowser({ binary: chrome as string });
+    expect(existsSync(launch.profile)).toBe(true);
+    // Chrome writes profile state back as it shuts down, so a delete that does
+    // not wait for the exit is undone by the browser it just killed.
+    await launch.close();
+    expect(existsSync(launch.profile)).toBe(false);
+  }, 60_000);
+  test('a profile written back to after the browser dies is still removed', async () => {
+    const launch = await launchBrowser({
+      binary: stub('write-backer', { publishOnAttempt: 1, writeBackAfterDeath: true }),
+      attemptMs: 5_000,
+      attempts: 1,
+    });
+    await launch.close();
+    expect(existsSync(launch.profile)).toBe(false);
+    // The orphan's write lands after the first delete; the directory has to
+    // stay gone, not merely have been gone once.
+    await Bun.sleep(400);
+    expect(existsSync(launch.profile)).toBe(false);
+  }, 30_000);
 });

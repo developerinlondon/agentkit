@@ -4,6 +4,10 @@ import { join } from 'node:path';
 
 const ATTEMPT_MS = 20_000;
 const ATTEMPTS = 2;
+const REAP_MS = 2_000;
+const PROFILE_RM_MS = 3_000;
+const PROFILE_SETTLE_MS = 250;
+const FLUSH_MS = 500;
 const KEPT_LINES = 200;
 const TAIL_LINES = 40;
 
@@ -16,7 +20,6 @@ export class BrowserLaunchError extends Error {
 
 export interface LaunchOptions {
   binary: string;
-  args?: (profile: string) => string[];
   attemptMs?: number;
   attempts?: number;
 }
@@ -25,10 +28,22 @@ export interface Launched {
   endpoint: string;
   profile: string;
   stderrTail(lines?: number): string;
-  close(): void;
+  close(): Promise<void>;
 }
 
-export function chromeArgs(profile: string): string[] {
+export function chromePath(): string | null {
+  const candidates = [
+    process.env.AGENTKIT_CHROMIUM,
+    '/usr/bin/google-chrome',
+    '/usr/bin/chromium',
+    '/usr/bin/chromium-browser',
+    '/opt/google/chrome/chrome',
+    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+  ].filter((c): c is string => Boolean(c));
+  return candidates.find((c) => existsSync(c)) ?? null;
+}
+
+function chromeArgs(profile: string): string[] {
   return [
     '--headless=new',
     '--disable-gpu',
@@ -63,6 +78,36 @@ async function drain(stream: unknown, keep?: string[]): Promise<void> {
     // The browser is killed while a read is in flight on every failure path.
   }
   if (keep && partial) keep.push(partial);
+}
+
+// Chrome flushes profile state during shutdown and writes it back after a
+// delete, so a profile removed before the reap survives. SIGTERM only asks,
+// hence the bounded grace: a browser ignoring it must not outlast the ceiling.
+async function reap(child: Bun.Subprocess): Promise<void> {
+  child.kill();
+  const settled = await Promise.race([
+    child.exited.then(() => true),
+    Bun.sleep(REAP_MS).then(() => false),
+  ]);
+  if (settled) return;
+  child.kill('SIGKILL');
+  await Promise.race([child.exited, Bun.sleep(REAP_MS)]);
+}
+
+// Chrome's renderer and GPU children outlive the browser process that was
+// killed, and write profile state back after the directory is deleted — so one
+// removal leaves it behind. Remove again while anything recreates it.
+async function removeProfile(profile: string): Promise<void> {
+  const deadline = Date.now() + PROFILE_RM_MS;
+  let goneAt = Date.now();
+  for (;;) {
+    if (existsSync(profile)) {
+      rmSync(profile, { force: true, recursive: true });
+      goneAt = Date.now();
+    }
+    if (Date.now() - goneAt >= PROFILE_SETTLE_MS || Date.now() >= deadline) return;
+    await Bun.sleep(50);
+  }
 }
 
 function tail(lines: readonly string[], count: number): string {
@@ -104,15 +149,20 @@ async function waitForEndpoint(profile: string, deadline: number): Promise<strin
   throw new Error(lastFailure);
 }
 
+function reportAttempt(attempt: number, of: number, profile: string, why: string, stderr: string[]): string {
+  return `attempt ${attempt}/${of} in ${profile}: ${why}\n`
+    + `--- last ${TAIL_LINES} lines of browser stderr (attempt ${attempt}) ---\n`
+    + `${tail(stderr, TAIL_LINES) || '(the browser wrote nothing to stderr)'}`;
+}
+
 export async function launchBrowser(options: LaunchOptions): Promise<Launched> {
   const attempts = options.attempts ?? ATTEMPTS;
   const attemptMs = options.attemptMs ?? ATTEMPT_MS;
-  const buildArgs = options.args ?? chromeArgs;
   const failures: string[] = [];
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     const profile = mkdtempSync(join(tmpdir(), 'agentkit-chrome-'));
     const stderr: string[] = [];
-    const child = Bun.spawn([options.binary, ...buildArgs(profile)], {
+    const child = Bun.spawn([options.binary, ...chromeArgs(profile)], {
       stdout: 'pipe',
       stderr: 'pipe',
     });
@@ -123,23 +173,18 @@ export async function launchBrowser(options: LaunchOptions): Promise<Launched> {
         endpoint,
         profile,
         stderrTail: (lines = TAIL_LINES) => tail(stderr, lines),
-        close() {
-          child.kill();
-          rmSync(profile, { force: true, recursive: true });
+        async close() {
+          await reap(child);
+          await removeProfile(profile);
         },
       };
     } catch (error) {
-      child.kill();
-      await child.exited;
+      await reap(child);
       // A killed browser can leave a child holding the pipe, so the flush is
       // bounded rather than waited on: a tail is worth more than a hang.
-      await Promise.race([reading, Bun.sleep(500)]);
-      failures.push(
-        `attempt ${attempt}/${attempts} in ${profile}: ${(error as Error).message}\n`
-          + `--- last ${TAIL_LINES} lines of browser stderr (attempt ${attempt}) ---\n`
-          + `${tail(stderr, TAIL_LINES) || '(the browser wrote nothing to stderr)'}`,
-      );
-      rmSync(profile, { force: true, recursive: true });
+      await Promise.race([reading, Bun.sleep(FLUSH_MS)]);
+      failures.push(reportAttempt(attempt, attempts, profile, (error as Error).message, stderr));
+      await removeProfile(profile);
     }
   }
   throw new BrowserLaunchError(

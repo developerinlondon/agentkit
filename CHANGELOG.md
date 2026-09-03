@@ -16,7 +16,12 @@ release PR — "publish this" authorizes a release, never the tier.
   stderr, and names the last 40 in the throw; it also re-spawns once on a fresh profile before giving
   up, and states the ceiling it spent. A launch that fails throws a `BrowserLaunchError` rather than
   the generic timeout an assertion produces, and the sanitiser case relabels it as never having run,
-  so a real sanitiser regression cannot be waved through as the flake. Reading the pipes is capture, not unblocking: measured here,
+  so a real sanitiser regression cannot be waved through as the flake. Closing a browser now waits
+  for it to be reaped before deleting its profile, and re-deletes while anything writes state back,
+  because Chrome's children outlive the process that was killed and restore the directory after the
+  delete — CI was accumulating partial profiles and dying browsers for the next launch to compete
+  with. Both waits are bounded and escalate to `SIGKILL`, so a browser ignoring `SIGTERM` cannot
+  outrun the ceiling and hand the case to bun's timeout instead. Reading the pipes is capture, not unblocking: measured here,
   1.2 MB into an unread `Bun.spawn` pipe does not stall the writer the way a raw pipe does at 64 KB,
   so pipe backpressure is not the cause of the intermittent failure and this does not claim to fix
   it.

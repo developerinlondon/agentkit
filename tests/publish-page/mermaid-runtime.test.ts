@@ -1,9 +1,9 @@
 import { afterAll, describe, expect, test } from 'bun:test';
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { bundledThemePath, mermaidRuntime, renderThemed } from '../../skills/publish-page/render-html.ts';
-import { launchBrowser, rethrowLaunchFailure } from './browser-launch.ts';
+import { chromePath, launchBrowser, rethrowLaunchFailure } from './browser-launch.ts';
 
 // A diagram's source is author text, and in a product brief it is crawled text:
 // the fence reaches mermaid's parser verbatim by design. What mermaid then does
@@ -21,18 +21,6 @@ const RENDER_BUDGET_MS = 45_000;
 // before its 45s render budget. Below 170_000 the harness's own timeout fires
 // first and replaces the launcher's stderr report with a bare "timed out".
 const CASE_TIMEOUT_MS = 180_000;
-
-function chromePath(): string | null {
-  const candidates = [
-    process.env.AGENTKIT_CHROMIUM,
-    '/usr/bin/google-chrome',
-    '/usr/bin/chromium',
-    '/usr/bin/chromium-browser',
-    '/opt/google/chrome/chrome',
-    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-  ].filter((c): c is string => Boolean(c));
-  return candidates.find((c) => existsSync(c)) ?? null;
-}
 
 const chrome = chromePath();
 if (!chrome) {
@@ -134,7 +122,7 @@ async function renderedPage(html: string, throttle = 1): Promise<string> {
     );
   } finally {
     session?.close();
-    launch.close();
+    await launch.close();
   }
 }
 
