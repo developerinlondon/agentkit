@@ -287,24 +287,6 @@ describe('the wrapper refuses a source it cannot ship', () => {
     });
   });
 
-  test('an explicit --salt is slugged, so it cannot break the ids it lands in', () => {
-    // Only the CLI wires saltFor to --salt, and the failure is invisible to the
-    // containment check: a raw salt emits id="a"b-0", which ID_RE reads as
-    // id="a" and whose url(#a"b-…) reference REF_RE does not match at all.
-    withTemp((dir) => {
-      const file = join(dir, 'a.drawio');
-      writeFileSync(file, DIAGRAM);
-      const out = join(dir, 'a.svg');
-      const result = run(dir, ['--in', file, '--out', out, '--salt', 'a"b'], { DISPLAY: '' });
-      expect({ code: result.code, stderr: result.stderr }).toEqual({ code: 0, stderr: '' });
-      const svg = readFileSync(out, 'utf-8');
-      const ids = [...svg.matchAll(/\bid="([^"]*)"/g)].map((m) => m[1]);
-      expect(ids.length).toBeGreaterThan(0);
-      expect(ids.filter((id) => !/^a-b-/.test(id))).toEqual([]);
-      expect(svg).not.toContain('a"b');
-    });
-  }, 120_000);
-
   test('a missing --in is named rather than crashing', () => {
     withTemp((dir) => {
       expect(run(dir, []).stderr).toContain('--in <file.drawio> is required');
@@ -343,6 +325,24 @@ describe.if(Boolean(installed))('rendering', () => {
       expect(svg).toContain('<text');
     });
   });
+
+  test('an explicit --salt is slugged, so it cannot break the ids it lands in', () => {
+    // Only the CLI wires saltFor to --salt, and the failure is invisible to the
+    // containment check: a raw salt emits id="a"b-0", which ID_RE reads as
+    // id="a" and whose url(#a"b-…) reference REF_RE does not match at all.
+    withTemp((dir) => {
+      const file = join(dir, 'a.drawio');
+      writeFileSync(file, DIAGRAM);
+      const out = join(dir, 'a.svg');
+      const result = run(dir, ['--in', file, '--out', out, '--salt', 'a"b'], { DISPLAY: '' });
+      expect({ code: result.code, stderr: result.stderr }).toEqual({ code: 0, stderr: '' });
+      const svg = readFileSync(out, 'utf-8');
+      const ids = [...svg.matchAll(/\bid="([^"]*)"/g)].map((m) => m[1]);
+      expect(ids.length).toBeGreaterThan(0);
+      expect(ids.filter((id) => !/^a-b-/.test(id))).toEqual([]);
+      expect(svg).not.toContain('a"b');
+    });
+  }, 120_000);
 
   test('the committed example is exactly what the renderer produces from its source', () => {
     withTemp((dir) => {
