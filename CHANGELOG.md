@@ -24,6 +24,11 @@ release PR — "publish this" authorizes a release, never the tier.
   `Disposition:` line inside a fenced block or backtick span is evidence of the syntax, not an answer,
   and no longer counts. `en-dash` (`–`) joins the hyphen and em-dash as an accepted separator.
   `AGENTKIT_SKIP_HOOKS=issue-police` (or `all`) now works, matching `plan-police`/`comment-police`.
+  `--body-file` also won a second look: verified against the real `gh` binary, it is authoritative
+  over an inline `--body`/`--description` whenever present, in either flag order, even when the file
+  is empty — an unreadable one (missing, or `-` for stdin) is now read as an unknown body rather than
+  falling back to whatever inline value sits next to it. `--description-file`, matched in the same
+  regex as a guess at glab's file-based equivalent, does not exist on either forge CLI and is dropped.
 
 ## v0.8.3 — 2026-09-03
 
