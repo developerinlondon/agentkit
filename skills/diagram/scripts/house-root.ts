@@ -4,13 +4,13 @@ export class SvgError extends Error {}
 
 // The cap the page applies. It is a maximum, not a width: the natural size
 // below is what a figure narrower than the column renders at.
-export const HOUSE_STYLE = "max-width:100%;height:auto";
+const HOUSE_STYLE = "max-width:100%;height:auto";
 
 const VIEWBOX_RE = /\bviewBox="([\d.eE+-]+)[,\s]+([\d.eE+-]+)[,\s]+([\d.eE+-]+)[,\s]+([\d.eE+-]+)"/;
 
 // Rounded up rather than truncated: a fractional viewBox truncated down clips
 // the last row of pixels wherever the SVG is used without CSS.
-export function naturalSize(tag: string): { width: number; height: number } {
+function naturalSize(tag: string): { width: number; height: number } {
   const box = tag.match(VIEWBOX_RE);
   if (!box) throw new SvgError("cannot size the root — no viewBox on the rendered SVG");
   const width = Math.ceil(Number(box[3]));
@@ -35,8 +35,10 @@ export function houseRoot(svg: string, spec: HouseRoot): string {
   if (!open) throw new SvgError("output does not start with an <svg> tag");
   const { width, height } = naturalSize(open[0]);
   // Two style attributes on one tag is not a merge — the browser reads the
-  // first, and the cap would be dead markup.
-  const prior = spec.dropPriorStyle ? undefined : open[0].match(/\bstyle="([^"]*)"/)?.[1];
+  // first, and the cap would be dead markup. The separator is normalised because
+  // a renderer style already ending in `;` would otherwise produce `;;`.
+  const declared = spec.dropPriorStyle ? undefined : open[0].match(/\bstyle="([^"]*)"/)?.[1];
+  const prior = declared?.replace(/;\s*$/, "");
   const style = prior ? `${prior};${HOUSE_STYLE}` : HOUSE_STYLE;
   const label = spec.label.replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("<", "&lt;");
   const className = spec.className ? `class="${spec.className}" ` : "";
@@ -54,4 +56,3 @@ export function houseRoot(svg: string, spec: HouseRoot): string {
   const mark = spec.sourceMark ? `<!-- ${spec.sourceMark} -->\n` : "";
   return `${mark}${tag}${svg.slice(open[0].length)}`;
 }
-

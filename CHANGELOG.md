@@ -20,10 +20,10 @@ release PR — "publish this" authorizes a release, never the tier.
   `SvgError` and drops from 19 exports to 15, back under the cap. No rendered output changes: the six
   committed example figures are untouched, and each one's root was reproduced byte-for-byte from a
   reconstructed pre-house input, before and after, alongside a 357-case old-versus-new comparison
-  across the three registers. Two deviations are deliberate and unreachable from any renderer — d2
-  now merges a root style rather than emitting a second `style` attribute, and a `$` in a label is
-  escaped as data rather than read as a replacement pattern that spliced the matched tag back into
-  the attribute.
+  across the three registers. Three deviations are deliberate and unreachable from any renderer — d2
+  now merges a root style rather than emitting a second `style` attribute, a merged style already
+  ending in `;` no longer doubles the separator, and a `$` in a label is escaped as data rather than
+  read as a replacement pattern that spliced the matched tag back into the attribute.
 
 ## v0.8.5 — 2026-09-04
 

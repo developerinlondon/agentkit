@@ -21,6 +21,12 @@ describe('the house root every register shares', () => {
       .toContain('style="max-width:100%;height:auto"');
   });
 
+  test('a prior style ending in a semicolon does not double the separator', () => {
+    const out = houseRoot('<svg style="color:red;" viewBox="0 0 10 20"></svg>', { label: 'x' });
+    expect(out).toContain('style="color:red;max-width:100%;height:auto"');
+    expect(out).not.toContain(';;');
+  });
+
   test('a dollar sign in a label is data, not a replacement pattern', () => {
     // $& in a replacement string splices the matched <svg back into the
     // aria-label — the same break the label escaping exists to stop.
