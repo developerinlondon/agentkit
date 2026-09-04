@@ -1,5 +1,10 @@
 import { describe, expect, test } from 'bun:test';
-import { backgroundRect, resolveBackground, SvgError } from '../../skills/diagram/scripts/excalidraw-svg.ts';
+import {
+  applyHouseAttributes,
+  backgroundRect,
+  resolveBackground,
+  SvgError,
+} from '../../skills/diagram/scripts/excalidraw-svg.ts';
 
 const SVG = '<svg version="1.1" viewBox="0 -10 100 200" width="100" height="200"><g/></svg>';
 
@@ -44,5 +49,43 @@ describe('excalidraw background resolution', () => {
   test('a scene with no colour and nothing explicit stays background-free', () => {
     expect(resolveBackground(undefined, undefined)).toBeUndefined();
     expect(resolveBackground(undefined, 42)).toBeUndefined();
+  });
+});
+
+describe('house attributes', () => {
+  test('the sketch root ships the same contract as the d2 and draw.io registers', () => {
+    const out = applyHouseAttributes(SVG, 'a pipeline');
+    expect(out).toContain('role="img"');
+    expect(out).toContain('aria-label="a pipeline"');
+    expect(out).toContain('width="100" height="200" style="max-width:100%;height:auto"');
+    expect(out).toContain('viewBox="0 -10 100 200"');
+    // width="100%" is what upscaled every figure narrower than the column.
+    expect(out).not.toContain('100%"');
+  });
+
+  test('a fractional excalidraw size is rounded up, not truncated', () => {
+    const out = applyHouseAttributes('<svg version="1.1" viewBox="0 0 556 1116.5"><g/></svg>', 'x');
+    expect(out).toContain('width="556" height="1117"');
+  });
+
+  test("a root style the renderer already set is kept, with the cap merged after it", () => {
+    // Two style attributes on one tag is not a merge — the browser reads the
+    // first, and the cap would be dead markup.
+    const out = applyHouseAttributes('<svg style="color:red" viewBox="0 0 10 20"></svg>', 'x');
+    expect(out).toContain('style="color:red;max-width:100%;height:auto"');
+    expect([...out.matchAll(/\bstyle="/g)]).toHaveLength(1);
+  });
+
+  test('a label carrying markup cannot break out of the attribute', () => {
+    const out = applyHouseAttributes(SVG, 'a "quoted" <tag> & more');
+    expect(out).toContain('aria-label="a &quot;quoted&quot; &lt;tag> &amp; more"');
+  });
+
+  test('a root with no viewBox is refused rather than shipped unsized', () => {
+    expect(() => applyHouseAttributes('<svg width="10" height="20"></svg>', 'x')).toThrow(SvgError);
+  });
+
+  test('input that is not an svg is refused', () => {
+    expect(() => applyHouseAttributes('<html></html>', 'x')).toThrow(SvgError);
   });
 });

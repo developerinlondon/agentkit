@@ -9,6 +9,21 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+- fix(publish-page): **figures render at their natural size, capped to the column.** The doc and
+  deck themes sized every `.figure > svg` with `width: 100%`, and the diagram skill told the author
+  to replace the renderer's `width`/`height` with `width="100%"` — so any figure narrower than the
+  ~977px column was stretched up to it and its height grew to match. A 757x1332 auto-layout sketch
+  rendered at 977x1720. The themes now cap with `max-width: 100%` and set no width, and
+  `applyHouseAttributes` in both the d2 and draw.io post-processors writes the integer natural size
+  its `viewBox` describes plus `style="max-width:100%;height:auto"`. `render.ts` now writes that same
+  root for the sketch register, taking the `aria-label` from a `--label` flag, so no register has to
+  be fixed up by hand before inlining. Measured in Chrome against both
+  themes: a 757px figure renders at 757px inside a 977px column, a 2500px one at 977px, both with
+  aspect preserved, and the lightbox still expands to natural size. An SVG on an already-published
+  page still carries `width="100%"`; it fits the column as before and does not overflow. The d2
+  raster twin drops the cap instead of substituting a width, the five committed example figures are
+  re-rendered, and `theme-chrome.test.ts` locks the rule so `width: 100%` cannot come back.
+
 - refactor(tests): **`review-police.test.ts` is split into `tests/review-police/`, under the file cap.**
   At 1419 lines it was the largest test file in the repo and 419 lines past the 1000-line limit
   `coding-police` enforces on every write. The 119 tests are unchanged — same names, same bodies,

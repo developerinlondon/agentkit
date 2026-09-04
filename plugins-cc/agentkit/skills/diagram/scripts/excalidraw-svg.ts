@@ -1,6 +1,10 @@
 // Post-processing for Excalidraw SVG output.
 
-export class SvgError extends Error {}
+import { HOUSE_STYLE, naturalSize, SvgError } from "./d2-svg.ts";
+
+// Every register throws the one error type; the sketch scripts import it from
+// here, which is where it lived before the root contract became shared.
+export { SvgError };
 
 // A baked-ink sketch has no ground of its own once inlined into a
 // theme-switching host — the strokes survive a theme flip, the page
@@ -23,4 +27,27 @@ export function resolveBackground(explicit: string | undefined, sceneColor: unkn
   const color = raw?.trim();
   if (!color || color.toLowerCase() === "transparent") return undefined;
   return color;
+}
+
+// The same root every register ships: the natural size the page caps against,
+// the viewBox the lightbox expands from, and the label a screen reader reads.
+// Excalidraw writes the size and the viewBox; the rest is added here so the
+// sketch register is not the one that has to be fixed up by hand.
+export function applyHouseAttributes(svg: string, ariaLabel: string): string {
+  const open = svg.match(/^<svg\b[^>]*>/);
+  if (!open) throw new SvgError("output does not start with an <svg> tag");
+  let tag = open[0];
+  const { width, height } = naturalSize(tag);
+  // Excalidraw ships no root style today, but two style attributes on one tag
+  // is not a merge — the browser reads the first and the cap would be dead.
+  const prior = tag.match(/\bstyle="([^"]*)"/)?.[1];
+  tag = tag.replace(/\s*\bwidth="[^"]*"/, "").replace(/\s*\bheight="[^"]*"/, "")
+    .replace(/\s*\bstyle="[^"]*"/, "");
+  const style = prior ? `${prior};${HOUSE_STYLE}` : HOUSE_STYLE;
+  const escaped = ariaLabel.replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("<", "&lt;");
+  tag = tag.replace(
+    /^<svg\b/,
+    `<svg role="img" aria-label="${escaped}" width="${width}" height="${height}" style="${style}"`,
+  );
+  return tag + svg.slice(open[0].length);
 }

@@ -220,14 +220,15 @@
       -webkit-print-color-adjust: exact; print-color-adjust: exact;
     }
   }
-  /* Scale-to-fit backstop: baked SVGs keep their viewBox but must never rely on
-     authored width attributes fitting the slide. Deck ships no edges kit, so
-     :not(.edges) here is purely defensive. An inline icon inside figure prose
-     would match the p arm: known non-goal (no content uses that pattern; the
-     durable fix is an opt-in class from publish.ts). */
+  /* Scale-to-fit cap: baked SVGs carry their natural width and their viewBox, so
+     a figure wider than the slide shrinks to it and a narrower one keeps its own
+     size — never upscaled. Deck ships no edges kit, so :not(.edges) here is
+     purely defensive. An inline icon inside figure prose would match the p arm:
+     known non-goal (no content uses that pattern; the durable fix is an opt-in
+     class from publish.ts). */
   .figure > svg:not(.edges),
   .figure > p > svg:not(.edges) {
-    display: block; width: 100%; height: auto; margin-inline: auto;
+    display: block; max-width: 100%; height: auto; margin-inline: auto;
   }
   .figure p { max-width: none; }
 
