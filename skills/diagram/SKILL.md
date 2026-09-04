@@ -305,9 +305,13 @@ about whether the figure argues anything.
   14 px label at 5.4 px. Author at or below ~1000 × 550 and only the width cap
   ever applies. Go taller and the render must be judged at its fitted size:
   split the figure if a label does not survive it.
-- Vertical space was free while nothing capped height. Under the 60 vh fit it is
-  the scarcer axis: when a layout is tight, drop a zone or split the figure
-  rather than restacking taller.
+- Vertical space was free while nothing capped height. Under the 60 vh fit
+  neither axis is: the figure is fitted into the column _and_ into ~540 px of
+  height, and the smaller of those two ratios is the scale it is read at. Height
+  is the scarcer of them, so when a layout is tight, drop a zone or split the
+  figure rather than restacking taller. Where the figure names no `direction`,
+  both renderers weigh that trade for you and keep whichever orientation renders
+  larger.
 
 ## 5 — Render, LOOK, fix (mandatory loop)
 
