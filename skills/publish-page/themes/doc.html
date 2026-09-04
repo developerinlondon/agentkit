@@ -226,16 +226,6 @@
   html[data-theme="light"] svg[role="img"]:not(.edges):not(.d2):not(.drawio) {
     filter: invert(0.93) hue-rotate(180deg);
   }
-  @media print {
-    .figure > svg:not(.edges), .figure > p > svg:not(.edges),
-    .figure > .fig-viewport > svg:not(.edges), .figure > .fig-viewport > p > svg:not(.edges) {
-      -webkit-print-color-adjust: exact; print-color-adjust: exact; max-height: none;
-    }
-    /* A reader can send a zoomed figure to the printer, and the zoom lives in an
-       inline height on the scroll box — which paper has no way to scroll. */
-    .fig-viewport { overflow: visible; height: auto !important; }
-    .fig-tools { display: none; }
-  }
   /* Fit-to-screen cap: a figure is read at a glance, so it is bounded by the
      column AND by the viewport height, and the toolbar is how a reader gets past
      that. A replaced element with an intrinsic ratio satisfies both caps at
@@ -256,11 +246,13 @@
   }
   .figure p { max-width: none; }
   .fig-viewport { overflow: auto; max-width: 100%; }
-  .fig-viewport.fig-zoomed { cursor: default; }
 
   /* Per-figure toolbar — zoom out/in/reset and full screen. Hover reveals it on
      a pointer device; a touch screen has no hover, so there it always shows. */
   .figure.fig-expandable { cursor: zoom-in; }
+  /* Clicking a zoomed figure pans it rather than expanding it, so the
+     zoom-in cursor would be promising something that no longer happens. */
+  .figure.fig-zoomed { cursor: default; }
   .fig-tools {
     position: absolute; top: 0.55rem; right: 0.7rem; z-index: 2;
     display: flex; gap: 0.25rem; opacity: 0; transition: opacity 0.15s;
@@ -299,7 +291,20 @@
     display: flex; align-items: center; justify-content: center;
   }
   .fig-lightbox-close:hover { border-color: var(--accent); }
-  @media print { .fig-lightbox { display: none; } }
+  /* Print sits below every rule it overrides. These selectors tie on specificity
+     with the screen ones, so source order is the whole cascade: the same block
+     placed above them lost every declaration silently. */
+  @media print {
+    .fig-lightbox { display: none; }
+    .figure > svg:not(.edges), .figure > p > svg:not(.edges),
+    .figure > .fig-viewport > svg:not(.edges), .figure > .fig-viewport > p > svg:not(.edges) {
+      -webkit-print-color-adjust: exact; print-color-adjust: exact; max-height: none;
+    }
+    /* A reader can send a zoomed figure to the printer, and the zoom lives in an
+       inline height on the scroll box — which paper has no way to scroll. */
+    .fig-viewport { overflow: visible; height: auto !important; }
+    .fig-tools { display: none; }
+  }
   .iso {
     display: grid; grid-template-columns: repeat(3, minmax(7.5rem, 1fr));
     gap: 0.6rem 1.2rem; justify-items: center; padding: 1.6rem 0 0.4rem;
@@ -614,7 +619,9 @@
     const svg = zoomTargets(fig)[0];
     if (!svg) return;
     const box = fig.querySelector(".fig-viewport");
-    const next = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, factor));
+    // Rounded, or repeated division leaves 0.6400000000000001 in the attribute
+    // and the reset comparison below has to guess at a tolerance.
+    const next = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(factor * 1e4) / 1e4));
     // The fitted size is re-measured from a cleared state on every step, so a
     // resized window or a re-rendered figure never scales off a stale baseline.
     if (box) box.style.height = "";
@@ -622,13 +629,13 @@
     const fit = svg.getBoundingClientRect();
     fig.dataset.figZoom = String(next);
     if (next !== 1) {
-      if (box) box.style.height = Math.round(fit.height) + "px";
+      if (box) box.style.height = Math.round(fit.height * Math.min(1, next)) + "px";
       svg.style.maxWidth = "none";
       svg.style.maxHeight = "none";
       svg.style.width = Math.round(fit.width * next) + "px";
       svg.style.height = Math.round(fit.height * next) + "px";
     }
-    box?.classList.toggle("fig-zoomed", next !== 1);
+    fig.classList.toggle("fig-zoomed", next !== 1);
     fig.querySelectorAll(".fig-tool").forEach((button) => {
       const bound = { in: next >= ZOOM_MAX, out: next <= ZOOM_MIN, reset: next === 1 }[button.dataset.figTool];
       if (bound !== undefined) button.disabled = bound;

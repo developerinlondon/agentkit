@@ -21,7 +21,12 @@ release PR — "publish this" authorizes a release, never the tier.
   resizes the svg inside a scroll box whose own footprint never changes, so the page width is
   identical zoomed and unzoomed; reset returns to the fitted size, and nothing is persisted. Full
   screen is the existing lightbox, which opens at natural size with neither cap applied and gains
-  the same three zoom buttons. Print keeps the uncapped figure and drops the toolbar. The diagram
+  the same three zoom buttons. Zooming out shrinks the box with the figure rather than leaving a
+  gap under it, and the zoom-in cursor goes once a figure is zoomed, because clicking then pans it.
+  On a deck, Space on a focused toolbar button zooms instead of advancing the slide. Print resolves
+  the cap off, the toolbar away and the scroll box unclipped: measured under print emulation, not
+  read off the rule, because the print selectors tie with the screen ones on specificity and a
+  print block placed above them declares everything and wins nothing. The diagram
   skill's size budget now states the fitted read: a canvas taller than ~0.55x its width is
   height-bound, 1000x1400 lands at a 0.39 scale, so design for the fit or split the figure.
   Mermaid blocks are out of scope — the runtime replaces their svg on every theme change, so they
