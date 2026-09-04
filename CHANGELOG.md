@@ -9,6 +9,8 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+## v0.8.7 — 2026-09-04
+
 - feat(publish-page): **figures fit the screen by default, with per-figure zoom and full-screen
   controls.** v0.8.5 stopped stretching a figure to the column but left nothing bounding its height,
   so a 717x1292 sketch rendered at natural size and a 1221x1787 D2 figure at 977x1430 — 1.4 and 1.6
