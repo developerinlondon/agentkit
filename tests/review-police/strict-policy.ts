@@ -6,7 +6,7 @@ import { repo, setSourceSha, setTargetSha, sourceSha, targetSha, writeFakeForge 
 
 type JsonObject = Record<string, unknown>;
 
-export interface StrictReviewFixture {
+interface StrictReviewFixture {
   schema_version: number;
   verdict: string;
   context: JsonObject;
@@ -19,7 +19,7 @@ export interface StrictReviewFixture {
   evidence_ref: string;
 }
 
-export const strictAnalysisKinds = [
+const strictAnalysisKinds = [
   'claims_audit',
   'falsification',
   'failure_trace',

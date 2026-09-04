@@ -111,6 +111,7 @@ export const TEST_SLICES = {
     'tests/review-police/probe-table.test.ts',
     'tests/review-police/semantics.test.ts',
     'tests/review-police/target-policy.test.ts',
+    'tests/review-police/wrapper-coverage.test.ts',
     'tests/review-profile.test.ts',
   ],
   session: ['tests/session/agent-session.test.ts', 'tests/session/install-session-slice.test.ts'],
