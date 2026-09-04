@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { markCalloutLabels } from '../../skills/publish-page/callout-labels.ts';
+import { cssRules } from './theme-css.ts';
 
 const themes = join(import.meta.dir, '..', '..', 'skills', 'publish-page', 'themes');
 const doc = readFileSync(join(themes, 'doc.html'), 'utf8');
@@ -107,12 +108,6 @@ describe('labelled section nav', () => {
 // selector fails the suite rather than being skipped.
 type El = { tag: string; classes: string[]; first: boolean; last?: boolean; parent?: El; prev?: El };
 
-function styleBlocks(html: string): string {
-  return [...html.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g)]
-    .map((m) => m[1])
-    .join('\n')
-    .replace(/\/\*[\s\S]*?\*\//g, '');
-}
 
 function compound(text: string) {
   const m = text.match(/^([a-z0-9]*)((?:\.[a-z0-9_-]+)*)((?::(?:first|last)-child)*)$/i);
@@ -210,8 +205,7 @@ function couldMatch(selector: string, el: El): boolean {
 // order. `reversed` re-runs with document order inverted: a winner that holds
 // only one way round won on order, not on rank.
 function declOf(css: string, el: El, prop: string, reversed = false): string | null {
-  const rules = [...styleBlocks(css).matchAll(/([^{}]+)\{([^{}]*)\}/g)]
-    .map((m) => ({ selectors: m[1].split(','), body: m[2] }));
+  const rules = cssRules(css).map((rule) => ({ selectors: rule.selectors.split(','), body: rule.body }));
   if (reversed) rules.reverse();
   let best: { rank: number; spec: number; order: number; value: string } | null = null;
   rules.forEach((rule, order) => {
@@ -383,46 +377,6 @@ describe('callout severities', () => {
         }
         expect(ratio(t['--ink'], t['--card'])).toBeGreaterThanOrEqual(4.5);
       }
-    });
-  }
-});
-
-describe('figures are capped to the column, never stretched to it', () => {
-  // Declarations, not the literal rule text: a reformat of the theme is not a
-  // regression, and asserting whitespace would report one.
-  function parse(body: string): Record<string, string> {
-    const out: Record<string, string> = {};
-    for (const decl of body.split(';')) {
-      const colon = decl.indexOf(':');
-      if (colon === -1) continue;
-      out[decl.slice(0, colon).trim()] = decl.slice(colon + 1).trim();
-    }
-    return out;
-  }
-
-  // The same selector also carries the print-colour rule, so the sizing rule is
-  // picked by what it declares rather than by which one comes first.
-  const RULE = /\.figure > svg:not\(\.edges\),\s*\.figure > p > svg:not\(\.edges\)\s*\{([^}]*)\}/g;
-
-  function sizingRule(css: string): Record<string, string> {
-    const found = [...css.matchAll(RULE)].map((m) => parse(m[1]))
-      .filter((decls) => 'display' in decls || 'width' in decls || 'max-width' in decls);
-    if (found.length !== 1) throw new Error(`expected one figure sizing rule, found ${found.length}`);
-    return found[0];
-  }
-
-  for (const theme of [['doc', doc], ['deck', deck]] as const) {
-    const [name, css] = theme;
-    test(`${name} caps the figure svg with max-width and declares no width`, () => {
-      // width: 100% upscaled every figure narrower than the column: a 757px
-      // sketch rendered at 977px and its height grew with it.
-      expect({ name, ...sizingRule(css) }).toEqual({
-        name,
-        'display': 'block',
-        'max-width': '100%',
-        'height': 'auto',
-        'margin-inline': 'auto',
-      });
     });
   }
 });
@@ -626,3 +580,4 @@ describe('callout labels are marked by document order, not element position', ()
     }
   });
 });
+

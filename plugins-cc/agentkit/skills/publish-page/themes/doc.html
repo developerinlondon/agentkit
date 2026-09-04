@@ -226,36 +226,48 @@
   html[data-theme="light"] svg[role="img"]:not(.edges):not(.d2):not(.drawio) {
     filter: invert(0.93) hue-rotate(180deg);
   }
-  @media print {
-    .figure > svg:not(.edges), .figure > p > svg:not(.edges) {
-      -webkit-print-color-adjust: exact; print-color-adjust: exact;
-    }
-  }
-  /* Scale-to-fit cap: baked SVGs carry their natural width and their viewBox, so
-     a figure wider than the column shrinks to it and a narrower one keeps its
-     own size — never upscaled. :not(.edges) is defensive — even without it the
-     edges-overlay rule out-specifies this one. An inline icon inside figure
-     prose would match the p arm: known non-goal (no content uses that pattern;
-     the durable fix is an opt-in class from publish.ts, CSS cannot express
-     "this p has no text"). */
+  /* Fit-to-screen cap: a figure is read at a glance, so it is bounded by the
+     column AND by the viewport height, and the toolbar is how a reader gets past
+     that. A replaced element with an intrinsic ratio satisfies both caps at
+     once, so the aspect survives whichever one binds and a figure narrower and
+     shorter than both keeps its own size — never upscaled. The .fig-viewport
+     arms repeat the rule for the scroll box the toolbar script wraps a figure
+     in; the cap has to hold before that script runs and in print, where it
+     never does. :not(.edges) is defensive — even without it the edges-overlay
+     rule out-specifies this one. An inline icon inside figure prose would match
+     the p arm: known non-goal (no content uses that pattern; the durable fix is
+     an opt-in class from publish.ts, CSS cannot express "this p has no text"). */
   .figure > svg:not(.edges),
-  .figure > p > svg:not(.edges) {
-    display: block; max-width: 100%; height: auto; margin-inline: auto;
+  .figure > p > svg:not(.edges),
+  .figure > .fig-viewport > svg:not(.edges),
+  .figure > .fig-viewport > p > svg:not(.edges) {
+    display: block; max-width: 100%; max-height: 60vh;
+    width: auto; height: auto; margin-inline: auto;
   }
   .figure p { max-width: none; }
+  .fig-viewport { overflow: auto; max-width: 100%; }
 
-  /* Click-to-expand lightbox — every .figure expands to natural size. */
+  /* Per-figure toolbar — zoom out/in/reset and full screen. Hover reveals it on
+     a pointer device; a touch screen has no hover, so there it always shows. */
   .figure.fig-expandable { cursor: zoom-in; }
-  .fig-expand-trigger {
-    position: absolute; top: 0.55rem; right: 0.7rem;
-    font-family: ui-monospace, Menlo, monospace; font-size: 0.62rem;
-    letter-spacing: 0.08em; text-transform: uppercase;
-    color: var(--muted); background: var(--navy-deep);
-    border: 1px solid var(--line); border-radius: 6px; padding: 0.12rem 0.5rem;
-    opacity: 0; transition: opacity 0.15s; cursor: zoom-in; z-index: 2;
+  /* Clicking a zoomed figure pans it rather than expanding it, so the
+     zoom-in cursor would be promising something that no longer happens. */
+  .figure.fig-zoomed { cursor: default; }
+  .fig-tools {
+    position: absolute; top: 0.55rem; right: 0.7rem; z-index: 2;
+    display: flex; gap: 0.25rem; opacity: 0; transition: opacity 0.15s;
   }
-  .figure.fig-expandable:hover .fig-expand-trigger,
-  .fig-expand-trigger:focus-visible { opacity: 1; }
+  .figure:hover .fig-tools, .fig-tools:focus-within { opacity: 1; }
+  @media (hover: none) { .fig-tools { opacity: 1; } }
+  .fig-tool {
+    font-family: ui-monospace, Menlo, monospace; font-size: 0.7rem; line-height: 1;
+    color: var(--muted); background: var(--navy-deep);
+    border: 1px solid var(--line); border-radius: 6px;
+    min-width: 1.5rem; height: 1.5rem; padding: 0 0.3rem; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .fig-tool:hover:not(:disabled), .fig-tool:focus-visible { color: var(--ink); border-color: var(--accent); }
+  .fig-tool:disabled { opacity: 0.4; cursor: default; }
   .fig-lightbox {
     position: fixed; inset: 0; z-index: 70; padding: 4vh 4vw;
     background: color-mix(in srgb, var(--navy-deep) 85%, transparent);
@@ -265,6 +277,12 @@
   .fig-lightbox-body { width: 100%; height: 100%; overflow: auto; }
   .fig-lightbox .figure { width: max-content; max-width: none; margin: 0 auto; cursor: default; }
   .fig-lightbox .figure p { max-width: none; }
+  /* Full screen is where a reader goes to escape the fit-to-screen cap, so the
+     copy takes its natural size and neither cap applies to it. */
+  .fig-lightbox .figure > svg:not(.edges),
+  .fig-lightbox .figure > p > svg:not(.edges) {
+    max-width: none; max-height: none; width: auto; height: auto;
+  }
   .fig-lightbox-close {
     position: fixed; top: 1rem; right: 1rem;
     width: 2.3rem; height: 2.3rem; border-radius: 50%;
@@ -273,7 +291,20 @@
     display: flex; align-items: center; justify-content: center;
   }
   .fig-lightbox-close:hover { border-color: var(--accent); }
-  @media print { .fig-lightbox { display: none; } }
+  /* Print sits below every rule it overrides. These selectors tie on specificity
+     with the screen ones, so source order is the whole cascade: the same block
+     placed above them lost every declaration silently. */
+  @media print {
+    .fig-lightbox { display: none; }
+    .figure > svg:not(.edges), .figure > p > svg:not(.edges),
+    .figure > .fig-viewport > svg:not(.edges), .figure > .fig-viewport > p > svg:not(.edges) {
+      -webkit-print-color-adjust: exact; print-color-adjust: exact; max-height: none;
+    }
+    /* A reader can send a zoomed figure to the printer, and the zoom lives in an
+       inline height on the scroll box — which paper has no way to scroll. */
+    .fig-viewport { overflow: visible; height: auto !important; }
+    .fig-tools { display: none; }
+  }
   .iso {
     display: grid; grid-template-columns: repeat(3, minmax(7.5rem, 1fr));
     gap: 0.6rem 1.2rem; justify-items: center; padding: 1.6rem 0 0.4rem;
@@ -569,42 +600,124 @@
     restoreFocus?.focus();
     restoreFocus = null;
   }
+  // Figure zoom. The CSS fits every figure into the viewport, and the toolbar is
+  // how a reader gets past that cap. A zoomed figure grows inside a scroll box
+  // whose own footprint never changes, so zooming never widens the page.
+  const ZOOM_STEP = 1.25;
+  const ZOOM_MIN = 0.5;
+  const ZOOM_MAX = 4;
+  const ZOOM_PROPS = ["width", "height", "maxWidth", "maxHeight"];
+  const TOOLS = [["out", "−", "Zoom out"], ["in", "+", "Zoom in"], ["reset", "1:1", "Reset zoom"], ["full", "⤢", "Expand figure"]];
+  const ZOOMABLE = ':scope > svg[role="img"], :scope > p > svg[role="img"],'
+    + ' :scope > .fig-viewport > svg[role="img"], :scope > .fig-viewport > p > svg[role="img"]';
+
+  function zoomTargets(fig) {
+    return [...fig.querySelectorAll(ZOOMABLE)];
+  }
+
+  function applyZoom(fig, factor) {
+    const svg = zoomTargets(fig)[0];
+    if (!svg) return;
+    const box = fig.querySelector(".fig-viewport");
+    // Rounded, or repeated division leaves 0.6400000000000001 in the attribute
+    // and the reset comparison below has to guess at a tolerance.
+    const next = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(factor * 1e4) / 1e4));
+    // The fitted size is re-measured from a cleared state on every step, so a
+    // resized window or a re-rendered figure never scales off a stale baseline.
+    if (box) box.style.height = "";
+    for (const prop of ZOOM_PROPS) svg.style[prop] = "";
+    const fit = svg.getBoundingClientRect();
+    fig.dataset.figZoom = String(next);
+    if (next !== 1) {
+      if (box) box.style.height = Math.round(fit.height * Math.min(1, next)) + "px";
+      svg.style.maxWidth = "none";
+      svg.style.maxHeight = "none";
+      svg.style.width = Math.round(fit.width * next) + "px";
+      svg.style.height = Math.round(fit.height * next) + "px";
+    }
+    fig.classList.toggle("fig-zoomed", next !== 1);
+    fig.querySelectorAll(".fig-tool").forEach((button) => {
+      const bound = { in: next >= ZOOM_MAX, out: next <= ZOOM_MIN, reset: next === 1 }[button.dataset.figTool];
+      if (bound !== undefined) button.disabled = bound;
+    });
+  }
+
+  function figTools(fig, expanded) {
+    const zoomable = zoomTargets(fig).length === 1;
+    const bar = document.createElement("div");
+    bar.className = "fig-tools";
+    bar.setAttribute("role", "group");
+    bar.setAttribute("aria-label", "Figure controls");
+    for (const [action, glyph, label] of TOOLS) {
+      if (action === "full" ? expanded : !zoomable) continue;
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "fig-tool";
+      button.dataset.figTool = action;
+      button.textContent = glyph;
+      button.disabled = action === "reset";
+      button.setAttribute("aria-label", label);
+      bar.appendChild(button);
+    }
+    if (!bar.children.length) return null;
+    fig.appendChild(bar);
+    return bar;
+  }
+
+  function decorateFigure(fig, expanded) {
+    const targets = zoomTargets(fig);
+    // The scroll box is what keeps a zoomed figure from widening the page. Full
+    // screen has no page to protect and the lightbox already scrolls itself.
+    if (targets.length === 1 && !expanded) {
+      const child = targets[0].parentElement === fig ? targets[0] : targets[0].parentElement;
+      const box = document.createElement("div");
+      box.className = "fig-viewport";
+      child.replaceWith(box);
+      box.appendChild(child);
+    }
+    fig.dataset.figZoom = "1";
+    const bar = figTools(fig, expanded);
+    bar?.addEventListener("click", (event) => {
+      const button = event.target.closest(".fig-tool");
+      const action = button?.dataset.figTool;
+      if (!action) return;
+      if (action === "full") openLightbox(fig, button);
+      else if (action === "reset") applyZoom(fig, 1);
+      else applyZoom(fig, Number(fig.dataset.figZoom) * (action === "in" ? ZOOM_STEP : 1 / ZOOM_STEP));
+    });
+    if (expanded) return;
+    fig.classList.add("fig-expandable");
+    fig.addEventListener("click", (event) => {
+      if (event.target.closest("a, button")) return;
+      // A zoomed figure is being read inside its own box, not opened.
+      if (fig.dataset.figZoom !== "1") return;
+      if (window.getSelection()?.toString()) return;
+      openLightbox(fig, bar?.querySelector('[data-fig-tool="full"]') ?? null);
+    });
+  }
+
   function openLightbox(fig, trigger) {
     const clone = fig.cloneNode(true);
     clone.classList.remove("fig-expandable");
-    clone.querySelector(".fig-expand-trigger")?.remove();
-    clone.querySelectorAll(':scope > svg[viewBox]:not(.edges), :scope > p > svg[viewBox]:not(.edges)').forEach((s) => {
-      const vb = s.viewBox && s.viewBox.baseVal;
-      if (vb && vb.width) {
-        s.removeAttribute("width");
-        s.style.width = Math.round(vb.width) + "px";
-        s.style.maxWidth = "none";
-      }
+    clone.querySelector(".fig-tools")?.remove();
+    // The copy is rebuilt from the figure's own markup: the scroll box and every
+    // inline size the toolbar left on it belong to the fitted page, not here,
+    // and an inline max-width would out-specify the lightbox's own sizing.
+    clone.querySelectorAll(".fig-viewport").forEach((box) => box.replaceWith(...box.childNodes));
+    clone.querySelectorAll("svg").forEach((svg) => {
+      for (const prop of ZOOM_PROPS) svg.style[prop] = "";
     });
     restoreFocus = trigger;
     restoreOverflow = document.body.style.overflow;
     lbBody.replaceChildren(clone);
+    decorateFigure(clone, true);
     isolateBackground();
     lb.hidden = false;
     document.body.style.overflow = "hidden";
     lbClose.focus();
     drawEdges();
   }
-  document.querySelectorAll(".figure").forEach((fig) => {
-    fig.classList.add("fig-expandable");
-    const trigger = document.createElement("button");
-    trigger.className = "fig-expand-trigger";
-    trigger.type = "button";
-    trigger.setAttribute("aria-label", "Expand figure");
-    trigger.textContent = "⤢ expand";
-    trigger.addEventListener("click", () => openLightbox(fig, trigger));
-    fig.appendChild(trigger);
-    fig.addEventListener("click", (e) => {
-      if (e.target.closest("a, button")) return;
-      if (window.getSelection()?.toString()) return;
-      openLightbox(fig, trigger);
-    });
-  });
+  document.querySelectorAll(".figure").forEach((fig) => decorateFigure(fig, false));
   lb.addEventListener("click", (e) => {
     if (e.target.closest(".fig-lightbox-close") || !e.target.closest(".figure")) closeLightbox();
   });

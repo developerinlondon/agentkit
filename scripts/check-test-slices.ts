@@ -81,6 +81,7 @@ export const TEST_SLICES = {
     'tests/publish-page/browser-launch.test.ts',
     'tests/publish-page/deck-template.test.ts',
     'tests/publish-page/device-login.test.ts',
+    'tests/publish-page/figure-tools.test.ts',
     'tests/publish-page/lint.test.ts',
     'tests/publish-page/mermaid-runtime.test.ts',
     'tests/publish-page/migrations.test.ts',
