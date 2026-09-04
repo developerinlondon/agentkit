@@ -26,6 +26,7 @@ try {
 } catch (e) {
   fail((e as Error).message);
 }
+if (built.evidence) console.error(`diagram-layout: ${built.evidence}`);
 for (const w of built.warnings) console.error(`diagram-layout: warning: ${w}`);
 await writeFile(output, `${JSON.stringify(built.scene, null, 1)}\n`).catch((e: Error) =>
   fail(`cannot write ${output}: ${e.message}`)

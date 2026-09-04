@@ -1,7 +1,7 @@
 import dagre from "@dagrejs/dagre";
 import type { graphlib } from "@dagrejs/dagre";
 import { textHeight, textWidth } from "./measure.ts";
-import type { DiagramSpec, NodeSpec, Role } from "./spec.ts";
+import type { DiagramSpec, NodeSpec, PlacedSpec, Role } from "./spec.ts";
 
 export const FONT = { title: 24, zoneTitle: 20, label: 16, note: 13, edgeLabel: 14, pageNote: 14 };
 export const MARGIN = 30;
@@ -59,7 +59,7 @@ function edgeLabelSize(label: string | undefined): { width: number; height: numb
   return { width: Math.ceil(textWidth(label, 1, FONT.edgeLabel)) + 12, height: Math.round(FONT.edgeLabel * 1.25) + 8 };
 }
 
-function runDagre(spec: DiagramSpec, sep: number): graphlib.Graph {
+function runDagre(spec: PlacedSpec, sep: number): graphlib.Graph {
   const g = new dagre.graphlib.Graph({ compound: true, multigraph: true });
   g.setGraph({
     rankdir: spec.direction === "right" ? "LR" : "TB",
@@ -143,7 +143,7 @@ function zonesAreClean(spec: DiagramSpec, l: Layout): boolean {
 }
 
 /** Widening the ranks is the only lever that separates padded zone frames. */
-export function layout(spec: DiagramSpec): Layout {
+export function layout(spec: PlacedSpec): Layout {
   let result: Layout | undefined;
   for (let attempt = 0; attempt < 5; attempt++) {
     result = collect(spec, runDagre(spec, 46 + attempt * 40));

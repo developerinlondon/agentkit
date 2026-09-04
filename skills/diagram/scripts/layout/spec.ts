@@ -1,7 +1,12 @@
 import { YAML } from "bun";
+import type { Direction } from "../orientation.ts";
 import { carriedBy } from "./measure.ts";
 
-export type Direction = "right" | "down";
+export type { Direction };
+
+/** "auto" is the default: the renderer lays the spec out both ways and keeps
+ * the one closest to the page's reading window. */
+export type DirectionChoice = Direction | "auto";
 export type Palette = "light" | "dark";
 export type Shape = "rect" | "ellipse" | "diamond";
 export type Role = "neutral" | "start" | "success" | "decision" | "agent" | "inactive" | "error" | "evidence";
@@ -31,7 +36,7 @@ export interface EdgeSpec {
 
 export interface DiagramSpec {
   title?: string;
-  direction: Direction;
+  direction: DirectionChoice;
   palette: Palette;
   roughness: 0 | 1;
   background?: string;
@@ -40,6 +45,9 @@ export interface DiagramSpec {
   edges: EdgeSpec[];
   notes: string[];
 }
+
+/** A spec whose orientation is settled, which is all the layout can draw. */
+export type PlacedSpec = DiagramSpec & { direction: Direction };
 
 /** The sketch register's density budget (SKILL.md, "Size & density budget"). */
 export const BUDGET = { zones: 3, nodes: 12, warnWidth: 1000, maxWidth: 1200, maxHeight: 1400 };
@@ -175,7 +183,7 @@ export function parseSpec(source: string): DiagramSpec {
   const r = only(raw, ["title", "direction", "palette", "roughness", "background", "nodes", "zones", "edges", "notes"], "spec");
   const spec: DiagramSpec = {
     title: r.title === undefined ? undefined : str(r.title, "a title"),
-    direction: pick(r.direction, ["right", "down"] as Direction[], "right", "direction"),
+    direction: pick(r.direction, ["right", "down", "auto"] as DirectionChoice[], "auto", "direction"),
     palette: pick(r.palette, ["light", "dark"] as Palette[], "dark", "palette"),
     roughness: r.roughness === 0 ? 0 : 1,
     background: r.background === undefined ? undefined : str(r.background, "background"),

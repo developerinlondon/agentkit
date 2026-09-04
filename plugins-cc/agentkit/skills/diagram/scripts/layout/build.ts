@@ -2,7 +2,8 @@ import { arrow, bindArrow, scene, shape, text } from "./elements.ts";
 import { type Box, FONT, type Layout, layout, MARGIN, NOTE_GAP, type PlacedEdge } from "./geometry.ts";
 import { textHeight, textWidth } from "./measure.ts";
 import { labelInk, type Theme, theme } from "./palette.ts";
-import { BUDGET, type DiagramSpec, type NodeSpec } from "./spec.ts";
+import { betterFit, type Direction, DIRECTIONS, orientationEvidence, type Sized } from "../orientation.ts";
+import { BUDGET, type DiagramSpec, type NodeSpec, type PlacedSpec } from "./spec.ts";
 
 type Json = Record<string, unknown>;
 
@@ -143,17 +144,21 @@ function normalize(elements: Json[]): { width: number; height: number } {
 }
 
 /** dagre centres an edge label on its edge; the text has to clear the stroke. */
-function offEdge(box: Box, direction: DiagramSpec["direction"]): Box {
+function offEdge(box: Box, direction: Direction): Box {
   return direction === "right"
     ? { ...box, y: box.y - box.height / 2 - LABEL_CLEARANCE }
     : { ...box, x: box.x + box.width / 2 + LABEL_CLEARANCE };
 }
 
-function checkCanvas(width: number, height: number): string[] {
+/** The restack is only worth naming to an author who chose left-to-right and
+ * still has the other orientation in hand; it has already been tried under
+ * auto, and it is what a down layout just failed at. */
+function checkCanvas(width: number, height: number, offerRestack: boolean): string[] {
   if (width > BUDGET.maxWidth || height > BUDGET.maxHeight) {
+    const remedy = offerRestack ? "— split the figure, or set direction: down to restack it taller" : "— split the figure";
     throw new Error(
       `laid out at ${Math.round(width)}x${Math.round(height)}, past the ${BUDGET.maxWidth}x${BUDGET.maxHeight} ceiling `
-        + `— split the figure, or set direction: down to restack it taller`,
+        + remedy,
     );
   }
   return width > BUDGET.warnWidth
@@ -161,7 +166,7 @@ function checkCanvas(width: number, height: number): string[] {
     : [];
 }
 
-function zoneElements(spec: DiagramSpec, l: Layout, t: Theme): Json[] {
+function zoneElements(spec: PlacedSpec, l: Layout, t: Theme): Json[] {
   const out: Json[] = [];
   for (const [id, box] of l.zones) {
     const z = box;
@@ -210,9 +215,12 @@ export interface Built {
   width: number;
   height: number;
   warnings: string[];
+  direction: Direction;
+  /** One line naming the orientation this spec did not ask for, and its rival. */
+  evidence?: string;
 }
 
-export function build(spec: DiagramSpec): Built {
+function buildOne(spec: PlacedSpec, auto = false): Built {
   const l = layout(spec);
   const t = theme(spec.palette);
   const b = contentBounds(l);
@@ -259,7 +267,7 @@ export function build(spec: DiagramSpec): Built {
 
   const elements = [...zoneElements(spec, l, t), ...arrows, ...shapes.values(), ...labels, ...title, ...notes];
   const { width, height } = normalize(elements);
-  const warnings = checkCanvas(width, height);
+  const warnings = checkCanvas(width, height, !auto && spec.direction === "right");
   if (spec.background) {
     elements.unshift(shape("backdrop", "rectangle", {
       x: 0,
@@ -272,5 +280,43 @@ export function build(spec: DiagramSpec): Built {
       roughness: 0,
     }));
   }
-  return { scene: scene(elements, spec.background), width, height, warnings };
+  return { scene: scene(elements, spec.background), width, height, warnings, direction: spec.direction };
+}
+
+interface Attempt {
+  direction: Direction;
+  built?: Built;
+  failure?: Error;
+}
+
+function attempt(spec: DiagramSpec, direction: Direction): Attempt {
+  try {
+    return { direction, built: buildOne({ ...spec, direction }, true) };
+  } catch (e) {
+    return { direction, failure: e as Error };
+  }
+}
+
+function sized(a: Attempt): Sized {
+  return { direction: a.direction, width: a.built!.width, height: a.built!.height };
+}
+
+export function build(spec: DiagramSpec): Built {
+  if (spec.direction !== "auto") return buildOne({ ...spec, direction: spec.direction });
+  const tried = DIRECTIONS.map((d) => attempt(spec, d));
+  const drawn = tried.filter((a) => a.built);
+  if (drawn.length === 0) {
+    throw new Error(
+      `neither orientation fits — as right: ${tried[0].failure!.message}; as down: ${tried[1].failure!.message}`,
+    );
+  }
+  if (drawn.length === 1) {
+    const only = drawn[0].built!;
+    const beaten = tried.find((a) => a.failure)!.direction;
+    const size = `${Math.round(only.width)}x${Math.round(only.height)}`;
+    return { ...only, evidence: `orientation: ${only.direction} (${size}) — ${beaten} does not fit` };
+  }
+  const { kept, dropped } = betterFit(sized(drawn[0]), sized(drawn[1]));
+  const winner = drawn.find((a) => a.direction === kept.direction)!;
+  return { ...winner.built!, evidence: orientationEvidence(kept, dropped) };
 }
