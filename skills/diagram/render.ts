@@ -2,8 +2,9 @@
 import { execSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
-import { backgroundRect, resolveBackground } from "./scripts/excalidraw-svg.ts";
+import { basename, join } from "node:path";
+import { stripHouseCap } from "./scripts/d2-svg.ts";
+import { applyHouseAttributes, backgroundRect, resolveBackground } from "./scripts/excalidraw-svg.ts";
 
 declare global {
   interface Window {
@@ -25,6 +26,7 @@ function arg(name: string): string | undefined {
 
 const input = arg("in") ?? fail("--in <file.excalidraw> is required");
 const output = arg("out") ?? input.replace(/\.excalidraw$/, "") + ".svg";
+const label = arg("label") ?? basename(input).replace(/\.excalidraw$/, "");
 if (!existsSync(input)) fail(`no such file: ${input}`);
 
 let scene: { type?: string; elements?: unknown[]; appState?: Record<string, unknown> };
@@ -86,6 +88,7 @@ try {
   if (!svg.startsWith("<svg")) throw new Error("renderer returned no SVG");
   const background = resolveBackground(arg("background"), scene.appState?.viewBackgroundColor);
   if (background) svg = backgroundRect(svg, background);
+  svg = applyHouseAttributes(svg, label);
   await writeFile(output, svg).catch((e: Error) => {
     throw new Error(`cannot write ${output}: ${e.message}`);
   });
@@ -93,7 +96,9 @@ try {
   if (png) {
     // A PNG twin lets the authoring agent LOOK at the result (Read renders
     // images, not SVG) for the render-view-fix loop.
-    await page.setContent(`<!doctype html><body style="margin:0;background:#fff">${svg}</body>`);
+    await page.setContent(
+      `<!doctype html><body style="margin:0;background:#fff">${stripHouseCap(svg)}</body>`,
+    );
     const el = page.locator("svg").first();
     await el.screenshot({ path: png }).catch((e: Error) => {
       throw new Error(`cannot write ${png}: ${e.message}`);

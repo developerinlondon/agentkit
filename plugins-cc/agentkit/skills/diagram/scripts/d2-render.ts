@@ -23,6 +23,7 @@ import {
   inlineMonochromeIcons,
   retargetDarkTheme,
   scopeElementRules,
+  stripHouseCap,
   SvgError,
   verifySelfContained,
 } from "./d2-svg.ts";
@@ -171,9 +172,7 @@ async function rasterize(markup: string, target: string): Promise<void> {
     if (!box) fail("cannot rasterize: no viewBox on the rendered SVG");
     const w = Math.ceil(Number(box[3]));
     const h = Math.ceil(Number(box[4]));
-    // The shipped SVG is fluid (width:100%), which collapses to nothing in a
-    // screenshot page; the raster copy is pinned back to its natural size.
-    const sized = markup.replace(/\bwidth="100%" style="height:auto"/, `width="${w}" height="${h}"`);
+    const sized = stripHouseCap(markup);
     const page = join(dir, "page.html");
     // Rasterised on the dark island: that is the authored default, and the
     // light rendering is derived by the page rather than authored separately.

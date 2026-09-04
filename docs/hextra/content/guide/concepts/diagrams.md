@@ -105,8 +105,9 @@ Post-processing is deterministic. The dark-mode media query — which the render
 `prefers-color-scheme` — is rewritten to key off the page's `data-theme` attribute instead, so a
 figure follows the theme toggle rather than the operating system. The renderer's own full-bleed
 backdrop rect is **removed** rather than overridden, because the figure island supplies the surface.
-Fixed `width` and `height` are stripped for `width="100%"` and `height:auto`, and the root gains
-`role="img"` with an `aria-label`.
+The root is resized to the integer natural size its `viewBox` describes and capped with
+`max-width: 100%; height: auto`, so a figure wider than the column shrinks to it and a narrower one
+renders at its own size. The root also gains `role="img"` with an `aria-label`.
 
 The output also carries a `d2` class, which is what the page theme keys its light-mode inversion
 exemption off — and the reason that exemption exists is legal, not visual. Inverting would recolour

@@ -123,16 +123,55 @@ export function flattenForMarkdown(svg: string): string {
     .join("\n");
 }
 
+// The cap the page applies. It is a maximum, not a width: the natural size
+// below is what a figure narrower than the column renders at.
+export const HOUSE_STYLE = "max-width:100%;height:auto";
+
+const ROOT_TAG_RE = /<svg\b[^>]*>/;
+const STYLE_ATTR_RE = /\s*\bstyle="([^"]*)"/;
+const CAP_DECLS_RE = /max-width:\s*100%\s*;\s*height:\s*auto\s*;?/;
+
+// The inverse of the cap applyHouseAttributes writes, removed by the shape of
+// the declarations rather than by matching the exact string. A raster twin is
+// taken at natural size, so leaving the cap on lets a narrow screenshot
+// viewport shrink the figure it exists to show.
+export function stripHouseCap(svg: string): string {
+  const open = svg.match(ROOT_TAG_RE);
+  if (!open || open.index === undefined) return svg;
+  const tag = open[0].replace(STYLE_ATTR_RE, (attr, decls: string) => {
+    const rest = decls.replace(CAP_DECLS_RE, "").replace(/;\s*;/g, ";").replace(/^\s*;|;\s*$/g, "").trim();
+    return rest === "" ? "" : attr.replace(decls, rest);
+  });
+  return svg.slice(0, open.index) + tag + svg.slice(open.index + open[0].length);
+}
+
+
+const VIEWBOX_RE = /\bviewBox="([\d.eE+-]+)[,\s]+([\d.eE+-]+)[,\s]+([\d.eE+-]+)[,\s]+([\d.eE+-]+)"/;
+
+// Rounded up rather than truncated: a fractional viewBox truncated down clips
+// the last row of pixels wherever the SVG is used without CSS.
+export function naturalSize(tag: string): { width: number; height: number } {
+  const box = tag.match(VIEWBOX_RE);
+  if (!box) throw new SvgError("cannot size the root — no viewBox on the rendered SVG");
+  const width = Math.ceil(Number(box[3]));
+  const height = Math.ceil(Number(box[4]));
+  if (!(width > 0) || !(height > 0)) {
+    throw new SvgError(`viewBox does not describe a positive size: ${box[0]}`);
+  }
+  return { width, height };
+}
+
 export function applyHouseAttributes(svg: string, ariaLabel: string): string {
   const open = svg.match(/^<svg\b[^>]*>/);
   if (!open) throw new SvgError("output does not start with an <svg> tag");
   let tag = open[0];
+  const { width, height } = naturalSize(tag);
   if (/\bwidth=/.test(tag)) tag = tag.replace(/\s*\bwidth="[^"]*"/, "");
   if (/\bheight=/.test(tag)) tag = tag.replace(/\s*\bheight="[^"]*"/, "");
   const escaped = ariaLabel.replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("<", "&lt;");
   tag = tag.replace(
     /^<svg\b/,
-    `<svg class="d2" role="img" aria-label="${escaped}" width="100%" style="height:auto"`,
+    `<svg class="d2" role="img" aria-label="${escaped}" width="${width}" height="${height}" style="${HOUSE_STYLE}"`,
   );
   return `<!-- ${SOURCE_MARK} -->\n${tag}${svg.slice(open[0].length)}`;
 }

@@ -1,6 +1,6 @@
 // Post-processing and source screening for draw.io SVG output.
 
-import { SvgError } from "./d2-svg.ts";
+import { HOUSE_STYLE, naturalSize, SvgError } from "./d2-svg.ts";
 
 export const DRAWIO_PIN = "31.3.2";
 export const SOURCE_MARK = "svg-source:drawio";
@@ -42,6 +42,7 @@ export function applyHouseAttributes(svg: string, ariaLabel: string): string {
   // draw.io's own root style only paints a transparent backdrop, which the
   // figure island already supplies; left in place it becomes a second style
   // attribute on the tag and the house sizing silently loses to it.
+  const { width, height } = naturalSize(tag);
   tag = tag.replace(/\s*\bwidth="[^"]*"/, "").replace(/\s*\bheight="[^"]*"/, "")
     .replace(/\s*\bstyle="[^"]*"/, "");
   const escaped = ariaLabel.replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll(
@@ -50,7 +51,7 @@ export function applyHouseAttributes(svg: string, ariaLabel: string): string {
   );
   tag = tag.replace(
     /^<svg\b/,
-    `<svg class="drawio" role="img" aria-label="${escaped}" width="100%" style="height:auto"`,
+    `<svg class="drawio" role="img" aria-label="${escaped}" width="${width}" height="${height}" style="${HOUSE_STYLE}"`,
   );
   return `<!-- ${SOURCE_MARK} -->\n${tag}${svg.slice(open[0].length)}`;
 }

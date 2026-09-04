@@ -1,7 +1,9 @@
 import { describe, expect, test } from 'bun:test';
 import { lintFigures } from '../../skills/publish-page/lint.ts';
 
-const SVG = '<svg version="1.1" width="100%" role="img" aria-label="x"><!-- svg-source:excalidraw --><metadata></metadata></svg>';
+const SVG = '<svg version="1.1" width="556" height="1117" viewBox="0 0 556 1117" '
+  + 'style="max-width:100%;height:auto" role="img" aria-label="x">'
+  + '<!-- svg-source:excalidraw --><metadata></metadata></svg>';
 
 describe('publish-page figure lint', () => {
   test('a .figure-wrapped diagram passes, including a <p> between wrapper and svg', () => {
