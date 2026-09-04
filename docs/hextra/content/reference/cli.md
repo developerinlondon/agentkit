@@ -121,7 +121,9 @@ agent-session claude [args...]     # explicit
 
 A global Linux install symlinks `claude`, `codex`, `opencode` and `grok` in
 `${XDG_DATA_HOME:-~/.local/share}/agentkit/shims` to `agent-session` — only for runtimes actually
-found on `PATH` — and prepends that directory to `PATH` in `~/.bashrc`. `--no-session-scope` skips
+found on `PATH` — and forces that directory to the front of `PATH` in `~/.bashrc` and in the login
+profile bash reads (`~/.bash_profile`, `~/.bash_login` or `~/.profile`), so IDE terminals, which are
+login shells that prepend `~/.local/bin` last, still resolve to the shim. `--no-session-scope` skips
 both. The installer also writes the `agent-sessions.slice` unit (CPUQuota 1600%, MemoryHigh 24G,
 MemoryMax 32G, MemorySwapMax 4G, TasksMax 24576); operator overrides belong in an
 `agent-sessions.slice.d/` drop-in, which a re-install will not clobber.
