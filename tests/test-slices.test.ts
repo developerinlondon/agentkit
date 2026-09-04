@@ -71,7 +71,7 @@ const CRITICAL_INPUTS = [
   'tests/install-tools.test.ts',
   'tests/review-disciplines.test.ts',
   'tests/review-gate.test.ts',
-  'tests/review-police.test.ts',
+  'tests/review-police/**/*',
   'tests/review-profile.test.ts',
   'tests/test-slices.test.ts',
   'tools/review-gate',
