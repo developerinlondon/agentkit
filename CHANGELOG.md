@@ -9,6 +9,8 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+## v0.8.6 — 2026-09-04
+
 - refactor(diagram): **one house-root helper serves all three SVG registers.** `applyHouseAttributes`
   existed three times, in the d2, draw.io and Excalidraw post-processors, each independently matching
   the open tag, sizing it from the `viewBox`, stripping `width`/`height`, escaping the `aria-label`
