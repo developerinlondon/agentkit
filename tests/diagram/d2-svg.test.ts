@@ -156,6 +156,14 @@ describe('house attributes', () => {
   test('input that is not an svg is refused', () => {
     expect(() => applyHouseAttributes('<html></html>', 'x')).toThrow(SvgError);
   });
+
+  test('a root style the renderer already set is merged, not duplicated', () => {
+    // d2 writes no root style today, so this is the contract the shared helper
+    // holds rather than a shape any current export produces.
+    const out = applyHouseAttributes('<svg style="color:red" viewBox="0 0 10 20"></svg>', 'x');
+    expect(out).toContain('style="color:red;max-width:100%;height:auto"');
+    expect([...out.matchAll(/\bstyle="/g)]).toHaveLength(1);
+  });
 });
 
 describe('self-containment verification', () => {

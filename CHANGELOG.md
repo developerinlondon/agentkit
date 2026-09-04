@@ -9,6 +9,22 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+- refactor(diagram): **one house-root helper serves all three SVG registers.** `applyHouseAttributes`
+  existed three times, in the d2, draw.io and Excalidraw post-processors, each independently matching
+  the open tag, sizing it from the `viewBox`, stripping `width`/`height`, escaping the `aria-label`
+  through the same three-call chain and rebuilding the tag; d2 and draw.io shared six byte-identical
+  lines. `houseRoot` in the new `scripts/house-root.ts` does that once, and each register passes only
+  what differs: d2's `class="d2"` and source marker, draw.io's plus `dropPriorStyle`, and nothing at
+  all for the sketch register. `SvgError`, `HOUSE_STYLE` and `naturalSize` moved there with it, so the
+  other two registers no longer import the shared contract from the d2 one; `d2-svg.ts` re-exports
+  `SvgError` and drops from 19 exports to 15, back under the cap. No rendered output changes: the six
+  committed example figures are untouched, and each one's root was reproduced byte-for-byte from a
+  reconstructed pre-house input, before and after, alongside a 357-case old-versus-new comparison
+  across the three registers. Three deviations are deliberate and unreachable from any renderer — d2
+  now merges a root style rather than emitting a second `style` attribute, a merged style already
+  ending in `;` no longer doubles the separator, and a `$` in a label is escaped as data rather than
+  read as a replacement pattern that spliced the matched tag back into the attribute.
+
 ## v0.8.5 — 2026-09-04
 
 - fix(publish-page): **figures render at their natural size, capped to the column.** The doc and
