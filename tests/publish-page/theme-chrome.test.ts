@@ -388,16 +388,40 @@ describe('callout severities', () => {
 });
 
 describe('figures are capped to the column, never stretched to it', () => {
+  // Declarations, not the literal rule text: a reformat of the theme is not a
+  // regression, and asserting whitespace would report one.
+  function parse(body: string): Record<string, string> {
+    const out: Record<string, string> = {};
+    for (const decl of body.split(';')) {
+      const colon = decl.indexOf(':');
+      if (colon === -1) continue;
+      out[decl.slice(0, colon).trim()] = decl.slice(colon + 1).trim();
+    }
+    return out;
+  }
+
+  // The same selector also carries the print-colour rule, so the sizing rule is
+  // picked by what it declares rather than by which one comes first.
+  const RULE = /\.figure > svg:not\(\.edges\),\s*\.figure > p > svg:not\(\.edges\)\s*\{([^}]*)\}/g;
+
+  function sizingRule(css: string): Record<string, string> {
+    const found = [...css.matchAll(RULE)].map((m) => parse(m[1]))
+      .filter((decls) => 'display' in decls || 'width' in decls || 'max-width' in decls);
+    if (found.length !== 1) throw new Error(`expected one figure sizing rule, found ${found.length}`);
+    return found[0];
+  }
+
   for (const theme of [['doc', doc], ['deck', deck]] as const) {
     const [name, css] = theme;
-    test(`${name} caps the figure svg with max-width and sets no width`, () => {
+    test(`${name} caps the figure svg with max-width and declares no width`, () => {
       // width: 100% upscaled every figure narrower than the column: a 757px
       // sketch rendered at 977px and its height grew with it.
-      const rule = css.slice(css.indexOf('.figure > svg:not(.edges),\n  .figure > p > svg:not(.edges) {'));
-      const body = rule.slice(rule.indexOf('{'), rule.indexOf('}') + 1);
-      expect({ name, body }).toEqual({
+      expect({ name, ...sizingRule(css) }).toEqual({
         name,
-        body: '{\n    display: block; max-width: 100%; height: auto; margin-inline: auto;\n  }',
+        'display': 'block',
+        'max-width': '100%',
+        'height': 'auto',
+        'margin-inline': 'auto',
       });
     });
   }

@@ -15,7 +15,9 @@ release PR — "publish this" authorizes a release, never the tier.
   ~977px column was stretched up to it and its height grew to match. A 757x1332 auto-layout sketch
   rendered at 977x1720. The themes now cap with `max-width: 100%` and set no width, and
   `applyHouseAttributes` in both the d2 and draw.io post-processors writes the integer natural size
-  its `viewBox` describes plus `style="max-width:100%;height:auto"`. Measured in Chrome against both
+  its `viewBox` describes plus `style="max-width:100%;height:auto"`. `render.ts` now writes that same
+  root for the sketch register, taking the `aria-label` from a `--label` flag, so no register has to
+  be fixed up by hand before inlining. Measured in Chrome against both
   themes: a 757px figure renders at 757px inside a 977px column, a 2500px one at 977px, both with
   aspect preserved, and the lightbox still expands to natural size. An SVG on an already-published
   page still carries `width="100%"`; it fits the column as before and does not overflow. The d2

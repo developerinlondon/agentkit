@@ -252,7 +252,8 @@ notes:
 
 ```bash
 bun <skill-dir>/scripts/layout.ts --in figure.diagram.yaml --out figure.excalidraw
-bun <skill-dir>/render.ts --in figure.excalidraw --out figure.svg --png figure.png
+bun <skill-dir>/render.ts --in figure.excalidraw --out figure.svg --png figure.png \
+  --label "Ingest pipeline, source to warehouse"
 ```
 
 The layout measures each label against the font the renderer actually embeds,
@@ -293,7 +294,8 @@ JSON cannot be judged as JSON. Render, view the PNG with the Read tool, fix,
 repeat — expect 2–4 rounds; one pass is never the final pass.
 
 ```bash
-bun <skill-dir>/render.ts --in diagram.excalidraw --out diagram.svg --png diagram.png
+bun <skill-dir>/render.ts --in diagram.excalidraw --out diagram.svg --png diagram.png \
+  --label "Ingest pipeline, source to warehouse"
 ```
 
 Each round, in order:
@@ -341,14 +343,16 @@ needs a local Chromium — set `AGENTKIT_CHROMIUM` if it isn't auto-found.)
 
 ## 6 — Ship the SVG
 
-The SVG is fully self-contained (fonts embedded as data: URIs). **Before
-inlining, rewrite the SVG root**: keep the renderer's `width`/`height`
-attributes and its `viewBox` — that natural size is what the page caps against —
-add `style="max-width:100%;height:auto"`, and add `role="img"` plus an
-`aria-label` matching the figcaption. Never write `width="100%"`: it upscales
-any figure narrower than the column, which is how a tall sketch balloons. The
-theme caps a wide figure to the column and leaves a narrow one alone, and the
-lightbox reads the `viewBox` to expand back to natural size. Inline it directly into a page (wrap in `<div class="figure">` with
-a semantic `figcaption` when publishing via publish-page), drop it into a
-repo's docs, or attach the PNG where images are needed. Caption by content,
-never by tool.
+The SVG is fully self-contained (fonts embedded as data: URIs), and every
+renderer already writes the house root: the natural integer `width` and
+`height`, the `viewBox`, `role="img"`, the `aria-label` from `--label`, and
+`style="max-width:100%;height:auto"`. **Leave that root alone.** Never
+replace the width with `width="100%"` — it upscales any figure narrower
+than the column, which is how a tall sketch balloons. The theme caps a wide
+figure to the column and leaves a narrow one at its own size, and the
+lightbox reads the `viewBox` to expand back to natural size.
+
+Inline it directly into a page (when publishing via publish-page, wrap it in
+`<div class="figure">` with a semantic `figcaption`), drop it into a repo's
+docs, or attach the PNG where images are needed. Caption by content, never
+by tool.

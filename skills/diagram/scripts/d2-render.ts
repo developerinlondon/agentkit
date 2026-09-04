@@ -20,10 +20,10 @@ import {
   D2_PIN,
   dropBackgroundRect,
   flattenForMarkdown,
-  HOUSE_STYLE,
   inlineMonochromeIcons,
   retargetDarkTheme,
   scopeElementRules,
+  stripHouseCap,
   SvgError,
   verifySelfContained,
 } from "./d2-svg.ts";
@@ -172,9 +172,7 @@ async function rasterize(markup: string, target: string): Promise<void> {
     if (!box) fail("cannot rasterize: no viewBox on the rendered SVG");
     const w = Math.ceil(Number(box[3]));
     const h = Math.ceil(Number(box[4]));
-    // The shipped SVG caps itself to the page column; in a screenshot page that
-    // cap would shrink a wide figure below the natural size it is rastered at.
-    const sized = markup.replace(` style="${HOUSE_STYLE}"`, "");
+    const sized = stripHouseCap(markup);
     const page = join(dir, "page.html");
     // Rasterised on the dark island: that is the authored default, and the
     // light rendering is derived by the page rather than authored separately.

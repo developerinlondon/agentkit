@@ -127,6 +127,25 @@ export function flattenForMarkdown(svg: string): string {
 // below is what a figure narrower than the column renders at.
 export const HOUSE_STYLE = "max-width:100%;height:auto";
 
+const ROOT_TAG_RE = /<svg\b[^>]*>/;
+const STYLE_ATTR_RE = /\s*\bstyle="([^"]*)"/;
+const CAP_DECLS_RE = /max-width:\s*100%\s*;\s*height:\s*auto\s*;?/;
+
+// The inverse of the cap applyHouseAttributes writes, removed by the shape of
+// the declarations rather than by matching the exact string. A raster twin is
+// taken at natural size, so leaving the cap on lets a narrow screenshot
+// viewport shrink the figure it exists to show.
+export function stripHouseCap(svg: string): string {
+  const open = svg.match(ROOT_TAG_RE);
+  if (!open || open.index === undefined) return svg;
+  const tag = open[0].replace(STYLE_ATTR_RE, (attr, decls: string) => {
+    const rest = decls.replace(CAP_DECLS_RE, "").replace(/;\s*;/g, ";").replace(/^\s*;|;\s*$/g, "").trim();
+    return rest === "" ? "" : attr.replace(decls, rest);
+  });
+  return svg.slice(0, open.index) + tag + svg.slice(open.index + open[0].length);
+}
+
+
 const VIEWBOX_RE = /\bviewBox="([\d.eE+-]+)[,\s]+([\d.eE+-]+)[,\s]+([\d.eE+-]+)[,\s]+([\d.eE+-]+)"/;
 
 // Rounded up rather than truncated: a fractional viewBox truncated down clips

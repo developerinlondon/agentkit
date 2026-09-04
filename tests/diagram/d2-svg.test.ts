@@ -5,6 +5,7 @@ import {
   inspect,
   retargetDarkTheme,
   scopeElementRules,
+  stripHouseCap,
   SvgError,
   verifySelfContained,
 } from '../../skills/diagram/scripts/d2-svg.ts';
@@ -124,6 +125,27 @@ describe('house attributes', () => {
 
   test('a root with no viewBox is refused rather than shipped unsized', () => {
     expect(() => applyHouseAttributes('<svg width="300" height="400"></svg>', 'x')).toThrow(SvgError);
+  });
+
+  test('the raster twin strips exactly the cap the house root wrote', () => {
+    // The two must stay in step: a raster taken under the cap shrinks to the
+    // screenshot viewport instead of showing the figure at natural size.
+    const shipped = applyHouseAttributes('<svg viewBox="0 0 300 400"></svg>', 'a topology');
+    const raster = stripHouseCap(shipped);
+    expect(raster).not.toContain('max-width');
+    expect(raster).not.toContain('style=');
+    expect(raster).toContain('width="300" height="400"');
+    expect(raster).toContain('aria-label="a topology"');
+  });
+
+  test('a declaration the renderer set beside the cap survives the strip', () => {
+    const out = stripHouseCap('<svg style="color:red;max-width:100%;height:auto" viewBox="0 0 1 1"/>');
+    expect(out).toContain('style="color:red"');
+  });
+
+  test('a root carrying no cap is returned untouched', () => {
+    const raw = '<svg width="10" height="20" viewBox="0 0 10 20"/>';
+    expect(stripHouseCap(raw)).toBe(raw);
   });
 
   test('a label carrying markup cannot break out of the attribute', () => {
