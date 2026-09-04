@@ -8,7 +8,7 @@ browser and no network call.
 
 ```yaml
 title: How a signed request becomes an answer # optional, drawn top-left
-direction: down # right | down       (default right)
+direction: down # right | down | auto (default auto)
 palette: dark # dark | light       (default dark)
 roughness: 1 # 0 crisp | 1 sketch (default 1)
 background: "#ffffff" # optional backdrop rectangle; omit for transparent
@@ -27,6 +27,31 @@ edges:
 notes:
   - a muted line stacked under the figure
 ```
+
+## Which way it lays out
+
+`direction` is optional and defaults to `auto`. Left unset, the spec is laid
+out both ways and the run keeps the one closer to the page's reading window —
+about 977 px of column by 540 px of height, so roughly 1.8:1 — charging a
+figure that is wider than the column for the scaling the page would do to it.
+Vertical space is free and horizontal space is not, so a strip that has to
+shrink loses to a column that does not. The run says which it kept and what it
+compared:
+
+```
+diagram-layout: orientation: down (200x668) beat right (1128x108)
+```
+
+A candidate the density budget refuses is dropped rather than compared, so a
+chain refused as a row is drawn as a column instead:
+
+```
+diagram-layout: orientation: down (250x768) — right does not fit
+```
+
+Only when both are refused does the run refuse, and it names both dimensions.
+Writing `direction: right` or `direction: down` picks by hand, and that choice
+is never overridden — including its refusal.
 
 `role` picks the stroke and fill pair from the house palettes in
 `elements.md`; nothing invents a colour. An edge inherits its source node's
@@ -87,6 +112,8 @@ remedy comes with the error rather than out of this file:
   its ordering pass backwards, so the graph is fed to it reversed.
 - **The budget is enforced.** More than three zones, more than twelve nodes, or
   a canvas past 1200x1400 is refused with the reason. Past 1000 px wide it warns.
+  Under `direction: auto` a canvas past the ceiling one way is not refused while
+  the other way fits; both have to fail before the run does.
 - **Renders are reproducible.** Seeds are derived from element ids, so the same
   spec produces byte-identical JSON every time.
 
@@ -134,10 +161,12 @@ Measured against the 1000 px page budget and the 1200 px ceiling:
 | boxes carrying a note (190 px) | 1096 px, warns | 1378 px, refused | refused          |
 
 So four ranks is the working limit and five is the hard one, sooner if the
-labels are long. The remedy is `direction: down`, which restacks the same spec
-with no other edit; vertical space is free and horizontal space is not. There is
-no equivalent of the hand-placed trick of bending a row down into a second row,
-which is how a five-step flow used to fit inside 1000 px.
+labels are long. A spec that names no direction is restacked for you at exactly
+that point: the five-rank chain above is drawn as a column, because 1128 px of
+strip would have to shrink to reach the 977 px page column. `direction: down`
+names the same restack by hand. There is no equivalent of the hand-placed trick
+of bending a row down into a second row, which is how a five-step flow used to
+fit inside 1000 px.
 
 ## Regenerating the font metrics
 

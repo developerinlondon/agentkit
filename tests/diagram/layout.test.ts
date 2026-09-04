@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { build } from '../../skills/diagram/scripts/layout/build.ts';
 import { carriedBy, CHARSET, METRICS_PATH, textWidth } from '../../skills/diagram/scripts/layout/measure.ts';
 import { layout, MARGIN } from '../../skills/diagram/scripts/layout/geometry.ts';
+import { fitScore } from '../../skills/diagram/scripts/orientation.ts';
 import { parseSpec } from '../../skills/diagram/scripts/layout/spec.ts';
 
 const EXAMPLES = join(import.meta.dir, '../../skills/diagram/examples');
@@ -47,21 +48,23 @@ function overlap(a: Box, b: Box): number {
   return w > 0 && h > 0 ? w * h : 0;
 }
 
-function chain(ranks: number): string {
+// The rank table is a claim about left-to-right chains, so these pin the
+// direction rather than letting the auto pass restack them.
+function chain(ranks: number, direction = 'direction: right\n'): string {
   const nodes = Array.from({ length: ranks }, (_, i) => `{ id: n${i}, label: s${i} }`);
   const edges = 'edges:\n'
     + Array.from({ length: ranks - 1 }, (_, i) => `  - { from: n${i}, to: n${i + 1} }\n`).join('');
-  return specWith(nodes, edges);
+  return direction + specWith(nodes, edges);
 }
 
-function notedChain(ranks: number): string {
+function notedChain(ranks: number, direction = 'direction: right\n'): string {
   const nodes = Array.from(
     { length: ranks },
     (_, i) => `{ id: n${i}, label: step ${i}, note: a typical one-line note }`,
   );
   const edges = 'edges:\n'
     + Array.from({ length: ranks - 1 }, (_, i) => `  - { from: n${i}, to: n${i + 1} }\n`).join('');
-  return specWith(nodes, edges);
+  return direction + specWith(nodes, edges);
 }
 
 function specWith(nodes: string[], extra = ''): string {
@@ -69,7 +72,7 @@ function specWith(nodes: string[], extra = ''): string {
 }
 
 describe('layout geometry', () => {
-  const placed = layout(parseSpec(FIXTURE));
+  const placed = layout({ ...parseSpec(FIXTURE), direction: 'down' });
   const nodes = [...placed.nodes.values()];
 
   test('no two node bounds overlap', () => {
@@ -155,7 +158,7 @@ describe('the register budget is enforced, not suggested', () => {
   test('a run past the canvas ceiling names the way out', () => {
     const nodes = Array.from({ length: 6 }, (_, i) => `{ id: n${i}, label: "a rather long node label ${i}" }`);
     const edges = 'edges:\n' + Array.from({ length: 5 }, (_, i) => `  - { from: n${i}, to: n${i + 1} }\n`).join('');
-    expect(() => build(parseSpec(specWith(nodes, edges)))).toThrow(/past the 1200x1400 ceiling/);
+    expect(() => build(parseSpec(`direction: right\n${specWith(nodes, edges)}`))).toThrow(/past the 1200x1400 ceiling/);
   });
 
   // The reference doc's rank table is only true while these hold, and a wrong
@@ -188,7 +191,69 @@ describe('the register budget is enforced, not suggested', () => {
   test('a figure past the page budget warns without failing', () => {
     const nodes = Array.from({ length: 3 }, (_, i) => `{ id: n${i}, label: "a rather long node label ${i}" }`);
     const edges = 'edges:\n' + Array.from({ length: 2 }, (_, i) => `  - { from: n${i}, to: n${i + 1} }\n`).join('');
-    expect(build(parseSpec(specWith(nodes, edges))).warnings.join()).toMatch(/over the 1000px page budget/);
+    const spec = parseSpec(`direction: right\n${specWith(nodes, edges)}`);
+    expect(build(spec).warnings.join()).toMatch(/over the 1000px page budget/);
+  });
+});
+
+describe('a spec that names no direction is laid out both ways', () => {
+  test('a chain the column cannot hold as a row is restacked as a column', () => {
+    const built = build(parseSpec(chain(5, '')));
+    expect(built.direction).toBe('down');
+    expect(`${built.width}x${built.height}`).toBe('200x668');
+    expect(built.evidence).toBe('orientation: down (200x668) beat right (1128x108)');
+  });
+
+  test('a chain that does fit the column keeps the row', () => {
+    const built = build(parseSpec(chain(4, '')));
+    expect(built.direction).toBe('right');
+    expect(built.evidence).toBe('orientation: right (896x108) beat down (200x528)');
+  });
+
+  // The pick chooses between two layouts; it must not perturb the one it keeps.
+  test('the chosen orientation draws the scene the explicit spec would', () => {
+    const auto = build(parseSpec(chain(5, '')));
+    const named = build(parseSpec(chain(5, 'direction: down\n')));
+    expect(JSON.stringify(auto.scene)).toBe(JSON.stringify(named.scene));
+  });
+
+  test('an explicit direction is kept even when the other one scores better', () => {
+    const built = build(parseSpec(chain(5)));
+    expect({ direction: built.direction, width: built.width, evidence: built.evidence })
+      .toEqual({ direction: 'right', width: 1128, evidence: undefined });
+  });
+
+  test('a direction the spec sets is honoured all the way to its refusal', () => {
+    expect(() => build(parseSpec(chain(6)))).toThrow(/1360x.*ceiling.*direction: down/s);
+  });
+
+  test('an orientation refused as a row is drawn as a column instead', () => {
+    const built = build(parseSpec(notedChain(5, '')));
+    expect(built.direction).toBe('down');
+    expect(built.evidence).toBe('orientation: down (250x768) — right does not fit');
+  });
+
+  test('a figure neither orientation can hold is refused, naming both', () => {
+    let message = '';
+    try {
+      build(parseSpec(notedChain(9, '')));
+    } catch (e) {
+      message = (e as Error).message;
+    }
+    expect(message).toContain('neither orientation fits');
+    expect(message).toContain('as right: laid out at 2506x128, past the 1200x1400 ceiling');
+    expect(message).toContain('as down: laid out at 250x1408, past the 1200x1400 ceiling');
+    // The restack has already been tried, so it is not offered as the way out.
+    expect(message).not.toContain('set direction: down');
+  });
+
+  test('the score prefers a column to a row the page would have to shrink', () => {
+    // 977 px of column against 540 px of reading height: a strip that fits
+    // wins, and one that must scale down loses to the column that does not.
+    expect(fitScore(896, 108)).toBeLessThan(fitScore(200, 528));
+    expect(fitScore(1128, 108)).toBeGreaterThan(fitScore(200, 668));
+    expect(fitScore(5792, 1736)).toBeGreaterThan(fitScore(1221, 1787));
+    expect(fitScore(0, 0)).toBe(Infinity);
   });
 });
 
@@ -293,6 +358,14 @@ describe('the reference doc matches the code', () => {
     }
     expect(message).toContain(`${kind} cannot ask for it, so write it in words`);
     expect(message).not.toContain('mono: true');
+  });
+
+  // The evidence lines are the only report of a choice the author did not make,
+  // so the doc quotes them verbatim and this keeps the quote true.
+  test('the reference quotes the orientation lines the run actually prints', () => {
+    for (const spec of [chain(5, ''), notedChain(5, '')]) {
+      expect(documents(build(parseSpec(spec)).evidence!)).toBe('documented: true');
+    }
   });
 
   test('the rank table quotes the widths both chains actually produce', () => {

@@ -3,6 +3,7 @@ import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { D2_PIN } from '../../skills/diagram/scripts/d2-svg.ts';
+import { declaresDirection, withDirection } from '../../skills/diagram/scripts/orientation.ts';
 
 const wrapper = join(import.meta.dir, '../../skills/diagram/scripts/d2-render.ts');
 const SOURCE = 'a: API {\n  icon: @postgres\n}\nb: Worker\na -> b: enqueue\n';
@@ -10,6 +11,16 @@ const SOURCE = 'a: API {\n  icon: @postgres\n}\nb: Worker\na -> b: enqueue\n';
 interface Run {
   code: number;
   stderr: string;
+}
+
+// Seven nodes in a line: a strip left to right, a column top to bottom.
+const CHAIN = ['source', 'ingest', 'queue', 'worker', 'store', 'index', 'serve'];
+const UNDIRECTED = CHAIN.map((n) => `${n}: ${n} stage\n`).join('')
+  + CHAIN.slice(1).map((n, i) => `${CHAIN[i]} -> ${n}: step\n`).join('');
+
+function viewBox(file: string): { width: number; height: number } {
+  const box = readFileSync(file, 'utf-8').match(/viewBox="0 0 ([\d.]+) ([\d.]+)"/);
+  return { width: Number(box?.[1]), height: Number(box?.[2]) };
 }
 
 function run(dir: string, args: string[], path?: string, extra: Record<string, string> = {}): Run {
@@ -262,6 +273,62 @@ describe.if(available)('rendering with the pinned d2', () => {
     });
   });
 
+  test('a source naming no direction is laid out both ways, and the column kept', () => {
+    withTemp((dir) => {
+      const src = join(dir, 'chain.d2');
+      writeFileSync(src, UNDIRECTED);
+      const first = run(dir, ['--in', src, '--out', join(dir, 'one.svg')]);
+      expect(first.code).toBe(0);
+      const evidence = first.stderr.match(/orientation: down \((\d+)x(\d+)\) beat right \((\d+)x(\d+)\)/);
+      expect(`evidence: ${first.stderr.trim()}`).toBe(`evidence: d2-render: ${evidence?.[0]}`);
+      const [downW, downH, rightW, rightH] = evidence!.slice(1).map(Number);
+      expect(`down ${downH > downW}, right ${rightW > rightH}`).toBe('down true, right true');
+      expect(viewBox(join(dir, 'one.svg'))).toEqual({ width: downW, height: downH });
+      // The pick renders twice; the output still has to be the same bytes twice.
+      expect(run(dir, ['--in', src, '--out', join(dir, 'two.svg')]).code).toBe(0);
+      expect(readFileSync(join(dir, 'one.svg'))).toEqual(readFileSync(join(dir, 'two.svg')));
+    });
+  }, 30000);
+
+  test('a direction the source sets is never overridden, by the pick or by the flag', () => {
+    withTemp((dir) => {
+      const src = join(dir, 'chain.d2');
+      writeFileSync(src, `direction: right\n${UNDIRECTED}`);
+      const plain = run(dir, ['--in', src, '--out', join(dir, 'plain.svg')]);
+      const forced = run(dir, ['--in', src, '--out', join(dir, 'forced.svg'), '--direction', 'down']);
+      expect({ plain: plain.code, forced: forced.code }).toEqual({ plain: 0, forced: 0 });
+      expect(plain.stderr).not.toContain('orientation:');
+      expect(forced.stderr).toContain('--direction down ignored');
+      expect(readFileSync(join(dir, 'plain.svg'))).toEqual(readFileSync(join(dir, 'forced.svg')));
+      const box = viewBox(join(dir, 'plain.svg'));
+      expect(box.width).toBeGreaterThan(box.height);
+    });
+  }, 30000);
+
+  test('--direction hand-picks the orientation the pick would not have chosen', () => {
+    withTemp((dir) => {
+      const src = join(dir, 'chain.d2');
+      writeFileSync(src, UNDIRECTED);
+      const picked = run(dir, ['--in', src, '--out', join(dir, 'auto.svg')]);
+      const forced = run(dir, ['--in', src, '--out', join(dir, 'right.svg'), '--direction', 'right']);
+      expect({ picked: picked.code, forced: forced.code }).toEqual({ picked: 0, forced: 0 });
+      expect(forced.stderr).not.toContain('orientation:');
+      const box = viewBox(join(dir, 'right.svg'));
+      expect(box.width).toBeGreaterThan(box.height);
+      expect(readFileSync(join(dir, 'right.svg'), 'utf-8')).not.toBe(readFileSync(join(dir, 'auto.svg'), 'utf-8'));
+    });
+  }, 30000);
+
+  test('an unknown --direction value is refused, naming the three it accepts', () => {
+    withTemp((dir) => {
+      const src = join(dir, 'a.d2');
+      writeFileSync(src, SOURCE);
+      const result = run(dir, ['--in', src, '--out', join(dir, 'a.svg'), '--direction', 'sideways']);
+      expect(result.code).toBe(1);
+      expect(result.stderr).toContain('"right", "down" or "auto"');
+    });
+  });
+
   test('a markdown block is refused — it emits foreignObject and does not travel', () => {
     withTemp((dir) => {
       const src = join(dir, 'a.d2');
@@ -270,6 +337,26 @@ describe.if(available)('rendering with the pinned d2', () => {
       expect(result.code).toBe(1);
       expect(result.stderr).toContain('foreignObject');
     });
+  });
+});
+
+describe('reading the direction a d2 source already sets', () => {
+  test.each([
+    ['a board-level line', 'direction: down\na -> b\n', true],
+    ['one indented with the rest of the file', '  direction: down\n  a -> b\n', true],
+    ['a container\'s own, on its own line', 'x: {\n  direction: down\n}\n', false],
+    ['a container\'s own, inline', 'x: { direction: down }\ny -> z\n', false],
+    // A hex fill read as a comment would swallow the closing brace, and every
+    // line after it would look nested — including a real board direction.
+    ['one after a quoted hex fill', 'x: { style.fill: "#f00" }\ndirection: down\n', true],
+    ['none at all', 'a -> b: hello\n', false],
+  ])('%s', (_name, source, expected) => {
+    expect(declaresDirection(source)).toBe(expected);
+  });
+
+  test('the injected line is appended, so d2 error line numbers still point at the source', () => {
+    expect(withDirection('a -> b\n', 'down')).toBe('a -> b\ndirection: down\n');
+    expect(withDirection('a -> b', 'right')).toBe('a -> b\ndirection: right\n');
   });
 });
 
