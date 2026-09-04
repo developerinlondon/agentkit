@@ -18,7 +18,7 @@ release PR — "publish this" authorizes a release, never the tier.
   fits to 300x540 at 1280x900 and 341x614 at 768x1024, while 2500x800 still fills the column at
   977x313. Each figure carries a small hover-revealed toolbar — zoom out, zoom in, reset, full
   screen — with `aria-label`s and keyboard focus. Zooming steps by 1.25x between 0.5x and 4x and
-  resizes the svg inside a scroll box whose own footprint never changes, so the page width is
+  resizes the svg inside a scroll box that never grows past the fitted size, so the page width is
   identical zoomed and unzoomed; reset returns to the fitted size, and nothing is persisted. Full
   screen is the existing lightbox, which opens at natural size with neither cap applied and gains
   the same three zoom buttons. Zooming out shrinks the box with the figure rather than leaving a
