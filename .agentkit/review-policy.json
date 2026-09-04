@@ -26,7 +26,8 @@
           "^plugins-cc/agentkit-product/skills/product-review/.*$",
           "^instructions/(coding-discipline|evidence-gated-review)\\.md$",
           "^docs/review-process\\.md$",
-          "^tests/(agentkit-plugin|codex-review-hooks|hook-supervisor|install-claude-plugin|install-tools|review-gate|review-profile|review-police|review-disciplines)\\.test\\.ts$",
+          "^tests/(agentkit-plugin|codex-review-hooks|hook-supervisor|install-claude-plugin|install-tools|review-gate|review-profile|review-disciplines)\\.test\\.ts$",
+          "^tests/review-police/.*$",
           "^plugins-cc/agentkit-adversarial-review/skills/adversarial-review/.*$"
         ]
       }
