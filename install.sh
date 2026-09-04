@@ -1427,29 +1427,35 @@ path_without() {
 }
 
 # Markers keep repeated installs idempotent and the block cleanly removable.
+login_profile_file() {
+	# bash reads exactly one of these for a login shell, in this order.
+	local f
+	for f in "$HOME/.bash_profile" "$HOME/.bash_login" "$HOME/.profile"; do
+		[[ -f "$f" ]] && { printf '%s\n' "$f"; return 0; }
+	done
+	printf '%s\n' "$HOME/.profile"
+}
+
 install_shim_path() {
 	local shim_dir="$1"
 	local rc_file="$2"
 	local begin="# >>> agentkit session shims >>>"
 	local end="# <<< agentkit session shims <<<"
 
-	if [[ -f "$rc_file" ]] && grep -Fq "$begin" "$rc_file"; then
-		echo "[shims] PATH entry already present in $rc_file"
-		return 0
-	fi
+	# Re-written on every install so an older block is upgraded in place.
+	remove_shim_path "$rc_file"
 
 	{
 		printf '\n%s\n' "$begin"
-		printf '# Runs each agent CLI session in its own systemd scope.\n'
+		printf '# Runs each agent CLI session in its own systemd scope. Forced to the\n'
+		printf '# front: login profiles prepend ~/.local/bin after .bashrc has run, and\n'
+		printf '# the real CLI lives there, so "already on PATH" is not enough.\n'
 		# $PATH stays unexpanded on purpose: what lands in the rc file has to be
 		# read at the reader's shell startup, not resolved to the installer's
-		# PATH and frozen there.
+		# PATH and frozen there. POSIX sh only, ~/.profile may be read by dash.
 		# shellcheck disable=SC2016
-		printf 'case ":$PATH:" in\n'
-		printf '  *":%s:"*) ;;\n' "$shim_dir"
-		# shellcheck disable=SC2016
-		printf '  *) PATH="%s:$PATH" ;;\n' "$shim_dir"
-		printf 'esac\n'
+		printf 'PATH="%s:$(printf '"'"'%%s'"'"' ":$PATH:" | sed -e '"'"'s#:%s:#:#g'"'"' -e '"'"'s#^:##'"'"' -e '"'"'s#:$##'"'"')"\n' "$shim_dir" "$shim_dir"
+		printf 'export PATH\n'
 		printf '%s\n' "$end"
 	} >>"$rc_file"
 
@@ -1887,6 +1893,7 @@ uninstall_session_scoping() {
 		drop_path "$unit"
 	fi
 	remove_shim_path "$HOME/.bashrc"
+	remove_shim_path "$(login_profile_file)"
 
 	# Only worth a reload when a unit actually went away, and only where a user
 	# manager is reachable — a service-spawned terminal has neither.
@@ -2248,6 +2255,8 @@ if [[ "$GLOBAL" == true ]]; then
 		install_session_shims "$SESSION_SHIMS" "$PATH_TOOLS"
 		install_session_slice "${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
 		install_shim_path "$SESSION_SHIMS" "$HOME/.bashrc"
+		LOGIN_PROFILE="$(login_profile_file)"
+		[[ "$LOGIN_PROFILE" != "$HOME/.bashrc" ]] && install_shim_path "$SESSION_SHIMS" "$LOGIN_PROFILE"
 		echo ""
 	fi
 
