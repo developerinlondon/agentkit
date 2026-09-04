@@ -4,7 +4,7 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
-import { flattenForMarkdown, SvgError, verifySelfContained } from "./d2-svg.ts";
+import { flattenForMarkdown, verifySelfContained } from "./d2-svg.ts";
 import {
   DrawioError,
   INSTALL_HINT,
@@ -23,6 +23,7 @@ import {
   screenSource,
   stripPrologue,
 } from "./drawio-svg.ts";
+import { SvgError } from "./house-root.ts";
 
 function fail(msg: string): never {
   console.error(`drawio-render: ${msg}`);

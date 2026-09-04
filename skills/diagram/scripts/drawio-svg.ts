@@ -1,6 +1,6 @@
 // Post-processing and source screening for draw.io SVG output.
 
-import { HOUSE_STYLE, naturalSize, SvgError } from "./d2-svg.ts";
+import { houseRoot, SvgError } from "./house-root.ts";
 
 export const DRAWIO_PIN = "31.3.2";
 export const SOURCE_MARK = "svg-source:drawio";
@@ -35,25 +35,16 @@ export function plateBackground(svg: string, fill = PLATE): string {
   return tag + rect + svg.slice(root[0].length);
 }
 
+// draw.io is the one register that discards the style it arrives with: its own
+// root style only paints a transparent backdrop, which the figure island already
+// supplies.
 export function applyHouseAttributes(svg: string, ariaLabel: string): string {
-  const open = svg.match(/^<svg\b[^>]*>/);
-  if (!open) throw new SvgError("output does not start with an <svg> tag");
-  let tag = open[0];
-  // draw.io's own root style only paints a transparent backdrop, which the
-  // figure island already supplies; left in place it becomes a second style
-  // attribute on the tag and the house sizing silently loses to it.
-  const { width, height } = naturalSize(tag);
-  tag = tag.replace(/\s*\bwidth="[^"]*"/, "").replace(/\s*\bheight="[^"]*"/, "")
-    .replace(/\s*\bstyle="[^"]*"/, "");
-  const escaped = ariaLabel.replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll(
-    "<",
-    "&lt;",
-  );
-  tag = tag.replace(
-    /^<svg\b/,
-    `<svg class="drawio" role="img" aria-label="${escaped}" width="${width}" height="${height}" style="${HOUSE_STYLE}"`,
-  );
-  return `<!-- ${SOURCE_MARK} -->\n${tag}${svg.slice(open[0].length)}`;
+  return houseRoot(svg, {
+    label: ariaLabel,
+    className: "drawio",
+    sourceMark: SOURCE_MARK,
+    dropPriorStyle: true,
+  });
 }
 
 // draw.io salts gradient ids with a fresh nanoid per render and emits mxCell ids
