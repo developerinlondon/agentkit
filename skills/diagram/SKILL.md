@@ -50,6 +50,15 @@ bun <skill-dir>/scripts/d2-render.ts --in topology.d2 --out topology.svg \
   --png topology.png --label "Production deployment topology"
 ```
 
+**Orientation is not yours to guess.** A source that sets no board-level
+`direction` is rendered both ways and the wrapper keeps whichever the page will
+display larger — the window is about 977 px of column by 540 px of height, and
+a figure is fitted inside it on both axes, so the scale it is shown at is what
+happens to its type. It prints the two it compared:
+`orientation: down (707x1303) beat right (2789x234)`. Write `direction:` in the
+source, or pass `--direction right|down`, when you want to pick it yourself; a
+direction the source sets is never overridden.
+
 **Before writing a line of that D2, ask whether the project can produce it.**
 When the classification lands on a technical type and the system's shape is
 already recorded somewhere — a module graph, a live schema, a state file, a
@@ -230,7 +239,7 @@ grammar below is the shape, not the vocabulary.
 
 ```yaml
 title: How a signed request becomes an answer # optional
-direction: down # right | down       (default right)
+direction: down # right | down | auto (default auto)
 palette: dark # dark | light       (default dark)
 roughness: 1 # 0 crisp | 1 sketch (default 1)
 background: "#ffffff" # optional backdrop; omit for transparent
@@ -265,7 +274,9 @@ key it does not recognise.
 **Left to right fits four ranks, not five.** Each rank costs its own box width
 plus 92 px of gap, so a chain of minimum-width boxes warns at five ranks and is
 refused at six; boxes carrying a note warn at four and are refused at five.
-`direction: down` restacks the same spec, and vertical space is free.
+Leave `direction` unset and the layout runs both ways and keeps the one the
+page displays larger, restacking the chain for you once the row costs more than
+the column and saying so; `direction: down` names that restack by hand.
 `examples/sketch-pipeline.diagram.yaml` is a worked spec that had to do exactly
 that.
 
@@ -294,9 +305,13 @@ about whether the figure argues anything.
   14 px label at 5.4 px. Author at or below ~1000 × 550 and only the width cap
   ever applies. Go taller and the render must be judged at its fitted size:
   split the figure if a label does not survive it.
-- Vertical space was free while nothing capped height. Under the 60 vh fit it is
-  the scarcer axis: when a layout is tight, drop a zone or split the figure
-  rather than restacking taller.
+- Vertical space was free while nothing capped height. Under the 60 vh fit
+  neither axis is: the figure is fitted into the column _and_ into ~540 px of
+  height, and the smaller of those two ratios is the scale it is read at. Height
+  is the scarcer of them, so when a layout is tight, drop a zone or split the
+  figure rather than restacking taller. Where the figure names no `direction`,
+  both renderers weigh that trade for you and keep whichever orientation renders
+  larger.
 
 ## 5 — Render, LOOK, fix (mandatory loop)
 

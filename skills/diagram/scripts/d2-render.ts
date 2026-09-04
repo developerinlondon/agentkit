@@ -16,6 +16,14 @@ import { basename, dirname, join, resolve } from "node:path";
 import { expandIconRefs, IconError, monochromeFills, monochromeSources } from "./icons.ts";
 import type { StagedIcon } from "./icons.ts";
 import {
+  betterFit,
+  declaresDirection,
+  type Direction,
+  DIRECTIONS,
+  orientationEvidence,
+  withDirection,
+} from "./orientation.ts";
+import {
   applyHouseAttributes,
   D2_PIN,
   dropBackgroundRect,
@@ -87,6 +95,10 @@ if (host !== "attribute" && host !== "class") {
   fail(`--host must be "attribute" or "class", got "${host}"`);
 }
 const darkSelector = DARK_SELECTORS[host];
+const wanted = arg("direction") ?? "auto";
+if (wanted !== "auto" && wanted !== "right" && wanted !== "down") {
+  fail(`--direction must be "right", "down" or "auto", got "${wanted}"`);
+}
 
 checkPin();
 
@@ -98,17 +110,20 @@ try {
   throw e;
 }
 
+const authored = declaresDirection(expanded.source);
+if (authored && wanted !== "auto") {
+  console.error(`d2-render: --direction ${wanted} ignored — ${input} sets its own direction`);
+}
+
 const work = mkdtempSync(join(tmpdir(), "d2-render-"));
 let svg: string;
 try {
   const staged = join(work, basename(input));
-  writeFileSync(staged, expanded.source);
   for (const icon of expanded.staged) {
     const dest = join(work, icon.rel);
     mkdirSync(dirname(dest), { recursive: true });
     copyFileSync(icon.src, dest);
   }
-  const rendered = join(work, "out.svg");
   const d2Args = [
     "--omit-version",
     "--no-xml-tag",
@@ -122,18 +137,45 @@ try {
   ];
   const salt = arg("salt");
   if (salt) d2Args.push(`--salt=${salt}`);
-  try {
-    execFileSync(D2_BIN, [...d2Args, staged, rendered], { encoding: "utf8", stdio: "pipe" });
-  } catch (e) {
-    const err = e as { stderr?: string; message: string };
-    fail(`d2 failed to compile ${input}:\n${(err.stderr ?? err.message).trim()}`);
-  }
-  // A d2 that reports success and writes nothing would surface as a raw ENOENT
-  // from the read below, which names the temp path rather than the input.
-  if (!existsSync(rendered)) fail(`d2 wrote no SVG for ${input} despite reporting success`);
-  svg = readFileSync(rendered, "utf8");
+
+  const renderOnce = (direction: Direction | undefined, name: string): string => {
+    writeFileSync(staged, direction ? withDirection(expanded.source, direction) : expanded.source);
+    const rendered = join(work, name);
+    try {
+      execFileSync(D2_BIN, [...d2Args, staged, rendered], { encoding: "utf8", stdio: "pipe" });
+    } catch (e) {
+      const err = e as { stderr?: string; message: string };
+      fail(`d2 failed to compile ${input}:\n${(err.stderr ?? err.message).trim()}`);
+    }
+    // A d2 that reports success and writes nothing would surface as a raw ENOENT
+    // from the read below, which names the temp path rather than the input.
+    if (!existsSync(rendered)) fail(`d2 wrote no SVG for ${input} despite reporting success`);
+    return readFileSync(rendered, "utf8");
+  };
+
+  if (authored) svg = renderOnce(undefined, "out.svg");
+  else if (wanted !== "auto") svg = renderOnce(wanted, "out.svg");
+  else svg = pickOrientation(renderOnce);
 } finally {
   rmSync(work, { recursive: true, force: true });
+}
+
+// d2 is fast enough to lay the same source out both ways, so an author who
+// named no direction gets the one the page column can actually hold.
+function pickOrientation(render: (d: Direction, name: string) => string): string {
+  const candidates = DIRECTIONS.map((direction) => {
+    const markup = render(direction, `out-${direction}.svg`);
+    return { direction, ...viewBoxOf(markup), markup };
+  });
+  const { kept, dropped } = betterFit(candidates[0], candidates[1]);
+  console.error(`d2-render: ${orientationEvidence(kept, dropped)}`);
+  return kept.markup;
+}
+
+function viewBoxOf(markup: string): { width: number; height: number } {
+  const box = markup.match(/viewBox="([\d.eE+-]+) ([\d.eE+-]+) ([\d.eE+-]+) ([\d.eE+-]+)"/);
+  if (!box) fail("the rendered SVG carries no viewBox, so it cannot be measured");
+  return { width: Number(box[3]), height: Number(box[4]) };
 }
 
 try {
@@ -168,10 +210,9 @@ console.log(`${output}${expanded.count > 0 ? ` (${expanded.count} icon(s) embedd
 async function rasterize(markup: string, target: string): Promise<void> {
   const dir = mkdtempSync(join(tmpdir(), "d2-png-"));
   try {
-    const box = markup.match(/viewBox="([\d.eE+-]+) ([\d.eE+-]+) ([\d.eE+-]+) ([\d.eE+-]+)"/);
-    if (!box) fail("cannot rasterize: no viewBox on the rendered SVG");
-    const w = Math.ceil(Number(box[3]));
-    const h = Math.ceil(Number(box[4]));
+    const box = viewBoxOf(markup);
+    const w = Math.ceil(box.width);
+    const h = Math.ceil(box.height);
     const sized = stripHouseCap(markup);
     const page = join(dir, "page.html");
     // Rasterised on the dark island: that is the authored default, and the
