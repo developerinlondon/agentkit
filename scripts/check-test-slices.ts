@@ -11,6 +11,7 @@ export const TEST_SLICES = {
     'tests/diagram/extract-cli.test.ts',
     'tests/diagram/extract-model.test.ts',
     'tests/diagram/extract-sources.test.ts',
+    'tests/diagram/house-root.test.ts',
     'tests/diagram/icons.test.ts',
     'tests/diagram/layout.test.ts',
     'tests/diagram/lockfile.test.ts',
