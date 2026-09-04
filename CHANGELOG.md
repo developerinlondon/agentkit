@@ -9,6 +9,8 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+## v0.8.5 — 2026-09-04
+
 - fix(publish-page): **figures render at their natural size, capped to the column.** The doc and
   deck themes sized every `.figure > svg` with `width: 100%`, and the diagram skill told the author
   to replace the renderer's `width`/`height` with `width="100%"` — so any figure narrower than the
