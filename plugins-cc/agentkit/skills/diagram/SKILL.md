@@ -285,8 +285,18 @@ about whether the figure argues anything.
 - **Density**: at most 3 zones, ~12 labeled nodes, ~25 text elements per
   diagram. Exceeding any of the three means **split, don't shrink** — one
   argument per figure; a fourth zone is a second figure with its own caption.
-- Vertical space is free and horizontal space is not: when a layout is tight,
-  restack zones taller rather than widening the canvas.
+- **Fit to the screen, not to the canvas.** A published figure is read fitted
+  into the column (~979 px) _and_ into ~60 % of the viewport height (540 px at
+  1280 × 900). A per-figure toolbar zooms it and opens it full size, but that is
+  the reader's choice, never the author's plan: the fitted read is the one that
+  has to work. The height cap binds on any canvas taller than ~0.55 × its width,
+  and it binds hard — 1000 × 1400 lands at 386 × 540, a 0.39 scale that puts a
+  14 px label at 5.4 px. Author at or below ~1000 × 550 and only the width cap
+  ever applies. Go taller and the render must be judged at its fitted size:
+  split the figure if a label does not survive it.
+- Vertical space was free while nothing capped height. Under the 60 vh fit it is
+  the scarcer axis: when a layout is tight, drop a zone or split the figure
+  rather than restacking taller.
 
 ## 5 — Render, LOOK, fix (mandatory loop)
 
@@ -309,9 +319,10 @@ Each round, in order:
    belong to anything; ragged spacing between siblings; one zone cramped while
    another floats in emptiness; text too small at render size; a lopsided
    whole.
-3. **Page-scale pass** — view the PNG downscaled to ~979 px wide (the size the
-   page reader actually gets) and confirm every label is still readable; judge
-   the diagram at reading size, not authoring size.
+3. **Page-scale pass** — view the PNG downscaled to the size the page reader
+   actually gets: ~979 px wide, and no more than 540 px tall, whichever cap
+   binds first. Confirm every label is still readable there; judge the diagram
+   at reading size, not authoring size.
 4. **Fix in JSON** — widen containers for clipped text; shift `x`/`y` for
    spacing; add waypoints to arrow `points` to route around shapes; pull
    labels next to their subjects; resize to rebalance visual weight.

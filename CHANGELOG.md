@@ -9,6 +9,24 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+- feat(publish-page): **figures fit the screen by default, with per-figure zoom and full-screen
+  controls.** v0.8.5 stopped stretching a figure to the column but left nothing bounding its height,
+  so a 717x1292 sketch rendered at natural size and a 1221x1787 D2 figure at 977x1430 — 1.4 and 1.6
+  screen heights at 1280x900. The doc and deck themes now cap a figure svg at `max-height: 60vh`
+  alongside the existing `max-width: 100%`, with `width: auto`, so the browser resolves both caps
+  against the intrinsic ratio and the aspect survives whichever binds. Measured in Chrome: 717x1292
+  fits to 300x540 at 1280x900 and 341x614 at 768x1024, while 2500x800 still fills the column at
+  977x313. Each figure carries a small hover-revealed toolbar — zoom out, zoom in, reset, full
+  screen — with `aria-label`s and keyboard focus. Zooming steps by 1.25x between 0.5x and 4x and
+  resizes the svg inside a scroll box whose own footprint never changes, so the page width is
+  identical zoomed and unzoomed; reset returns to the fitted size, and nothing is persisted. Full
+  screen is the existing lightbox, which opens at natural size with neither cap applied and gains
+  the same three zoom buttons. Print keeps the uncapped figure and drops the toolbar. The diagram
+  skill's size budget now states the fitted read: a canvas taller than ~0.55x its width is
+  height-bound, 1000x1400 lands at a 0.39 scale, so design for the fit or split the figure.
+  Mermaid blocks are out of scope — the runtime replaces their svg on every theme change, so they
+  keep the previous behaviour.
+
 ## v0.8.6 — 2026-09-04
 
 - refactor(diagram): **one house-root helper serves all three SVG registers.** `applyHouseAttributes`
