@@ -166,7 +166,7 @@ client -> edge.cdn: HTTPS 443 { style.bold: true }
   not `db`. An unlabelled edge is an unfinished edge.
 - `direction: down` keeps a topology inside the page column; `right` produces
   a strip three times too wide to read. Set neither and `d2-render.ts` renders
-  both and keeps the one the column holds, naming its choice on stderr.
+  both and keeps the one the page displays larger, naming its choice on stderr.
 - `near` pins a legend or an out-of-band actor: `near: top-center`.
 
 ## 3 — C4 context and container views

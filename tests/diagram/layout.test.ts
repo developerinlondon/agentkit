@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { build } from '../../skills/diagram/scripts/layout/build.ts';
 import { carriedBy, CHARSET, METRICS_PATH, textWidth } from '../../skills/diagram/scripts/layout/measure.ts';
 import { layout, MARGIN } from '../../skills/diagram/scripts/layout/geometry.ts';
-import { fitScore } from '../../skills/diagram/scripts/orientation.ts';
+import { betterFit, displayScale } from '../../skills/diagram/scripts/orientation.ts';
 import { parseSpec } from '../../skills/diagram/scripts/layout/spec.ts';
 
 const EXAMPLES = join(import.meta.dir, '../../skills/diagram/examples');
@@ -62,6 +62,15 @@ function notedChain(ranks: number, direction = 'direction: right\n'): string {
     { length: ranks },
     (_, i) => `{ id: n${i}, label: step ${i}, note: a typical one-line note }`,
   );
+  const edges = 'edges:\n'
+    + Array.from({ length: ranks - 1 }, (_, i) => `  - { from: n${i}, to: n${i + 1} }\n`).join('');
+  return direction + specWith(nodes, edges);
+}
+
+// Long labels make each box wide, so the row overflows the 977 px column while
+// the same spec stacked still fits the window whole.
+function wideChain(ranks: number, direction = 'direction: right\n'): string {
+  const nodes = Array.from({ length: ranks }, (_, i) => `{ id: n${i}, label: "a rather long node label ${i}" }`);
   const edges = 'edges:\n'
     + Array.from({ length: ranks - 1 }, (_, i) => `  - { from: n${i}, to: n${i + 1} }\n`).join('');
   return direction + specWith(nodes, edges);
@@ -197,30 +206,35 @@ describe('the register budget is enforced, not suggested', () => {
 });
 
 describe('a spec that names no direction is laid out both ways', () => {
-  test('a chain the column cannot hold as a row is restacked as a column', () => {
-    const built = build(parseSpec(chain(5, '')));
+  test('a row the page would have to shrink loses to a column that fits whole', () => {
+    const built = build(parseSpec(wideChain(3, '')));
     expect(built.direction).toBe('down');
-    expect(`${built.width}x${built.height}`).toBe('200x668');
-    expect(built.evidence).toBe('orientation: down (200x668) beat right (1128x108)');
+    expect(`${built.width}x${built.height}`).toBe('320x388');
+    expect(built.evidence).toBe('orientation: down (320x388) beat right (1014x108)');
   });
 
-  test('a chain that does fit the column keeps the row', () => {
-    const built = build(parseSpec(chain(4, '')));
-    expect(built.direction).toBe('right');
-    expect(built.evidence).toBe('orientation: right (896x108) beat down (200x528)');
+  // Neither is shrunk, so there is no type size to compare and the shape of
+  // the window decides: a 8:1 strip stays a row, a 4:1 one does not.
+  test.each([
+    ['a row nearer the window than its column', chain(4, ''), 'orientation: right (896x108) beat down (200x528)'],
+    ['a column nearer the window than its row', notedChain(2, ''), 'orientation: down (250x288) beat right (532x128)'],
+  ])('between two that both fit whole, %s wins', (_name, spec, evidence) => {
+    const built = build(parseSpec(spec));
+    expect(built.evidence).toBe(evidence);
+    expect(displayScale(built.width, built.height)).toBe(1);
   });
 
   // The pick chooses between two layouts; it must not perturb the one it keeps.
   test('the chosen orientation draws the scene the explicit spec would', () => {
-    const auto = build(parseSpec(chain(5, '')));
-    const named = build(parseSpec(chain(5, 'direction: down\n')));
+    const auto = build(parseSpec(wideChain(3, '')));
+    const named = build(parseSpec(wideChain(3, 'direction: down\n')));
     expect(JSON.stringify(auto.scene)).toBe(JSON.stringify(named.scene));
   });
 
-  test('an explicit direction is kept even when the other one scores better', () => {
-    const built = build(parseSpec(chain(5)));
+  test('an explicit direction is kept even when the other one displays larger', () => {
+    const built = build(parseSpec(wideChain(3)));
     expect({ direction: built.direction, width: built.width, evidence: built.evidence })
-      .toEqual({ direction: 'right', width: 1128, evidence: undefined });
+      .toEqual({ direction: 'right', width: 1014, evidence: undefined });
   });
 
   test('a direction the spec sets is honoured all the way to its refusal', () => {
@@ -247,13 +261,19 @@ describe('a spec that names no direction is laid out both ways', () => {
     expect(message).not.toContain('set direction: down');
   });
 
-  test('the score prefers a column to a row the page would have to shrink', () => {
-    // 977 px of column against 540 px of reading height: a strip that fits
-    // wins, and one that must scale down loses to the column that does not.
-    expect(fitScore(896, 108)).toBeLessThan(fitScore(200, 528));
-    expect(fitScore(1128, 108)).toBeGreaterThan(fitScore(200, 668));
-    expect(fitScore(5792, 1736)).toBeGreaterThan(fitScore(1221, 1787));
-    expect(fitScore(0, 0)).toBe(Infinity);
+  test('the scale is what the page displays, so the larger type wins', () => {
+    // 977 px of column by 540 px of height, fitted on both axes and never
+    // enlarged: the seven-node pipeline reads larger as a row, the same figure
+    // with long labels reads larger stacked.
+    expect(displayScale(1880, 234).toFixed(2)).toBe('0.52');
+    expect(displayScale(362, 1303).toFixed(2)).toBe('0.41');
+    expect(displayScale(896, 108)).toBe(1);
+    const row = { direction: 'right' as const, width: 1880, height: 234 };
+    const column = { direction: 'down' as const, width: 362, height: 1303 };
+    expect(betterFit(row, column).kept.direction).toBe('right');
+    expect(betterFit({ ...row, width: 5792, height: 1736 }, { ...column, width: 1221, height: 1787 }).kept.direction)
+      .toBe('down');
+    expect(displayScale(0, 0)).toBe(0);
   });
 });
 
@@ -363,7 +383,7 @@ describe('the reference doc matches the code', () => {
   // The evidence lines are the only report of a choice the author did not make,
   // so the doc quotes them verbatim and this keeps the quote true.
   test('the reference quotes the orientation lines the run actually prints', () => {
-    for (const spec of [chain(5, ''), notedChain(5, '')]) {
+    for (const spec of [wideChain(3, ''), notedChain(5, '')]) {
       expect(documents(build(parseSpec(spec)).evidence!)).toBe('documented: true');
     }
   });

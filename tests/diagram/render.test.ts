@@ -13,10 +13,18 @@ interface Run {
   stderr: string;
 }
 
-// Seven nodes in a line: a strip left to right, a column top to bottom.
+// Seven nodes in a line: a strip left to right, a column top to bottom. Short
+// labels keep the strip inside the column; long ones do not, which is the
+// difference the pick is deciding on.
 const CHAIN = ['source', 'ingest', 'queue', 'worker', 'store', 'index', 'serve'];
-const UNDIRECTED = CHAIN.map((n) => `${n}: ${n} stage\n`).join('')
-  + CHAIN.slice(1).map((n, i) => `${CHAIN[i]} -> ${n}: step\n`).join('');
+
+function chainSource(label: (n: string) => string): string {
+  return CHAIN.map((n) => `${n}: ${label(n)}\n`).join('')
+    + CHAIN.slice(1).map((n, i) => `${CHAIN[i]} -> ${n}: step\n`).join('');
+}
+
+const UNDIRECTED = chainSource((n) => `${n} stage`);
+const WIDE = chainSource((n) => `${n} stage, described at the length a real label runs to`);
 
 function viewBox(file: string): { width: number; height: number } {
   const box = readFileSync(file, 'utf-8').match(/viewBox="0 0 ([\d.]+) ([\d.]+)"/);
@@ -273,20 +281,36 @@ describe.if(available)('rendering with the pinned d2', () => {
     });
   });
 
-  test('a source naming no direction is laid out both ways, and the column kept', () => {
+  test('a source naming no direction is laid out both ways, and the larger kept', () => {
     withTemp((dir) => {
       const src = join(dir, 'chain.d2');
       writeFileSync(src, UNDIRECTED);
       const first = run(dir, ['--in', src, '--out', join(dir, 'one.svg')]);
       expect(first.code).toBe(0);
-      const evidence = first.stderr.match(/orientation: down \((\d+)x(\d+)\) beat right \((\d+)x(\d+)\)/);
+      const evidence = first.stderr.match(/orientation: right \((\d+)x(\d+)\) beat down \((\d+)x(\d+)\)/);
       expect(`evidence: ${first.stderr.trim()}`).toBe(`evidence: d2-render: ${evidence?.[0]}`);
-      const [downW, downH, rightW, rightH] = evidence!.slice(1).map(Number);
-      expect(`down ${downH > downW}, right ${rightW > rightH}`).toBe('down true, right true');
-      expect(viewBox(join(dir, 'one.svg'))).toEqual({ width: downW, height: downH });
+      const [rightW, rightH, downW, downH] = evidence!.slice(1).map(Number);
+      expect(`right ${rightW > rightH}, down ${downH > downW}`).toBe('right true, down true');
+      // Short labels keep the strip readable: 977/1880 beats 540/1303.
+      expect(viewBox(join(dir, 'one.svg'))).toEqual({ width: rightW, height: rightH });
       // The pick renders twice; the output still has to be the same bytes twice.
       expect(run(dir, ['--in', src, '--out', join(dir, 'two.svg')]).code).toBe(0);
       expect(readFileSync(join(dir, 'one.svg'))).toEqual(readFileSync(join(dir, 'two.svg')));
+    });
+  }, 30000);
+
+  test('the same chain with real labels is restacked, because the strip shrinks further', () => {
+    withTemp((dir) => {
+      const src = join(dir, 'wide.d2');
+      writeFileSync(src, WIDE);
+      const result = run(dir, ['--in', src, '--out', join(dir, 'wide.svg')]);
+      expect(result.code).toBe(0);
+      const evidence = result.stderr.match(/orientation: down \((\d+)x(\d+)\) beat right \((\d+)x(\d+)\)/);
+      expect(`evidence: ${result.stderr.trim()}`).toBe(`evidence: d2-render: ${evidence?.[0]}`);
+      const [downW, downH, rightW] = evidence!.slice(1).map(Number);
+      expect(viewBox(join(dir, 'wide.svg'))).toEqual({ width: downW, height: downH });
+      // Both overflow the column; the row overflows it by more.
+      expect(`${977 / rightW < 540 / downH}`).toBe('true');
     });
   }, 30000);
 
@@ -310,12 +334,12 @@ describe.if(available)('rendering with the pinned d2', () => {
       const src = join(dir, 'chain.d2');
       writeFileSync(src, UNDIRECTED);
       const picked = run(dir, ['--in', src, '--out', join(dir, 'auto.svg')]);
-      const forced = run(dir, ['--in', src, '--out', join(dir, 'right.svg'), '--direction', 'right']);
+      const forced = run(dir, ['--in', src, '--out', join(dir, 'down.svg'), '--direction', 'down']);
       expect({ picked: picked.code, forced: forced.code }).toEqual({ picked: 0, forced: 0 });
       expect(forced.stderr).not.toContain('orientation:');
-      const box = viewBox(join(dir, 'right.svg'));
-      expect(box.width).toBeGreaterThan(box.height);
-      expect(readFileSync(join(dir, 'right.svg'), 'utf-8')).not.toBe(readFileSync(join(dir, 'auto.svg'), 'utf-8'));
+      const box = viewBox(join(dir, 'down.svg'));
+      expect(box.height).toBeGreaterThan(box.width);
+      expect(readFileSync(join(dir, 'down.svg'), 'utf-8')).not.toBe(readFileSync(join(dir, 'auto.svg'), 'utf-8'));
     });
   }, 30000);
 
@@ -349,6 +373,13 @@ describe('reading the direction a d2 source already sets', () => {
     // A hex fill read as a comment would swallow the closing brace, and every
     // line after it would look nested — including a real board direction.
     ['one after a quoted hex fill', 'x: { style.fill: "#f00" }\ndirection: down\n', true],
+    // D2 takes the last board direction, so an appended one would win over
+    // this and silently restack the author's figure.
+    ['one after a semicolon', 'a -> b; direction: down\n', true],
+    ['a container\'s own after a semicolon', 'x: { a -> b; direction: down }\ny -> z\n', false],
+    // A brace inside a label is text; counted as structure it would hide every
+    // board line after it.
+    ['one after a quoted brace', 'a.label: "{"\ndirection: down\n', true],
     ['none at all', 'a -> b: hello\n', false],
   ])('%s', (_name, source, expected) => {
     expect(declaresDirection(source)).toBe(expected);

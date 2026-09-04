@@ -31,15 +31,17 @@ notes:
 ## Which way it lays out
 
 `direction` is optional and defaults to `auto`. Left unset, the spec is laid
-out both ways and the run keeps the one closer to the page's reading window —
-about 977 px of column by 540 px of height, so roughly 1.8:1 — charging a
-figure that is wider than the column for the scaling the page would do to it.
-Vertical space is free and horizontal space is not, so a strip that has to
-shrink loses to a column that does not. The run says which it kept and what it
+out both ways and the run keeps whichever the page will display larger. The
+window is about 977 px of column by 540 px of height (60vh of a 900 px
+viewport); a figure is fitted inside it on both axes and never enlarged, so
+`min(1, 977 / width, 540 / height)` is both the scale the figure is shown at
+and what happens to its type. Bigger wins. Between two the window already
+holds whole there is no type size to compare, so the one shaped more like the
+window — nearer 1.8:1 — wins instead. The run says which it kept and what it
 compared:
 
 ```
-diagram-layout: orientation: down (200x668) beat right (1128x108)
+diagram-layout: orientation: down (320x388) beat right (1014x108)
 ```
 
 A candidate the density budget refuses is dropped rather than compared, so a
@@ -161,12 +163,12 @@ Measured against the 1000 px page budget and the 1200 px ceiling:
 | boxes carrying a note (190 px) | 1096 px, warns | 1378 px, refused | refused          |
 
 So four ranks is the working limit and five is the hard one, sooner if the
-labels are long. A spec that names no direction is restacked for you at exactly
-that point: the five-rank chain above is drawn as a column, because 1128 px of
-strip would have to shrink to reach the 977 px page column. `direction: down`
-names the same restack by hand. There is no equivalent of the hand-placed trick
-of bending a row down into a second row, which is how a five-step flow used to
-fit inside 1000 px.
+labels are long. A spec that names no direction is restacked for you once the
+row costs more than the column does: three boxes carrying a long label run
+1014 px wide and would be shrunk to 0.96, while the same three stacked fit the
+window whole, so they are drawn stacked. `direction: down` names the restack by
+hand. There is no equivalent of the hand-placed trick of bending a row down
+into a second row, which is how a five-step flow used to fit inside 1000 px.
 
 ## Regenerating the font metrics
 

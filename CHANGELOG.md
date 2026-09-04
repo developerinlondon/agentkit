@@ -32,19 +32,22 @@ release PR — "publish this" authorizes a release, never the tier.
   Mermaid blocks are out of scope — the runtime replaces their svg on every theme change, so they
   keep the previous behaviour.
 
-- feat(diagram): **renderers pick a column-friendly orientation when the author sets none.** A figure's
-  proportion used to depend on guessing `direction: right` against `down` and re-rendering: the same
-  seven-node D2 pipeline came out 1880x234 one way and 362x1303 the other, and `layout.ts` refused a
-  wide chain outright and told the author to restack it. Both renderers now lay a direction-less
-  figure out both ways and keep the one closer to the page's reading window — 977 px of column by
-  540 px of height, so about 1.8:1 — charging a candidate wider than the column for the scaling the
-  page would do to it, because vertical space is free and horizontal space is not. Each run prints
-  what it compared (`orientation: down (362x1303) beat right (1880x234)`). `layout.ts` drops a
-  candidate the density budget refuses instead of comparing it, so a chain refused as a row is drawn
-  as a column and the refusal stands only when both orientations fail, naming both. A direction the
-  source or spec sets is never overridden, and `d2-render.ts --direction right|down|auto` picks by
-  hand for a source that names none. Every committed example sets its own direction and re-renders
-  byte-identical.
+- feat(diagram): **renderers pick the orientation the page displays larger when the author sets
+  none.** A figure's proportion depended on guessing `direction: right` against `down` and
+  re-rendering: the same seven-node D2 pipeline comes out 1880x234 one way and 362x1303 the other,
+  and `layout.ts` refused a wide chain outright and told the author to restack it. Both renderers now
+  lay a direction-less figure out both ways and keep the one the page will show at the larger scale.
+  The window is about 977 px of column by 540 px of height (60vh of a 900 px viewport); a figure is
+  fitted inside it on both axes and never enlarged, so `min(1, 977 / width, 540 / height)` is both
+  the scale it is displayed at and what happens to its type. Between two candidates the window
+  already holds whole there is no type size to compare, so the one nearer the window's own 1.8:1
+  wins instead. Each run prints what it compared (`orientation: down (707x1303) beat right
+  (2789x234)`). `layout.ts` drops a candidate the density budget refuses instead of comparing it, so
+  a chain refused as a row is drawn as a column and the refusal stands only when both orientations
+  fail, naming both. A direction the source or spec sets is never overridden — including one written
+  after a semicolon, which D2 honours last-wins — and `d2-render.ts --direction right|down|auto`
+  picks by hand for a source that names none. Every committed example sets its own direction and
+  re-renders byte-identical.
 
 ## v0.8.6 — 2026-09-04
 

@@ -1,13 +1,12 @@
-// Choosing an orientation for an author who set none: the score both renderers
+// Choosing an orientation for an author who set none: the rule both renderers
 // rank their candidates with, and the probe that reads whether a d2 source
 // already made the choice itself.
 
-// The page column renders a figure about 977 px wide into roughly 540 px of
-// reading height (60vh of a 900 px viewport), so a figure near 1.8:1 arrives
-// legible without zooming or scrolling.
-export const COLUMN_WIDTH = 977;
-export const READING_HEIGHT = 540;
-export const TARGET_ASPECT = COLUMN_WIDTH / READING_HEIGHT;
+// The page gives a figure a column about 977 px wide and caps its height at
+// 60vh, roughly 540 px on a 900 px viewport.
+const COLUMN_WIDTH = 977;
+const READING_HEIGHT = 540;
+const TARGET_ASPECT = COLUMN_WIDTH / READING_HEIGHT;
 
 export type Direction = "right" | "down";
 
@@ -19,22 +18,28 @@ export interface Sized {
   height: number;
 }
 
-/** Two costs, both in log space so they add. The first is distance from the
- * reading window's proportion, where a figure twice as wide as the target
- * loses exactly as much as one half as wide. The second is what the page
- * charges for a figure wider than the column: it scales the whole thing down
- * to fit and the type shrinks with it, while a figure taller than the window
- * only scrolls. Vertical space is free and horizontal space is not, so a
- * strip that has to shrink loses to a column that does not. */
-export function fitScore(width: number, height: number): number {
-  if (!(width > 0) || !(height > 0)) return Infinity;
-  return Math.abs(Math.log(width / height / TARGET_ASPECT)) + Math.max(0, Math.log(width / COLUMN_WIDTH));
+/** What the page displays the figure at: it fits the figure inside the window
+ * on both axes and never enlarges it, so this is also what happens to the
+ * type. Bigger is better, and a figure that already fits scores 1. */
+export function displayScale(width: number, height: number): number {
+  if (!(width > 0) || !(height > 0)) return 0;
+  return Math.min(1, COLUMN_WIDTH / width, READING_HEIGHT / height);
 }
 
+function aspectDistance(width: number, height: number): number {
+  return Math.abs(Math.log(width / height / TARGET_ASPECT));
+}
+
+/** Larger type on the page wins. Between two candidates the window already
+ * holds whole, nothing is shrunk and there is no type to compare, so the one
+ * shaped more like the window wins instead. A tie keeps the first. */
 export function betterFit<T extends Sized>(a: T, b: T): { kept: T; dropped: T } {
-  return fitScore(b.width, b.height) < fitScore(a.width, a.height)
-    ? { kept: b, dropped: a }
-    : { kept: a, dropped: b };
+  const scaleA = displayScale(a.width, a.height);
+  const scaleB = displayScale(b.width, b.height);
+  const bWins = scaleA >= 1 && scaleB >= 1
+    ? aspectDistance(b.width, b.height) < aspectDistance(a.width, a.height)
+    : scaleB > scaleA;
+  return bWins ? { kept: b, dropped: a } : { kept: a, dropped: b };
 }
 
 function dims(s: Sized): string {
@@ -46,32 +51,46 @@ export function orientationEvidence(kept: Sized, dropped: Sized): string {
 }
 
 /** A `direction` on the board itself is the author's own choice and is never
- * displaced. Brace depth is tracked because `x: { direction: down }` turns a
- * container, not the board, and quotes are tracked because a `"#f00"` fill
- * would otherwise read as a comment and swallow the rest of the line. */
+ * displaced. Statements end at a newline or a semicolon, since d2 takes the
+ * last of two board directions and an appended one would silently win over
+ * `a -> b; direction: down`. Braces and comment marks are read outside quotes
+ * only: a label carrying `{` or `#` is text, not structure. */
 export function declaresDirection(source: string): boolean {
   let depth = 0;
-  for (const line of source.split("\n")) {
-    const code = stripComment(line);
-    if (depth === 0 && /^\s*direction\s*:/.test(code)) return true;
-    for (const ch of code) {
-      if (ch === "{") depth += 1;
-      else if (ch === "}") depth = Math.max(0, depth - 1);
+  let quote = "";
+  let comment = false;
+  let statement = "";
+  const ends = (): boolean => {
+    const board = depth === 0 && /^\s*direction\s*:/.test(statement);
+    statement = "";
+    return board;
+  };
+  for (const ch of source) {
+    if (comment) {
+      if (ch !== "\n") continue;
+      comment = false;
+      if (ends()) return true;
+    } else if (quote) {
+      if (ch === quote) quote = "";
+      statement += ch;
+    } else if (ch === '"' || ch === "'") {
+      quote = ch;
+      statement += ch;
+    } else if (ch === "#") {
+      comment = true;
+    } else if (ch === "\n" || ch === ";") {
+      if (ends()) return true;
+    } else if (ch === "{") {
+      if (ends()) return true;
+      depth += 1;
+    } else if (ch === "}") {
+      statement = "";
+      depth = Math.max(0, depth - 1);
+    } else {
+      statement += ch;
     }
   }
-  return false;
-}
-
-function stripComment(line: string): string {
-  let quote = "";
-  for (let i = 0; i < line.length; i += 1) {
-    const ch = line[i];
-    if (quote) {
-      if (ch === quote) quote = "";
-    } else if (ch === '"' || ch === "'") quote = ch;
-    else if (ch === "#") return line.slice(0, i);
-  }
-  return line;
+  return ends();
 }
 
 /** Appended rather than prefixed: a line added at the top shifts every line

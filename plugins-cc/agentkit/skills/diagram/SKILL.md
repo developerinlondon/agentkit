@@ -51,9 +51,11 @@ bun <skill-dir>/scripts/d2-render.ts --in topology.d2 --out topology.svg \
 ```
 
 **Orientation is not yours to guess.** A source that sets no board-level
-`direction` is rendered both ways and the wrapper keeps whichever proportion
-the page column can hold, printing the two it compared:
-`orientation: down (362x1303) beat right (1880x234)`. Write `direction:` in the
+`direction` is rendered both ways and the wrapper keeps whichever the page will
+display larger — the window is about 977 px of column by 540 px of height, and
+a figure is fitted inside it on both axes, so the scale it is shown at is what
+happens to its type. It prints the two it compared:
+`orientation: down (707x1303) beat right (2789x234)`. Write `direction:` in the
 source, or pass `--direction right|down`, when you want to pick it yourself; a
 direction the source sets is never overridden.
 
@@ -273,8 +275,8 @@ key it does not recognise.
 plus 92 px of gap, so a chain of minimum-width boxes warns at five ranks and is
 refused at six; boxes carrying a note warn at four and are refused at five.
 Leave `direction` unset and the layout runs both ways and keeps the one the
-page column holds, restacking the chain for you and saying so;
-`direction: down` names that restack by hand, and vertical space is free.
+page displays larger, restacking the chain for you once the row costs more than
+the column and saying so; `direction: down` names that restack by hand.
 `examples/sketch-pipeline.diagram.yaml` is a worked spec that had to do exactly
 that.
 
