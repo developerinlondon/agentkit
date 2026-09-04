@@ -123,16 +123,36 @@ export function flattenForMarkdown(svg: string): string {
     .join("\n");
 }
 
+// The cap the page applies. It is a maximum, not a width: the natural size
+// below is what a figure narrower than the column renders at.
+export const HOUSE_STYLE = "max-width:100%;height:auto";
+
+const VIEWBOX_RE = /\bviewBox="([\d.eE+-]+)[,\s]+([\d.eE+-]+)[,\s]+([\d.eE+-]+)[,\s]+([\d.eE+-]+)"/;
+
+// Rounded up rather than truncated: a fractional viewBox truncated down clips
+// the last row of pixels wherever the SVG is used without CSS.
+export function naturalSize(tag: string): { width: number; height: number } {
+  const box = tag.match(VIEWBOX_RE);
+  if (!box) throw new SvgError("cannot size the root — no viewBox on the rendered SVG");
+  const width = Math.ceil(Number(box[3]));
+  const height = Math.ceil(Number(box[4]));
+  if (!(width > 0) || !(height > 0)) {
+    throw new SvgError(`viewBox does not describe a positive size: ${box[0]}`);
+  }
+  return { width, height };
+}
+
 export function applyHouseAttributes(svg: string, ariaLabel: string): string {
   const open = svg.match(/^<svg\b[^>]*>/);
   if (!open) throw new SvgError("output does not start with an <svg> tag");
   let tag = open[0];
+  const { width, height } = naturalSize(tag);
   if (/\bwidth=/.test(tag)) tag = tag.replace(/\s*\bwidth="[^"]*"/, "");
   if (/\bheight=/.test(tag)) tag = tag.replace(/\s*\bheight="[^"]*"/, "");
   const escaped = ariaLabel.replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("<", "&lt;");
   tag = tag.replace(
     /^<svg\b/,
-    `<svg class="d2" role="img" aria-label="${escaped}" width="100%" style="height:auto"`,
+    `<svg class="d2" role="img" aria-label="${escaped}" width="${width}" height="${height}" style="${HOUSE_STYLE}"`,
   );
   return `<!-- ${SOURCE_MARK} -->\n${tag}${svg.slice(open[0].length)}`;
 }

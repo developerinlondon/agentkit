@@ -387,6 +387,22 @@ describe('callout severities', () => {
   }
 });
 
+describe('figures are capped to the column, never stretched to it', () => {
+  for (const theme of [['doc', doc], ['deck', deck]] as const) {
+    const [name, css] = theme;
+    test(`${name} caps the figure svg with max-width and sets no width`, () => {
+      // width: 100% upscaled every figure narrower than the column: a 757px
+      // sketch rendered at 977px and its height grew with it.
+      const rule = css.slice(css.indexOf('.figure > svg:not(.edges),\n  .figure > p > svg:not(.edges) {'));
+      const body = rule.slice(rule.indexOf('{'), rule.indexOf('}') + 1);
+      expect({ name, body }).toEqual({
+        name,
+        body: '{\n    display: block; max-width: 100%; height: auto; margin-inline: auto;\n  }',
+      });
+    });
+  }
+});
+
 describe('vendor-artwork figures are exempt from the light-mode inversion', () => {
   for (const theme of [['doc', doc], ['deck', deck]] as const) {
     const [name, css] = theme;

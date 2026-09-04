@@ -342,11 +342,13 @@ needs a local Chromium — set `AGENTKIT_CHROMIUM` if it isn't auto-found.)
 ## 6 — Ship the SVG
 
 The SVG is fully self-contained (fonts embedded as data: URIs). **Before
-inlining, rewrite the SVG root**: replace the renderer's `width`/`height`
-attributes with `width="100%" style="height:auto"`, keep the `viewBox`, and add
-`role="img"` plus an `aria-label` matching the figcaption — the page theme
-backstops sizing in CSS, but the lightbox and every published page rely on this
-convention. Inline it directly into a page (wrap in `<div class="figure">` with
+inlining, rewrite the SVG root**: keep the renderer's `width`/`height`
+attributes and its `viewBox` — that natural size is what the page caps against —
+add `style="max-width:100%;height:auto"`, and add `role="img"` plus an
+`aria-label` matching the figcaption. Never write `width="100%"`: it upscales
+any figure narrower than the column, which is how a tall sketch balloons. The
+theme caps a wide figure to the column and leaves a narrow one alone, and the
+lightbox reads the `viewBox` to expand back to natural size. Inline it directly into a page (wrap in `<div class="figure">` with
 a semantic `figcaption` when publishing via publish-page), drop it into a
 repo's docs, or attach the PNG where images are needed. Caption by content,
 never by tool.

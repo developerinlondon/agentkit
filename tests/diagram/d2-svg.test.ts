@@ -103,17 +103,27 @@ describe('background rect removal', () => {
 });
 
 describe('house attributes', () => {
-  test('the root is made fluid, labelled, and marked as d2-sourced', () => {
+  test('the root is sized, capped, labelled, and marked as d2-sourced', () => {
     const out = applyHouseAttributes('<svg width="300" height="400" viewBox="0 0 300 400"></svg>', 'a topology');
     expect(out).toContain('svg-source:d2');
     expect(out).toContain('class="d2"');
     expect(out).toContain('role="img"');
     expect(out).toContain('aria-label="a topology"');
-    expect(out).toContain('width="100%" style="height:auto"');
+    expect(out).toContain('width="300" height="400" style="max-width:100%;height:auto"');
     expect(out).toContain('viewBox="0 0 300 400"');
-    // Authored width/height would out-rank the theme's scale-to-fit backstop.
-    expect(out).not.toContain('width="300"');
-    expect(out).not.toContain('height="400"');
+    // width="100%" is what upscaled every figure narrower than the column.
+    expect(out).not.toContain('100%"');
+  });
+
+  test('the natural size comes from the viewBox, not from the authored attributes', () => {
+    // d2 writes a percentage width on some exports and the raster twin is sized
+    // off the viewBox, so the viewBox is the one measurement worth trusting.
+    const out = applyHouseAttributes('<svg width="100%" viewBox="0 0 757.2 1331.4"></svg>', 'x');
+    expect(out).toContain('width="758" height="1332"');
+  });
+
+  test('a root with no viewBox is refused rather than shipped unsized', () => {
+    expect(() => applyHouseAttributes('<svg width="300" height="400"></svg>', 'x')).toThrow(SvgError);
   });
 
   test('a label carrying markup cannot break out of the attribute', () => {

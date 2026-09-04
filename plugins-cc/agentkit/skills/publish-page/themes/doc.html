@@ -231,15 +231,16 @@
       -webkit-print-color-adjust: exact; print-color-adjust: exact;
     }
   }
-  /* Scale-to-fit backstop: baked SVGs keep their viewBox but must never rely on
-     authored width attributes fitting the column. :not(.edges) is defensive —
-     even without it the edges-overlay rule out-specifies this one. An inline
-     icon inside figure prose would match the p arm: known non-goal (no content
-     uses that pattern; the durable fix is an opt-in class from publish.ts,
-     CSS cannot express "this p has no text"). */
+  /* Scale-to-fit cap: baked SVGs carry their natural width and their viewBox, so
+     a figure wider than the column shrinks to it and a narrower one keeps its
+     own size — never upscaled. :not(.edges) is defensive — even without it the
+     edges-overlay rule out-specifies this one. An inline icon inside figure
+     prose would match the p arm: known non-goal (no content uses that pattern;
+     the durable fix is an opt-in class from publish.ts, CSS cannot express
+     "this p has no text"). */
   .figure > svg:not(.edges),
   .figure > p > svg:not(.edges) {
-    display: block; width: 100%; height: auto; margin-inline: auto;
+    display: block; max-width: 100%; height: auto; margin-inline: auto;
   }
   .figure p { max-width: none; }
 

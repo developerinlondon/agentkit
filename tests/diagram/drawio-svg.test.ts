@@ -147,12 +147,14 @@ describe('ids are namespaced per figure', () => {
 });
 
 describe('house attributes', () => {
-  test('sizing is made fluid and the source marker names draw.io, not d2', () => {
+  test('the root is sized from its viewBox and the source marker names draw.io, not d2', () => {
     const out = applyHouseAttributes(`${ROOT}</svg>`, 'Cloud topology');
     expect(out).toStartWith(`<!-- ${SOURCE_MARK} -->`);
     expect(out).toContain('class="drawio" role="img" aria-label="Cloud topology"');
-    expect(out).toContain('width="100%" style="height:auto"');
+    expect(out).toContain('width="100" height="50" style="max-width:100%;height:auto"');
+    // The px suffix draw.io writes is not a length any cap can work against.
     expect(out).not.toContain('height="50px"');
+    expect(out).not.toContain('100%"');
   });
 
   test("draw.io's own root style is dropped so the tag carries one style attribute", () => {
