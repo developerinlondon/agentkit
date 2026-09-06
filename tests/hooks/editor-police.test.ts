@@ -124,6 +124,7 @@ describe('editor-police: inert unless configured', () => {
     ]) {
       writeConfig(cfg);
       expect(denied(runHook(WIKI_COMMIT)), cfg).toBe(true);
+      expect(runHook('git -C /srv/other/app commit -m x'), cfg).toBe('');
     }
   });
 
@@ -196,6 +197,30 @@ describe('editor-police: which commands and repos it judges', () => {
     ]) {
       expect(runHook(cmd), cmd).toBe('');
     }
+  });
+
+  test('a quote earlier in the command does not hide the commit from the gate', () => {
+    for (const cmd of [
+      `sed -i 's/x/"/' page.md && git -C /srv/myorg/docs/wiki commit -am "docs: fix quote"`,
+      'bash -c "git -C /srv/myorg/docs/wiki commit -m x"',
+      "sh -c 'git -C /srv/myorg/docs/wiki commit -m x'",
+      'eval "git -C /srv/myorg/docs/wiki commit -m x"',
+    ]) {
+      expect(denied(runHook(cmd)), cmd).toBe(true);
+    }
+  });
+
+  test('a linked worktree of a configured repo is judged like the clone', () => {
+    const clone = join(root, 'myorg', 'docs', 'wiki');
+    const wt = join(root, 'scratch', 'wiki-edit');
+    mkdirSync(clone, { recursive: true });
+    const git = (...args: string[]) => spawnSync('git', args, { encoding: 'utf-8' });
+    git('-C', clone, 'init', '-q', '-b', 'main');
+    git('-C', clone, '-c', 'user.name=t', '-c', 'user.email=t@example.com', 'commit', '-q', '--allow-empty', '-m', 'init');
+    git('-C', clone, 'worktree', 'add', '-q', wt, '-b', 'edit');
+    expect(denied(runHook('git commit -m x', { cwd: wt }))).toBe(true);
+    expect(denied(runHook('git commit -m x', { cwd: join(clone) }))).toBe(true);
+    expect(runHook('git -C /srv/other/app commit -m x', { cwd: wt })).toBe('');
   });
 
   test('a command with unbalanced quotes is allowed, because bash refuses it before any commit happens', () => {

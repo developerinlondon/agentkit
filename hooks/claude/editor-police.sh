@@ -6,9 +6,6 @@ set -euo pipefail
 
 AGENTKIT_CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/agentkit/config.yaml"
 RE_YAML_ITEM='^[[:space:]]*-[[:space:]]+(.*)'
-# Same detector as git-police: any global options in any order, and never
-# the words inside a quoted string (quotes are blanked before matching).
-RE_GIT_COMMIT='\bgit([[:space:]]+(-[A-Za-z][^[:space:]]*|--[A-Za-z][A-Za-z0-9-]*(=[^[:space:]]+)?)([[:space:]]+[^-[:space:]][^[:space:]]*)?)*[[:space:]]+commit\b'
 RE_ENABLED='^enabled:[[:space:]]*(.*)$'
 RE_FLOW_LIST='^repos:[[:space:]]*\[(.*)\][[:space:]]*$'
 
@@ -25,9 +22,8 @@ if [[ -n "${AGENTKIT_SKIP_HOOKS:-}" ]]; then
 	esac
 fi
 
-# Only git commits.
-STRIPPED=$(printf '%s' "$COMMAND" | sed -E "s/\"([^\"\\\\]|\\\\.)*\"/\"\"/g" | sed -E "s/'[^']*'/''/g")
-printf '%s' "$STRIPPED" | grep -qE "$RE_GIT_COMMIT" || exit 0
+# Cheap pre-filter on the raw text; the tokeniser below decides what is a commit.
+printf '%s' "$COMMAND" | grep -qE '\bcommit\b' || exit 0
 
 ENABLED=true
 REPOS=()
@@ -147,17 +143,28 @@ parse_git() {
 	[[ -n "$GIT_SUB" ]]
 }
 
-repo_root() {
-	local d; d="$(abs_path "$1")"
-	git -C "$d" rev-parse --show-toplevel 2>/dev/null || printf '%s' "$d"
+# The repo a directory belongs to: its working tree, and for a linked
+# worktree the main clone as well, so a worktree of a configured repo is judged
+# like the clone.
+repo_roots() {
+	local d top common; d="$(abs_path "$1")"
+	top="$(git -C "$d" rev-parse --show-toplevel 2>/dev/null)" || { printf '%s\n' "$d"; return 0; }
+	printf '%s\n' "$top"
+	common="$(cd "$d" 2>/dev/null && git rev-parse --git-common-dir 2>/dev/null)" || return 0
+	[[ "$common" == /* ]] || common="$(cd "$d" && cd "$common" 2>/dev/null && pwd -P)"
+	common="${common%/.git}"
+	[[ -n "$common" && "$common" != "$top" ]] && printf '%s\n' "$common"
+	return 0
 }
 
 matches_repo() {
-	local pattern re root="$1"
-	for pattern in "${REPOS[@]+"${REPOS[@]}"}"; do
-		re="(^|/)$(glob_to_regex "$pattern")/"
-		[[ "${root}/" =~ $re ]] && return 0
-	done
+	local pattern re root
+	while IFS= read -r root; do
+		for pattern in "${REPOS[@]+"${REPOS[@]}"}"; do
+			re="(^|/)$(glob_to_regex "$pattern")/"
+			[[ "${root}/" =~ $re ]] && return 0
+		done
+	done <<<"$1"
 	return 1
 }
 
@@ -192,32 +199,65 @@ An unexpanded \$(wiki-editor trailer ...) inside the commit is refused."
 }
 
 TRAILER=""
-while IFS= read -r -d $'\002' rec || [[ -n "$rec" ]]; do
-	[[ -z "$rec" || "$rec" == $'\005'* ]] && continue
-	TOKS=()
-	IFS=$'\003' read -r -d $'\004' -a TOKS <<<"${rec}"$'\004'
-	((${#TOKS[@]})) || continue
-	if [[ "${TOKS[0]}" == cd ]]; then
-		CWD="$(abs_path "${TOKS[1]:-$HOME}")"
-		continue
-	fi
-	parse_git || continue
-	[[ "$GIT_SUB" == commit ]] || continue
-	root="$(repo_root "$GIT_DIR")"
-	matches_repo "$root" || continue
-	if [[ -z "$EDITOR_BIN" || ! -x "$EDITOR_BIN" ]]; then
-		agentkit_deny_json "EDITOR TOOL MISSING (editor-police)
+
+# The command a wrapper hands to a shell is a command too: bash -c "…",
+# sh -c '…', eval "…". Judged like the outer one, with its own cd tracking.
+nested_command() {
+	local i=0 t
+	case "${TOKS[0]}" in
+	eval) printf '%s' "${TOKS[*]:1}"; return 0 ;;
+	bash | sh | zsh | dash | ksh) ;;
+	*) return 1 ;;
+	esac
+	for ((i = 1; i < ${#TOKS[@]}; i++)); do
+		t="${TOKS[i]}"
+		case "$t" in
+		-c) printf '%s' "${TOKS[i + 1]:-}"; return 0 ;;
+		-*) ;;
+		*) return 1 ;;
+		esac
+	done
+	return 1
+}
+
+judge() {
+	local depth="$2" rec inner saved_cwd roots root
+	while IFS= read -r -d $'\002' rec || [[ -n "$rec" ]]; do
+		[[ -z "$rec" || "$rec" == $'\005'* ]] && continue
+		TOKS=()
+		IFS=$'\003' read -r -d $'\004' -a TOKS <<<"${rec}"$'\004'
+		((${#TOKS[@]})) || continue
+		if [[ "${TOKS[0]}" == cd ]]; then
+			CWD="$(abs_path "${TOKS[1]:-$HOME}")"
+			continue
+		fi
+		if ((depth < 3)) && inner="$(nested_command)"; then
+			saved_cwd="$CWD"
+			judge "$inner" $((depth + 1))
+			CWD="$saved_cwd"
+			continue
+		fi
+		parse_git || continue
+		[[ "$GIT_SUB" == commit ]] || continue
+		roots="$(repo_roots "$GIT_DIR")"
+		root="${roots%%$'\n'*}"
+		matches_repo "$roots" || continue
+		if [[ -z "$EDITOR_BIN" || ! -x "$EDITOR_BIN" ]]; then
+			agentkit_deny_json "EDITOR TOOL MISSING (editor-police)
 This repo is configured to name the person editing on every commit, but the wiki-editor tool is not installed.
 Install agentkit's tools (./install.sh --global puts it at ~/.local/bin/wiki-editor) or set WIKI_EDITOR_BIN, then retry."
-		exit 0
-	fi
-	[[ -n "$TRAILER" ]] || TRAILER=$("$EDITOR_BIN" trailer --session "$SESSION" 2>/dev/null) || deny_unknown
-	has_trailer "$TRAILER" && continue
-	agentkit_deny_json "EDITOR NOT ON THE COMMIT (editor-police)
+			exit 0
+		fi
+		[[ -n "$TRAILER" ]] || TRAILER=$("$EDITOR_BIN" trailer --session "$SESSION" 2>/dev/null) || deny_unknown
+		has_trailer "$TRAILER" && continue
+		agentkit_deny_json "EDITOR NOT ON THE COMMIT (editor-police)
 The person editing in this session: ${TRAILER#Edited-by: }
 Add exactly this to the git commit that targets $root:
   --trailer=\"$TRAILER\"
 If someone else is editing now, first run: wiki-editor set <name> --session $SESSION"
-	exit 0
-done < <(printf '%s' "$COMMAND" | tokenize)
+		exit 0
+	done < <(printf '%s' "$1" | tokenize)
+}
+
+judge "$COMMAND" 0
 exit 0
