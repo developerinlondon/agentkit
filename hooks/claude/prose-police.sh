@@ -246,7 +246,7 @@ SLOP_PATTERNS=(
   '\bthis afternoon\b'
   '\bovernight\b'
   '\blater today\b'
-  '\bfirst thing\b'
+  '\bfirst thing (in the morning|tomorrow|today|tonight)\b'
 )
 
 VIOLATIONS=()

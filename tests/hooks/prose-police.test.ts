@@ -237,7 +237,7 @@ describe('prose-police hook', () => {
       'This afternoon we cut the tag.',
       'The batch runs overnight.',
       'Later today the cache clears.',
-      'First thing, check the logs.',
+      'First thing tomorrow, check the logs.',
     ];
     for (const sentence of exemplars) {
       expect(flagged(run(`${sentence}\n`).out), sentence).toBe(true);
@@ -254,6 +254,8 @@ describe('prose-police hook', () => {
       'The leverage in this negotiation favors the vendor.',
       'A reply at two in the morning must not get a letter at nine.',
       'The queue drains in the morning for readers in Sydney.',
+      'The first thing to check is the log.',
+      'First things first: read the lockfile.',
     ];
     for (const sentence of clean) {
       expect(flagged(run(`${sentence}\n`).out), sentence).toBe(false);
@@ -288,7 +290,7 @@ describe('prose-police hook', () => {
   });
 
   test('the rule that teaches the time-of-day patterns is exempt', () => {
-    const rule = 'Never write "the morning pass", "tonight", or "first thing".\n';
+    const rule = 'Never write "the morning pass", "tonight", or "first thing tomorrow".\n';
     expect(run(rule, '/tmp/repo/rules/writing-discipline.md').out).toBe('');
     expect(run(rule, '/tmp/repo/docs/prose-police.md').out).toBe('');
   });

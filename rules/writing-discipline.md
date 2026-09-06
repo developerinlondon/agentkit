@@ -34,7 +34,8 @@ happened to be written.
 - **No time-of-day words** in product copy, tool descriptions, seat or agent
   instructions, guide text, issue and MR titles, commit subjects, or status reports:
   "this morning", "tonight", "this evening", "this afternoon", "overnight", "later
-  today", "first thing", "the morning pass", "the morning briefing".
+  today", "first thing in the morning", "first thing tomorrow", "the morning pass",
+  "the morning briefing".
 - **Absolute times carry a zone**: 09:00 UTC, unless the reader's zone is known.
 - **Clock-time examples are fine.** "A reply at two in the morning must not get a
   letter at nine" describes the reader's clock, not the writer's.

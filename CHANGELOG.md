@@ -16,12 +16,13 @@ release PR — "publish this" authorizes a release, never the tier.
   `writing-discipline` rule gains a "Time-zone-neutral vocabulary" section: name routines, features,
   schedules and reports by what they do ("the daily pass", "the reply round", "since the last
   pass"), keep `this morning`, `tonight`, `this evening`, `this afternoon`, `overnight`, `later
-  today`, `first thing`, `morning pass` and `morning briefing` out of product copy, tool
+  today`, `first thing tomorrow`, `morning pass` and `morning briefing` out of product copy, tool
   descriptions, agent instructions, guide text, issue and MR titles, commit subjects and status
   reports, and give an absolute time a zone. `prose-police` enforces the list mechanically on both
   arms. Bare `morning` is deliberately not banned: "a reply at two in the morning must not get a
   letter at nine" describes the reader's clock, and clock-time examples like it stay legal, as does
-  anything inside a code fence or a code span.
+  anything inside a code fence or a code span. `first thing` is matched only in its time sense, so
+  "the first thing to check is the log" passes.
 
 ## v0.8.7 — 2026-09-04
 
