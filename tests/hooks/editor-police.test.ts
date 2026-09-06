@@ -148,6 +148,47 @@ describe('editor-police: which commands and repos it judges', () => {
     expect(denied(runHook('git commit -m x', { cwd }))).toBe(true);
   });
 
+  test('every way of naming the repo on the command line is resolved, whatever follows the path', () => {
+    for (const cmd of [
+      'cd /srv/myorg/docs/wiki; git commit -m x',
+      'cd /srv/myorg/docs/wiki && git commit -m x',
+      'cd /srv/myorg/docs/wiki || exit 1; git commit -m x',
+      "git -C '/srv/myorg/docs/wiki' commit -m x",
+      'git -C "/srv/myorg/docs/wiki" commit -m x',
+      '(cd /srv/myorg/docs/wiki; git commit -m x)',
+      'git -C /srv/myorg/docs/wiki commit -m x | cat',
+      'git -C /srv/myorg/docs/wiki add -A && git -C /srv/myorg/docs/wiki commit -m x',
+      'git --git-dir=/srv/myorg/docs/wiki/.git commit -m x',
+      'git -C/srv/myorg/docs/wiki commit -m x',
+    ]) {
+      expect(denied(runHook(cmd)), cmd).toBe(true);
+    }
+  });
+
+  test('cd moves the working directory for the segments after it, relatively too', () => {
+    const base = join(root, 'myorg', 'docs');
+    mkdirSync(join(base, 'wiki'), { recursive: true });
+    expect(denied(runHook('cd wiki && git commit -m x', { cwd: base }))).toBe(true);
+    expect(denied(runHook('cd wiki; cd ..; git commit -m x', { cwd: base }))).toBe(false);
+    expect(denied(runHook(`cd ${join(base, 'wiki')}/pages 2>/dev/null; git commit -m x`, { cwd: root }))).toBe(true);
+  });
+
+  test('a configured path mentioned inside a quoted string is not the target repo', () => {
+    for (const cmd of [
+      'git -C /srv/elsewhere/app commit -m "sync content from /srv/myorg/docs/wiki/"',
+      'git -C /srv/elsewhere/app commit -F /srv/myorg/docs/wiki/msg.txt',
+      "git -C /srv/elsewhere/app commit -m 'see myorg/docs/wiki'",
+    ]) {
+      expect(runHook(cmd), cmd).toBe('');
+    }
+  });
+
+  test('a command with unbalanced quotes is refused rather than guessed at', () => {
+    const out = runHook('git -C /srv/myorg/docs/wiki commit -m "unterminated');
+    expect(denied(out)).toBe(true);
+    expect(out).toContain('UNPARSEABLE');
+  });
+
   test('the glob star does not cross a path separator', () => {
     expect(runHook('git -C /srv/myorg/a/b/wiki commit -m x')).toBe('');
   });
@@ -235,6 +276,25 @@ describe('editor-police: the one question, then the trailer', () => {
     const printed = tool('set', 'ana', '--session', SESSION).out.split('\n').find((l) => l.startsWith('commit with: '));
     expect(printed).toBeDefined();
     expect(runHook(`${WIKI_COMMIT} ${printed!.replace('commit with: ', '')}`)).toBe('');
+  });
+
+  test('the trailer must be on the wiki commit itself, not elsewhere in a compound command', () => {
+    tool('set', 'ana', '--session', SESSION);
+    const other = `git -C /srv/elsewhere/app commit -m y --trailer="${TRAILER}"`;
+    expect(denied(runHook(`${WIKI_COMMIT} && ${other}`))).toBe(true);
+    expect(denied(runHook(`${WIKI_COMMIT} && ${WIKI_COMMIT} --trailer="${TRAILER}"`))).toBe(true);
+    expect(runHook(`${WIKI_COMMIT} --trailer="${TRAILER}" && ${WIKI_COMMIT} --trailer="${TRAILER}"`)).toBe('');
+    expect(runHook(`${other} && ${WIKI_COMMIT} --trailer="${TRAILER}"`)).toBe('');
+  });
+
+  test('the trailer as prose inside the commit message is not a trailer', () => {
+    tool('set', 'ana', '--session', SESSION);
+    expect(denied(runHook(`${WIKI_COMMIT.replace('-m "docs: update"', '')} -m 'docs: explain --trailer="${TRAILER}"'`))).toBe(true);
+  });
+
+  test('an empty --trailer= is not a trailer', () => {
+    tool('set', 'ana', '--session', SESSION);
+    expect(denied(runHook(`${WIKI_COMMIT} --trailer=""`))).toBe(true);
   });
 
   test("someone else's trailer is not this session's editor", () => {
