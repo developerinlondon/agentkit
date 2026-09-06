@@ -1,0 +1,103 @@
+#!/usr/bin/env bash
+# wiki-editor — who is editing, for repos whose commits must name a person.
+#
+#   wiki-editor set <name> --session <id>   record the editor for a session
+#   wiki-editor get --session <id>          the recorded name, or exit 1
+#   wiki-editor author --session <id>       "Name <email>" for git --author
+#   wiki-editor trailer --session <id>      "Edited-by: Name <email>" for git --trailer
+#   wiki-editor clear --session <id>        forget it
+#   wiki-editor names                       the editors the config knows
+#
+# Known editors come from ~/.config/agentkit/config.yaml, section editor-police,
+# map `editors` (short name -> "Full Name <email>", matched case-insensitively)
+# and `fallback-email` for a typed name the map does not know. State is kept per
+# session so a shared machine asks once per session and never again.
+set -euo pipefail
+
+CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/agentkit/config.yaml"
+STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/agentkit/wiki-editor"
+mkdir -p "$STATE_DIR"
+
+# Lines of the editor-police section, trimmed, comments and blanks dropped.
+section_lines() {
+	[[ -f "$CONFIG" ]] || return 0
+	awk '
+		/^[^[:space:]#]/ { hdr = $0; sub(/[[:space:]]*#.*$/, "", hdr); in_section = (hdr == "editor-police:"); next }
+		!in_section { next }
+		{ line = $0; sub(/[[:space:]]*#.*$/, "", line); if (line ~ /^[[:space:]]*$/) next; print line }
+	' "$CONFIG"
+}
+
+# editors map: "key|Full Name <email>" per line
+editors() {
+	section_lines | awk '
+		/^[[:space:]]+editors:/ { in_map = 1; next }
+		/^[[:space:]]{2}[a-z-]+:/ { in_map = 0 }
+		in_map && /^[[:space:]]{4,}[^[:space:]]+:[[:space:]]*/ {
+			line = $0; sub(/^[[:space:]]+/, "", line)
+			key = line; sub(/:.*$/, "", key)
+			val = line; sub(/^[^:]*:[[:space:]]*/, "", val)
+			gsub(/^["\x27]|["\x27]$/, "", val)
+			print tolower(key) "|" val
+		}'
+}
+
+fallback_email() {
+	local v
+	v="$(section_lines | awk '/^[[:space:]]+fallback-email:/ { sub(/^[^:]*:[[:space:]]*/, ""); gsub(/^["\x27]|["\x27]$/, ""); print; exit }')"
+	printf '%s' "${v:-nobody@example.invalid}"
+}
+
+canonical() {
+	local n key val
+	n="$(printf '%s' "$1" | sed 's/^ *//; s/ *$//')"
+	[[ -n "$n" ]] || return 1
+	local lower; lower="$(printf '%s' "$n" | tr '[:upper:]' '[:lower:]')"
+	while IFS='|' read -r key val; do
+		[[ -z "$key" ]] && continue
+		if [[ "$lower" == "$key" ]] || [[ "$lower" == "$(printf '%s' "${val%%<*}" | sed 's/ *$//' | tr '[:upper:]' '[:lower:]')" ]]; then
+			printf '%s' "$val"; return 0
+		fi
+	done < <(editors)
+	printf '%s <%s>' "$n" "$(fallback_email)"
+}
+
+cmd="${1:-}"; shift || true
+session=""; name=""
+while [ $# -gt 0 ]; do
+	case "$1" in
+	--session) session="$2"; shift 2 ;;
+	*) name="${name:+$name }$1"; shift ;;
+	esac
+done
+need_session() { [[ -n "$session" ]] || { echo "wiki-editor: --session <id> is required" >&2; exit 2; }; }
+
+case "$cmd" in
+names)
+	editors | awk -F'|' '{ n = $2; sub(/ *<.*$/, "", n); print n }'
+	;;
+set)
+	need_session
+	rec="$(canonical "$name")" || { echo "wiki-editor: a name is required" >&2; exit 2; }
+	printf '%s\n' "$rec" >"$STATE_DIR/$session"
+	printf 'editor for this session: %s\ncommit with: --trailer="Edited-by: %s"\n' "${rec%% <*}" "$rec"
+	;;
+get)
+	need_session; [[ -f "$STATE_DIR/$session" ]] || exit 1
+	rec="$(cat "$STATE_DIR/$session")"; printf '%s\n' "${rec%% <*}"
+	;;
+author)
+	need_session; [[ -f "$STATE_DIR/$session" ]] || exit 1
+	cat "$STATE_DIR/$session"
+	;;
+trailer)
+	need_session; [[ -f "$STATE_DIR/$session" ]] || exit 1
+	printf 'Edited-by: %s\n' "$(cat "$STATE_DIR/$session")"
+	;;
+clear)
+	need_session; rm -f "$STATE_DIR/$session"; echo "cleared"
+	;;
+*)
+	sed -n '2,14p' "$0"; exit 2
+	;;
+esac

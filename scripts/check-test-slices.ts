@@ -38,6 +38,7 @@ export const TEST_SLICES = {
     'tests/hook-payload-compat.test.ts',
     'tests/hook-supervisor.test.ts',
     'tests/hooks/branch-wip-cap.test.ts',
+    'tests/hooks/editor-police.test.ts',
     'tests/hooks/issue-police.test.ts',
     'tests/hooks/prose-police.test.ts',
     'tests/hooks/wait-for.test.ts',

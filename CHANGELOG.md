@@ -9,6 +9,25 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+- feat(editor-police): **commits in configured repos name the person editing.** Knowledgebases
+  edited through one shared agent session all carried the machine identity, so page stamps could
+  not say who changed what. A new `editor-police` hook refuses a `git commit` in any repo matched
+  by `editor-police.repos` until the session has recorded an editor with the new `wiki-editor`
+  tool (`set <name> --session <id>`, names matched case-insensitively against
+  `editor-police.editors`, a typed name taking `fallback-email`), and again unless the commit
+  carries `--trailer="Edited-by: Name <email>"`, written out in full: an unexpanded
+  `$(wiki-editor trailer …)` is refused, because off `PATH` it substitutes to nothing and git
+  accepts an empty trailer. The trailer, not the author, is required because a squash merge
+  rewrites the author and keeps the trailers. The hook tokenises the command with
+  shell quoting honoured and judges the repo each commit actually targets (its `-C`, `--git-dir`
+  or working directory after any `cd`, a linked worktree counting as its clone, a `bash -c` string
+  or a command substitution counting as a command), so global options in any order are seen and
+  the words inside a quoted string, a comment or a heredoc body are not. When it cannot judge (no
+  `awk` or `jq`, more than 1500 statements) it refuses with an `UNCHECKED` reason rather than
+  allowing quietly. The `wiki-editor` skill carries the
+  one-question flow: ask who is editing, record once, never ask again in that session. Off per
+  session with `AGENTKIT_SKIP_HOOKS=editor-police`, off per machine with `enabled: false`; inert
+  when no repos are listed.
 - feat(prose-police): **time-of-day naming is refused, because the writer's clock is not the
   reader's.** An agent working late named a product routine "the morning pass" and carried that
   name into product copy, seat instructions, a guide and issue titles; the operators it serves are

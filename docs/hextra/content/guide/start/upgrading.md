@@ -22,7 +22,9 @@ the marker blocks it writes into files you also own.
 removed and re-copied. Edit the clone, not the install.
 {{< /callout >}}
 
-Upgrading also adds any newly shipped core artifacts. Most recently: the `prose-police` write hook
+Upgrading also adds any newly shipped core artifacts. Most recently: the `editor-police` commit gate
+(inert until `config.yaml` lists repos under `editor-police.repos`; see `config.example.yaml`), the
+`wiki-editor` tool and skill it relies on, the `prose-police` write hook
 (on by default — it blocks AI writing tells in added markdown/text prose), the `writing-discipline`
 rule, and the `humanize` skill. Your preserved `config.yaml` is not rewritten, so it will not gain
 the new `prose-police:` section; the hook's defaults apply until you add one. Turn the hook off with
