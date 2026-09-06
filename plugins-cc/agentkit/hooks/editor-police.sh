@@ -69,16 +69,46 @@ case "$(printf '%s' "$ENABLED" | tr '[:upper:]' '[:lower:]')" in false | no | of
 # command into simple segments on ; & && | || ( ) { } and unquoted newlines and
 # tokenises each with shell quoting honoured and nothing expanded, so an
 # unexpanded $(…) stays the literal text it is. Segments arrive \002-terminated
-# with tokens \003-separated; a segment left inside an open quote is marked with
-# a leading \005 and skipped, because bash refuses such a command outright.
+# with tokens \003-separated. A heredoc body is data, not code: bash does not
+# quote-parse it, so on << the delimiter is noted and the body lines are
+# swallowed at the next unquoted newline. A segment still inside an open quote
+# at the end is marked with a leading \005 and skipped, because bash refuses
+# such a command outright.
 glob_to_regex() { local g="$1"; g="${g//./\\.}"; g="${g//\*/[^/]+}"; printf '%s' "$g"; }
 
 tokenize() {
 	LC_ALL=C awk 'BEGIN { RS = "\001" }
 	{
-		s = $0; n = length(s); seg = ""; tok = ""; intok = 0; q = ""
+		s = $0; n = length(s); seg = ""; tok = ""; intok = 0; q = ""; nhd = 0
 		for (i = 1; i <= n; i++) {
 			c = substr(s, i, 1)
+			if (q == "" && c == "<" && substr(s, i + 1, 1) == "<") {
+				if (intok) { seg = seg tok "\003"; tok = ""; intok = 0 }
+				i += 2; if (substr(s, i, 1) == "-") i++
+				while (substr(s, i, 1) == " " || substr(s, i, 1) == "\t") i++
+				d = ""
+				while (i <= n) {
+					c = substr(s, i, 1)
+					if (c == " " || c == "\t" || c == "\n" || c == ";" || c == "|" || c == "&" || c == ")") break
+					if (c != "\047" && c != "\"" && c != "\\") d = d c
+					i++
+				}
+				hd[++nhd] = d; i--; continue
+			}
+			if (q == "" && c == "\n" && nhd > 0) {
+				if (intok) { seg = seg tok "\003"; tok = ""; intok = 0 }
+				printf "%s\002", seg; seg = ""
+				for (h = 1; h <= nhd; h++) {
+					while (i <= n) {
+						j = index(substr(s, i + 1), "\n")
+						line = (j ? substr(s, i + 1, j - 1) : substr(s, i + 1))
+						i = (j ? i + j : n + 1)
+						t = line; sub(/^\t+/, "", t)
+						if (t == hd[h]) break
+					}
+				}
+				nhd = 0; i--; continue
+			}
 			if (q != "") {
 				if (c == q) { q = "" }
 				else if (q == "\"" && c == "\\") { i++; tok = tok substr(s, i, 1) }
@@ -118,7 +148,8 @@ parse_git() {
 		t="${TOKS[i]}"
 		case "$t" in
 		git) break ;;
-		env | sudo | command | nice | time | nohup | bounded-run | -- | -* | *=*) i=$((i + 1)) ;;
+		env | sudo | command | nice | time | nohup | timeout | bounded-run | -- | -* | *=*) i=$((i + 1)) ;;
+		[0-9]*) i=$((i + 1)) ;;
 		*) return 1 ;;
 		esac
 	done
@@ -178,7 +209,7 @@ has_trailer() {
 	return 1
 }
 
-CWD="$(agentkit_workdir)"; CWD="${CWD:-$PWD}"
+CWD="$(agentkit_workdir)"; CWD="${CWD:-$PWD}"; PREV_CWD="$CWD"
 SESSION=$(agentkit_session_id)
 EDITOR_BIN="${WIKI_EDITOR_BIN:-}"
 for candidate in "$HOME/.local/bin/wiki-editor" "${CLAUDE_PLUGIN_ROOT:-/nonexistent}/tools/wiki-editor" "$(command -v wiki-editor 2>/dev/null || true)"; do
@@ -198,6 +229,12 @@ An unexpanded \$(wiki-editor trailer ...) inside the commit is refused."
 	exit 0
 }
 
+if [[ ${#REPOS[@]} -gt 0 ]] && ! command -v awk >/dev/null 2>&1; then
+	agentkit_deny_json "EDITOR GATE UNCHECKED (editor-police)
+awk is not on PATH, so this command could not be checked for a commit in a repo whose commits must name the person editing. Install awk (or fix PATH) and retry."
+	exit 0
+fi
+
 TRAILER=""
 
 # The command a wrapper hands to a shell is a command too: bash -c "…",
@@ -212,7 +249,8 @@ nested_command() {
 	for ((i = 1; i < ${#TOKS[@]}; i++)); do
 		t="${TOKS[i]}"
 		case "$t" in
-		-c) printf '%s' "${TOKS[i + 1]:-}"; return 0 ;;
+		--*) ;;
+		-*c*) printf '%s' "${TOKS[i + 1]:-}"; return 0 ;;
 		-*) ;;
 		*) return 1 ;;
 		esac
@@ -227,8 +265,12 @@ judge() {
 		TOKS=()
 		IFS=$'\003' read -r -d $'\004' -a TOKS <<<"${rec}"$'\004'
 		((${#TOKS[@]})) || continue
-		if [[ "${TOKS[0]}" == cd ]]; then
-			CWD="$(abs_path "${TOKS[1]:-$HOME}")"
+		if [[ "${TOKS[0]}" == cd || "${TOKS[0]}" == pushd ]]; then
+			if [[ "${TOKS[1]:-}" == - ]]; then
+				t="$CWD"; CWD="$PREV_CWD"; PREV_CWD="$t"
+			else
+				PREV_CWD="$CWD"; CWD="$(abs_path "${TOKS[1]:-$HOME}")"
+			fi
 			continue
 		fi
 		if ((depth < 3)) && inner="$(nested_command)"; then

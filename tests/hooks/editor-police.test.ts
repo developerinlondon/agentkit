@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -225,6 +225,53 @@ describe('editor-police: which commands and repos it judges', () => {
 
   test('a command with unbalanced quotes is allowed, because bash refuses it before any commit happens', () => {
     expect(runHook('git -C /srv/myorg/docs/wiki commit -m "unterminated')).toBe('');
+  });
+
+  test('a heredoc body is data: apostrophes in it do not hide the commit after it', () => {
+    tool('set', 'ana', '--session', SESSION);
+    const cwd = join(root, 'myorg', 'docs', 'wiki');
+    mkdirSync(cwd, { recursive: true });
+    const cmds = [
+      "cat > page.md <<'EOF'\nIt's the operator's job. Don't skip step 2.\nEOF\ngit add -A && git commit -m \"docs: runbook\"",
+      'cat > page.md <<EOF\nOne " stray quote\nEOF\ngit commit -am "docs: runbook"',
+      "cat > a.md <<'A'\nit's\nA\ncat > b.md <<'B'\ndon't\nB\ngit commit -am x",
+      "cat > page.md <<-'EOF'\n\tIt's indented\n\tEOF\ngit commit -am x",
+    ];
+    for (const cmd of cmds) expect(denied(runHook(cmd, { cwd })), cmd).toBe(true);
+    for (const cmd of cmds) expect(runHook(`${cmd} --trailer="${TRAILER}"`, { cwd }), cmd).toBe('');
+    const stdin = "git commit -F - <<'EOF'\ndocs: it's a runbook\n\nDon't skip step 2\nEOF";
+    expect(denied(runHook(stdin, { cwd }))).toBe(true);
+    expect(runHook(stdin.replace('git commit', `git commit --trailer="${TRAILER}"`), { cwd })).toBe('');
+    expect(runHook("cat > page.md <<'EOF'\nIt's fine\nEOF\ngit -C /srv/other/app commit -m x", { cwd })).toBe('');
+  });
+
+  test('combined shell flags, timeout, pushd and cd - are followed', () => {
+    tool('set', 'ana', '--session', SESSION);
+    const wiki = '/srv/myorg/docs/wiki';
+    for (const cmd of [
+      `bash -lc "git -C ${wiki} commit -m x"`,
+      `bash -xec "git -C ${wiki} commit -m x"`,
+      `timeout 30 git -C ${wiki} commit -m x`,
+      `timeout 5m nice -n 10 git -C ${wiki} commit -m x`,
+      `pushd ${wiki}; git commit -m x`,
+      `cd ${wiki}; cd /tmp; cd -; git commit -m x`,
+    ]) {
+      expect(denied(runHook(cmd)), cmd).toBe(true);
+    }
+    expect(runHook(`cd ${wiki}; cd -; git commit -m x`, { cwd: root })).toBe('');
+  });
+
+  test('a missing awk refuses with a reason instead of allowing quietly', () => {
+    const bin = join(root, 'noawk');
+    mkdirSync(bin, { recursive: true });
+    for (const b of ['bash', 'sed', 'grep', 'tr', 'paste', 'head', 'cat', 'git', 'jq', 'dirname', 'basename', 'mkdir', 'env']) {
+      const found = spawnSync('bash', ['-c', `command -v ${b}`], { encoding: 'utf-8' }).stdout.trim();
+      if (found) try { symlinkSync(found, join(bin, b)); } catch {}
+    }
+    const out = runHook(WIKI_COMMIT, { extra: { PATH: bin } });
+    expect(denied(out)).toBe(true);
+    expect(out).toContain('UNCHECKED');
+    expect(runHook('git -C /srv/other/app status', { extra: { PATH: bin } })).toBe('');
   });
 
   test('ordinary multi-line and escaped commit messages are never the reason for a refusal', () => {
