@@ -321,3 +321,20 @@ brain:
     #     visibility: public     # public | private
     #     path: tastes/          # optional subdirectory holding the taste files
     #     name: agentkit-tastes  # optional; defaults to the repository name
+
+editor-police:
+  # Repos whose commits must name the person editing, for knowledgebases several
+  # people edit through one shared agent session. Off unless repos are listed.
+  enabled: true
+  # Globs matched against the repo path in the command or the working directory.
+  repos: []
+  # Example:
+  #   repos:
+  #     - myorg/*/wiki
+  # Short name -> author string, matched case-insensitively by `wiki-editor`.
+  editors: {}
+  # Example:
+  #   editors:
+  #     ana: "Ana Example <ana@example.com>"
+  # Email used for a typed name the map does not know.
+  fallback-email: nobody@example.invalid

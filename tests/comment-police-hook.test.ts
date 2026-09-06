@@ -124,7 +124,7 @@ describe('police hooks reach the model', () => {
   test('the packaged plugin copy matches the canonical hook byte for byte', () => {
     // Two copies ship; a fix applied to one and not the other is a hook that
     // behaves differently depending on how agentkit was installed.
-    for (const name of ['comment-police.sh', 'coding-police.sh', 'format-police.sh', 'issue-police.sh', 'prose-police.sh']) {
+    for (const name of ['comment-police.sh', 'coding-police.sh', 'format-police.sh', 'issue-police.sh', 'prose-police.sh', 'editor-police.sh']) {
       const a = readFileSync(join(repoRoot, 'hooks', 'claude', name), 'utf-8');
       const b = readFileSync(join(repoRoot, 'plugins-cc', 'agentkit', 'hooks', name), 'utf-8');
       expect(b).toBe(a);

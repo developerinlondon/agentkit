@@ -9,6 +9,18 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+- feat(editor-police): **commits in configured repos name the person editing.** Knowledgebases
+  edited through one shared agent session all carried the machine identity, so page stamps could
+  not say who changed what. A new `editor-police` hook refuses a `git commit` in any repo matched
+  by `editor-police.repos` until the session has recorded an editor with the new `wiki-editor`
+  tool (`set <name> --session <id>`, names matched case-insensitively against
+  `editor-police.editors`, a typed name taking `fallback-email`), and again unless the commit
+  carries `--trailer="Edited-by: Name <email>"`. The trailer, not the author, is required because
+  a squash merge rewrites the author and keeps the trailers. The `wiki-editor` skill carries the
+  one-question flow: ask who is editing, record once, never ask again in that session. Off per
+  session with `AGENTKIT_SKIP_HOOKS=editor-police`, off per machine with `enabled: false`; inert
+  when no repos are listed.
+
 ## v0.8.7 — 2026-09-04
 
 - feat(publish-page): **figures fit the screen by default, with per-figure zoom and full-screen
