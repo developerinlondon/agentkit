@@ -63,6 +63,12 @@
             "command": "$HOME/.claude/hooks/fail-closed-hook.sh 45 $HOME/.claude/hooks/review-police.sh",
             "timeout": 60,
             "statusMessage": "review-police: verifying the review gate..."
+          },
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/editor-police.sh",
+            "timeout": 10,
+            "statusMessage": "editor-police: checking who is editing..."
           }
         ]
       },

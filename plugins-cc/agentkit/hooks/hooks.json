@@ -57,6 +57,12 @@
             "command": "${CLAUDE_PLUGIN_ROOT}/hooks/prose-police.sh",
             "timeout": 15,
             "statusMessage": "prose-police: checking inline forge text..."
+          },
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/editor-police.sh",
+            "timeout": 10,
+            "statusMessage": "editor-police: checking who is editing..."
           }
         ]
       },
