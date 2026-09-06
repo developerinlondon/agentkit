@@ -21,8 +21,10 @@ release PR — "publish this" authorizes a release, never the tier.
   rewrites the author and keeps the trailers. The hook tokenises the command with
   shell quoting honoured and judges the repo each commit actually targets (its `-C`, `--git-dir`
   or working directory after any `cd`, a linked worktree counting as its clone, a `bash -c` string
-  counting as a command), so global options in any order are seen and the words inside a quoted
-  string are not. The `wiki-editor` skill carries the
+  or a command substitution counting as a command), so global options in any order are seen and
+  the words inside a quoted string, a comment or a heredoc body are not. When it cannot judge (no
+  `awk` or `jq`, more than 1500 statements) it refuses with an `UNCHECKED` reason rather than
+  allowing quietly. The `wiki-editor` skill carries the
   one-question flow: ask who is editing, record once, never ask again in that session. Off per
   session with `AGENTKIT_SKIP_HOOKS=editor-police`, off per machine with `enabled: false`; inert
   when no repos are listed.
