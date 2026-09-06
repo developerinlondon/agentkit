@@ -22,8 +22,10 @@ if [[ -n "${AGENTKIT_SKIP_HOOKS:-}" ]]; then
 	esac
 fi
 
-# Cheap pre-filter on the raw text; the tokeniser below decides what is a commit.
-printf '%s' "$COMMAND" | grep -qE '\bcommit\b' || exit 0
+# Cheap pre-filter on the raw text, with no pipe so a write error cannot decide
+# the verdict; the tokeniser below decides what is a commit.
+RE_COMMIT_WORD='(^|[^[:alnum:]_])commit([^[:alnum:]_]|$)'
+[[ "$COMMAND" =~ $RE_COMMIT_WORD ]] || exit 0
 
 ENABLED=true
 REPOS=()
@@ -69,7 +71,8 @@ case "$(printf '%s' "$ENABLED" | tr '[:upper:]' '[:lower:]')" in false | no | of
 # command into simple segments on ; & && | || ( ) { } and unquoted newlines and
 # tokenises each with shell quoting honoured and nothing expanded, so an
 # unexpanded $(…) stays the literal text it is. Segments arrive \002-terminated
-# with tokens \003-separated. A heredoc body is data, not code: bash does not
+# with tokens \003-separated. A comment runs from an unquoted # at a token
+# boundary to the end of its line. A heredoc body is data, not code: bash does not
 # quote-parse it, so on << the delimiter is noted and the body lines are
 # swallowed at the next unquoted newline. A segment still inside an open quote
 # at the end is marked with a leading \005 and skipped, because bash refuses
@@ -82,6 +85,13 @@ tokenize() {
 		s = $0; n = length(s); seg = ""; tok = ""; intok = 0; q = ""; nhd = 0
 		for (i = 1; i <= n; i++) {
 			c = substr(s, i, 1)
+			if (q == "" && c == "#" && !intok) {
+				j = index(substr(s, i), "\n"); i = (j ? i + j - 2 : n); continue
+			}
+			if (q == "" && c == "<" && substr(s, i + 1, 1) == "<" && substr(s, i + 2, 1) == "<") {
+				if (intok) { seg = seg tok "\003"; tok = ""; intok = 0 }
+				i += 2; continue
+			}
 			if (q == "" && c == "<" && substr(s, i + 1, 1) == "<") {
 				if (intok) { seg = seg tok "\003"; tok = ""; intok = 0 }
 				i += 2; if (substr(s, i, 1) == "-") i++
@@ -265,8 +275,8 @@ judge() {
 		TOKS=()
 		IFS=$'\003' read -r -d $'\004' -a TOKS <<<"${rec}"$'\004'
 		((${#TOKS[@]})) || continue
-		if [[ "${TOKS[0]}" == cd || "${TOKS[0]}" == pushd ]]; then
-			if [[ "${TOKS[1]:-}" == - ]]; then
+		if [[ "${TOKS[0]}" == cd || "${TOKS[0]}" == pushd || "${TOKS[0]}" == popd ]]; then
+			if [[ "${TOKS[0]}" == popd || "${TOKS[1]:-}" == - ]]; then
 				t="$CWD"; CWD="$PREV_CWD"; PREV_CWD="$t"
 			else
 				PREV_CWD="$CWD"; CWD="$(abs_path "${TOKS[1]:-$HOME}")"

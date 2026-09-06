@@ -225,6 +225,49 @@ describe('editor-police: which commands and repos it judges', () => {
 
   test('a command with unbalanced quotes is allowed, because bash refuses it before any commit happens', () => {
     expect(runHook('git -C /srv/myorg/docs/wiki commit -m "unterminated')).toBe('');
+    expect(runHook("git -C /srv/myorg/docs/wiki commit -m 'unterminated")).toBe('');
+  });
+
+  test('a comment is not code: an apostrophe in it does not hide the commit after it', () => {
+    tool('set', 'ana', '--session', SESSION);
+    const cwd = join(root, 'myorg', 'docs', 'wiki');
+    mkdirSync(cwd, { recursive: true });
+    const cmds = [
+      "# don't forget the changelog\ngit add -A\ngit commit -m \"update wiki page\"",
+      "# the wiki's changelog\ngit commit -am x",
+      "echo \"done\"   # it's fine\ngit commit -am x",
+      "# see <<EOF in the docs\ngit commit -am x",
+      "git add -A # stage it's all\ngit commit -am x",
+    ];
+    for (const cmd of cmds) expect(denied(runHook(cmd, { cwd })), cmd).toBe(true);
+    for (const cmd of cmds) expect(runHook(`${cmd} --trailer="${TRAILER}"`, { cwd }), cmd).toBe('');
+    expect(runHook('echo a#b; git commit -m x', { cwd })).toContain('deny');
+    expect(runHook('echo "#" ; git -C /srv/other/app commit -m x', { cwd })).toBe('');
+  });
+
+  test('a here-string is one word, not a heredoc body', () => {
+    tool('set', 'ana', '--session', SESSION);
+    const cwd = join(root, 'myorg', 'docs', 'wiki');
+    mkdirSync(cwd, { recursive: true });
+    expect(denied(runHook('cat <<< "here string"\ngit commit -m x', { cwd }))).toBe(true);
+    expect(denied(runHook('git commit -m x <<< "input"', { cwd }))).toBe(true);
+    expect(runHook(`cat <<< "here string"\ngit commit -m x --trailer="${TRAILER}"`, { cwd })).toBe('');
+  });
+
+  test('a long command that mentions commit early is judged every time', () => {
+    tool('set', 'ana', '--session', SESSION);
+    const cwd = join(root, 'myorg', 'docs', 'wiki');
+    mkdirSync(cwd, { recursive: true });
+    const body = 'x'.repeat(150000);
+    const cmd = `echo "about to commit the wiki update"\ncat > page.md <<'EOF'\n${body}\nEOF\ngit add -A\ngit commit -m "update page"`;
+    for (let i = 0; i < 5; i++) expect(denied(runHook(cmd, { cwd })), `run ${i}`).toBe(true);
+    expect(runHook(`${cmd} --trailer="${TRAILER}"`, { cwd })).toBe('');
+  });
+
+  test('popd returns to the directory pushd left', () => {
+    tool('set', 'ana', '--session', SESSION);
+    expect(runHook('pushd /srv/myorg/docs/wiki; popd; git commit -m x', { cwd: root })).toBe('');
+    expect(denied(runHook('pushd /srv/myorg/docs/wiki; popd; pushd /srv/myorg/docs/wiki; git commit -m x', { cwd: root }))).toBe(true);
   });
 
   test('a heredoc body is data: apostrophes in it do not hide the commit after it', () => {
