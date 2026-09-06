@@ -6,8 +6,11 @@ set -euo pipefail
 
 AGENTKIT_CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/agentkit/config.yaml"
 RE_YAML_ITEM='^[[:space:]]*-[[:space:]]+(.*)'
-RE_GIT_COMMIT='(^|[^[:alnum:]_-])git([[:space:]]+-C[[:space:]]+[^[:space:]]+)?([[:space:]]+-c[[:space:]]+[^[:space:]]+)*[[:space:]]+commit([[:space:]]|$)'
+# Same detector as git-police: any global options in any order, and never
+# the words inside a quoted string (quotes are blanked before matching).
+RE_GIT_COMMIT='\bgit([[:space:]]+(-[A-Za-z][^[:space:]]*|--[A-Za-z][A-Za-z0-9-]*(=[^[:space:]]+)?)([[:space:]]+[^-[:space:]][^[:space:]]*)?)*[[:space:]]+commit\b'
 RE_ENABLED='^enabled:[[:space:]]*(.*)$'
+RE_FLOW_LIST='^repos:[[:space:]]*\[(.*)\][[:space:]]*$'
 
 # shellcheck source=lib/hook-input.sh
 source "${BASH_SOURCE[0]%/*}/lib/hook-input.sh"
@@ -15,40 +18,55 @@ agentkit_slurp_input
 COMMAND=$(agentkit_command)
 [[ -z "$COMMAND" ]] && exit 0
 
-case ",${AGENTKIT_SKIP_HOOKS:-}," in *,editor-police,*) exit 0 ;; esac
+if [[ -n "${AGENTKIT_SKIP_HOOKS:-}" ]]; then
+	_skip=",$(printf '%s' "$AGENTKIT_SKIP_HOOKS" | tr -d '[:space:]'),"
+	case "$_skip" in
+	*",editor-police,"* | *",all,"*) exit 0 ;;
+	esac
+fi
 
 # Only git commits.
-[[ "$COMMAND" =~ $RE_GIT_COMMIT ]] || exit 0
+STRIPPED=$(printf '%s' "$COMMAND" | sed -E "s/\"([^\"\\\\]|\\\\.)*\"/\"\"/g" | sed -E "s/'[^']*'/''/g")
+printf '%s' "$STRIPPED" | grep -qE "$RE_GIT_COMMIT" || exit 0
 
 ENABLED=true
 REPOS=()
+unquote() { local v="$1"; v="${v%\"}"; v="${v#\"}"; v="${v%\'}"; v="${v#\'}"; printf '%s' "$v"; }
+strip_comment() { local v="$1"; v="${v%%#*}"; v="${v%"${v##*[![:space:]]}"}"; printf '%s' "$v"; }
+add_repo() { local item; item="$(unquote "$(strip_comment "$1")")"; [[ -n "$item" ]] && REPOS+=("$item"); }
 load_config() {
 	[[ -f "$AGENTKIT_CONFIG" ]] || return 0
-	local in_section=false in_repos=false line trimmed
-	while IFS= read -r line; do
+	local in_section=false in_repos=false line trimmed item
+	while IFS= read -r line || [[ -n "$line" ]]; do
 		if [[ "$line" =~ ^[^[:space:]#] ]]; then
 			in_section=false; in_repos=false
-			[[ "$line" == "editor-police:" ]] && in_section=true
+			[[ "$(strip_comment "$line")" == "editor-police:" ]] && in_section=true
 			continue
 		fi
 		$in_section || continue
 		trimmed="${line#"${line%%[![:space:]]*}"}"
 		[[ -z "$trimmed" || "$trimmed" == \#* ]] && continue
 		if [[ "$trimmed" =~ $RE_ENABLED ]]; then
-			ENABLED="${BASH_REMATCH[1]}"; in_repos=false; continue
+			ENABLED="$(unquote "$(strip_comment "${BASH_REMATCH[1]}")")"; in_repos=false; continue
+		fi
+		if [[ "$(strip_comment "$trimmed")" =~ $RE_FLOW_LIST ]]; then
+			in_repos=false
+			IFS=',' read -r -a flow <<<"${BASH_REMATCH[1]}"
+			for item in "${flow[@]+"${flow[@]}"}"; do
+				item="${item#"${item%%[![:space:]]*}"}"
+				add_repo "$item"
+			done
+			continue
 		fi
 		if [[ "$trimmed" == "repos:"* ]]; then in_repos=true; continue; fi
 		if [[ "$trimmed" =~ ^[a-z-]+: ]]; then in_repos=false; fi
 		if $in_repos && [[ "$trimmed" =~ $RE_YAML_ITEM ]]; then
-			local item="${BASH_REMATCH[1]}"
-			item="${item%\"}"; item="${item#\"}"; item="${item%\'}"; item="${item#\'}"
-			REPOS+=("$item")
+			add_repo "${BASH_REMATCH[1]}"
 		fi
-	done < "$AGENTKIT_CONFIG"
+	done <"$AGENTKIT_CONFIG"
 }
 load_config
-[[ "$ENABLED" == "false" ]] && exit 0
-[[ ${#REPOS[@]} -eq 0 ]] && exit 0
+case "$(printf '%s' "$ENABLED" | tr '[:upper:]' '[:lower:]')" in false | no | off | 0) exit 0 ;; esac
 
 # A configured repo, by a path in the command or by the working directory.
 glob_to_regex() { local g="$1"; g="${g//./\\.}"; g="${g//\*/[^/]+}"; printf '%s' "$g"; }
@@ -84,16 +102,19 @@ This commit is in a repo whose commits must name the person editing, and this se
 Ask the user with AskUserQuestion, one question: who is editing right now? Options: $("$EDITOR_BIN" names 2>/dev/null | paste -sd, - | sed 's/,/, /g'), Other (type a name).
 Record the answer once for this session:
   wiki-editor set <name> --session $SESSION
-then re-run the commit with:
-  --trailer=\"\$(wiki-editor trailer --session $SESSION)\"
+It prints the Edited-by line to use. Re-run the commit with that line written out in full:
+  --trailer=\"Edited-by: Name <email>\"
+An unexpanded \$(wiki-editor trailer ...) inside the commit is refused.
 Never guess the editor and never work around this with -c user.name or --no-verify."
 	exit 0
 fi
 
-# shellcheck disable=SC2016 # the unexpanded $(wiki-editor …) form is matched literally
-if [[ "$COMMAND" == *"--trailer=\"$TRAILER\""* ]] || [[ "$COMMAND" == *"--trailer='$TRAILER'"* ]] || [[ "$COMMAND" == *"--trailer \"$TRAILER\""* ]] || [[ "$COMMAND" == *'--trailer="$(wiki-editor trailer --session '"$SESSION"')"'* ]]; then
-	exit 0
-fi
+# Only the expanded trailer is accepted: an unexpanded $(wiki-editor …) form
+# can substitute to nothing when the tool is not on PATH, and git takes an
+# empty --trailer= without complaint.
+for form in "--trailer=\"$TRAILER\"" "--trailer='$TRAILER'" "--trailer \"$TRAILER\"" "--trailer '$TRAILER'"; do
+	[[ "$COMMAND" == *"$form"* ]] && exit 0
+done
 
 agentkit_deny_json "EDITOR NOT ON THE COMMIT (editor-police)
 The person editing in this session: ${TRAILER#Edited-by: }

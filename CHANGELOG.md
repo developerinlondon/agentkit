@@ -15,8 +15,11 @@ release PR — "publish this" authorizes a release, never the tier.
   by `editor-police.repos` until the session has recorded an editor with the new `wiki-editor`
   tool (`set <name> --session <id>`, names matched case-insensitively against
   `editor-police.editors`, a typed name taking `fallback-email`), and again unless the commit
-  carries `--trailer="Edited-by: Name <email>"`. The trailer, not the author, is required because
-  a squash merge rewrites the author and keeps the trailers. The `wiki-editor` skill carries the
+  carries `--trailer="Edited-by: Name <email>"`, written out in full: an unexpanded
+  `$(wiki-editor trailer …)` is refused, because off `PATH` it substitutes to nothing and git
+  accepts an empty trailer. The trailer, not the author, is required because a squash merge
+  rewrites the author and keeps the trailers. The hook shares git-police's commit detector, so
+  global options in any order are seen and the words inside a quoted string are not. The `wiki-editor` skill carries the
   one-question flow: ask who is editing, record once, never ask again in that session. Off per
   session with `AGENTKIT_SKIP_HOOKS=editor-police`, off per machine with `enabled: false`; inert
   when no repos are listed.

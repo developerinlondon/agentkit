@@ -97,9 +97,28 @@ describe('editor-police: inert unless configured', () => {
     expect(runHook(WIKI_COMMIT)).toBe('');
   });
 
-  test('enabled: false allows a commit in a listed repo', () => {
-    writeConfig('editor-police:\n  enabled: false\n  repos:\n    - myorg/*/wiki\n');
-    expect(runHook(WIKI_COMMIT)).toBe('');
+  test('enabled: false allows a commit in a listed repo, however it is spelled', () => {
+    for (const off of ['false', 'false  # switched off for now', '"false"', "'no'", 'off', 'No', '0']) {
+      writeConfig(`editor-police:\n  enabled: ${off}\n  repos:\n    - myorg/*/wiki\n`);
+      expect(runHook(WIKI_COMMIT), off).toBe('');
+    }
+  });
+
+  test('a trailing comment on the section header does not hide the section', () => {
+    writeConfig('editor-police:  # shared eda session\n  enabled: true\n  repos:\n    - myorg/*/wiki\n');
+    expect(denied(runHook(WIKI_COMMIT))).toBe(true);
+  });
+
+  test('a flow-style repos list is read', () => {
+    writeConfig('editor-police:\n  enabled: true\n  repos: ["myorg/*/wiki", myorg/handbook]  # both\n');
+    expect(denied(runHook(WIKI_COMMIT))).toBe(true);
+    expect(denied(runHook('git -C /srv/myorg/handbook commit -m x'))).toBe(true);
+    expect(runHook('git -C /srv/myorg/other commit -m x')).toBe('');
+  });
+
+  test('a quoted or commented list item is read', () => {
+    writeConfig('editor-police:\n  enabled: true\n  repos:\n    - "myorg/*/wiki"  # the wikis\n');
+    expect(denied(runHook(WIKI_COMMIT))).toBe(true);
   });
 });
 
@@ -116,6 +135,9 @@ describe('editor-police: which commands and repos it judges', () => {
 
   test('a commit in a matching repo named on the command line is refused', () => {
     expect(denied(runHook(WIKI_COMMIT))).toBe(true);
+    expect(denied(runHook('git -c core.quotepath=off -C /srv/myorg/docs/wiki commit -m x'))).toBe(true);
+    expect(denied(runHook('git --no-pager -C /srv/myorg/docs/wiki commit -m x'))).toBe(true);
+    expect(denied(runHook('git --git-dir=/srv/myorg/docs/wiki/.git commit -m x'))).toBe(true);
     expect(denied(runHook('git -C /srv/myorg/handbook commit -m x'))).toBe(true);
     expect(denied(runHook('cd /srv/myorg/docs/wiki && git commit -am x'))).toBe(true);
   });
@@ -136,6 +158,9 @@ describe('editor-police: which commands and repos it judges', () => {
       'git -C /srv/myorg/docs/wiki status',
       'git -C /srv/myorg/docs/wiki log --format=%an',
       'echo "git commit" > /srv/myorg/docs/wiki/notes.txt',
+      'echo "run git commit later" > /srv/myorg/docs/wiki/notes.txt',
+      "echo 'git -C /srv/myorg/docs/wiki commit -m x' > /srv/myorg/docs/wiki/notes.txt",
+      'git -C /srv/myorg/docs/wiki config commit.gpgsign true',
     ]) {
       expect(runHook(cmd), cmd).toBe('');
     }
@@ -144,6 +169,8 @@ describe('editor-police: which commands and repos it judges', () => {
   test('AGENTKIT_SKIP_HOOKS=editor-police switches it off for the session', () => {
     expect(runHook(WIKI_COMMIT, { extra: { AGENTKIT_SKIP_HOOKS: 'editor-police' } })).toBe('');
     expect(runHook(WIKI_COMMIT, { extra: { AGENTKIT_SKIP_HOOKS: 'prose-police,editor-police' } })).toBe('');
+    expect(runHook(WIKI_COMMIT, { extra: { AGENTKIT_SKIP_HOOKS: 'prose-police, editor-police' } })).toBe('');
+    expect(runHook(WIKI_COMMIT, { extra: { AGENTKIT_SKIP_HOOKS: 'all' } })).toBe('');
     expect(denied(runHook(WIKI_COMMIT, { extra: { AGENTKIT_SKIP_HOOKS: 'prose-police' } }))).toBe(true);
   });
 
@@ -191,10 +218,23 @@ describe('editor-police: the one question, then the trailer', () => {
     expect(runHook(`${WIKI_COMMIT} ${line!.trim()}`)).toBe('');
   });
 
-  test('the unexpanded $(wiki-editor trailer …) form is accepted too', () => {
+  test('the unexpanded $(wiki-editor trailer …) form is refused, because off PATH it substitutes to nothing', () => {
     tool('set', 'ana', '--session', SESSION);
     const cmd = `${WIKI_COMMIT} --trailer="$(wiki-editor trailer --session ${SESSION})"`;
-    expect(runHook(cmd)).toBe('');
+    expect(denied(runHook(cmd))).toBe(true);
+  });
+
+  test('every quoting of the trailer that git accepts is accepted', () => {
+    tool('set', 'ana', '--session', SESSION);
+    for (const form of [`--trailer="${TRAILER}"`, `--trailer='${TRAILER}'`, `--trailer "${TRAILER}"`, `--trailer '${TRAILER}'`]) {
+      expect(runHook(`${WIKI_COMMIT} ${form}`), form).toBe('');
+    }
+  });
+
+  test('set prints the trailer to copy, and the hook accepts exactly that', () => {
+    const printed = tool('set', 'ana', '--session', SESSION).out.split('\n').find((l) => l.startsWith('commit with: '));
+    expect(printed).toBeDefined();
+    expect(runHook(`${WIKI_COMMIT} ${printed!.replace('commit with: ', '')}`)).toBe('');
   });
 
   test("someone else's trailer is not this session's editor", () => {
@@ -221,6 +261,15 @@ describe('wiki-editor: the tool behind the gate', () => {
   beforeAll(() => {
     writeConfig(CONFIG);
     tool('clear', '--session', SESSION);
+  });
+
+  test('a commented section header still yields the editors and the fallback', () => {
+    writeConfig(`editor-police:  # shared session\n  editors:\n    ana: "${ANA}"\n  fallback-email: team@example.com\n`);
+    tool('set', 'ANA', '--session', SESSION);
+    expect(tool('author', '--session', SESSION).out.trim()).toBe(ANA);
+    tool('set', 'Cy Guest', '--session', SESSION);
+    expect(tool('author', '--session', SESSION).out.trim()).toBe('Cy Guest <team@example.com>');
+    writeConfig(CONFIG);
   });
 
   test('names lists the editors the config knows, in config order', () => {

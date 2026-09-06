@@ -17,8 +17,9 @@ squash merge, which a commit author does not.
 2. Ask with AskUserQuestion, one question: who is editing right now? Offer each known name as
    an option plus **Other** (the user types a name). Matching is case-insensitive.
 3. Record it once: `wiki-editor set <name> --session <id>`.
-4. Commit with `--trailer="$(wiki-editor trailer --session <id>)"`. The hook accepts that form
-   verbatim, or the expanded `--trailer="Edited-by: Name <email>"`.
+4. Commit with the trailer written out: `--trailer="Edited-by: Name <email>"`, exactly as the
+   `set` step or the refusal printed it. The unexpanded `$(wiki-editor trailer …)` form is refused:
+   if the tool is not on `PATH` it substitutes to nothing and git accepts an empty trailer.
 5. Never ask again in that session. If someone says another person is now editing, run
    `wiki-editor set` again; the hook then requires the new trailer.
 
@@ -35,6 +36,12 @@ editor-police:
     ana: "Ana Example <ana@example.com>"
   fallback-email: team@example.com # for a typed name the map does not know
 ```
+
+## If the refusal says `EDITOR TOOL MISSING`
+
+The repo is configured but `wiki-editor` is not installed where the hook looks (`~/.local/bin`,
+the plugin's `tools/`, then `PATH`). Run agentkit's `./install.sh --global`, or point
+`WIKI_EDITOR_BIN` at the tool, then retry. Do not commit around it.
 
 ## Rules
 

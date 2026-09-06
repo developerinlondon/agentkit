@@ -22,7 +22,7 @@ mkdir -p "$STATE_DIR"
 section_lines() {
 	[[ -f "$CONFIG" ]] || return 0
 	awk '
-		/^[^[:space:]#]/ { in_section = ($0 == "editor-police:"); next }
+		/^[^[:space:]#]/ { hdr = $0; sub(/[[:space:]]*#.*$/, "", hdr); in_section = (hdr == "editor-police:"); next }
 		!in_section { next }
 		{ line = $0; sub(/[[:space:]]*#.*$/, "", line); if (line ~ /^[[:space:]]*$/) next; print line }
 	' "$CONFIG"
@@ -79,8 +79,8 @@ names)
 set)
 	need_session
 	rec="$(canonical "$name")" || { echo "wiki-editor: a name is required" >&2; exit 2; }
-	printf '%s\n' "$rec" > "$STATE_DIR/$session"
-	printf 'editor for this session: %s\n' "${rec%% <*}"
+	printf '%s\n' "$rec" >"$STATE_DIR/$session"
+	printf 'editor for this session: %s\ncommit with: --trailer="Edited-by: %s"\n' "${rec%% <*}" "$rec"
 	;;
 get)
 	need_session; [[ -f "$STATE_DIR/$session" ]] || exit 1
