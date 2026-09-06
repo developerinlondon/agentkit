@@ -116,6 +116,17 @@ describe('editor-police: inert unless configured', () => {
     expect(runHook('git -C /srv/myorg/other commit -m x')).toBe('');
   });
 
+  test('an empty or commented-out list item does not switch the guard off', () => {
+    for (const cfg of [
+      'editor-police:\n  enabled: true\n  repos:\n    - myorg/*/wiki\n    - \n',
+      'editor-police:\n  enabled: true\n  repos:\n    - myorg/*/wiki\n    - # note\n',
+      'editor-police:\n  enabled: true\n  repos: [myorg/*/wiki, ]\n',
+    ]) {
+      writeConfig(cfg);
+      expect(denied(runHook(WIKI_COMMIT)), cfg).toBe(true);
+    }
+  });
+
   test('a quoted or commented list item is read', () => {
     writeConfig('editor-police:\n  enabled: true\n  repos:\n    - "myorg/*/wiki"  # the wikis\n');
     expect(denied(runHook(WIKI_COMMIT))).toBe(true);
@@ -160,6 +171,10 @@ describe('editor-police: which commands and repos it judges', () => {
       'git -C /srv/myorg/docs/wiki add -A && git -C /srv/myorg/docs/wiki commit -m x',
       'git --git-dir=/srv/myorg/docs/wiki/.git commit -m x',
       'git -C/srv/myorg/docs/wiki commit -m x',
+      'env GIT_AUTHOR_DATE=now git -C /srv/myorg/docs/wiki commit -m x',
+      'cd /srv/myorg/docs/wiki && git add -A && git commit -m x &',
+      'git -C /srv/myorg/docs/wiki commit -m "a; b && c | d" ',
+      'git -C /srv/myorg/docs/wiki commit -m x\ngit -C /srv/elsewhere/app push',
     ]) {
       expect(denied(runHook(cmd)), cmd).toBe(true);
     }
@@ -183,10 +198,35 @@ describe('editor-police: which commands and repos it judges', () => {
     }
   });
 
-  test('a command with unbalanced quotes is refused rather than guessed at', () => {
-    const out = runHook('git -C /srv/myorg/docs/wiki commit -m "unterminated');
-    expect(denied(out)).toBe(true);
-    expect(out).toContain('UNPARSEABLE');
+  test('a command with unbalanced quotes is allowed, because bash refuses it before any commit happens', () => {
+    expect(runHook('git -C /srv/myorg/docs/wiki commit -m "unterminated')).toBe('');
+  });
+
+  test('ordinary multi-line and escaped commit messages are never the reason for a refusal', () => {
+    const multi = 'git -C /srv/elsewhere/app commit -m "feat: thing\n\nCloses #1"';
+    const heredoc = "git -C /srv/elsewhere/app commit -m \"$(cat <<'EOF'\nfeat: thing\n\nbody; with && bars | too\nEOF\n)\"";
+    const escaped = 'git -C /srv/elsewhere/app commit -m "fix \\"foo\\" handling"';
+    for (const cmd of [multi, heredoc, escaped]) expect(runHook(cmd), cmd).toBe('');
+    rmSync(join(configDir, 'agentkit'), { force: true, recursive: true });
+    for (const cmd of [multi, heredoc, escaped, multi.replace('/srv/elsewhere/app', '/srv/myorg/docs/wiki')]) expect(runHook(cmd), cmd).toBe('');
+    writeConfig(CONFIG);
+  });
+
+  test('a multi-line message in a configured repo is judged on its trailer like any other', () => {
+    tool('set', 'ana', '--session', SESSION);
+    const multi = 'git -C /srv/myorg/docs/wiki commit -m "feat: thing\n\nCloses #1; also && more | stuff"';
+    expect(denied(runHook(multi))).toBe(true);
+    expect(runHook(`${multi} --trailer="${TRAILER}"`)).toBe('');
+    expect(runHook(`git -C /srv/myorg/docs/wiki commit --trailer="${TRAILER}" -m "$(cat <<'EOF'\nfeat: thing\nEOF\n)"`)).toBe('');
+  });
+
+  test('a very large commit command is still judged, quickly', () => {
+    tool('set', 'ana', '--session', SESSION);
+    const big = `git -C /srv/myorg/docs/wiki commit -m "${'a'.repeat(60000)}"`;
+    const started = Date.now();
+    expect(denied(runHook(big))).toBe(true);
+    expect(runHook(`${big} --trailer="${TRAILER}"`)).toBe('');
+    expect(Date.now() - started).toBeLessThan(4000);
   });
 
   test('the glob star does not cross a path separator', () => {
@@ -201,6 +241,8 @@ describe('editor-police: which commands and repos it judges', () => {
       'echo "git commit" > /srv/myorg/docs/wiki/notes.txt',
       'echo "run git commit later" > /srv/myorg/docs/wiki/notes.txt',
       "echo 'git -C /srv/myorg/docs/wiki commit -m x' > /srv/myorg/docs/wiki/notes.txt",
+      'echo run git -C /srv/myorg/docs/wiki commit later',
+      'sudo -u someone git -C /srv/myorg/docs/wiki status',
       'git -C /srv/myorg/docs/wiki config commit.gpgsign true',
     ]) {
       expect(runHook(cmd), cmd).toBe('');

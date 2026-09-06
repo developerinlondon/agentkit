@@ -33,7 +33,7 @@ ENABLED=true
 REPOS=()
 unquote() { local v="$1"; v="${v%\"}"; v="${v#\"}"; v="${v%\'}"; v="${v#\'}"; printf '%s' "$v"; }
 strip_comment() { local v="$1"; v="${v%%#*}"; v="${v%"${v##*[![:space:]]}"}"; printf '%s' "$v"; }
-add_repo() { local item; item="$(unquote "$(strip_comment "$1")")"; [[ -n "$item" ]] && REPOS+=("$item"); }
+add_repo() { local item; item="$(unquote "$(strip_comment "$1")")"; if [[ -n "$item" ]]; then REPOS+=("$item"); fi; }
 load_config() {
 	[[ -f "$AGENTKIT_CONFIG" ]] || return 0
 	local in_section=false in_repos=false line trimmed item
@@ -69,38 +69,42 @@ load_config
 case "$(printf '%s' "$ENABLED" | tr '[:upper:]' '[:lower:]')" in false | no | off | 0) exit 0 ;; esac
 
 # Which repo each commit targets is resolved from the command the way git-police
-# does it, not pattern-matched over the raw text: the command is split into
-# simple segments on ; && || | and newlines outside quotes, each segment is
-# tokenised with shell quoting honoured, `cd` moves the working directory for
-# the segments after it, and a commit's repo is its -C path, its --git-dir, or
-# that directory. Anything inside a quoted string (a commit message, a -F path)
-# is never a repo and never a trailer.
+# does it, not pattern-matched over the raw text. One linear awk pass splits the
+# command into simple segments on ; & && | || ( ) { } and unquoted newlines and
+# tokenises each with shell quoting honoured and nothing expanded, so an
+# unexpanded $(…) stays the literal text it is. Segments arrive \002-terminated
+# with tokens \003-separated; a segment left inside an open quote is marked with
+# a leading \005 and skipped, because bash refuses such a command outright.
 glob_to_regex() { local g="$1"; g="${g//./\\.}"; g="${g//\*/[^/]+}"; printf '%s' "$g"; }
 
-split_segments() {
-	local cmd="$1" i c q="" seg="" n=${#1}
-	for ((i = 0; i < n; i++)); do
-		c="${cmd:i:1}"
-		if [[ -n "$q" ]]; then
-			seg+="$c"
-			[[ "$c" == "$q" ]] && q=""
-			[[ "$q" == '"' && "$c" == "\\" ]] && { i=$((i + 1)); seg+="${cmd:i:1}"; }
-			continue
-		fi
-		case "$c" in
-		"'" | '"') q="$c"; seg+="$c" ;;
-		"\\") seg+="$c"; i=$((i + 1)); seg+="${cmd:i:1}" ;;
-		";" | "|" | "(" | ")" | "{" | "}" | $'\n') printf '%s\n' "$seg"; seg=""; [[ "${cmd:i+1:1}" == "|" ]] && i=$((i + 1)) ;;
-		"&") if [[ "${cmd:i+1:1}" == "&" ]]; then printf '%s\n' "$seg"; seg=""; i=$((i + 1)); else seg+="$c"; fi ;;
-		*) seg+="$c" ;;
-		esac
-	done
-	printf '%s\n' "$seg"
+tokenize() {
+	LC_ALL=C awk 'BEGIN { RS = "\001" }
+	{
+		s = $0; n = length(s); seg = ""; tok = ""; intok = 0; q = ""
+		for (i = 1; i <= n; i++) {
+			c = substr(s, i, 1)
+			if (q != "") {
+				if (c == q) { q = "" }
+				else if (q == "\"" && c == "\\") { i++; tok = tok substr(s, i, 1) }
+				else { tok = tok c }
+				intok = 1; continue
+			}
+			if (c == "\047" || c == "\"") { q = c; intok = 1; continue }
+			if (c == "\\") { i++; tok = tok substr(s, i, 1); intok = 1; continue }
+			if (c == " " || c == "\t") { if (intok) { seg = seg tok "\003"; tok = ""; intok = 0 }; continue }
+			if (c == ";" || c == "|" || c == "&" || c == "(" || c == ")" || c == "{" || c == "}" || c == "\n") {
+				if (intok) { seg = seg tok "\003"; tok = ""; intok = 0 }
+				printf "%s\002", seg; seg = ""
+				d = substr(s, i + 1, 1)
+				if ((c == "&" && d == "&") || (c == "|" && d == "|")) i++
+				continue
+			}
+			tok = tok c; intok = 1
+		}
+		if (intok) seg = seg tok "\003"
+		if (q != "") printf "\005%s\002", seg; else printf "%s\002", seg
+	}'
 }
-
-# Tokens of one segment, one per line, shell quoting honoured and nothing
-# expanded: an unexpanded $(…) stays the literal text it is.
-tokens() { printf '%s' "$1" | xargs printf '%s\n' 2>/dev/null; }
 
 abs_path() {
 	local d="${1/#\~/$HOME}"
@@ -108,26 +112,39 @@ abs_path() {
 	if [[ -d "$d" ]]; then (cd "$d" 2>/dev/null && pwd -P) || printf '%s' "$d"; else printf '%s' "$d"; fi
 }
 
-# The repo a git segment operates on: -C, --git-dir, else the tracked cwd.
-git_target_dir() {
-	local seen_git=false expect="" t dir=""
-	while IFS= read -r t; do
-		if ! $seen_git; then [[ "$t" == git ]] && seen_git=true; continue; fi
+# Sets GIT_SUB and GIT_DIR from the segment's tokens when they run git,
+# allowing the usual wrappers in front (env, sudo, VAR=value …). The dir is
+# -C, --git-dir, or the tracked working directory.
+parse_git() {
+	GIT_SUB=""; GIT_DIR=""
+	local i=0 t expect=""
+	while ((i < ${#TOKS[@]})); do
+		t="${TOKS[i]}"
+		case "$t" in
+		git) break ;;
+		env | sudo | command | nice | time | nohup | bounded-run | -- | -* | *=*) i=$((i + 1)) ;;
+		*) return 1 ;;
+		esac
+	done
+	[[ "${TOKS[i]:-}" == git ]] || return 1
+	for ((i = i + 1; i < ${#TOKS[@]}; i++)); do
+		t="${TOKS[i]}"
 		if [[ -n "$expect" ]]; then
-			[[ "$expect" == dir ]] && dir="$t"
+			[[ "$expect" == dir ]] && GIT_DIR="$t"
 			expect=""; continue
 		fi
 		case "$t" in
 		-C) expect=dir ;;
-		-C?*) dir="${t#-C}" ;;
+		-C?*) GIT_DIR="${t#-C}" ;;
 		-c | --work-tree | --namespace | --exec-path) expect=skip ;;
-		--git-dir=*) dir="${t#--git-dir=}"; dir="${dir%/.git}"; dir="${dir%/}" ;;
+		--git-dir=*) GIT_DIR="${t#--git-dir=}"; GIT_DIR="${GIT_DIR%/.git}"; GIT_DIR="${GIT_DIR%/}" ;;
 		--git-dir) expect=dir ;;
-		--*=* | --* | -*) ;;
-		*) break ;;
+		-*) ;;
+		*) GIT_SUB="$t"; break ;;
 		esac
-	done <<<"$1"
-	printf '%s' "${dir:-$CWD}"
+	done
+	GIT_DIR="${GIT_DIR:-$CWD}"
+	[[ -n "$GIT_SUB" ]]
 }
 
 repo_root() {
@@ -144,15 +161,13 @@ matches_repo() {
 	return 1
 }
 
-blank_quotes() { printf '%s' "$1" | sed -E "s/\"([^\"\\\\]|\\\\.)*\"/\"\"/g" | sed -E "s/'[^']*'/''/g"; }
-
 has_trailer() {
-	local t prev="" want="$2"
-	while IFS= read -r t; do
+	local t prev="" want="$1"
+	for t in "${TOKS[@]+"${TOKS[@]}"}"; do
 		[[ "$t" == "--trailer=$want" ]] && return 0
 		[[ "$prev" == "--trailer" && "$t" == "$want" ]] && return 0
 		prev="$t"
-	done <<<"$1"
+	done
 	return 1
 }
 
@@ -177,20 +192,18 @@ An unexpanded \$(wiki-editor trailer ...) inside the commit is refused."
 }
 
 TRAILER=""
-while IFS= read -r seg; do
-	[[ -z "${seg//[[:space:]]/}" ]] && continue
-	toks="$(tokens "$seg")" || {
-		agentkit_deny_json "UNPARSEABLE COMMAND (editor-police)
-This command has unbalanced quotes, so the commit it may contain cannot be checked for the editing person. Fix the quoting and retry."
-		exit 0
-	}
-	first="$(printf '%s\n' "$toks" | head -1)"
-	if [[ "$first" == cd ]]; then
-		CWD="$(abs_path "$(printf '%s\n' "$toks" | sed -n 2p)")"
+while IFS= read -r -d $'\002' rec || [[ -n "$rec" ]]; do
+	[[ -z "$rec" || "$rec" == $'\005'* ]] && continue
+	TOKS=()
+	IFS=$'\003' read -r -d $'\004' -a TOKS <<<"${rec}"$'\004'
+	((${#TOKS[@]})) || continue
+	if [[ "${TOKS[0]}" == cd ]]; then
+		CWD="$(abs_path "${TOKS[1]:-$HOME}")"
 		continue
 	fi
-	printf '%s' "$(blank_quotes "$seg")" | grep -qE "$RE_GIT_COMMIT" || continue
-	root="$(repo_root "$(git_target_dir "$toks")")"
+	parse_git || continue
+	[[ "$GIT_SUB" == commit ]] || continue
+	root="$(repo_root "$GIT_DIR")"
 	matches_repo "$root" || continue
 	if [[ -z "$EDITOR_BIN" || ! -x "$EDITOR_BIN" ]]; then
 		agentkit_deny_json "EDITOR TOOL MISSING (editor-police)
@@ -199,12 +212,12 @@ Install agentkit's tools (./install.sh --global puts it at ~/.local/bin/wiki-edi
 		exit 0
 	fi
 	[[ -n "$TRAILER" ]] || TRAILER=$("$EDITOR_BIN" trailer --session "$SESSION" 2>/dev/null) || deny_unknown
-	has_trailer "$toks" "$TRAILER" && continue
+	has_trailer "$TRAILER" && continue
 	agentkit_deny_json "EDITOR NOT ON THE COMMIT (editor-police)
 The person editing in this session: ${TRAILER#Edited-by: }
-Add exactly this to the git commit in: $seg
+Add exactly this to the git commit that targets $root:
   --trailer=\"$TRAILER\"
 If someone else is editing now, first run: wiki-editor set <name> --session $SESSION"
 	exit 0
-done <<<"$(split_segments "$COMMAND")"
+done < <(printf '%s' "$COMMAND" | tokenize)
 exit 0
