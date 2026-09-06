@@ -150,22 +150,30 @@ abs_path() {
 	if [[ -d "$d" ]]; then (cd "$d" 2>/dev/null && pwd -P) || printf '%s' "$d"; else printf '%s' "$d"; fi
 }
 
+# The index of the first token that is the command itself: shell keywords that
+# share a segment with it (if, then, for, do, while, until, elif, else, !, {),
+# wrappers, flags, VAR=value assignments and a numeric wrapper argument all
+# come first. A GIT_DIR= assignment on the way names the repo.
+skip_prefix() {
+	local t; PREFIX_END=0
+	while ((PREFIX_END < ${#TOKS[@]})); do
+		t="${TOKS[PREFIX_END]}"
+		case "$t" in
+		GIT_DIR=*) GIT_DIR="${t#GIT_DIR=}"; GIT_DIR="${GIT_DIR%/.git}"; GIT_DIR="${GIT_DIR%/}" ;;
+		if | then | elif | else | do | while | until | '!' | '{' | env | sudo | command | nice | time | nohup | timeout | bounded-run | -- | -* | *=* | [0-9]*) ;;
+		*) break ;;
+		esac
+		PREFIX_END=$((PREFIX_END + 1))
+	done
+}
+
 # Sets GIT_SUB and GIT_DIR from the segment's tokens when they run git,
 # allowing the usual wrappers in front (env, sudo, VAR=value …). The dir is
 # -C, --git-dir, or the tracked working directory.
 parse_git() {
 	GIT_SUB=""; GIT_DIR=""
-	local i=0 t expect=""
-	while ((i < ${#TOKS[@]})); do
-		t="${TOKS[i]}"
-		case "$t" in
-		git) break ;;
-		GIT_DIR=*) GIT_DIR="${t#GIT_DIR=}"; GIT_DIR="${GIT_DIR%/.git}"; GIT_DIR="${GIT_DIR%/}"; i=$((i + 1)) ;;
-		env | sudo | command | nice | time | nohup | timeout | bounded-run | -- | -* | *=*) i=$((i + 1)) ;;
-		[0-9]*) i=$((i + 1)) ;;
-		*) return 1 ;;
-		esac
-	done
+	local i t expect=""
+	skip_prefix; i=$PREFIX_END
 	[[ "${TOKS[i]:-}" == git ]] || return 1
 	for ((i = i + 1; i < ${#TOKS[@]}; i++)); do
 		t="${TOKS[i]}"
@@ -254,12 +262,7 @@ TRAILER=""
 # sh -c '…', eval "…". Judged like the outer one, with its own cd tracking.
 nested_command() {
 	local i=0 t
-	while ((i < ${#TOKS[@]})); do
-		case "${TOKS[i]}" in
-		env | sudo | command | nice | time | nohup | timeout | bounded-run | -- | -* | *=* | [0-9]*) i=$((i + 1)) ;;
-		*) break ;;
-		esac
-	done
+	GIT_DIR=""; skip_prefix; i=$PREFIX_END
 	case "${TOKS[i]:-}" in
 	eval) printf '%s' "${TOKS[*]:i+1}"; return 0 ;;
 	bash | sh | zsh | dash | ksh) ;;

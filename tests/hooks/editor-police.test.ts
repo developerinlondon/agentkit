@@ -295,6 +295,25 @@ describe('editor-police: which commands and repos it judges', () => {
     expect(runHook(`timeout 30 bash -c 'git -C /srv/other/app commit -m x'`)).toBe('');
   });
 
+  test('a shell keyword in front of git does not hide the commit', () => {
+    tool('set', 'ana', '--session', SESSION);
+    const cwd = join(root, 'myorg', 'docs', 'wiki');
+    mkdirSync(cwd, { recursive: true });
+    const cmds = [
+      'if ! git diff --quiet; then git commit -am "docs: update"; fi',
+      'for f in a b; do git add $f; done; git commit -m x',
+      'while true; do git commit -m x; break; done',
+      'if true; then cd . ; git commit -m x; fi',
+      'bash -c \'if ! git diff --quiet; then git commit -am "docs: update"; fi\'',
+      '! git commit -m x',
+      '{ git commit -m x; }',
+      'git diff --quiet || git commit -am x',
+    ];
+    for (const cmd of cmds) expect(denied(runHook(cmd, { cwd })), cmd).toBe(true);
+    for (const cmd of cmds) expect(runHook(cmd.replace(/git commit/g, `git commit --trailer="${TRAILER}"`), { cwd }), cmd).toBe('');
+    expect(runHook('if ! git diff --quiet; then git -C /srv/other/app commit -am x; fi', { cwd })).toBe('');
+  });
+
   test('popd returns to the directory pushd left', () => {
     tool('set', 'ana', '--session', SESSION);
     expect(runHook('pushd /srv/myorg/docs/wiki; popd; git commit -m x', { cwd: root })).toBe('');
