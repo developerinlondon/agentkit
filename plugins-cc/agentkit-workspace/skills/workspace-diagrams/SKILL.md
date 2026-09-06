@@ -80,7 +80,7 @@ one-off explanation inside a single PR.
    write conditional, so a board someone else moved is refused rather than clobbered. An
    unguarded write is a silent overwrite of whoever drew last.
 6. **Version history is a two-day window, not an archive.** Snapshots are swept hourly, so
-   history recovers this afternoon's mistake and nothing older. Anything that must survive
+   history recovers a mistake made in the last hour or two and nothing older. Anything that must survive
    belongs in the repository as an exported file or in the issue that recorded the
    decision.
 7. **Authoring goes through the `diagram` skill.** It produces Excalidraw JSON — exactly
