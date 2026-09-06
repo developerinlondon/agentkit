@@ -314,6 +314,41 @@ describe('editor-police: which commands and repos it judges', () => {
     expect(runHook('if ! git diff --quiet; then git -C /srv/other/app commit -am x; fi', { cwd })).toBe('');
   });
 
+  test('a command inside backticks is judged like $( … )', () => {
+    tool('set', 'ana', '--session', SESSION);
+    const cwd = join(root, 'myorg', 'docs', 'wiki');
+    mkdirSync(cwd, { recursive: true });
+    for (const cmd of ['out=`git commit -m x`', '`git commit -m x`', 'echo "`git commit -m x`"', 'echo "$(git commit -m x)"', 'msg="done: $(git commit -m x)"; echo "$msg"']) {
+      expect(denied(runHook(cmd, { cwd })), cmd).toBe(true);
+    }
+    expect(runHook(`out=\`git commit -m x --trailer="${TRAILER}"\``, { cwd })).toBe('');
+  });
+
+  test('a command past the statement budget is refused rather than timed out', () => {
+    tool('set', 'ana', '--session', SESSION);
+    const cwd = join(root, 'myorg', 'docs', 'wiki');
+    mkdirSync(cwd, { recursive: true });
+    const started = Date.now();
+    const out = runHook('a;'.repeat(12000) + 'git commit -m x', { cwd });
+    expect(Date.now() - started).toBeLessThan(5000);
+    expect(denied(out)).toBe(true);
+    expect(out).toContain('UNCHECKED');
+    expect(denied(runHook('a;'.repeat(1000) + 'git commit -m x', { cwd }))).toBe(true);
+    expect(runHook('a;'.repeat(1000) + `git commit -m x --trailer="${TRAILER}"`, { cwd })).toBe('');
+  });
+
+  test('a missing jq refuses with a reason instead of allowing quietly', () => {
+    const bin = join(root, 'nojq');
+    mkdirSync(bin, { recursive: true });
+    for (const b of ['bash', 'awk', 'sed', 'grep', 'tr', 'paste', 'head', 'cat', 'git', 'dirname', 'basename', 'mkdir', 'env']) {
+      const found = spawnSync('bash', ['-c', `command -v ${b}`], { encoding: 'utf-8' }).stdout.trim();
+      if (found) try { symlinkSync(found, join(bin, b)); } catch {}
+    }
+    const out = runHook(WIKI_COMMIT, { extra: { PATH: bin } });
+    expect(denied(out)).toBe(true);
+    expect(out).toContain('UNCHECKED');
+  });
+
   test('popd returns to the directory pushd left', () => {
     tool('set', 'ana', '--session', SESSION);
     expect(runHook('pushd /srv/myorg/docs/wiki; popd; git commit -m x', { cwd: root })).toBe('');

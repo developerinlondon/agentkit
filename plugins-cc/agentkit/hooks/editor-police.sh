@@ -12,6 +12,18 @@ RE_FLOW_LIST='^repos:[[:space:]]*\[(.*)\][[:space:]]*$'
 # shellcheck source=lib/hook-input.sh
 source "${BASH_SOURCE[0]%/*}/lib/hook-input.sh"
 agentkit_slurp_input
+
+# The gate needs jq to read its input and awk to read the command. Missing
+# either, it refuses rather than exiting silently, because a hook that dies is
+# read as allow. The deny is written by hand here: the helper itself needs jq.
+for dep in jq awk; do
+	command -v "$dep" >/dev/null 2>&1 && continue
+	[[ "$AGENTKIT_RAW_INPUT" == *commit* ]] || exit 0
+	reason="EDITOR GATE UNCHECKED (editor-police)\n$dep is not on PATH, so this command could not be checked for a commit in a repo whose commits must name the person editing. Install $dep (or fix PATH) and retry."
+	printf '{"decision":"deny","reason":"%s","hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"%s"}}\n' "$reason" "$reason"
+	exit 0
+done
+
 COMMAND=$(agentkit_command)
 [[ -z "$COMMAND" ]] && exit 0
 
@@ -72,7 +84,8 @@ case "$(printf '%s' "$ENABLED" | tr '[:upper:]' '[:lower:]')" in false | no | of
 # tokenises each with shell quoting honoured and nothing expanded, so an
 # unexpanded $(…) stays the literal text it is. Segments arrive \002-terminated
 # with tokens \003-separated. A comment runs from an unquoted # at a token
-# boundary to the end of its line. A heredoc body is data, not code: bash does not
+# boundary to the end of its line. A substitution, `…` or $(…), opens a new
+# segment even inside double quotes, since bash runs it. A heredoc body is data, not code: bash does not
 # quote-parse it, so on << the delimiter is noted and the body lines are
 # swallowed at the next unquoted newline. A segment still inside an open quote
 # at the end is marked with a leading \005 and skipped, because bash refuses
@@ -82,7 +95,7 @@ glob_to_regex() { local g="$1"; g="${g//./\\.}"; g="${g//\*/[^/]+}"; printf '%s'
 tokenize() {
 	LC_ALL=C awk 'BEGIN { RS = "\001" }
 	{
-		s = $0; n = length(s); seg = ""; tok = ""; intok = 0; q = ""; nhd = 0
+		s = $0; n = length(s); seg = ""; tok = ""; intok = 0; q = ""; nhd = 0; reopen = 0
 		for (i = 1; i <= n; i++) {
 			c = substr(s, i, 1)
 			if (q == "" && c == "#" && !intok) {
@@ -121,6 +134,11 @@ tokenize() {
 			}
 			if (q != "") {
 				if (c == q) { q = "" }
+				else if (q == "\"" && (c == "`" || (c == "$" && substr(s, i + 1, 1) == "("))) {
+					if (intok) { seg = seg tok "\003"; tok = ""; intok = 0 }
+					printf "%s\002", seg; seg = ""; q = ""; reopen = 1
+					if (c == "$") i++
+				}
 				else if (q == "\"" && c == "\\" && substr(s, i + 1, 1) == "\n") { i++ }
 				else if (q == "\"" && c == "\\") { i++; tok = tok substr(s, i, 1) }
 				else { tok = tok c }
@@ -130,9 +148,10 @@ tokenize() {
 			if (c == "\\" && substr(s, i + 1, 1) == "\n") { i++; continue }
 			if (c == "\\") { i++; tok = tok substr(s, i, 1); intok = 1; continue }
 			if (c == " " || c == "\t") { if (intok) { seg = seg tok "\003"; tok = ""; intok = 0 }; continue }
-			if (c == ";" || c == "|" || c == "&" || c == "(" || c == ")" || c == "{" || c == "}" || c == "\n") {
+			if (c == ";" || c == "|" || c == "&" || c == "(" || c == ")" || c == "{" || c == "}" || c == "`" || c == "\n") {
 				if (intok) { seg = seg tok "\003"; tok = ""; intok = 0 }
 				printf "%s\002", seg; seg = ""
+				if (reopen && (c == "`" || c == ")")) { q = "\""; reopen = 0; intok = 1; continue }
 				d = substr(s, i + 1, 1)
 				if ((c == "&" && d == "&") || (c == "|" && d == "|")) i++
 				continue
@@ -250,11 +269,6 @@ An unexpanded \$(wiki-editor trailer ...) inside the commit is refused."
 	exit 0
 }
 
-if [[ ${#REPOS[@]} -gt 0 ]] && ! command -v awk >/dev/null 2>&1; then
-	agentkit_deny_json "EDITOR GATE UNCHECKED (editor-police)
-awk is not on PATH, so this command could not be checked for a commit in a repo whose commits must name the person editing. Install awk (or fix PATH) and retry."
-	exit 0
-fi
 
 TRAILER=""
 
@@ -280,10 +294,16 @@ nested_command() {
 	return 1
 }
 
+SEGMENTS=0
 judge() {
 	local depth="$2" rec inner saved_cwd roots root
 	while IFS= read -r -d $'\002' rec || [[ -n "$rec" ]]; do
 		[[ -z "$rec" || "$rec" == $'\005'* ]] && continue
+		if ((++SEGMENTS > 1500)); then
+			agentkit_deny_json "EDITOR GATE UNCHECKED (editor-police)
+This command has more than 1500 shell statements, more than the gate can check inside its time budget. Split it up, or write it to a script file and run that."
+			exit 0
+		fi
 		TOKS=()
 		IFS=$'\003' read -r -d $'\004' -a TOKS <<<"${rec}"$'\004'
 		((${#TOKS[@]})) || continue
