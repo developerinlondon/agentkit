@@ -264,6 +264,37 @@ describe('editor-police: which commands and repos it judges', () => {
     expect(runHook(`${cmd} --trailer="${TRAILER}"`, { cwd })).toBe('');
   });
 
+  test('a backslash-newline is a line continuation, not part of the next word', () => {
+    tool('set', 'ana', '--session', SESSION);
+    const cwd = join(root, 'myorg', 'docs', 'wiki');
+    mkdirSync(cwd, { recursive: true });
+    const cmds = [
+      'git add -A && \\\ngit commit -m "x"',
+      'git add -A && \\\n  git commit -m "x"',
+      'git add -A && \\\ngit status && \\\ngit commit -m x',
+      'git commit \\\n  -m "x"',
+      'git commit -m "first line \\\ncontinued" ',
+    ];
+    for (const cmd of cmds) expect(denied(runHook(cmd, { cwd })), cmd).toBe(true);
+    for (const cmd of cmds) expect(runHook(`${cmd} --trailer="${TRAILER}"`, { cwd }), cmd).toBe('');
+    expect(denied(runHook(`cd ${cwd} && \\\ngit commit -m x`, { cwd: root }))).toBe(true);
+  });
+
+  test('a wrapper in front of a nested shell is looked through', () => {
+    tool('set', 'ana', '--session', SESSION);
+    const wiki = '/srv/myorg/docs/wiki';
+    for (const cmd of [
+      `env bash -c 'git -C ${wiki} commit -m x'`,
+      `timeout 30 bash -c 'git -C ${wiki} commit -m x'`,
+      `bounded-run -- bash -c 'git -C ${wiki} commit -m x'`,
+      `FOO=1 sh -c 'git -C ${wiki} commit -m x'`,
+      `GIT_DIR=${wiki}/.git git commit -m x`,
+    ]) {
+      expect(denied(runHook(cmd)), cmd).toBe(true);
+    }
+    expect(runHook(`timeout 30 bash -c 'git -C /srv/other/app commit -m x'`)).toBe('');
+  });
+
   test('popd returns to the directory pushd left', () => {
     tool('set', 'ana', '--session', SESSION);
     expect(runHook('pushd /srv/myorg/docs/wiki; popd; git commit -m x', { cwd: root })).toBe('');

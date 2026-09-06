@@ -43,6 +43,11 @@ The repo is configured but `wiki-editor` is not installed where the hook looks (
 the plugin's `tools/`, then `PATH`). Run agentkit's `./install.sh --global`, or point
 `WIKI_EDITOR_BIN` at the tool, then retry. Do not commit around it.
 
+## If the refusal says `EDITOR GATE UNCHECKED`
+
+`awk` is not on `PATH`, so the hook could not read the command. Install awk or fix `PATH`, then
+retry. Do not commit around it.
+
 ## Rules
 
 - Never guess the editor; never bypass the gate with `-c user.name` or `--no-verify`.

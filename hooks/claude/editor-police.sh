@@ -121,11 +121,13 @@ tokenize() {
 			}
 			if (q != "") {
 				if (c == q) { q = "" }
+				else if (q == "\"" && c == "\\" && substr(s, i + 1, 1) == "\n") { i++ }
 				else if (q == "\"" && c == "\\") { i++; tok = tok substr(s, i, 1) }
 				else { tok = tok c }
 				intok = 1; continue
 			}
 			if (c == "\047" || c == "\"") { q = c; intok = 1; continue }
+			if (c == "\\" && substr(s, i + 1, 1) == "\n") { i++; continue }
 			if (c == "\\") { i++; tok = tok substr(s, i, 1); intok = 1; continue }
 			if (c == " " || c == "\t") { if (intok) { seg = seg tok "\003"; tok = ""; intok = 0 }; continue }
 			if (c == ";" || c == "|" || c == "&" || c == "(" || c == ")" || c == "{" || c == "}" || c == "\n") {
@@ -158,6 +160,7 @@ parse_git() {
 		t="${TOKS[i]}"
 		case "$t" in
 		git) break ;;
+		GIT_DIR=*) GIT_DIR="${t#GIT_DIR=}"; GIT_DIR="${GIT_DIR%/.git}"; GIT_DIR="${GIT_DIR%/}"; i=$((i + 1)) ;;
 		env | sudo | command | nice | time | nohup | timeout | bounded-run | -- | -* | *=*) i=$((i + 1)) ;;
 		[0-9]*) i=$((i + 1)) ;;
 		*) return 1 ;;
@@ -251,12 +254,18 @@ TRAILER=""
 # sh -c '…', eval "…". Judged like the outer one, with its own cd tracking.
 nested_command() {
 	local i=0 t
-	case "${TOKS[0]}" in
-	eval) printf '%s' "${TOKS[*]:1}"; return 0 ;;
+	while ((i < ${#TOKS[@]})); do
+		case "${TOKS[i]}" in
+		env | sudo | command | nice | time | nohup | timeout | bounded-run | -- | -* | *=* | [0-9]*) i=$((i + 1)) ;;
+		*) break ;;
+		esac
+	done
+	case "${TOKS[i]:-}" in
+	eval) printf '%s' "${TOKS[*]:i+1}"; return 0 ;;
 	bash | sh | zsh | dash | ksh) ;;
 	*) return 1 ;;
 	esac
-	for ((i = 1; i < ${#TOKS[@]}; i++)); do
+	for ((i = i + 1; i < ${#TOKS[@]}; i++)); do
 		t="${TOKS[i]}"
 		case "$t" in
 		--*) ;;
