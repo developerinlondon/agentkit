@@ -229,12 +229,21 @@ describe('prose-police hook', () => {
       'Without further ado, the results.',
       "This isn't just a linter, but a philosophy.",
       "It's not a tool, it's a movement.",
+      'The morning pass runs at 9.',
+      'The morning briefing lists the failures.',
+      'This morning the build broke.',
+      'We ship tonight.',
+      'This evening the deploy lands.',
+      'This afternoon we cut the tag.',
+      'The batch runs overnight.',
+      'Later today the cache clears.',
+      'First thing, check the logs.',
     ];
     for (const sentence of exemplars) {
       expect(flagged(run(`${sentence}\n`).out), sentence).toBe(true);
     }
-    // 39 hook spawns: well over bun's 5s default under full-suite load.
-  }, 60000);
+    // 48 hook spawns: well over bun's 5s default under full-suite load.
+  }, 90000);
 
   test('ordinary engineering prose the patterns must NOT catch', () => {
     const clean = [
@@ -243,11 +252,46 @@ describe('prose-police hook', () => {
       'DNS resolution plays a key role in the outage we saw on Tuesday.',
       'This uses financial leverage of 3x, which the risk model caps.',
       'The leverage in this negotiation favors the vendor.',
+      'A reply at two in the morning must not get a letter at nine.',
+      'The queue drains in the morning for readers in Sydney.',
     ];
     for (const sentence of clean) {
       expect(flagged(run(`${sentence}\n`).out), sentence).toBe(false);
     }
   }, 20000);
+
+  test('time-of-day naming is flagged, and the remedy names the fix', () => {
+    // An agent working in the small hours named a product routine "the morning
+    // pass"; the readers it serves are on other clocks.
+    const { out, status } = run('The morning pass runs at 9.\n');
+    expect(status).toBe(2);
+    expect(out).toContain('AI-TELL PHRASING');
+    expect(out).toContain('"morning pass"');
+    expect(out).toContain('name the thing by what it does');
+  });
+
+  test('a clock-time example is the reader\'s day, not the agent\'s, and passes', () => {
+    const clean = [
+      'A reply at two in the morning must not get a letter at nine.',
+      'Good morning is the greeting the template opens with.',
+      'The pass runs daily at 09:00 UTC.',
+    ];
+    for (const sentence of clean) {
+      expect(flagged(run(`${sentence}\n`).out), sentence).toBe(false);
+    }
+  }, 20000);
+
+  test('time-of-day naming inside a code fence is a snippet, not prose', () => {
+    const text = '```\nthe morning pass runs overnight and ships tonight\n```\nA plain sentence outside the fence.\n';
+    expect(flagged(run(text).out)).toBe(false);
+    expect(flagged(run('The scheduler key is `overnight` in the config.\n').out)).toBe(false);
+  });
+
+  test('the rule that teaches the time-of-day patterns is exempt', () => {
+    const rule = 'Never write "the morning pass", "tonight", or "first thing".\n';
+    expect(run(rule, '/tmp/repo/rules/writing-discipline.md').out).toBe('');
+    expect(run(rule, '/tmp/repo/docs/prose-police.md').out).toBe('');
+  });
 
   test('global config can disable the hook and add excludes', () => {
     const dir = mkdtempSync(join(tmpdir(), 'agentkit-prose-gcfg-'));

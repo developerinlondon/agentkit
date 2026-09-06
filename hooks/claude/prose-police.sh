@@ -236,6 +236,17 @@ SLOP_PATTERNS=(
   '\bwithout further ado\b'
   "\\b(isn'?t|aren'?t|wasn'?t|weren'?t|(is|are|was|were|it'?s|they'?re) not) (just|only|merely|simply)\\b[^.!?]{1,80}\\bbut( also)?\\b"
   "it'?s not [^.!?]{1,60}[,;—-] *it'?s"
+  # Time of day: the author's clock is not the reader's. Bare "morning" stays
+  # legal, because a clock-time example describes the reader's day, not the agent's.
+  '\bmorning pass\b'
+  '\bmorning briefing\b'
+  '\bthis morning\b'
+  '\btonight\b'
+  '\bthis evening\b'
+  '\bthis afternoon\b'
+  '\bovernight\b'
+  '\blater today\b'
+  '\bfirst thing\b'
 )
 
 VIOLATIONS=()
@@ -253,7 +264,7 @@ check_slop_phrases() {
   hits=$(printf '%s' "$hits" | awk '!seen[$0]++' | head -12)
   VIOLATIONS+=("AI-TELL PHRASING in the ${CONTEXT_LABEL}:
 ${hits}
-  These constructions (delve/tapestry vocabulary, significance inflation, negative parallelism, chatbot filler) read as generated text. Say the specific thing plainly instead.")
+  These constructions (delve/tapestry vocabulary, significance inflation, negative parallelism, chatbot filler) read as generated text. Say the specific thing plainly instead. Time-of-day naming assumes the reader shares your clock: name the thing by what it does (the daily pass, the reply round, since the last pass), and give an absolute time a zone.")
 }
 
 check_emdash_density() {
