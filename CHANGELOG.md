@@ -9,6 +9,8 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+## v0.8.8 — 2026-09-07
+
 - docs(editor-police): **the docs site covers the editor gate.** A cookbook recipe, "Name the
   person at the keyboard", walks through the roster, the refusal, the one-question prompt, the
   trailer and a handover with the hook's real output; the hook reference gains its row and its
