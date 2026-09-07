@@ -9,6 +9,12 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+- docs(editor-police): **the docs site covers the editor gate.** A cookbook recipe, "Name the
+  person at the keyboard", walks through the roster, the refusal, the one-question prompt, the
+  trailer and a handover with the hook's real output; the hook reference gains its row and its
+  off-by-default entry, the configuration reference an `editor-police` section, and the CLI
+  reference a `wiki-editor` section with verbs and exit codes.
+
 - feat(editor-police): **commits in configured repos name the person editing.** Knowledgebases
   edited through one shared agent session all carried the machine identity, so page stamps could
   not say who changed what. A new `editor-police` hook refuses a `git commit` in any repo matched

@@ -251,6 +251,31 @@ is read-only in practice — which is how a human-authored knowledgebase is pull
 separate mechanism: point `memory.sources` at the repository holding your ADRs, designs and
 runbooks. See [tastes](/guide/concepts/tastes/) and [memory](/guide/concepts/memory/).
 
+## `editor-police`
+
+| Key              | Type   | Default                  |
+| ---------------- | ------ | ------------------------ |
+| `enabled`        | bool   | `true`                   |
+| `repos`          | list   | `[]`                     |
+| `editors`        | map    | `{}`                     |
+| `fallback-email` | string | `nobody@example.invalid` |
+
+Refuses a `git commit` in any repo matching a glob in `repos` until the session has named the
+person at the keyboard, and again unless the commit carries that person as an `Edited-by`
+trailer. Inert while `repos` is empty. `editors` maps a short name to the author string the
+trailer carries, matched case-insensitively; a typed name the map does not know takes
+`fallback-email`. The recipe is [Name the person at the keyboard](/cookbook/name-the-editor/).
+
+```yaml
+editor-police:
+  enabled: true
+  repos:
+    - myorg/*/wiki
+  editors:
+    ana: "Ana Example <ana@example.com>"
+  fallback-email: team@example.com
+```
+
 ## Kill switches
 
 Configuration is not the only lever. `AGENTKIT_SKIP_HOOKS` disables units for one session, and most
