@@ -29,6 +29,15 @@
       "claudePlugins": []
     },
     {
+      "name": "editor",
+      "mechanisms": [
+        "hook"
+      ],
+      "claudePlugins": [
+        "agentkit"
+      ]
+    },
+    {
       "name": "format",
       "mechanisms": [
         "hook",
@@ -176,6 +185,13 @@
       "event": "PostToolUse",
       "matcher": "Edit|Write",
       "timeout": 15,
+      "failClosedBudget": null
+    },
+    {
+      "unit": "editor",
+      "event": "PreToolUse",
+      "matcher": "Bash",
+      "timeout": 10,
       "failClosedBudget": null
     },
     {
@@ -490,6 +506,12 @@
       "description": "Remove AgentKit, or one of its skill kits, without hand-deleting files. Covers `install.sh --uninstall` for a global or project install, what it reverts inside configs the user owns, what it deliberately leaves alone, and how deselecting one optional kit removes its managed artifacts. Use when asked to uninstall AgentKit, remove a kit, undo the installer, or clean a machine of it."
     },
     {
+      "name": "wiki-editor",
+      "kit": "core",
+      "explicit": false,
+      "description": "Who is editing in this session, for repos whose commits must name a person (knowledgebases and wikis edited through a shared agent session). Use when the editor-police hook denies a commit, before the first commit to such a repo in a session, or when someone says a different person has taken over the keyboard. Asks once per session, records the answer, and puts that person on every commit as an Edited-by trailer so page stamps and changelogs name them."
+    },
+    {
       "name": "wip",
       "kit": "core",
       "explicit": false,
@@ -510,6 +532,7 @@
     "review-gate",
     "review-profile",
     "wait-for",
+    "wiki-editor",
     "wip"
   ],
   "d2Pin": "0.8.2",
@@ -552,6 +575,12 @@
     },
     {
       "name": "wait-for",
+      "platforms": [
+        "portable"
+      ]
+    },
+    {
+      "name": "wiki-editor",
       "platforms": [
         "portable"
       ]
@@ -657,15 +686,15 @@
     "resource-police.rules"
   ],
   "counts": {
-    "units": 17,
-    "skills": 29,
-    "coreSkills": 19,
+    "units": 18,
+    "skills": 30,
+    "coreSkills": 20,
     "kits": 8,
-    "tools": 8,
+    "tools": 9,
     "rules": 7,
     "instructions": 7,
     "plugins": 9,
     "codexPolicies": 6,
-    "wiring": 17
+    "wiring": 18
   }
 }
