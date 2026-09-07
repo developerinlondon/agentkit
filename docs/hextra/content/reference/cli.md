@@ -3,7 +3,7 @@ title: CLI and tools
 weight: 3
 ---
 
-Seven executables ship in `tools/`. Two of them are Linux-only and the installer omits them
+Eight executables ship in `tools/`. Two of them are Linux-only and the installer omits them
 elsewhere; two of them only arrive with the explicit `adversarial-review` kit.
 
 | Tool                 | Platform   | Ships with                  |
@@ -12,6 +12,7 @@ elsewhere; two of them only arrive with the explicit `adversarial-review` kit.
 | `agent-session`      | Linux only | every install               |
 | `wip`                | portable   | every install               |
 | `plan-gate`          | portable   | every install               |
+| `wiki-editor`        | portable   | every install               |
 | `fix-ascii-boxes.py` | portable   | every install               |
 | `review-gate`        | portable   | `--with adversarial-review` |
 | `review-profile`     | portable   | `--with adversarial-review` |
@@ -26,8 +27,8 @@ Project installs expose them at `<project>/.claude/tools/`. `agentkit-run` remai
 `bounded-run` from the tool's previous name.
 
 The Claude plugins carry their own copies, from an explicit allowlist in
-`scripts/sync-cc-plugin.sh`: the core `agentkit` plugin gets `bounded-run`, `wip` and
-`plan-gate`, and
+`scripts/sync-cc-plugin.sh`: the core `agentkit` plugin gets `bounded-run`, `wip`, `plan-gate` and
+`wiki-editor`, and
 `review-gate`/`review-profile` go to `agentkit-adversarial-review` instead. `resource-police` accepts
 `$CLAUDE_PLUGIN_ROOT/tools/bounded-run` as a trusted runner and names that path when it denies an
 unbounded command — the runner is trusted by installed path, never by filename.
@@ -251,6 +252,32 @@ spelling: GitHub reports `OPEN`, GitLab reports `opened`; `merged` and `closed` 
 | ---- | ------------------------------------------------- |
 | `0`  | reported, whatever it found                       |
 | `2`  | an argument is not a git repository, or bad usage |
+
+## `wiki-editor`
+
+```text
+wiki-editor set <name> --session <id>
+wiki-editor get | author | trailer | clear --session <id>
+wiki-editor names
+```
+
+The session-scoped answer to "who is at the keyboard", read by `editor-police`. `set` records a
+person for one session and prints the exact `--trailer` flag to put on every commit; `trailer`
+prints it again; `author` prints `Name <email>`; `get` prints the name; `clear` forgets it;
+`names` lists the roster the config knows. The short name is matched case-insensitively against
+`editor-police.editors`, and the full display name matches too; a name the map does not know is
+recorded as typed with `fallback-email`.
+
+State lives at `$XDG_STATE_HOME/agentkit/wiki-editor/<session id>`, one file per session, so a
+shared machine asks once per session and never again until someone says the keyboard changed hands.
+
+### Exit codes
+
+| Code | Meaning                                                  |
+| ---- | -------------------------------------------------------- |
+| `0`  | done                                                     |
+| `1`  | `get`, `author` or `trailer` with no editor recorded yet |
+| `2`  | usage: `--session` missing, empty name, or unknown verb  |
 
 ## `plan-gate`
 

@@ -37,3 +37,4 @@ skill; `product-intelligence` needs `--with product`.
 | [Declare what your repo ships](/cookbook/declare-your-product/)   | `--with product`              |
 | [Override a guard, once, on purpose](/cookbook/override-a-guard/) | core                          |
 | [Find what is half done](/cookbook/find-what-is-half-done/)       | core                          |
+| [Name the person at the keyboard](/cookbook/name-the-editor/)     | core                          |
