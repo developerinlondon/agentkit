@@ -132,6 +132,31 @@ describe('the Claude hook lane refuses from the same data', () => {
     expect(allowed.stdout.trim()).toBe('');
   });
 
+  // Whether the hook starts a runtime at all, measured directly: with no bun
+  // to find, a gate that opened says UNCHECKED and a gate that stayed shut
+  // says nothing. Every command an agent runs pays this, so what opens it has
+  // to be the shapes that can reach another checkout and nothing else.
+  test.each([
+    ['a context flag on a search', 'rg -C 3 pattern', false],
+    ['a directory flag on make', 'make -C src all', false],
+    ['a flag passed through a runner', 'npm run build -- -C .', false],
+    ['a message naming a directory change', 'git commit -m "fix the cd in build"', false],
+    ['a message that mentions a shell', 'git commit -m "run sh later"', false],
+    ['an ordinary command', 'ls -la', false],
+    ['a directory change', 'cd repo && git tag v0.8.0', true],
+    ['a change after a separator', 'make; cd repo && git tag v0.8.0', true],
+    ['a change inside a subshell', '(cd repo && git tag v0.8.0)', true],
+    ['git pointed at a checkout', 'git -C repo tag v0.8.0', true],
+    ['git pointed at a git dir', 'git --git-dir=repo/.git tag v0.8.0', true],
+    ['a wrapper', "bash -c 'git tag v0.8.0'", true],
+    ['a wrapper behind a launcher', "timeout 10 bash -c 'git tag v0.8.0'", true],
+  ])('%s %s the evaluator', (_shape, command, starts) => {
+    const cwd = sandbox();
+    const run = runHook(command, cwd, { BUN_BIN: '/nonexistent/bun' });
+
+    expect(run.stdout.includes('UNCHECKED')).toBe(starts);
+  });
+
   test('a command the rule does not match is not answered at all', () => {
     const cwd = sandbox(PROJECT);
     const allowed = runHook('git tag v0.7.5', cwd);

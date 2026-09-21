@@ -294,7 +294,7 @@ describe('the cheap path stays cheap', () => {
   test('a command that changes no directory resolves one taste folder', () => {
     const parent = scratch();
     repoIn(parent, 'repo', { taste: 'release-tier', match: 'git tag' });
-    const lanes = tasteLanes('git tag v0.8.0', parent, scratch(), {});
+    const { lanes } = tasteLanes('git tag v0.8.0', parent, scratch(), {});
 
     expect(lanes.map((lane) => lane.cwd)).toEqual([parent]);
   });
@@ -306,7 +306,7 @@ describe('the cheap path stays cheap', () => {
     const parent = scratch();
     repoIn(parent, 'repo', { taste: 'release-tier', match: 'git tag' });
     const home = userTaste(scratch(), 'commit-identity', 'git commit');
-    const lanes = tasteLanes('cd repo && git tag v0.8.0', parent, home, {});
+    const { lanes } = tasteLanes('cd repo && git tag v0.8.0', parent, home, {});
 
     expect(lanes[0]?.tastes.map((one) => one.name)).toEqual(['commit-identity']);
     expect(lanes[1]?.tastes.map((one) => one.name)).toEqual(['release-tier']);
@@ -333,7 +333,7 @@ describe('the cheap path stays cheap', () => {
     const parent = scratch();
     repoIn(parent, 'repo', { taste: 'release-tier', match: 'git tag' });
     repository(parent, 'other');
-    const lanes = tasteLanes('cd repo && git tag v0.8.0', parent, scratch(), {});
+    const { lanes } = tasteLanes('cd repo && git tag v0.8.0', parent, scratch(), {});
 
     // The lane is the followed path, which on a machine whose temporary
     // directory is a link is not the one the command spells.
@@ -490,7 +490,7 @@ describe('only a repository brings tastes, and only where one is worked in', () 
     const plain = join(parent, 'plain');
     mkdirSync(join(plain, '.agentkit', 'tastes'), { recursive: true });
     writeFileSync(join(plain, '.agentkit', 'tastes', 'planted.md'), taste('planted', 'git'));
-    const lanes = tasteLanes('cd plain && git status', parent, scratch(), {});
+    const { lanes } = tasteLanes('cd plain && git status', parent, scratch(), {});
 
     expect(lanes.map((lane) => lane.cwd)).toEqual([parent]);
   });
@@ -500,7 +500,7 @@ describe('only a repository brings tastes, and only where one is worked in', () 
     const repo = repository(parent, 'repoA');
     mkdirSync(join(repo, '.agentkit', 'tastes'), { recursive: true });
     writeFileSync(join(repo, '.agentkit', 'tastes', 'no-rm.md'), taste('no-rm', 'rm -rf'));
-    const lanes = tasteLanes('cd repoA && rm -rf build', parent, scratch(), {});
+    const { lanes } = tasteLanes('cd repoA && rm -rf build', parent, scratch(), {});
 
     expect(lanes.map((lane) => lane.cwd)).toEqual([parent]);
   });
