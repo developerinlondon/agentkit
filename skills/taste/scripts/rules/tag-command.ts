@@ -72,14 +72,23 @@ export const GIT_GLOBAL_VALUED =
   ['-C', '-c', '--git-dir', '--work-tree', '--namespace', '--exec-path'];
 export const FORGE_GLOBAL_VALUED = ['-R', '--repo'];
 
+// A parenthesis is kept as a segment of its own rather than dropped with the
+// other separators: a subshell is a scope, and a caller tracking where a
+// command runs has to see where one opens and closes.
+export const SUBSHELL_OPEN = '(';
+export const SUBSHELL_CLOSE = ')';
+
 export function commandSegments(command: string): string[][] {
   const found: string[][] = [[]];
   for (const token of command.match(TOKEN) ?? []) {
-    if (SEPARATOR.test(token)) {
-      found.push([]);
+    if (!SEPARATOR.test(token)) {
+      (found[found.length - 1] as string[]).push(unquote(token));
       continue;
     }
-    (found[found.length - 1] as string[]).push(unquote(token));
+    for (const char of token) {
+      if (char === SUBSHELL_OPEN || char === SUBSHELL_CLOSE) found.push([char]);
+    }
+    found.push([]);
   }
   return found;
 }
