@@ -364,14 +364,19 @@ as it would read had it been run there: the segments acting elsewhere are not in
 matched against, and a `judgment` taste is sent that repository's diff and message and nothing
 else. A taste in one checkout can neither refuse another checkout's commit nor be shown its diff.
 
+**The project layers are always read from the top of a work tree**, wherever the session stands.
+A session in `repo/src` is bound by `repo`'s tastes, and so is a parent running
+`cd repo/src && git commit` — the same tastes either way, which is the point. A session in no
+checkout at all reads its own directory, as it always did.
+
 **Only a checkout brings tastes, and only where a repository command works on it.** The directory
 is followed through symlinks and resolved to the top of its work tree, so `repo/src` brings
 `repo`'s tastes. A folder under `node_modules` brings none even when it is a checkout of its own,
 because a `remedy` is prose an agent is shown and a dependency is not a place anybody vouched for
 prose. A directory that is merely listed or removed brings none either.
 
-**A repository's own `brain.taste.enabled: false` turns off its lane and no other.** The session's
-tastes keep binding; so do the tastes of any other checkout in the same command.
+**A repository's own `brain.taste.enabled: false` turns off its lane and no other**, including for
+a session standing inside it. Another checkout's tastes in the same command keep binding.
 
 Where a repository defines a taste the owner also defines at user level, **the repository's
 replaces it for the commands acting there**, exactly as it would for a session standing in it.

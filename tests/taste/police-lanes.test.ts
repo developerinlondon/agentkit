@@ -47,6 +47,26 @@ Why: "publish this" authorizes a release, never the tier.
 How to apply: propose the patch version in the release PR.
 `;
 
+const OWN_FOLDER = `---
+name: own-folder
+scope: user
+strength: require
+enforce: block
+rule:
+  kind: command
+  match: 'git tag'
+  remedy: Ask the owner before tagging.
+  override: AGENTKIT_OWN_FOLDER
+provenance: 2026-09-21 · session correction
+---
+
+Tags are the owner's call.
+
+Why: a tag is a promise downstream reads.
+
+How to apply: propose it, do not cut it.
+`;
+
 const TAG_MINOR = 'git tag v0.8.0';
 const PROJECT = { '.agentkit/tastes/release-tier.md': RELEASE_TIER };
 // The same taste one checkout down, so the session sits above the repository
@@ -125,6 +145,15 @@ describe('the Claude hook lane refuses from the same data', () => {
     expect(parse(denial.stdout).reason).toContain('BLOCKED by taste release-tier');
   });
 
+  test('a session inside a checkout is refused by the tastes at its top', () => {
+    const cwd = nested();
+    mkdirSync(join(cwd, 'repo', 'src'), { recursive: true });
+    const denial = runHook(TAG_MINOR, join(cwd, 'repo', 'src'));
+
+    expect(isDeny(denial.stdout)).toBe(true);
+    expect(parse(denial.stdout).reason).toContain('BLOCKED by taste release-tier');
+  });
+
   test('a directory the command never enters brings nothing', () => {
     const cwd = nested();
     const allowed = runHook(TAG_MINOR, cwd);
@@ -149,7 +178,7 @@ describe('the Claude hook lane refuses from the same data', () => {
     ['git pointed at a checkout', 'git -C repo tag v0.8.0', true],
     ['git pointed at a git dir', 'git --git-dir=repo/.git tag v0.8.0', true],
     ['a wrapper', "bash -c 'git tag v0.8.0'", true],
-    ['a wrapper behind a launcher', "timeout 10 bash -c 'git tag v0.8.0'", true],
+    ['a wrapper behind a launcher', "timeout 9 bash -c 'git tag v0.8.0'", true],
   ])('%s %s the evaluator', (_shape, command, starts) => {
     const cwd = sandbox();
     const run = runHook(command, cwd, { BUN_BIN: '/nonexistent/bun' });
@@ -293,8 +322,8 @@ describe('the OpenCode plugin lane', () => {
     else process.env.AGENTKIT_TASTE_SCRIPTS = realScripts;
   });
 
-  function context(cwd: string) {
-    process.env.HOME = sandbox();
+  function context(cwd: string, home = sandbox()) {
+    process.env.HOME = home;
     return {
       client: {},
       project: {},
@@ -306,8 +335,8 @@ describe('the OpenCode plugin lane', () => {
     } as any;
   }
 
-  function call(cwd: string, command: string) {
-    return tastePolice(context(cwd)).then((hooks) =>
+  function call(cwd: string, command: string, home?: string) {
+    return tastePolice(context(cwd, home)).then((hooks) =>
       hooks['tool.execute.before']!(
         { tool: 'bash', sessionID: 'test', callID: 'test' },
         { args: { command } },
@@ -324,6 +353,26 @@ describe('the OpenCode plugin lane', () => {
     const cwd = nested();
     await expect(call(cwd, `cd repo && ${TAG_MINOR}`)).rejects.toThrow(
       'BLOCKED by taste release-tier',
+    );
+  });
+
+  test('refuses from the tastes at the top of the session\'s own checkout', async () => {
+    const cwd = nested();
+    mkdirSync(join(cwd, 'repo', 'src'), { recursive: true });
+    await expect(call(join(cwd, 'repo', 'src'), TAG_MINOR)).rejects.toThrow(
+      'BLOCKED by taste release-tier',
+    );
+  });
+
+  // The plugin reads $HOME like every other lane; os.homedir() answers from the
+  // password entry, which is a different machine's answer in a test and the
+  // wrong one wherever a session is told to work elsewhere.
+  test('a taste in the owner\'s own folder binds, and it is the $HOME one', async () => {
+    // Named for this test alone: the machine running it may have tastes of its
+    // own, and a refusal from those would look exactly like a pass.
+    const home = sandbox({ '.agentkit/tastes/own-folder.md': OWN_FOLDER });
+    await expect(call(sandbox(), TAG_MINOR, home)).rejects.toThrow(
+      'Ask the owner before tagging.',
     );
   });
 

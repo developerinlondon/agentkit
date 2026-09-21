@@ -38,14 +38,14 @@ function git(dir: string, ...args: string[]): void {
 
 // A repository with one staged line that names itself, so a diff that reaches
 // the provider says which repository it came from.
-function repository(parent: string, name: string): string {
+function repository(parent: string, name: string, marker = name): string {
   const dir = join(parent, name);
   mkdirSync(dir, { recursive: true });
   git(dir, 'init', '-q', '-b', 'main');
   writeFileSync(join(dir, 'a.ts'), 'export const a = 1;\n');
   git(dir, 'add', '-A');
   git(dir, 'commit', '-q', '-m', 'one');
-  writeFileSync(join(dir, 'a.ts'), `export const a = 1; // SECRET_FROM_${name}\n`);
+  writeFileSync(join(dir, 'a.ts'), `export const a = 1; // SECRET_FROM_${marker}\n`);
   git(dir, 'add', '-A');
   return dir;
 }
@@ -403,6 +403,81 @@ describe('a taste sees only the part of the command acting in its repository', (
       expect(one.command).not.toContain('in A');
     }
     expect(stub.asked.map((one) => one.message)).toEqual(['in B']);
+  });
+});
+
+describe('a session inside a repository reads that repository\'s tastes', () => {
+  function withTaste(parent: string, name: string): string {
+    const repo = repository(parent, name);
+    mkdirSync(join(repo, '.agentkit', 'tastes'), { recursive: true });
+    writeFileSync(join(repo, '.agentkit', 'tastes', 'no-tag.md'), taste('no-tag', 'git tag'));
+    mkdirSync(join(repo, 'src'), { recursive: true });
+    return repo;
+  }
+
+  // The tastes that bind are the same whether the session stands at the top of
+  // the checkout, inside it, or above it and reaches in.
+  test('a session in a subdirectory is bound by the tastes at the top', async () => {
+    const repo = withTaste(scratch(), 'repoA');
+
+    expect((await evaluate('git tag v0.8.0', join(repo, 'src'))).decision).toBe('deny');
+  });
+
+  test('and it is the same answer the parent gets reaching in', async () => {
+    const parent = scratch();
+    withTaste(parent, 'repoA');
+
+    expect((await evaluate('cd repoA/src && git tag v0.8.0', parent)).decision).toBe('deny');
+  });
+
+  test('a subdirectory reached through a symlink is bound the same way', async () => {
+    const repo = withTaste(scratch(), 'repoA');
+    const linked = join(scratch(), 'inside');
+    symlinkSync(join(repo, 'src'), linked, 'dir');
+
+    expect((await evaluate('git tag v0.8.0', linked)).decision).toBe('deny');
+  });
+
+  // The lane resolves its tastes at the top and still hands a kind the
+  // directory the agent stands in, because a relative path in the command is
+  // relative to that and to nothing else.
+  test('a relative path in the command is read from where the agent stands', async () => {
+    const parent = scratch();
+    const repo = withTaste(parent, 'repoA');
+    judgmentTaste(repo, 'no-stopgaps', 'Is this a stopgap?', 'AGENTKIT_NO_STOPGAPS');
+    // The same relative name under both, so only the directory it is resolved
+    // against decides which one answers.
+    repository(join(repo, 'src'), 'sub', 'BESIDE_THE_AGENT');
+    repository(repo, 'sub', 'AT_THE_TOP');
+    const stub = stubProvider(0.1);
+    await evaluateCommand({
+      command: 'git -C sub commit -m "x"',
+      cwd: join(repo, 'src'),
+      home: scratch(),
+      env: { PATH: process.env.PATH, TYPESAFE_API_KEY: 'k', TYPESAFE_BASE_URL: stub.url },
+    });
+
+    expect(stub.asked).toHaveLength(1);
+    expect(stub.asked[0]?.diff).toContain('SECRET_FROM_BESIDE_THE_AGENT');
+  });
+
+  test('a session in no checkout at all reads what it always did', async () => {
+    const parent = scratch();
+    mkdirSync(join(parent, '.agentkit', 'tastes'), { recursive: true });
+    writeFileSync(join(parent, '.agentkit', 'tastes', 'no-tag.md'), taste('no-tag', 'git tag'));
+
+    expect((await evaluate('git tag v0.8.0', parent)).decision).toBe('deny');
+    expect((await evaluate('git status', parent)).decision).toBe('allow');
+  });
+
+  test('a checkout turning tastes off turns them off for a session inside it', async () => {
+    const repo = withTaste(scratch(), 'repoA');
+    writeFileSync(
+      join(repo, '.agentkit', 'config.yaml'),
+      'brain:\n  taste:\n    enabled: false\n',
+    );
+
+    expect((await evaluate('git tag v0.8.0', join(repo, 'src'))).decision).toBe('allow');
   });
 });
 

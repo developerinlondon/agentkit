@@ -58,8 +58,9 @@ the lower one outright; two tastes are never merged into a third nobody wrote.
 Precedence runs **project > project external > user > user external > kit**. The more specific
 location wins, and inside one location the owner's own tastes beat the ones they pulled in.
 
-**Project is the repository the command acts in**, which is not always the one the session sits
-in. A session in a parent directory running `cd repo && git commit …` or `git -C repo commit …`
+**Project is the repository the command acts in**, read from the top of its work tree and not from
+whichever directory the session sits in. A session in `repo/src` is bound by `repo`'s tastes, and
+so is a parent reaching in — the same tastes either way. A session in a parent directory running `cd repo && git commit …` or `git -C repo commit …`
 is judged by `repo`'s tastes, and a command touching two repositories brings the tastes of both —
 each judging only the part of the command that acts in it, so a taste in one checkout never sees
 another's command or diff. The user layers bind wherever you are working and load once, and a

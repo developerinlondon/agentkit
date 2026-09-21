@@ -29,7 +29,12 @@ release PR — "publish this" authorizes a release, never the tier.
   `node_modules` folder, whose `remedy` prose an agent would otherwise be shown verbatim — and
   only where a `git`, `gh` or `glab` command works on it. A repository's own
   `brain.taste.enabled: false` turns off its lane and no other, and its taste of a name the owner
-  also uses replaces theirs for the commands acting there.
+  also uses replaces theirs for the commands acting there. The project layers are read from the top
+  of a work tree wherever the session stands, so a session in `repo/src` is bound by `repo`'s
+  tastes exactly as a parent reaching in is; a session in no checkout reads its own directory, as
+  before. Both presence gates look at that top too, or the hook would exit before the evaluator
+  it now has something for, and the OpenCode plugin reads `$HOME` like every other lane rather
+  than the password entry.
 
 ## v0.9.0 — 2026-09-21
 
