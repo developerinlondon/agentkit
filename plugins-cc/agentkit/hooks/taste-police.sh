@@ -29,13 +29,42 @@ advise() {
 	exit 0
 }
 
+# The top of the checkout the session stands in, so a session inside one asks
+# the same question as one standing above it. Walked for `.git` rather than
+# asked of git: this runs before every command, and a process is not free.
+WORK_TREE_TOP=""
+find_work_tree_top() {
+	local dir="$1"
+	local depth=0
+	WORK_TREE_TOP=""
+	while [[ "$depth" -lt 40 ]]; do
+		if [[ -e "$dir/.git" ]]; then
+			WORK_TREE_TOP="$dir"
+			return 0
+		fi
+		case "$dir" in
+			/ | "" | */) return 1 ;;
+		esac
+		dir="${dir%/*}"
+		if [[ -z "$dir" ]]; then
+			dir="/"
+		fi
+		depth=$((depth + 1))
+	done
+	return 1
+}
+
 # .agentkit/tastes covers the sources under it; tastes-vendor is the pre-move
 # external root, still bound for one release of grace.
 tastes_present() {
+	find_work_tree_top "$WORKDIR" || true
+	local base
 	local dir
-	for dir in "$WORKDIR/.agentkit/tastes" "$WORKDIR/.agentkit/tastes-vendor" \
-		"$HOME/.agentkit/tastes"; do
-		[[ -d "$dir" ]] && return 0
+	for base in "$WORKDIR" "$WORK_TREE_TOP" "$HOME"; do
+		[[ -n "$base" ]] || continue
+		for dir in "$base/.agentkit/tastes" "$base/.agentkit/tastes-vendor"; do
+			[[ -d "$dir" ]] && return 0
+		done
 	done
 	return 1
 }

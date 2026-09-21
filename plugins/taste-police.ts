@@ -1,7 +1,7 @@
 import type { PluginInput } from '@opencode-ai/plugin';
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 // Rules are data in the owner's taste files, evaluated by the taste skill's
@@ -13,7 +13,7 @@ interface Verdict {
   notices: string[];
 }
 
-type Evaluate = (request: { command: string; cwd: string }) => Promise<Verdict>;
+type Evaluate = (request: { command: string; cwd: string; home: string }) => Promise<Verdict>;
 
 function evaluatorPath(): string | null {
   const scripts = process.env.AGENTKIT_TASTE_SCRIPTS;
@@ -44,13 +44,34 @@ function loadEvaluator(): Promise<Evaluate | null> {
   return loading;
 }
 
+// `$HOME` first, as every other lane reads it: `homedir()` answers from the
+// password entry, so a session told to work somewhere else is not heard.
+function ownHome(): string {
+  return process.env.HOME ?? homedir();
+}
+
+// The top of the checkout the session stands in, so a session inside one asks
+// the same question as one standing above it. Walked for `.git` rather than
+// asked of git: this runs before every command, and a process is not free.
+function workTreeTop(cwd: string): string | undefined {
+  let here = cwd;
+  for (let depth = 0; depth < 40; depth += 1) {
+    if (existsSync(join(here, '.git'))) return here;
+    const up = dirname(here);
+    if (up === here) return undefined;
+    here = up;
+  }
+  return undefined;
+}
+
 function tastesPresent(cwd: string): boolean {
-  return [
-    join(cwd, '.agentkit', 'tastes'),
+  const bases = [cwd, workTreeTop(cwd), ownHome()];
+  return bases.some((base) =>
+    base !== undefined
     // The pre-move external root, still bound for one release of grace.
-    join(cwd, '.agentkit', 'tastes-vendor'),
-    join(homedir(), '.agentkit', 'tastes'),
-  ].some((dir) => existsSync(dir));
+    && [join(base, '.agentkit', 'tastes'), join(base, '.agentkit', 'tastes-vendor')]
+      .some((dir) => existsSync(dir))
+  );
 }
 
 // A command can act in a repository the session is not standing in — `cd repo
@@ -93,7 +114,7 @@ export default async function tastePolice(ctx: PluginInput) {
 
       let verdict: Verdict;
       try {
-        verdict = await evaluate({ command, cwd: ctx.directory });
+        verdict = await evaluate({ command, cwd: ctx.directory, home: ownHome() });
       } catch (error) {
         // A broken evaluator must not refuse every command in the session.
         console.warn(

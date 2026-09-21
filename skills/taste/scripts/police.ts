@@ -35,7 +35,7 @@ function tasteEnabled(
   home: string,
   env: Record<string, string | undefined>,
 ): boolean {
-  for (const path of configFiles(cwd, home, env)) {
+  for (const path of configFiles(projectRoot(cwd), home, env)) {
     const enabled = unitSection(path, TASTE)?.enabled;
     if (typeof enabled === 'boolean') return enabled;
   }
@@ -169,6 +169,13 @@ export interface Lane {
 
 // A repository's own setting, read from its own config and nowhere else: one
 // checkout turning tastes off must not turn off the session's.
+// Where this session's own project layers live: the top of the checkout it
+// stands in, so standing inside one reads the same tastes as reaching into it
+// from outside. A directory in no checkout is its own answer, as it always was.
+function projectRoot(cwd: string): string {
+  return repositoryRoot(cwd) ?? cwd;
+}
+
 function projectTasteEnabled(root: string): boolean {
   const enabled = unitSection(join(root, '.agentkit', 'config.yaml'), TASTE)?.enabled;
   return typeof enabled === 'boolean' ? enabled : true;
@@ -211,7 +218,11 @@ export function tasteLanes(
   home: string,
   env: Record<string, string | undefined>,
 ): Lanes {
-  const here = resolveTastes(cwd, home, env);
+  // Resolved at the top of the session's own checkout, while the lane keeps the
+  // directory the command actually runs in: a relative path in the command is
+  // relative to where the agent stands, not to the top.
+  const root = projectRoot(cwd);
+  const here = resolveTastes(root, home, env);
   const lanes: Lane[] = [{ cwd, command, tastes: here.tastes, warnings: here.warnings }];
 
   // Read once. Every caller wants both halves of the answer, and reading the

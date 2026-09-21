@@ -327,8 +327,9 @@ agentkit installs to. It resolves the same folders this skill does, takes the ta
 process. Nothing in a taste is ever executed. Adding a blocking taste changes no code
 anywhere: it is a file.
 
-**The project tastes that apply are the ones of the repository the command acts in**, not of the
-directory the session happens to sit in. A session in a parent directory running
+**The project tastes that apply are the ones of the repository the command acts in**, read from
+the top of its work tree rather than from whichever directory the session happens to sit in — so a
+session in `repo/src` is bound by `repo`'s tastes, exactly as a parent reaching in is. A session in a parent directory running
 `cd repo && git commit …` or `git -C repo commit …` is judged by `repo`'s tastes; a command
 reaching two repositories brings both, **each judging only the part of the command that acts in
 it** — a taste in one checkout never sees another's command text or diff. The owner's own
