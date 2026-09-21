@@ -41,6 +41,7 @@ export const MAX_WRAPPER_DEPTH = 3;
 // not, and a quote that never closes ends the reading early — and both look
 // exactly like a command that holds no commit.
 const NESTED_QUOTE = /\\["']/;
+
 // A path this check may resolve itself: spelled out in the command, with
 // nothing for a shell to expand into something else.
 const LITERAL_PATH = /^[^$`*?~\[\]{}!]+$/;
@@ -140,25 +141,52 @@ function wrapped(segment: readonly string[]): { name: string; text: string } | u
   return undefined;
 }
 
-function balanced(text: string): boolean {
-  let single = false;
-  let double = false;
+// Quoting the tokeniser cannot resolve, read the way a shell reads it. A quote
+// inside a run of the other kind is an ordinary character, which is why
+// `'echo "hi"'` is fine while `'it'"'"'s'` is not: the second closes a run and
+// opens another with nothing between, and the tokeniser reads one pair and
+// stops. Backslashes are not tracked here; an escaped quote is refused before
+// this runs.
+function quoteTrouble(text: string): string | undefined {
+  let open: string | undefined;
+  let justClosed = false;
+
   for (const char of text) {
-    if (char === "'" && !double) single = !single;
-    else if (char === '"' && !single) double = !double;
+    if (open === undefined) {
+      if (char !== "'" && char !== '"') {
+        justClosed = false;
+        continue;
+      }
+      if (justClosed) return 'quoting concatenated out of separate runs';
+      open = char;
+      justClosed = false;
+      continue;
+    }
+    justClosed = char === open;
+    if (justClosed) open = undefined;
   }
-  return !single && !double;
+
+  return open === undefined ? undefined : 'quoting that never closes';
 }
 
-// Said only of a command that mentions a shell wrapper, because that is where
+// Said only of a command that runs a shell wrapper, because that is where
 // quoting this cannot resolve hides a whole command rather than mangling one
-// argument of a command already in view.
-function unreadableQuoting(command: string): string | undefined {
-  const wrappers = ['eval', ...SHELLS].join('|');
-  if (!new RegExp(`(?:^|[\\s;&|(])(?:${wrappers})(?:\\s|$)`).test(command)) return undefined;
+// argument of a command already in view. A wrapper's name inside a message is
+// a word, and a word is not worth refusing a commit over.
+function runsAWrapper(segments: readonly string[][]): boolean {
+  return segments.some((segment) => {
+    const program = programOf(segment);
+    if (program === undefined) return false;
+    return ['eval', ...SHELLS].some((name) =>
+      program === name || program.endsWith(`/${name}`)
+    );
+  });
+}
+
+function unreadableQuoting(command: string, segments: readonly string[][]): string | undefined {
+  if (!runsAWrapper(segments)) return undefined;
   if (NESTED_QUOTE.test(command)) return 'an escaped quote inside a quoted run';
-  if (!balanced(command)) return 'quoting that never closes';
-  return undefined;
+  return quoteTrouble(command);
 }
 
 // Where a `cd` names its destination outright, reading it is not a guess; the
@@ -198,10 +226,14 @@ function walk<T>(
   cwd: string,
   depth: number,
   look: (segment: readonly string[], dir: string) => T | undefined,
+  // Carried in from the scope that opened this one: a directory change this
+  // could not read still binds whatever runs after it, and a wrapper is not a
+  // way out of that.
+  from?: string,
 ): Hit<T> | undefined {
   const frames: Frame[] = [];
   let dir = cwd;
-  let blocked: string | undefined;
+  let blocked: string | undefined = from;
 
   for (const segment of segments) {
     if (segment.length === 1 && segment[0] === SUBSHELL_OPEN) {
@@ -231,7 +263,7 @@ function walk<T>(
             + 'whether it commits, and what it commits, is not something this check can read',
         };
       }
-      const found = walk(commandSegments(inner.text), dir, depth + 1, look);
+      const found = walk(commandSegments(inner.text), dir, depth + 1, look, blocked);
       if (found !== undefined) return found;
       continue;
     }
@@ -257,14 +289,15 @@ function commitAt(segment: readonly string[], dir: string): Commit | undefined {
 }
 
 function commitIn(command: string, cwd: string): Found {
-  const quoting = unreadableQuoting(command);
+  const segments = commandSegments(command);
+  const quoting = unreadableQuoting(command, segments);
   if (quoting !== undefined) {
     return {
       unchecked: `the command carries ${quoting}, so whether it commits, and what it commits, `
         + 'is not something this check can read',
     };
   }
-  const found = walk(commandSegments(command), cwd, 0, commitAt);
+  const found = walk(segments, cwd, 0, commitAt);
   if (found === undefined) return undefined;
   return 'unchecked' in found ? found : { commit: found.hit };
 }
@@ -302,14 +335,15 @@ function openingAt(segment: readonly string[]): true | undefined {
 // The same reader the commit side uses, so a forge command inside a wrapper is
 // seen exactly as one outside it.
 function mergeRequestIn(command: string, cwd: string): Hit<true> | undefined {
-  const quoting = unreadableQuoting(command);
+  const segments = commandSegments(command);
+  const quoting = unreadableQuoting(command, segments);
   if (quoting !== undefined) {
     return {
       unchecked: `the command carries ${quoting}, so whether it opens a merge request is not `
         + 'something this check can read',
     };
   }
-  return walk(commandSegments(command), cwd, 0, openingAt);
+  return walk(segments, cwd, 0, openingAt);
 }
 
 function firstLine(text: string): string {
