@@ -249,36 +249,61 @@ export function walk<T>(
   return { hits };
 }
 
-// -C is where git runs; --git-dir and --work-tree take it apart, and a tree
-// read from either half on its own is not the one the command acts in.
+// Where a git command works, read from the options that say so. `-C` moves
+// git; `--work-tree` names the tree a commit applies to, which is the same
+// question answered a different way. A `--git-dir` with no work tree beside it
+// is the one shape that leaves it unsaid.
 export function directoryOf(
   options: readonly string[],
   cwd: string,
 ): string | { unchecked: string } {
   let dir = cwd;
+  let workTree: string | undefined;
+  let gitDir = false;
+
   for (let index = 0; index < options.length; index += 1) {
     const option = options[index] as string;
-    const name = option.split('=')[0] as string;
-    if (name === '--git-dir' || name === '--work-tree') {
-      return {
-        unchecked: `the command names its own ${name}, so the tree it applies to is not one this `
-          + 'check can read',
-      };
-    }
-    if (option === '-C') {
+    const split = option.indexOf('=');
+    const name = split === -1 ? option : option.slice(0, split);
+    const inline = split === -1 ? undefined : option.slice(split + 1);
+
+    if (name === '-C') {
       const value = options[index + 1];
       if (value !== undefined) dir = isAbsolute(value) ? value : resolve(dir, value);
       index += 1;
+      continue;
     }
+    if (name === '--work-tree') {
+      const value = inline ?? options[index + 1];
+      if (inline === undefined) index += 1;
+      if (value === undefined || !LITERAL_PATH.test(value)) {
+        return {
+          unchecked: 'the command names a --work-tree this check cannot read, so the tree it '
+            + 'applies to is not one this check can name',
+        };
+      }
+      workTree = value;
+      continue;
+    }
+    if (name === '--git-dir') {
+      gitDir = true;
+      if (inline === undefined) index += 1;
+    }
+  }
+
+  if (workTree !== undefined) return isAbsolute(workTree) ? workTree : resolve(dir, workTree);
+  if (gitDir) {
+    return {
+      unchecked: 'the command names its own --git-dir with no --work-tree beside it, so the '
+        + 'tree it applies to is not one this check can name',
+    };
   }
   return dir;
 }
 
-function actsIn(segment: readonly string[], dir: string): string | undefined {
+function actsIn(segment: readonly string[], dir: string): string | { unchecked: string } {
   const git = programInvocation(segment, 'git', GIT_GLOBAL_VALUED);
-  if (git === undefined) return dir;
-  const named = directoryOf(git.options, dir);
-  return typeof named === 'string' ? named : undefined;
+  return git === undefined ? dir : directoryOf(git.options, dir);
 }
 
 function repositoryProgram(segment: readonly string[]): boolean {
@@ -289,7 +314,10 @@ function repositoryProgram(segment: readonly string[]): boolean {
   );
 }
 
-function reachesARepository(segment: readonly string[], dir: string): string | undefined {
+function reachesARepository(
+  segment: readonly string[],
+  dir: string,
+): string | { unchecked: string } | undefined {
   return repositoryProgram(segment) ? actsIn(segment, dir) : undefined;
 }
 
@@ -316,13 +344,18 @@ export function actedDirectories(command: string, cwd: string): Acted {
   const reached = walk(pieces, cwd, 0, reachesARepository);
   const dirs: string[] = [];
   let atStart = false;
-  for (const dir of reached.hits) {
-    if (dir === cwd) atStart = true;
-    else if (!dirs.includes(dir)) dirs.push(dir);
+  // A command that works on a checkout it will not name is exactly as unread
+  // as one that changes directory somewhere this cannot follow.
+  let unread = reached.unread;
+  for (const hit of reached.hits) {
+    if (typeof hit !== 'string') {
+      unread ??= hit.unchecked;
+      continue;
+    }
+    if (hit === cwd) atStart = true;
+    else if (!dirs.includes(hit)) dirs.push(hit);
   }
-  return reached.unread === undefined
-    ? { dirs, atStart }
-    : { dirs, atStart, unread: reached.unread };
+  return unread === undefined ? { dirs, atStart } : { dirs, atStart, unread };
 }
 
 // A checkout this may load tastes from: the top of the work tree holding the
@@ -343,11 +376,18 @@ function realOf(dir: string): string {
   }
 }
 
-export function repositoryRoot(dir: string): string | undefined {
+// `stopAt` is the owner's own directory: `~/.agentkit/tastes` is the user layer
+// by definition, so a home that happens to be a checkout of its own — dotfiles
+// kept in git — must not turn it into a project one for every session beneath.
+// A checkout above a session that is not home does govern it, umbrella
+// repositories included.
+export function repositoryRoot(dir: string, stopAt?: string): string | undefined {
   let here = realOf(dir);
   if (here.split(sep).includes('node_modules')) return undefined;
+  const stop = stopAt === undefined ? undefined : realOf(stopAt);
 
   for (let depth = 0; depth < MAX_DEPTH; depth += 1) {
+    if (here === stop) return undefined;
     if (existsSync(join(here, '.git'))) return here;
     const up = dirname(here);
     if (up === here) return undefined;
@@ -443,7 +483,7 @@ export function scopedCommand(command: string, cwd: string, scope: Scoped): stri
     return {
       piece,
       dropped: bounded.within === undefined ? [] : pointerSpans(segment),
-      keep: acts !== undefined && keeps(acts, bounded),
+      keep: typeof acts === 'string' && keeps(acts, bounded),
     };
   });
 

@@ -35,7 +35,7 @@ function tasteEnabled(
   home: string,
   env: Record<string, string | undefined>,
 ): boolean {
-  for (const path of configFiles(projectRoot(cwd), home, env)) {
+  for (const path of configFiles(projectRoot(cwd, home), home, env)) {
     const enabled = unitSection(path, TASTE)?.enabled;
     if (typeof enabled === 'boolean') return enabled;
   }
@@ -159,6 +159,9 @@ export interface Lanes {
 
 export interface Lane {
   cwd: string;
+  // Where this lane's tastes were read from, which is what a refusal renders
+  // their paths against: a file is named the way its own repository names it.
+  root: string;
   // What this lane's tastes are shown: the whole command for the session's own
   // lane, and for a repository's lane only the part that acts in it, written
   // as it would read had it been run there.
@@ -172,8 +175,8 @@ export interface Lane {
 // Where this session's own project layers live: the top of the checkout it
 // stands in, so standing inside one reads the same tastes as reaching into it
 // from outside. A directory in no checkout is its own answer, as it always was.
-function projectRoot(cwd: string): string {
-  return repositoryRoot(cwd) ?? cwd;
+function projectRoot(cwd: string, home: string): string {
+  return repositoryRoot(cwd, home) ?? cwd;
 }
 
 function projectTasteEnabled(root: string): boolean {
@@ -190,11 +193,16 @@ interface Reached {
   elsewhere: boolean;
 }
 
-function reachedRoots(dirs: readonly string[], atStart: boolean, sessionRoot?: string): Reached {
+function reachedRoots(
+  dirs: readonly string[],
+  atStart: boolean,
+  home: string,
+  sessionRoot?: string,
+): Reached {
   const roots: string[] = [];
   let elsewhere = atStart;
   for (const dir of dirs) {
-    const root = repositoryRoot(dir);
+    const root = repositoryRoot(dir, home);
     if (root === undefined || root === sessionRoot) {
       elsewhere = true;
       continue;
@@ -225,6 +233,7 @@ function sessionLanes(
     }
     byScope.set(key, {
       cwd: session.cwd,
+      root: session.root,
       command: outside.length === 0
         ? session.command
         : scopedCommand(session.command, cwd, { outside }),
@@ -257,16 +266,16 @@ export function tasteLanes(
   // Resolved at the top of the session's own checkout, while the lane keeps the
   // directory the command actually runs in: a relative path in the command is
   // relative to where the agent stands, not to the top.
-  const root = projectRoot(cwd);
+  const root = projectRoot(cwd, home);
   const here = resolveTastes(root, home, env);
-  const lanes: Lane[] = [{ cwd, command, tastes: here.tastes, warnings: here.warnings }];
+  const lanes: Lane[] = [{ cwd, root, command, tastes: here.tastes, warnings: here.warnings }];
 
   // Read once. Every caller wants both halves of the answer, and reading the
   // command again to get the other half walks it again for nothing.
   const acted = actedDirectories(command, cwd);
   if (acted.dirs.length === 0) return { lanes, unread: acted.unread };
 
-  const reached = reachedRoots(acted.dirs, acted.atStart, repositoryRoot(cwd));
+  const reached = reachedRoots(acted.dirs, acted.atStart, home, repositoryRoot(cwd, home));
   // Which checkouts name which taste, so a name defined in one speaks for the
   // commands acting there and nowhere else. Collected across lanes and applied
   // per taste: one repository overriding a name must not take the owner's own
@@ -283,6 +292,7 @@ export function tasteLanes(
     }
     lanes.push({
       cwd: root,
+      root,
       command: scopedCommand(command, cwd, { within: root }),
       tastes,
       // The user layers are the same files the session's lane already read, so
@@ -381,7 +391,7 @@ export async function evaluateCommand(request: Request): Promise<Verdict> {
         }
         return {
           decision: 'deny',
-          reason: refusal(taste, outcome.finding, override, request.cwd, home, notices),
+          reason: refusal(taste, outcome.finding, override, lane.root, home, notices),
           notices,
         };
       }
