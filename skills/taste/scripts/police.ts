@@ -2,6 +2,7 @@ import { homedir } from 'node:os';
 import { offValueLine, type Override, readOverride, unquote } from './override.ts';
 import { type ResolvedTaste, resolveTastes, type TasteRule } from './resolve.ts';
 import { judgmentBudget } from './rules/budget.ts';
+import { actedDirectories } from './rules/scope.ts';
 import { evaluateRule, type MatchOutcome, ruleKind } from './rules/kinds.ts';
 import { configFiles, unitSection } from './sources.ts';
 import { TASTE } from './store.ts';
@@ -142,13 +143,69 @@ function blocking(taste: ResolvedTaste): boolean {
   return taste.enforce === 'block' && taste.rule !== undefined;
 }
 
+// A repository's own tastes, which bind whoever commits in it rather than
+// whoever happens to be standing in it.
+function ofTheProject(taste: ResolvedTaste): boolean {
+  return taste.layer === 'project' || taste.layer === 'project-external';
+}
+
+export interface Lane {
+  cwd: string;
+  tastes: ResolvedTaste[];
+  warnings: string[];
+}
+
+// One lane per directory whose tastes bind this command: the one the session
+// sits in, as before, and the repository of every directory the command reaches
+// from there. The user's own layers load once, with the session's lane, because
+// they bind wherever the agent is working.
+//
+// A session above its repositories is the ordinary case on a workstation with
+// several of them, and resolving only the session's directory made every taste
+// in those repositories decoration.
+export function tasteLanes(
+  command: string,
+  cwd: string,
+  home: string,
+  env: Record<string, string | undefined>,
+): Lane[] {
+  const here = resolveTastes(cwd, home, env);
+  const lanes: Lane[] = [{ cwd, tastes: here.tastes, warnings: here.warnings }];
+
+  for (const dir of actedDirectories(command, cwd).dirs) {
+    const there = resolveTastes(dir, home, env);
+    const tastes = there.tastes.filter(ofTheProject);
+    if (tastes.length === 0) continue;
+    lanes.push({
+      cwd: dir,
+      tastes,
+      // The user layers are the same files the session's lane already read, so
+      // only what this directory added is new to say.
+      warnings: there.warnings.filter((warning) => !here.warnings.includes(warning)),
+    });
+  }
+  return lanes;
+}
+
 export async function evaluateCommand(request: Request): Promise<Verdict> {
   const home = request.home ?? homedir();
   const env = request.env ?? process.env;
   if (!tasteEnabled(request.cwd, home, env)) return { decision: 'allow', notices: [] };
 
-  const { tastes, warnings } = resolveTastes(request.cwd, home, env);
-  const notices = warnings.map((warning) => `taste skipped — ${warning}`);
+  const lanes = tasteLanes(request.command, request.cwd, home, env);
+  const notices = lanes.flatMap((lane) =>
+    lane.warnings.map((warning) => `taste skipped — ${warning}`)
+  );
+  const unread = actedDirectories(request.command, request.cwd).unread;
+  // A repository this could not name has tastes this could not read. Said once,
+  // and only where the command reaches a repository after the change — nowhere
+  // else were there tastes to miss.
+  if (unread !== undefined) {
+    notices.push(
+      `UNCHECKED: the project tastes of the directory this command acts in could not be `
+        + `loaded — ${unread}. The command was allowed.`,
+    );
+  }
   const matcher = new BoundedMatcher();
   // One allowance for the whole command. A kind that reaches the network or
   // runs git spends from it, so three such tastes together cannot hold the
@@ -156,7 +213,8 @@ export async function evaluateCommand(request: Request): Promise<Verdict> {
   const budget = judgmentBudget();
 
   try {
-    for (const taste of tastes.filter(blocking)) {
+    for (const lane of lanes) {
+      for (const taste of lane.tastes.filter(blocking)) {
       const rule = taste.rule as TasteRule;
       const override = overrideState(rule.override, request.command, env);
 
@@ -167,7 +225,7 @@ export async function evaluateCommand(request: Request): Promise<Verdict> {
       // must not become a notice on every command in it.
       const kind = ruleKind(rule.kind);
       const shortCircuit = override.state === 'granted' && kind?.costly === true
-        && (kind.applies?.(rule.fields, request.command, request.cwd) ?? true);
+        && (kind.applies?.(rule.fields, request.command, lane.cwd) ?? true);
 
       if (shortCircuit) {
         notices.push(
@@ -178,7 +236,7 @@ export async function evaluateCommand(request: Request): Promise<Verdict> {
 
       const outcome = await evaluateRule(rule.kind, rule.fields, {
         command: request.command,
-        cwd: request.cwd,
+        cwd: lane.cwd,
         env,
         match: (pattern, capture) => matcher.test(pattern, request.command, capture),
         body: taste.body,
@@ -217,6 +275,7 @@ export async function evaluateCommand(request: Request): Promise<Verdict> {
         reason: refusal(taste, outcome.finding, override, request.cwd, home, notices),
         notices,
       };
+      }
     }
   } finally {
     matcher.stop();

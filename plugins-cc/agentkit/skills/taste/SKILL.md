@@ -327,6 +327,14 @@ agentkit installs to. It resolves the same folders this skill does, takes the ta
 process. Nothing in a taste is ever executed. Adding a blocking taste changes no code
 anywhere: it is a file.
 
+**The project tastes that apply are the ones of the repository the command acts in**, not of the
+directory the session happens to sit in. A session in a parent directory running
+`cd repo && git commit …` or `git -C repo commit …` is judged by `repo`'s tastes; a command
+reaching two repositories brings both. The owner's own `~/.agentkit/tastes/` bind wherever the
+agent is working and load once. Where a directory change cannot be read — a variable, a glob —
+the hook says `UNCHECKED` for the project tastes it could not load, rather than reading silence
+as a clean bill.
+
 ### What a rule can check: the kinds
 
 **The enforcement vocabulary is extensible by agentkit and parameterised by tastes.** A

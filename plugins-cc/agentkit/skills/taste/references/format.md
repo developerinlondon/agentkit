@@ -351,6 +351,25 @@ How to apply: when the cause is out of reach, say so in the commit message and
 file the follow-up — do not let the diff imply the problem is solved.
 ```
 
+## Which repository's tastes apply
+
+The project layers are read from **the repository the command acts in**. `taste-police` reads the
+command's own shape to find that — a literal `cd`, a `-C`, a subshell, a wrapper, the launchers it
+already reads through — and resolves `.agentkit/tastes/` for each distinct directory it reaches,
+alongside the one the session started in. The user layers bind wherever the agent is working and
+are read once.
+
+| The session sits in | The command                 | Judged by                  |
+| ------------------- | --------------------------- | -------------------------- |
+| the repository      | `git commit …`              | the repository's tastes    |
+| a parent directory  | `cd repo && git commit …`   | `repo`'s tastes            |
+| a parent directory  | `git -C repo commit …`      | `repo`'s tastes            |
+| a parent directory  | `cd a && … && cd ../b && …` | both `a`'s and `b`'s       |
+| a parent directory  | `cd "$D" && git commit …`   | **`UNCHECKED`** for `$D`'s |
+
+A command that changes no directory resolves exactly what it did before, and reads nothing extra
+from disk — the common case pays nothing for this.
+
 ## The source contract
 
 A source is declared in `brain.taste.sources`, in a repository's `.agentkit/config.yaml` or the

@@ -53,6 +53,15 @@ function tastesPresent(cwd: string): boolean {
   ].some((dir) => existsSync(dir));
 }
 
+// A command can act in a repository the session is not standing in — `cd repo
+// && …`, `git -C repo …`, or a wrapper carrying either. Whether that repository
+// has tastes is the evaluator's question; what this decides is only whether the
+// question is worth asking, so it reads the command's shape and nothing else.
+const REACHES_ELSEWHERE = new RegExp(
+  '(?:^|[\\s;&|(])(?:cd|pushd|eval|bash|sh|zsh|dash|ksh)(?:\\s|$)'
+    + '|(?:^|\\s)(?:-C|--git-dir|--work-tree)(?:[\\s=]|$)',
+);
+
 export default async function tastePolice(ctx: PluginInput) {
   return {
     'tool.execute.before': async (
@@ -63,7 +72,7 @@ export default async function tastePolice(ctx: PluginInput) {
       const command = output.args.command as string | undefined;
       if (!command) return;
 
-      if (!tastesPresent(ctx.directory)) return;
+      if (!tastesPresent(ctx.directory) && !REACHES_ELSEWHERE.test(command)) return;
 
       const evaluate = await loadEvaluator();
       if (evaluate === null) {

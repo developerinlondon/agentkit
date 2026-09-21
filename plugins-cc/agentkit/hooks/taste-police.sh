@@ -40,15 +40,28 @@ tastes_present() {
 	return 1
 }
 
+# A command can act in a repository the session is not standing in — `cd repo &&
+# …`, `git -C repo …`, or a wrapper carrying either. Whether that repository has
+# tastes is the evaluator's question; what this decides is only whether the
+# question is worth asking, so it reads the command's shape and nothing else.
+reaches_elsewhere() {
+	local boundary='(^|[[:space:];&|(])'
+	local wrapper="$boundary"'(cd|pushd|eval|bash|sh|zsh|dash|ksh)([[:space:]]|$)'
+	local pointed="$boundary"'(-C|--git-dir|--work-tree)([[:space:]=]|$)'
+	[[ "$COMMAND" =~ $wrapper ]] && return 0
+	[[ "$COMMAND" =~ $pointed ]] && return 0
+	return 1
+}
+
 # Silence is indistinguishable from "no tastes", so an unrunnable hook says so —
 # where there was something it would have read.
 unchecked() {
-	tastes_present || exit 0
+	tastes_present || reaches_elsewhere || exit 0
 	advise "UNCHECKED: taste-police did not run — $1. Tastes at enforce: block were not applied to this command."
 }
 
 # Before paying for a runtime start on every command in every repository.
-tastes_present || exit 0
+tastes_present || reaches_elsewhere || exit 0
 
 # The evaluator ships in the taste skill. hooks/ and skills/ are siblings in the
 # shared root and in a Claude Code plugin; in the repository the hook sits one
