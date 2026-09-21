@@ -36,8 +36,11 @@ release PR — "publish this" authorizes a release, never the tier.
   `--work-tree` that moves the tree out from under that reading reports `UNCHECKED` rather than
   judging the wrong repository. A `cd` that spells its destination out is resolved like `-C`,
   because that one is not a guess, and so is a wrapped command: `bash -c 'git commit …'`, `sh -c`
-  and `eval` with a literal argument are read as the command they spell out, while text a shell
-  builds at run time is `UNCHECKED` naming the wrapper. **A `judgment` taste sends the command
+  and `eval` with a literal argument are read as the command they spell out, to three levels of
+  nesting. A subshell and a wrapper are scopes, so a `cd` inside one moves what that scope's own
+  commands see and nothing after it. Text a shell builds at run time, quoting that does not
+  close, an escaped quote inside a quoted run, and nesting past the cap are each `UNCHECKED`
+  naming what could not be read, never a silent pass. **A `judgment` taste sends the command
   text, the commit message and the staged diff to a third-party provider**, which the taste
   contract, the concepts page and the Boundaries page now all say outright.
 

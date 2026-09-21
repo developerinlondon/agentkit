@@ -171,15 +171,24 @@ the question narrows what is being asked, the body says what good looks like.
 `<dir>`, resolved against the directory the command runs in. Where the command moves the tree
 out from under that reading — a `cd` or `pushd` before the commit, its own `--git-dir` or
 `--work-tree` — the rule reports `UNCHECKED` rather than judging whichever repository the hook
-happened to be invoked in. A commit inside a subshell is still a commit: `(git commit …)` is
-judged, and `(cd sub && git commit …)` is `UNCHECKED`.
+happened to be invoked in.
+
+**A subshell and a wrapper are scopes.** `(cd sub && git commit …)` is judged in `sub`, because
+that is where that commit runs; `(cd sub) && git commit …` is judged where the command started,
+because the subshell's directory change ends with it. The same holds for `bash -c 'cd sub'`
+followed by a commit outside it.
 
 A wrapped command is read as the command it spells out. `bash -c 'git commit -m "x"'`,
 `sh -c` and `eval` with a literal argument are tokenised and judged exactly as the same command
-without the quotes, `-C` and `cd` included. Only text a shell would build at run time —
-`bash -c "$CMD"`, a substitution, a variable spliced into the message — is genuinely out of
-sight, and that is `UNCHECKED` naming the wrapper. A wrapped command that never commits stays
-silent, because a notice on every wrapped call an agent makes is a notice nobody reads.
+without the quotes, `-C` and `cd` included, to three levels of nesting. Text a shell would build
+at run time — `bash -c "$CMD"`, a substitution, a variable spliced into the message — is
+genuinely out of sight, and so is quoting this cannot resolve: an escaped quote inside a quoted
+run, or a quote that never closes. Each of those is `UNCHECKED` naming what could not be read,
+never a silent pass. A wrapped command that never commits stays silent, because a notice on
+every wrapped call an agent makes is a notice nobody reads.
+
+**`git-tag-sequence` does not read wrappers.** `bash -c 'git tag v1.2.3'` is not judged by that
+kind, which reads the command text directly. That is a limit of the older kind, not of this one.
 
 An amend is the one commit judged with an empty diff. `git commit --amend -m …` with nothing
 staged changes only the message, and the message is what a taste about commit messages reads.

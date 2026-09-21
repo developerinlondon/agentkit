@@ -416,6 +416,9 @@ describe('the repository judged is the one the command targets', () => {
     ['an eval on text built at run time', 'eval "$CMD"', 'eval'],
     ['a message spliced in by the shell', 'sh -c "git commit -m $MSG"', 'sh -c'],
     ['a wrapped command holding a substitution', 'bash -c "git commit -m `date`"', 'bash -c'],
+    ['a wrapper quoted inside a wrapper', 'bash -c "bash -c \\"git commit -m x\\""', 'quot'],
+    ['a wrapper whose quoting never closes', 'bash -c \'git commit -m "oops', 'quot'],
+    ['wrappers nested past what this reads', 'eval eval eval eval git commit -m x', 'deep'],
   ])('%s is UNCHECKED, and says which', async (_shape, command, because) => {
     const stub = provider({ noul: 0.99 });
     const git = recordingGit();
@@ -500,6 +503,26 @@ describe('the repository judged is the one the command targets', () => {
 
   // A shell handed a file is not a wrapper this can read into, but neither does
   // it hide a commit standing next to it: it is passed over, not reported on.
+  test('a merge-request rule reads a wrapped forge command too', async () => {
+    const asked = provider({ noul: 0.99 });
+    const fired = await evaluate({ on: 'merge-request' }, {
+      command: 'bash -c \'gh pr create --fill\'',
+      url: asked.url,
+    });
+
+    expect(fired.verdict).toBe('fires');
+    expect(asked.sent).toHaveLength(1);
+
+    const quiet = provider({ noul: 0.99 });
+    const outcome = await evaluate({ on: 'merge-request' }, {
+      command: 'bash -c \'ls\'',
+      url: quiet.url,
+    });
+
+    expect(outcome.verdict).toBe('passes');
+    expect(quiet.sent).toHaveLength(0);
+  });
+
   test('a shell running a script file hides nothing and is not reported', async () => {
     const stub = provider({ noul: 0.9 });
     const outcome = await evaluate({}, {
@@ -524,6 +547,29 @@ describe('the repository judged is the one the command targets', () => {
     expect(outcome.verdict).toBe('passes');
     expect(git.asked()).toBe(false);
     expect(stub.sent).toHaveLength(0);
+  });
+
+  // A wrapper is a scope. Its cd moves the tree the wrapper's own commands see
+  // and nothing else, so a commit standing after the wrapper is in the tree the
+  // shell was in before it.
+  test.each([
+    ['a cd that stays inside its wrapper', 'outer', 'bash -c \'cd inner\' && git commit -m "x"'],
+    ['a cd and a commit sharing one wrapper', 'inner', 'bash -c \'cd inner && git commit -m "x"\''],
+    ['an outer cd the wrapper starts in', 'inner', 'cd inner && bash -c \'git commit -m "x"\''],
+    ['a cd that stays inside its subshell', 'outer', '(cd inner) && git commit -m "x"'],
+    ['a cd and a commit sharing one subshell', 'inner', '(cd inner && git commit -m "x")'],
+  ])('%s reads the %s repository', async (_shape, which, command) => {
+    const root = repo({ marker: 'the outer repository' });
+    const inner = join(root, 'inner');
+    mkdirSync(inner, { recursive: true });
+    git(inner, 'init', '-q', '-b', 'main');
+    writeFileSync(join(inner, 'a.ts'), 'export const a = 1; // the inner repository\n');
+    git(inner, 'add', '-A');
+    const stub = provider({ noul: 0.1 });
+    await evaluate({}, { command, cwd: root, url: stub.url });
+    const state = stub.sent[0]?.body.state as Record<string, string>;
+
+    expect(state.diff).toContain(`the ${which} repository`);
   });
 
   test('a wrapped commit carries its own cd into the reading', async () => {
