@@ -9,6 +9,8 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+## v0.9.3 — 2026-09-21
+
 - fix(git-police): **the hook can no longer be walked around, or die into an allow.** Fixing the
   attribution rule in v0.9.1 exposed three ways past it. A `cd $W` or a `git -C "$DIR"` reaches
   the hook unexpanded, so the target directory did not exist, a `tgit … | sed` assignment exited
