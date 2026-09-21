@@ -1,8 +1,9 @@
 import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { offValueLine, type Override, readOverride, unquote } from './override.ts';
 import { type ResolvedTaste, resolveTastes, type TasteRule } from './resolve.ts';
 import { judgmentBudget } from './rules/budget.ts';
-import { actedDirectories } from './rules/scope.ts';
+import { actedDirectories, repositoryRoot, scopedCommand } from './rules/scope.ts';
 import { evaluateRule, type MatchOutcome, ruleKind } from './rules/kinds.ts';
 import { configFiles, unitSection } from './sources.ts';
 import { TASTE } from './store.ts';
@@ -151,14 +152,48 @@ function ofTheProject(taste: ResolvedTaste): boolean {
 
 export interface Lane {
   cwd: string;
+  // What this lane's tastes are shown: the whole command for the session's own
+  // lane, and for a repository's lane only the part that acts in it, written
+  // as it would read had it been run there.
+  command: string;
   tastes: ResolvedTaste[];
   warnings: string[];
 }
 
-// One lane per directory whose tastes bind this command: the one the session
-// sits in, as before, and the repository of every directory the command reaches
-// from there. The user's own layers load once, with the session's lane, because
-// they bind wherever the agent is working.
+// A repository's own setting, read from its own config and nowhere else: one
+// checkout turning tastes off must not turn off the session's.
+function projectTasteEnabled(root: string): boolean {
+  const enabled = unitSection(join(root, '.agentkit', 'config.yaml'), TASTE)?.enabled;
+  return typeof enabled === 'boolean' ? enabled : true;
+}
+
+interface Reached {
+  roots: string[];
+  // Whether the command works on a repository this raised no lane for — its
+  // own directory, one that is no checkout, one that opted out. What that
+  // decides is whether the owner's own taste of a shadowed name still has
+  // something to bind.
+  elsewhere: boolean;
+}
+
+function reachedRoots(dirs: readonly string[], atStart: boolean, sessionRoot?: string): Reached {
+  const roots: string[] = [];
+  let elsewhere = atStart;
+  for (const dir of dirs) {
+    const root = repositoryRoot(dir);
+    if (root === undefined || root === sessionRoot) {
+      elsewhere = true;
+      continue;
+    }
+    if (!roots.includes(root)) roots.push(root);
+  }
+  return { roots, elsewhere };
+}
+
+// One lane per repository whose tastes bind this command: the one the session
+// sits in, as before, and every checkout the command works on from there. The
+// user's own layers load once, with the session's lane, because they bind
+// wherever the agent is working.
 //
 // A session above its repositories is the ordinary case on a workstation with
 // several of them, and resolving only the session's directory made every taste
@@ -170,19 +205,43 @@ export function tasteLanes(
   env: Record<string, string | undefined>,
 ): Lane[] {
   const here = resolveTastes(cwd, home, env);
-  const lanes: Lane[] = [{ cwd, tastes: here.tastes, warnings: here.warnings }];
+  const lanes: Lane[] = [{ cwd, command, tastes: here.tastes, warnings: here.warnings }];
 
-  for (const dir of actedDirectories(command, cwd).dirs) {
-    const there = resolveTastes(dir, home, env);
+  const acted = actedDirectories(command, cwd);
+  if (acted.dirs.length === 0) return lanes;
+
+  const reached = reachedRoots(acted.dirs, acted.atStart, repositoryRoot(cwd));
+  const shadowed = new Set<string>();
+  let raised = 0;
+
+  for (const root of reached.roots) {
+    if (!projectTasteEnabled(root)) continue;
+    const there = resolveTastes(root, home, env);
     const tastes = there.tastes.filter(ofTheProject);
     if (tastes.length === 0) continue;
+    raised += 1;
+    for (const one of tastes) shadowed.add(one.name);
     lanes.push({
-      cwd: dir,
+      cwd: root,
+      command: scopedCommand(command, cwd, root),
       tastes,
       // The user layers are the same files the session's lane already read, so
-      // only what this directory added is new to say.
+      // only what this checkout added is new to say.
       warnings: there.warnings.filter((warning) => !here.warnings.includes(warning)),
     });
+  }
+
+  // The same name in a repository replaces the owner's own inside it, exactly
+  // as it does for a session standing there. Where the command works on nothing
+  // else, the replacement is the whole of it.
+  const replaced = !reached.elsewhere && raised === reached.roots.length;
+  if (replaced && shadowed.size > 0) {
+    lanes[0] = {
+      ...(lanes[0] as Lane),
+      tastes: (lanes[0] as Lane).tastes.filter((one) =>
+        ofTheProject(one) || !shadowed.has(one.name)
+      ),
+    };
   }
   return lanes;
 }
@@ -225,7 +284,7 @@ export async function evaluateCommand(request: Request): Promise<Verdict> {
       // must not become a notice on every command in it.
       const kind = ruleKind(rule.kind);
       const shortCircuit = override.state === 'granted' && kind?.costly === true
-        && (kind.applies?.(rule.fields, request.command, lane.cwd) ?? true);
+        && (kind.applies?.(rule.fields, lane.command, lane.cwd) ?? true);
 
       if (shortCircuit) {
         notices.push(
@@ -235,10 +294,10 @@ export async function evaluateCommand(request: Request): Promise<Verdict> {
       }
 
       const outcome = await evaluateRule(rule.kind, rule.fields, {
-        command: request.command,
+        command: lane.command,
         cwd: lane.cwd,
         env,
-        match: (pattern, capture) => matcher.test(pattern, request.command, capture),
+        match: (pattern, capture) => matcher.test(pattern, lane.command, capture),
         body: taste.body,
         budget,
       });

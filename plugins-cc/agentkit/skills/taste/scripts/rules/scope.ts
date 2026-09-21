@@ -1,4 +1,5 @@
-import { isAbsolute, resolve } from 'node:path';
+import { existsSync, realpathSync } from 'node:fs';
+import { dirname, isAbsolute, join, resolve, sep } from 'node:path';
 import {
   commandSegments,
   GIT_GLOBAL_VALUED,
@@ -278,41 +279,120 @@ function actsIn(segment: readonly string[], dir: string): string | undefined {
   return typeof named === 'string' ? named : undefined;
 }
 
-function reachesARepository(segment: readonly string[], dir: string): string | undefined {
+function repositoryProgram(segment: readonly string[]): boolean {
   const program = programOf(segment);
-  if (program === undefined) return undefined;
-  const repository = REPOSITORY_PROGRAMS.some((name) =>
+  if (program === undefined) return false;
+  return REPOSITORY_PROGRAMS.some((name) =>
     program === name || program.endsWith(`/${name}`)
   );
-  return repository ? dir : undefined;
+}
+
+function reachesARepository(segment: readonly string[], dir: string): string | undefined {
+  return repositoryProgram(segment) ? actsIn(segment, dir) : undefined;
 }
 
 export interface Acted {
-  // Every directory the command acts in other than the one it starts in,
-  // in the order it reaches them and without repeats.
+  // Directories other than the one it starts in where the command runs git,
+  // gh or glab, in the order it reaches them and without repeats.
   dirs: string[];
+  // Whether one of those runs in the directory it starts in, which the caller
+  // already has a lane for.
+  atStart: boolean;
   // A directory change this could not follow, said only where a repository
   // command runs after it — anywhere else there were no tastes to miss.
   unread?: string;
 }
 
-// Where a command acts, read from its text alone. What a caller does with the
-// answer is its own business: the taste hook loads each directory's project
-// tastes, and a kind asks its own question of each.
+// Where a command works on a repository, read from its text alone. Only those
+// directories, because a directory that merely gets listed has no tastes worth
+// loading and every extra one loaded is prose from a folder nobody vouched for.
 export function actedDirectories(command: string, cwd: string): Acted {
   const segments = commandSegments(command);
   const quoting = unreadableQuoting(command, segments);
-  if (quoting !== undefined) return { dirs: [], unread: quoting };
+  if (quoting !== undefined) return { dirs: [], atStart: false, unread: quoting };
 
-  const acted = walk(segments, cwd, 0, actsIn);
-  const dirs: string[] = [];
-  for (const dir of acted.hits) {
-    if (dir !== cwd && !dirs.includes(dir)) dirs.push(dir);
-  }
-
-  // Asked separately, because the walk stops at the first thing it finds under
-  // a block: what matters is not that something ran somewhere unreadable, but
-  // that a repository command did.
   const reached = walk(segments, cwd, 0, reachesARepository);
-  return reached.unread === undefined ? { dirs } : { dirs, unread: reached.unread };
+  const dirs: string[] = [];
+  let atStart = false;
+  for (const dir of reached.hits) {
+    if (dir === cwd) atStart = true;
+    else if (!dirs.includes(dir)) dirs.push(dir);
+  }
+  return reached.unread === undefined
+    ? { dirs, atStart }
+    : { dirs, atStart, unread: reached.unread };
+}
+
+// A checkout this may load tastes from: the top of the work tree holding the
+// directory, followed through symlinks so a path cannot point out of the tree
+// it appears to be in. A vendored folder is never one, whatever it contains —
+// a taste's remedy is prose an agent is shown, and `node_modules` is not a
+// place anybody vouched for prose.
+const MAX_DEPTH = 40;
+
+export function repositoryRoot(dir: string): string | undefined {
+  let here: string;
+  try {
+    here = realpathSync(dir);
+  } catch {
+    return undefined;
+  }
+  if (here.split(sep).includes('node_modules')) return undefined;
+
+  for (let depth = 0; depth < MAX_DEPTH; depth += 1) {
+    if (existsSync(join(here, '.git'))) return here;
+    const up = dirname(here);
+    if (up === here) return undefined;
+    here = up;
+  }
+  return undefined;
+}
+
+function inside(dir: string, root: string): boolean {
+  return dir === root || dir.startsWith(root.endsWith(sep) ? root : root + sep);
+}
+
+// A word that needs no quoting to survive being read again.
+const PLAIN = /^[A-Za-z0-9_@%+=:,./-]+$/;
+
+function requoted(word: string): string {
+  return PLAIN.test(word) ? word : JSON.stringify(word);
+}
+
+// `-C` said where to run, and the caller is about to say that itself.
+function withoutPointer(segment: readonly string[]): string[] {
+  if (programInvocation(segment, 'git', GIT_GLOBAL_VALUED) === undefined) return [...segment];
+  const words: string[] = [];
+  for (let index = 0; index < segment.length; index += 1) {
+    const word = segment[index] as string;
+    if (word === '-C') {
+      index += 1;
+      continue;
+    }
+    words.push(word);
+  }
+  return words;
+}
+
+interface Ran {
+  dir: string;
+  segment: readonly string[];
+}
+
+function ranIn(segment: readonly string[], dir: string): Ran {
+  return { dir: actsIn(segment, dir) ?? dir, segment };
+}
+
+// The command as it would read if it had been run inside `root`: the segments
+// that act there and nothing else, with the options that pointed at it dropped
+// because the caller supplies the directory. A taste of one repository must
+// never be shown another repository's command, let alone judge by it.
+export function scopedCommand(command: string, cwd: string, root: string): string {
+  const found = walk(commandSegments(command), cwd, 0, ranIn);
+  const parts: string[] = [];
+  for (const hit of found.hits) {
+    if (!inside(hit.dir, root)) continue;
+    parts.push(withoutPointer(hit.segment).map(requoted).join(' '));
+  }
+  return parts.join(' && ');
 }
