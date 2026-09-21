@@ -9,7 +9,6 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
-## v0.9.0 — 2026-09-21
 - fix(git-police): **the attribution rule fires.** The shell hook's rule against `Co-authored-by`
   trailers, session links and the rest read a variable that nothing set, so under `set -u` the
   hook died on that line, emitted no decision, and the harness read silence as allow — a heredoc
@@ -17,6 +16,9 @@ release PR — "publish this" authorizes a release, never the tier.
   rule now reads the payload the hook actually slurped, and a test runs the bash hook itself (the
   earlier tests covered only the TypeScript plugin) with a heredoc commit, a forge write carrying
   a session link, and a clean commit.
+
+## v0.9.0 — 2026-09-21
+
 - feat(taste): **a taste whose rule is prose can refuse a commit.** Fifteen of the sixteen central
   tastes sit at `advise` or `check` because "done means deployed" or "no stopgaps" is not a regular
   expression, so the same convention is broken again under load and the reviewer spends a round on
