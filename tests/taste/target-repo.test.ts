@@ -791,6 +791,52 @@ describe('a command that takes its checkout apart', () => {
     expect((await evaluate(command, parent)).decision).toBe('deny');
   });
 
+  // Every option that said where to work is taken out of the lane's text,
+  // because the lane supplies the directory itself. One left behind is applied
+  // a second time, against the directory it already chose.
+  test.each([
+    ['a work tree in one token', 'git --work-tree=repoA commit -m AAA'],
+    ['a work tree in two', 'git --work-tree repoA commit -m AAA'],
+    ['a git dir and a work tree', 'git --git-dir=repoA/.git --work-tree=repoA commit -m AAA'],
+  ])('%s is judged on that checkout, once', async (_shape, command) => {
+    const parent = scratch();
+    const repo = repository(parent, 'repoA');
+    judgmentTaste(repo, 'no-stopgaps', 'Is this a stopgap?', 'AGENTKIT_NO_STOPGAPS');
+    const stub = stubProvider(0.9);
+    const verdict = await evaluateCommand({
+      command,
+      cwd: parent,
+      home: scratch(),
+      env: { PATH: process.env.PATH, TYPESAFE_API_KEY: 'k', TYPESAFE_BASE_URL: stub.url },
+    });
+
+    expect(verdict.decision).toBe('deny');
+    expect(stub.asked).toHaveLength(1);
+    expect(stub.asked[0]?.diff).toContain('SECRET_FROM_repoA');
+    expect(stub.asked[0]?.command).toBe('git commit -m AAA');
+  });
+
+  test.each([
+    ['a work tree in one token', 'git --work-tree=repoA commit -m AAA'],
+    ['a work tree in two', 'git --work-tree repoA commit -m AAA'],
+    ['a git dir and a work tree', 'git --git-dir=repoA/.git --work-tree=repoA commit -m AAA'],
+  ])('%s reads as the command without it', (_shape, command) => {
+    const parent = scratch();
+    const repo = repository(parent, 'repoA');
+
+    expect(scopedCommand(command, parent, { within: repo })).toBe('git commit -m AAA');
+  });
+
+  // The launcher is part of what the agent typed and is kept; only what said
+  // where to work is taken out, wherever in the line it sat.
+  test('a pointer behind a launcher goes, and the launcher stays', () => {
+    const parent = scratch();
+    const repo = repository(parent, 'repoA');
+
+    expect(scopedCommand('timeout 10 git -C repoA commit -m AAA', parent, { within: repo }))
+      .toBe('timeout 10 git commit -m AAA');
+  });
+
   test.each([
     ['a git dir with no work tree beside it', 'git --git-dir=repoA/.git commit -m AAA'],
     ['a work tree the command does not spell out', 'git --work-tree="$T" commit -m AAA'],

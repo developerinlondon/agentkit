@@ -400,14 +400,29 @@ function inside(dir: string, root: string): boolean {
   return dir === root || dir.startsWith(root.endsWith(sep) ? root : root + sep);
 }
 
-// `-C` said where to run, and the caller is about to say that itself.
+// Every option that said where to work, because the caller is about to say it
+// itself. One left behind is applied a second time, against the directory it
+// already chose — the same defect whether it spells the place with `-C`, a
+// `--work-tree`, or a `--git-dir`, and whether the value rides in the option
+// or follows it.
+const POINTERS = ['-C', '--work-tree', '--git-dir'];
+
 function pointerSpans(segment: readonly string[]): number[] {
   if (programInvocation(segment, 'git', GIT_GLOBAL_VALUED) === undefined) return [];
   const dropped: number[] = [];
+
   for (let index = 0; index < segment.length; index += 1) {
-    if (segment[index] !== '-C') continue;
-    dropped.push(index, index + 1);
-    index += 1;
+    const word = segment[index] as string;
+    const split = word.indexOf('=');
+    const name = split === -1 ? word : word.slice(0, split);
+    if (!POINTERS.includes(name)) continue;
+
+    dropped.push(index);
+    // The value follows only when it did not ride in the option.
+    if (split === -1) {
+      dropped.push(index + 1);
+      index += 1;
+    }
   }
   return dropped;
 }
@@ -480,9 +495,14 @@ export function scopedCommand(command: string, cwd: string, scope: Scoped): stri
     // Where the segment acts, not where the walk stood: a `-C` points
     // somewhere the directory alone does not say.
     const acts = actsIn(segment, dir);
+    // A launcher was read past to reach the command; the spans still count
+    // from the front of what was written, so the offset comes back here.
+    const behind = piece.words.length - segment.length;
     return {
       piece,
-      dropped: bounded.within === undefined ? [] : pointerSpans(segment),
+      dropped: bounded.within === undefined
+        ? []
+        : pointerSpans(segment).map((index) => index + behind),
       keep: typeof acts === 'string' && keeps(acts, bounded),
     };
   });
