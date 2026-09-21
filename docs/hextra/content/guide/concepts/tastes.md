@@ -88,6 +88,15 @@ taste's own `threshold`. It needs a provider key (`TYPESAFE_API_KEY`, else
 `~/.config/agentkit/typesafe-token`) and reports `UNCHECKED` without one, so agentkit works with no
 vendor key at all.
 
+{{< callout type="warning" >}}
+**A `judgment` taste sends your change to a third party.** On every judged command it POSTs the
+command text, the commit message up to 2 000 characters and the staged diff up to 12 000 to the
+provider. The caps bound how much travels, not whether it travels, so a repository whose diffs may
+not leave the building does not get one at `enforce: block`. `on: any` is the setting to be
+deliberate about: at `block` it is a network round trip on every command the agent runs, `ls`
+included.
+{{< /callout >}}
+
 A preference that no rule kind can express stays at `check`. A new kind is a change to agentkit, not
 something a taste file can invent.
 

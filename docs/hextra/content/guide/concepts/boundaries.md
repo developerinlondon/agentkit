@@ -54,6 +54,18 @@ flowchart LR
 | OpenCode plugin    | the same payload, in TypeScript                | the same                              |
 | Codex exec policy  | literal argv prefixes                          | shell payloads, nesting, substitution |
 
+## A judgment taste leaves the machine
+
+| Limit                            | What it means                                                       |
+| -------------------------------- | ------------------------------------------------------------------- |
+| a `judgment` rule calls a vendor | the command text, the commit message and the staged diff are POSTed |
+| the caps are 2 000 and 12 000    | they bound how much travels, never whether it travels               |
+| `on: any` at `enforce: block`    | one round trip per command the agent runs, `ls` included            |
+| no provider key                  | `UNCHECKED` on every judged command, and the command is allowed     |
+
+No other rule kind reaches the network, and nothing else in the kit sends the contents of your
+repository anywhere. A taste folder with no `judgment` rule in it makes no outbound request at all.
+
 Where the Codex policy cannot express a narrow rule it is deliberately made **broader**, refusing
 whole classes outright rather than pretending to inspect them.
 

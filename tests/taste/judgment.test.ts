@@ -2,9 +2,13 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { lintTasteDirectory, ruleFields } from '../../skills/taste/scripts/lint.ts';
+import { lintTasteDirectory, onKeyErrors, ruleFields } from '../../skills/taste/scripts/lint.ts';
+import { resolveTastes } from '../../skills/taste/scripts/resolve.ts';
 import { evaluateCommand } from '../../skills/taste/scripts/police.ts';
-import { JUDGMENT_BUDGET_MS } from '../../skills/taste/scripts/rules/budget.ts';
+import {
+  JUDGMENT_BUDGET_MS,
+  JUDGMENT_CALL_MS,
+} from '../../skills/taste/scripts/rules/budget.ts';
 import { JUDGMENT } from '../../skills/taste/scripts/rules/judgment.ts';
 import type { KindRequest, MatchOutcome } from '../../skills/taste/scripts/rules/kinds.ts';
 
@@ -326,6 +330,35 @@ describe('what the rule judges, and what it leaves alone', () => {
     expect(stub.sent[0]?.body.state.diff).toBe('');
   });
 
+  // The amend exception is the message, so an amend carrying no message and
+  // nothing staged is no evidence at all. Judging it refuses on whatever the
+  // provider happens to return.
+  test('a bare amend with nothing staged is not judged', async () => {
+    const stub = provider({ noul: 0.9 });
+    const git = recordingGit();
+    const outcome = await evaluate({}, {
+      command: 'git commit --amend',
+      cwd: scratch(),
+      url: stub.url,
+      env: { PATH: `${git.dir}:${process.env.PATH}`, TYPESAFE_API_KEY: undefined },
+    });
+
+    expect(outcome.verdict).toBe('passes');
+    expect(stub.sent).toHaveLength(0);
+  });
+
+  test('an amend whose message is only whitespace is not judged either', async () => {
+    const stub = provider({ noul: 0.9 });
+    const outcome = await evaluate({}, {
+      command: 'git commit --amend -m "   "',
+      cwd: repo({ staged: false }),
+      url: stub.url,
+    });
+
+    expect(outcome.verdict).toBe('passes');
+    expect(stub.sent).toHaveLength(0);
+  });
+
   test('git commit -a is judged on the working tree rather than the index', async () => {
     const dir = repo({ staged: false });
     writeFileSync(join(dir, 'retry.ts'), 'export const retries = 1; // stopgap until the fix\n');
@@ -368,18 +401,65 @@ describe('the repository judged is the one the command targets', () => {
     expect(state.diff).toContain('the inner repository');
   });
 
+  // The reason matters as much as the verdict: git failing on a path it cannot
+  // find also reports UNCHECKED, and that would pass this test while the
+  // command was read wrongly rather than refused.
   test.each([
-    ['a directory change before the commit', 'cd elsewhere && git commit -m "x"'],
-    ['a pushd before the commit', 'pushd elsewhere && git commit -m "x"'],
-    ['a subshell that changes directory', '(cd elsewhere && git commit -m "x")'],
-    ['a commit naming its own git dir', 'git --git-dir=/srv/other/.git commit -m "x"'],
-    ['a commit naming its own work tree', 'git --work-tree=/srv/other commit -m "x"'],
-  ])('%s is UNCHECKED rather than judged against the wrong tree', async (_shape, command) => {
+    ['a cd to a path not spelled out', 'cd "$T" && git commit -m "x"', 'changes directory'],
+    ['a cd with a glob', 'cd build-* && git commit -m "x"', 'changes directory'],
+    ['a pushd before the commit', 'pushd elsewhere && git commit -m "x"', 'changes directory'],
+    ['a cd with no argument at all', 'cd && git commit -m "x"', 'changes directory'],
+    ['a cd with an option', 'cd -P inner && git commit -m "x"', 'changes directory'],
+    ['a commit naming its own git dir', 'git --git-dir=/o/.git commit -m "x"', '--git-dir'],
+    ['a commit naming its own work tree', 'git --work-tree=/o commit -m "x"', '--work-tree'],
+    ['a commit inside eval', 'eval "git commit -m x"', 'eval'],
+    ['a commit inside bash -c', 'bash -c \'git commit -m x\'', 'bash -c'],
+    ['a commit inside sh -c', 'sh -c \'git commit -m x\'', 'sh -c'],
+  ])('%s is UNCHECKED, and says which', async (_shape, command, because) => {
     const stub = provider({ noul: 0.99 });
-    const outcome = await evaluate({}, { command, url: stub.url });
+    const git = recordingGit();
+    const outcome = await evaluate({}, {
+      command,
+      url: stub.url,
+      env: { PATH: `${git.dir}:${process.env.PATH}` },
+    });
 
     expect(outcome.verdict).toBe('unchecked');
+    expect(outcome.verdict === 'unchecked' ? outcome.detail : '').toContain(because);
+    expect(git.asked()).toBe(false);
     expect(stub.sent).toHaveLength(0);
+  });
+
+  // The directory is right there in the command, so reading it is not a guess.
+  test.each([
+    ['a literal cd', 'cd inner && git commit -m "in there"'],
+    ['a literal cd inside a subshell', '(cd inner && git commit -m "in there")'],
+  ])('%s names the repository as surely as git -C does', async (_shape, command) => {
+    const root = repo({ marker: 'the outer repository' });
+    const inner = join(root, 'inner');
+    mkdirSync(inner, { recursive: true });
+    git(inner, 'init', '-q', '-b', 'main');
+    writeFileSync(join(inner, 'a.ts'), 'export const a = 1; // the inner repository\n');
+    git(inner, 'add', '-A');
+    const stub = provider({ noul: 0.1 });
+    await evaluate({}, { command, cwd: root, url: stub.url });
+    const state = stub.sent[0]?.body.state as Record<string, string>;
+
+    expect(state.diff).toContain('the inner repository');
+  });
+
+  // Read by the override short-circuit before anything runs, so it answers off
+  // the command text alone. An occasion it does not know applies to nothing.
+  test.each([
+    ['a commit under the default occasion', {}, 'git commit -m "x"', true],
+    ['another command under the default', {}, 'git status', false],
+    ['a merge request under its occasion', { on: 'merge-request' }, 'gh pr create', true],
+    ['a commit under the merge-request occasion', { on: 'merge-request' }, 'git commit', false],
+    ['anything at all under any', { on: 'any' }, 'ls', true],
+    ['an occasion no version of this knows', { on: 'sometimes' }, 'git commit -m "x"', false],
+  ])('applies: %s', (_shape, fields, command, expected) => {
+    expect(JUDGMENT.applies?.({ question: QUESTION, ...fields }, command, scratch()))
+      .toBe(expected);
   });
 
   test('a commit inside a subshell is still judged', async () => {
@@ -575,8 +655,8 @@ describe('the lint reads the judgment vocabulary', () => {
     expect(errors[0]).toContain('rule.on');
   });
 
-  // YAML 1.1 reads the value `yes` as the boolean true, so this arrives as a
-  // value no rule can carry rather than as the word someone typed.
+  // Refused either way it arrives: as the string "yes" the enum does not carry,
+  // or, from a YAML 1.1 parser, as a boolean no rule value may be.
   test('an occasion written as a YAML boolean is refused', () => {
     const errors = lint(`  kind: judgment\n  question: ${QUESTION}\n  on: yes\n  remedy: Fix it.`);
 
@@ -615,6 +695,53 @@ describe('the lint reads the judgment vocabulary', () => {
       .toEqual({ kind: 'judgment', on: 'merge-request' });
     expect(ruleFields({ kind: 'judgment', on: 'merge-request' }))
       .toEqual({ kind: 'judgment', on: 'merge-request' });
+  });
+
+  test('a rule carrying both spellings of the key is an error, not last-wins', () => {
+    const errors = onKeyErrors({ kind: 'judgment', on: 'commit', true: 'merge-request' });
+
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain('both on and true');
+    expect(onKeyErrors({ kind: 'judgment', on: 'commit' })).toEqual([]);
+    expect(onKeyErrors({ kind: 'judgment', true: 'commit' })).toEqual([]);
+  });
+
+  test('a rule value that is a list rather than one value is refused by name', () => {
+    const errors = lint(
+      `  kind: judgment\n  question: ${QUESTION}\n  on:\n    - commit\n  remedy: Fix it.`,
+    );
+
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain('rule.on');
+    expect(errors[0]).toContain('not a single value');
+  });
+
+  // Written as the boolean key a YAML 1.1 parser produces for `on`, so the
+  // resolver's own normalisation is exercised whichever parser reads the file.
+  test('the resolver hands a kind the occasion, whichever key the parser made', () => {
+    const dir = scratch();
+    mkdirSync(join(dir, '.agentkit', 'tastes'), { recursive: true });
+    const front = [
+      'name: no-stopgaps',
+      'scope: project',
+      'strength: require',
+      'enforce: block',
+      'provenance: 2026-09-21 · session correction',
+      'rule:',
+      '  kind: judgment',
+      `  question: ${QUESTION}`,
+      '  true: merge-request',
+      '  remedy: Fix the cause.',
+    ].join('\n');
+    writeFileSync(
+      join(dir, '.agentkit', 'tastes', 'no-stopgaps.md'),
+      `---\n${front}\n---\n\n${POLICY}\n`,
+    );
+    const { tastes, warnings } = resolveTastes(dir, scratch(), {});
+
+    expect(warnings).toEqual([]);
+    expect(tastes[0]?.rule?.fields.on).toBe('merge-request');
+    expect(tastes[0]?.rule?.fields.true).toBeUndefined();
   });
 
   test('a key belonging to another kind is unknown here', () => {
@@ -691,6 +818,25 @@ describe('one budget for every judgment in a command', () => {
     expect(elapsed).toBeLessThan(JUDGMENT_BUDGET_MS + 2500);
   }, 20000);
 
+  // The aggregate budget clamps every grant, so a per-call cap above it would
+  // change nothing and go unnoticed. One stalled taste pins it.
+  test('one stalled judgment gives up at the per-call cap, not at the budget', async () => {
+    const stub = provider({ hang: true });
+    const cwd = project({ 'aa-stalls': JUDGE('aa') });
+    const started = Date.now();
+    const verdict = await evaluateCommand({
+      command: 'git commit -m "paper over it"',
+      cwd,
+      home: scratch(),
+      env: { PATH: process.env.PATH, TYPESAFE_API_KEY: 'sk-test', TYPESAFE_BASE_URL: stub.url },
+    });
+    const elapsed = Date.now() - started;
+
+    expect(JUDGMENT_CALL_MS).toBeLessThan(JUDGMENT_BUDGET_MS);
+    expect(verdict.notices.join(' ')).toContain(`timeout after ${JUDGMENT_CALL_MS}ms`);
+    expect(elapsed).toBeLessThan(JUDGMENT_CALL_MS + 1200);
+  }, 20000);
+
   test('a judgment reached after the budget is spent says so', async () => {
     const stub = provider({ hang: true });
     const cwd = project({
@@ -743,6 +889,28 @@ describe('a deliberate override is read before the check it overrules', () => {
     });
 
     expect(verdict.decision).toBe('allow');
+    expect(stub.sent).toHaveLength(0);
+  });
+
+  // The short-circuit must not turn an exported override into a notice on
+  // every command the session runs.
+  test('an exported override says nothing about a command the rule never judges', async () => {
+    const stub = provider({ noul: 0.99 });
+    const cwd = project({ 'aa-stalls': JUDGE('aa') });
+    const verdict = await evaluateCommand({
+      command: 'git status --short',
+      cwd,
+      home: scratch(),
+      env: {
+        PATH: process.env.PATH,
+        TYPESAFE_API_KEY: 'sk-test',
+        TYPESAFE_BASE_URL: stub.url,
+        AGENTKIT_ALLOW_STOPGAP: '1',
+      },
+    });
+
+    expect(verdict.decision).toBe('allow');
+    expect(verdict.notices).toEqual([]);
     expect(stub.sent).toHaveLength(0);
   });
 
