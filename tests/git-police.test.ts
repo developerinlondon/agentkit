@@ -153,6 +153,58 @@ describe('git-police', () => {
     }
   });
 
+  describe('reads the commit message file, and tells a trailer from talk about one', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'agentkit-gp-ts-'));
+    afterAll(() => rmSync(dir, { recursive: true, force: true }));
+    const bad = join(dir, 'my msg');
+    writeFileSync(bad, 'fix: x\n\nCo-Authored-By: Claude <noreply@anthropic.com>\n');
+    const blocked = [`git commit -F "${bad}"`, `git commit -qF'${bad}'`, `git commit --file="${bad}"`, 'git commit -F "$MSG"'];
+    for (const cmd of blocked) {
+      test(`blocks: ${cmd.replace(dir, '<tmp>')}`, async () => {
+        const hooks = await gitPolice(mockCtx);
+        const { input, output } = makeInput(cmd);
+        await expect(hooks['tool.execute.before'](input, output)).rejects.toThrow('BLOCKED');
+      });
+    }
+    test('allows a message that only mentions the trailer', async () => {
+      const hooks = await gitPolice(mockCtx);
+      const { input, output } = makeInput('git commit -m "chore: drop the co-authored-by trailer from the template"');
+      await expect(hooks['tool.execute.before'](input, output)).resolves.toBeUndefined();
+    });
+  });
+
+  describe('allowed-repos lifts branch protection and nothing else', () => {
+    const root = mkdtempSync(join(tmpdir(), 'agentkit-gp-allow-'));
+    const repo = join(root, 'repo');
+    const saved = process.env.XDG_CONFIG_HOME;
+    mkdirSync(join(root, 'agentkit'), { recursive: true });
+    writeFileSync(
+      join(root, 'agentkit', 'config.yaml'),
+      ['git-police:', '  branch-protection:', '    allowed-repos:', '      - someorg/allowed-repo', ''].join('\n'),
+    );
+    spawnSync('git', ['init', '-q', repo]);
+    spawnSync('git', ['-C', repo, 'remote', 'add', 'origin', 'git@github.com:someorg/allowed-repo.git']);
+    afterAll(() => {
+      if (saved === undefined) delete process.env.XDG_CONFIG_HOME;
+      else process.env.XDG_CONFIG_HOME = saved;
+      rmSync(root, { recursive: true, force: true });
+    });
+    const judge = async (cmd: string) => {
+      process.env.XDG_CONFIG_HOME = root;
+      const hooks = await gitPolice({ ...mockCtx, directory: repo });
+      const { input, output } = makeInput(cmd);
+      return hooks['tool.execute.before'](input, output);
+    };
+    test('a push to main is allowed', async () => {
+      await expect(judge('git push origin main')).resolves.toBeUndefined();
+    });
+    for (const cmd of ['git commit -m "x\n\nCo-Authored-By: Claude <c@x>"', 'git push --force origin main', 'git commit --no-verify -m x']) {
+      test(`still blocks: ${cmd.split('\n')[0]}`, async () => {
+        await expect(judge(cmd)).rejects.toThrow('BLOCKED');
+      });
+    }
+  });
+
   describe('stale branch protection (new branch commands)', () => {
     // These should be allowed because mockCtx.directory=/tmp has no git repo,
     // so getCurrentBranch returns null and the stale check is skipped
@@ -261,7 +313,7 @@ describe("git-police cannot be walked around", () => {
       cwd: opts.cwd ?? repoRoot,
       env: { ...process.env, XDG_CONFIG_HOME: emptyConfig, ...opts.env },
     });
-    return { denied: `${r.stdout ?? ""}`.includes('"permissionDecision": "deny"'), out: `${r.stdout ?? ""}`, status: r.status };
+    return { denied: /"permissionDecision":\s*"deny"/.test(`${r.stdout ?? ""}`), out: `${r.stdout ?? ""}`, status: r.status };
   };
 
   test("a `cd $VAR` the hook cannot expand does not skip the rule", () => {
@@ -292,6 +344,14 @@ describe("git-police cannot be walked around", () => {
     expect(run(`git commit -qF '${bad}'`).denied).toBe(true);
     expect(run(`git commit --file=${bad}`).denied).toBe(true);
     expect(run(`git commit --file=${ok}`).denied).toBe(false);
+  });
+
+  test("the raw forge API is a forge write", () => {
+    const body = "Fixes it\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)";
+    expect(run(`glab api -X POST projects/1/merge_requests -f title=x -f description="${body}"`).denied).toBe(true);
+    expect(run(`gh api repos/o/r/pulls -X POST -f title=x -f body="${body}"`).denied).toBe(true);
+    // Reading the forge to look for attribution is an audit, not a write.
+    expect(run('gh api repos/o/r/commits | grep -c "Co-Authored-By:"').denied).toBe(false);
   });
 
   test("talking about the trailer is allowed; writing one is not", () => {
@@ -338,9 +398,64 @@ describe("git-police cannot be walked around", () => {
       join(config, "agentkit", "config.yaml"),
       ["git-police:", "  branch-protection:", "    allowed-repos:", "      - someorg/allowed-repo", ""].join("\n").replaceAll("\\n", "\n"),
     );
-    const forcePush = `git -C ${repo} push --force origin main`;
-    expect(run(forcePush, { env: { XDG_CONFIG_HOME: config } }).denied).toBe(false);
-    expect(run(forcePush).denied).toBe(true);
+    const env = { XDG_CONFIG_HOME: config };
+    const pushMain = `git -C ${repo} push origin main`;
+    expect(run(pushMain, { env }).denied).toBe(false);
+    expect(run(pushMain).denied).toBe(true);
+
+    // The exemption is branch protection, and nothing else.
+    expect(run(`git -C ${repo} commit -m "x\n\n${TRAILER}"`, { env }).denied).toBe(true);
+    expect(run(`git -C ${repo} push --force origin main`, { env }).denied).toBe(true);
+    expect(run(`git -C ${repo} commit --no-verify -m x`, { env }).denied).toBe(true);
+
+    // An allow-listed cwd does not vouch for a repository the hook cannot see.
+    expect(run("git -C $ELSEWHERE push origin main", { env, cwd: repo }).denied).toBe(true);
+  });
+
+  test("every message file is read, however -F is spelled", () => {
+    const dir = join(scratch, "with space");
+    mkdirSync(dir, { recursive: true });
+    const spaced = join(dir, "my msg");
+    const bad = join(scratch, "msg-bad-2");
+    const ok = join(scratch, "msg-ok-2");
+    for (const f of [spaced, bad]) writeFileSync(f, `fix: x\n\n${TRAILER}\n`);
+    writeFileSync(ok, "fix: x\n");
+    expect(run(`git commit -F${bad}`).denied).toBe(true);
+    expect(run(`git commit -F "${spaced}"`).denied).toBe(true);
+    expect(run(`git commit -F ${bad} -F ${ok}`).denied).toBe(true);
+    expect(run(`git commit -F ${bad} && git log --grep -F x`).denied).toBe(true);
+    // A -F that belongs to an earlier command is not a message file.
+    expect(run(`grep -F ${bad} /dev/null; git commit -m "fix: x"`).denied).toBe(false);
+  });
+
+  test("a message file the hook cannot read is refused, and says why", () => {
+    const r = run('git commit -F "$MSG"');
+    expect(r.denied).toBe(true);
+    expect(r.out).toContain("Pass the literal path");
+  });
+
+  test("a refusal built on a guessed repository says it was a guess", () => {
+    const onMain = join(scratch, "on-main");
+    mkdirSync(onMain, { recursive: true });
+    spawnSync("git", ["-C", onMain, "init", "-q", "-b", "main"]);
+    const r = run('cd $W && git commit -m "fix: x"', { cwd: onMain });
+    expect(r.denied).toBe(true);
+    expect(r.out).toContain("could not resolve the directory this command names");
+    expect(run('git commit -m "fix: x"', { cwd: onMain }).out).not.toContain("could not resolve");
+  });
+
+  test("a crash after the command is read refuses it, in JSON the harness can parse", () => {
+    const bin = join(scratch, "noawk");
+    mkdirSync(bin, { recursive: true });
+    writeFileSync(join(bin, "awk"), "#!/bin/sh\nexit 7\n", { mode: 0o755 });
+    const env = { PATH: `${bin}:${process.env.PATH}` };
+    const r = run('git commit -m "fix: x" && git push origin feat/x', { env });
+    expect(r.status).toBe(0);
+    expect(r.denied).toBe(true);
+    expect(JSON.parse(r.out).hookSpecificOutput.permissionDecisionReason).toContain("git-police failed");
+    const other = run("ls -la", { env });
+    expect(other.status).toBe(0);
+    expect(other.denied).toBe(false);
   });
 });
 

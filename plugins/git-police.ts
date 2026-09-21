@@ -1,7 +1,7 @@
 import type { PluginInput } from '@opencode-ai/plugin';
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { isAbsolute, join } from 'node:path';
 import { homedir } from 'node:os';
 
 const PROTECTED_BRANCHES = ['main', 'master'];
@@ -58,6 +58,38 @@ function isAllowedRepo(cwd: string): boolean {
   return allowedRepos.some((allowed) => repo.includes(allowed));
 }
 
+// A trailer is the name followed by `:` (or `=`, the --trailer form), so a
+// message that merely talks about the trailer passes.
+const ATTRIBUTION_RE =
+  /co-authored-by\s*[:=]|generated with \[claude code\]|🤖 generated|claude\.ai\/code|claude\.com\/claude-code|noreply@anthropic\.com/i;
+
+// Every -F/--file after the first `git commit`. A file that does not exist yet
+// is written by the same command, so its text is already in the command.
+function messageFilesCarryAttribution(command: string, cwd: string): boolean {
+  const tail = command.match(/git[^;&|]*\scommit(\s[\s\S]*)/)?.[1];
+  if (!tail) return false;
+  const args = tail.matchAll(/\s(?:-[aqsvneziop]*F|--file)(?:\s*=\s*|\s*)("[^"]*"|'[^']*'|[^\s;&|]+)/g);
+  for (const m of args) {
+    const named = m[1].replace(/^["'](.*)["']$/, '$1');
+    if (!named || named === '-') continue;
+    if (/[$`]/.test(named)) {
+      throw new Error(
+        `BLOCKED: git-police cannot read the commit message file named by '${named}': the shell\n` +
+          `expands it after this check runs. Pass the literal path (git commit -F /path/to/message)\n` +
+          `so the message can be checked for AI attribution.`,
+      );
+    }
+    const expanded = named.replace(/^~/, homedir());
+    const file = isAbsolute(expanded) ? expanded : join(cwd, expanded);
+    try {
+      if (ATTRIBUTION_RE.test(readFileSync(file, 'utf-8'))) return true;
+    } catch {
+      continue;
+    }
+  }
+  return false;
+}
+
 function stripQuotedContent(command: string): string {
   return command
     .replace(/<<-?\s*['"]?(\w+)['"]?[\s\S]*?\n\1\b/g, '')
@@ -88,7 +120,7 @@ function isForgeWriteCommand(command: string): boolean {
   // Commands that publish authored content to the forge — MR/PR/issue
   // bodies, comments, release notes. Same no-AI-attribution rule as commit
   // messages: everything published under the user's name is theirs.
-  return /\bglab\s+(mr|issue)\s+(create|update|edit|note|comment)\b|\bgh\s+(pr|issue|release)\s+(create|edit|comment)\b/i.test(
+  return /\bglab\s+(mr|issue)\s+(create|update|edit|note|comment)\b|\bgh\s+(pr|issue|release)\s+(create|edit|comment)\b|\b(glab|gh)\s+api\b.*\s((-X|--method)[\s=]*(POST|PUT|PATCH)\b|(-f|-F|--field|--raw-field|--input)\b)/i.test(
     command,
   );
 }
@@ -165,12 +197,26 @@ export default async function gitPolice(ctx: PluginInput) {
     ): Promise<void> => {
       const toolName = input.tool?.toLowerCase();
       if (toolName !== 'bash') return;
-      if (isAllowedRepo(ctx.directory)) return;
-
       const command = output.args.command as string | undefined;
       if (!command) return;
 
       const stripped = stripQuotedContent(command);
+
+      // Text rules come first: allowed-repos lifts branch protection only, so
+      // it must not be able to skip attribution, --no-verify or force push.
+      if (
+        (isGitCommitCommand(stripped) || isForgeWriteCommand(stripped)) &&
+        (ATTRIBUTION_RE.test(command) || messageFilesCarryAttribution(command, ctx.directory))
+      ) {
+        throw new Error(
+          `BLOCKED: AI attribution is forbidden — in commit messages and in\n` +
+            `MR/PR/issue descriptions or comments alike. Do not add Co-authored-by,\n` +
+            `Signed-off-by, '🤖 Generated with [Claude Code]', claude.ai/code or\n` +
+            `claude.com/claude-code links, noreply@anthropic.com co-authors, or any\n` +
+            `other AI agent attribution. The author is whoever owns the git config.\n` +
+            `Remove the attribution and retry.`,
+        );
+      }
 
       if (/\bgit\b.*--no-verify\b/i.test(stripped)) {
         throw new Error(
@@ -187,6 +233,8 @@ export default async function gitPolice(ctx: PluginInput) {
             `If you truly need this, ask the user for explicit approval first.`,
         );
       }
+
+      if (isAllowedRepo(ctx.directory)) return;
 
       if (isGitPushToProtected(stripped)) {
         throw new Error(
@@ -221,25 +269,6 @@ export default async function gitPolice(ctx: PluginInput) {
               `Then commit your changes there and raise a PR.`,
           );
         }
-      }
-
-      // AI attribution is forbidden in commit messages AND in forge content
-      // (MR/PR/issue descriptions and comments slipped through when this was
-      // gated on `git commit` only).
-      if (
-        (isGitCommitCommand(stripped) || isForgeWriteCommand(stripped)) &&
-        /co-authored-by|generated with \[claude code\]|🤖 generated|claude\.ai\/code|claude\.com\/claude-code|noreply@anthropic\.com/i.test(
-          command,
-        )
-      ) {
-        throw new Error(
-          `BLOCKED: AI attribution is forbidden — in commit messages and in\n` +
-            `MR/PR/issue descriptions or comments alike. Do not add Co-authored-by,\n` +
-            `Signed-off-by, '🤖 Generated with [Claude Code]', claude.ai/code or\n` +
-            `claude.com/claude-code links, noreply@anthropic.com co-authors, or any\n` +
-            `other AI agent attribution. The author is whoever owns the git config.\n` +
-            `Remove the attribution and retry.`,
-        );
       }
 
       // 7. Stale branch protection

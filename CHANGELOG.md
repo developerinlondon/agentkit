@@ -15,16 +15,23 @@ release PR — "publish this" authorizes a release, never the tier.
   128 under `set -e`, and the harness read that non-zero exit as a non-blocking error: every rule
   after that line was skipped for the most common shape of agent command, and the same happened
   from any working directory that is not a repository. A target that is not a directory now falls
-  back to the hook's own directory, no `tgit` assignment can abort the hook, and the attribution
-  rule — pure text — runs ahead of every rule that needs repository state. A trailer in the file
-  a commit takes its message from (`-F`, `-qF`, `--file=`) is read and refused. The pattern wants
-  the trailer's `:` or `=`, so a message that talks about the trailer is allowed. The
-  `allowed-repos` escape hatch works on macOS: BSD sed rejected the lazy quantifier in the
-  repo-name extraction, so the name was always empty there. And a crash can never again read as
-  approval: an exit trap, installed before the payload is read and written without jq, refuses a
-  commit, push or forge write when the hook dies after reading it, and reports `UNCHECKED` when
-  the payload could not be read at all. Eight tests spawn the bash hook for these; all eight fail
-  against the v0.9.1 hook.
+  back to the hook's own directory, no `tgit` assignment can abort the hook, and a refusal built on
+  that guess says so and names the way through, a literal `git -C /path`. Attribution,
+  `--no-verify` and force push are pure text and now run ahead of both the repository-state rules
+  and `allowed-repos`, which lifts branch protection only, as its documentation always said; the
+  hatch was an unconditional exit above them, and an allow-listed working directory no longer
+  vouches for a target the hook could not resolve. Every file a commit takes its message from is
+  read: `-F path`, `-Fpath`, `-qF`, `--file=`, quoted paths with spaces, and each of several. A
+  message file named through a variable (`-F "$MSG"`) cannot be read before the shell expands it,
+  so it is refused with that reason rather than waved through. The pattern wants the trailer's `:`
+  or `=`, so a message that talks about the trailer is allowed. `allowed-repos` works on macOS:
+  BSD sed rejected the lazy quantifier in the repo-name extraction, so the name was always empty
+  there. And a crash can never again read as approval: an exit trap, installed before the payload
+  is read and written without jq, refuses a commit, push or forge write when the hook dies after
+  reading it, and reports `UNCHECKED` when the payload could not be read at all. The OpenCode
+  plugin gets the same ordering, pattern and message-file read. Twelve tests spawn the bash hook
+  for these and all twelve fail against the v0.9.1 hook. Forge writes
+  made through the raw API (`glab api`, `gh api`) are judged like `glab mr create`.
 
 ## v0.9.2 — 2026-09-21
 

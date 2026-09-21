@@ -2,7 +2,8 @@
 # git-police.sh — Claude Code PreToolUse hook (matcher: Bash)
 # Blocks: force push, --no-verify, AI attribution (commit trailers AND MR/PR/issue
 # content), commits to protected branches, stale branch creation
-# Equivalent to: plugins/git-police.ts (OpenCode)
+# OpenCode counterpart: plugins/git-police.ts (the text rules match; the
+# target-repository and crash handling below exist only here)
 set -euo pipefail
 
 # bash 3.2 cannot parse `(` inside [[ =~ ]], and this is a PreToolUse Bash
@@ -24,7 +25,7 @@ on_unexpected_exit() {
 	[[ $code -eq 0 ]] && return 0
 	trap - EXIT
 	local judged="${STRIPPED:-${COMMAND:-}}"
-	if [[ -n "$judged" ]] && echo "$judged" | grep -qiE '\bgit\b.*\b(commit|push)\b|\bglab[[:space:]]+(mr|issue)\b|\bgh[[:space:]]+(pr|issue|release)\b'; then
+	if [[ -n "$judged" ]] && echo "$judged" | grep -qiE '\bgit\b.*\b(commit|push)\b|\bglab[[:space:]]+(mr|issue)\b|\bgh[[:space:]]+(pr|issue|release)\b|\b(glab|gh)[[:space:]]+api\b'; then
 		local reason="BLOCKED: git-police failed (exit $code) before it could judge this command, and a guard that crashed has approved nothing. Re-run the hook under bash -x to see where it died."
 		printf '{"decision":"deny","reason":"%s","hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"%s"}}\n' "$reason" "$reason"
 	else
@@ -86,29 +87,24 @@ git_target_dir() {
 	if [[ -z "$dir" ]]; then
 		dir=$(echo "$1" | sed -nE 's/(^|.*[;&|])[[:space:]]*cd[[:space:]]+([^[:space:];&|]+).*/\2/p' | head -1)
 	fi
-	dir="${dir/#\~/$HOME}"
-	# `cd $W` and `git -C "$DIR"` reach here unexpanded. A path that is not a
-	# directory would make every tgit call exit 128; the cwd is a better guess
-	# than a target that cannot exist.
-	[[ -n "$dir" && ! -d "$dir" ]] && dir=""
 	echo "$dir"
 }
-TARGET_DIR=$(git_target_dir "$STRIPPED")
+NAMED_DIR=$(git_target_dir "$STRIPPED")
+TARGET_DIR="${NAMED_DIR/#\~/$HOME}"
+
+# `cd $W` and `git -C "$DIR"` reach here unexpanded or emptied. A path that is
+# not a directory would make every tgit call exit 128, so the hook's cwd is
+# judged instead, and every refusal built on that guess says so.
+TARGET_NOTE=""
+if [[ -n "$TARGET_DIR" && ! -d "$TARGET_DIR" ]]; then
+	TARGET_NOTE=" NOTE: git-police could not resolve the directory this command names (${NAMED_DIR}), so it judged the hook's working directory instead. If that is a different repository, name the real one with a literal path: git -C /absolute/path ..."
+	TARGET_DIR=""
+fi
 
 # git scoped to the targeted repo (cwd when the command names none).
 tgit() {
 	git ${TARGET_DIR:+-C "$TARGET_DIR"} "$@"
 }
-
-if [[ ${#ALLOWED_REPOS[@]} -gt 0 ]]; then
-	REPO_URL=$(tgit remote get-url origin 2>/dev/null || echo "")
-	REPO_NAME=$(echo "${REPO_URL%.git}" | sed -E 's|.*[:/]([^/]+/[^/]+)$|\1|')
-	for allowed in "${ALLOWED_REPOS[@]+"${ALLOWED_REPOS[@]}"}"; do
-		if [[ "$REPO_NAME" == *"$allowed"* ]]; then
-			exit 0
-		fi
-	done
-fi
 
 deny() {
 	local reason="$1"
@@ -132,32 +128,30 @@ advise() {
 GIT_COMMIT_RE='\bgit([[:space:]]+(-[A-Za-z][^[:space:]]*|--[A-Za-z][A-Za-z0-9-]*(=[^[:space:]]+)?)([[:space:]]+[^-[:space:]][^[:space:]]*)?)*[[:space:]]+commit\b'
 
 # Commands that publish authored content to the forge — MR/PR/issue bodies,
-# comments, release notes. Same no-AI-attribution rule as commit messages:
+# comments, release notes, and raw API calls that write (a method or a field). Same no-AI-attribution rule as commit messages:
 # everything published under the user's name is theirs, not the agent's.
-FORGE_WRITE_RE='\bglab[[:space:]]+(mr|issue)[[:space:]]+(create|update|edit|note|comment)\b|\bgh[[:space:]]+(pr|issue|release)[[:space:]]+(create|edit|comment)\b'
+FORGE_WRITE_RE='\bglab[[:space:]]+(mr|issue)[[:space:]]+(create|update|edit|note|comment)\b|\bgh[[:space:]]+(pr|issue|release)[[:space:]]+(create|edit|comment)\b|\b(glab|gh)[[:space:]]+api\b.*[[:space:]](-X|--method)[[:space:]=]*(POST|PUT|PATCH)\b|\b(glab|gh)[[:space:]]+api\b.*[[:space:]](-f|-F|--field|--raw-field|--input)\b'
 
 # A trailer is the name followed by `:` (or `=`, the --trailer form). Requiring
 # the separator lets a message that merely talks about the trailer through.
 ATTRIBUTION_RE='co-authored-by[[:space:]]*[:=]|generated with \[claude code\]|🤖 generated|claude\.ai/code|claude\.com/claude-code|noreply@anthropic\.com'
 
-# The file a commit takes its message from (-F/--file, also bundled as -qF), or
-# nothing. `-` is stdin, whose heredoc is already in the payload. A file that
-# does not exist yet is being written by this same command, so its text is in
-# the payload too.
-commit_message_file() {
-	local file
-	file=$(echo "$COMMAND" | sed -nE "s/.*[[:space:]](-[A-Za-z]*F|--file)[[:space:]=]+[\"']?([^[:space:];&|\"']+).*/\2/p" | head -1)
-	[[ -z "$file" || "$file" == "-" ]] && return 0
-	file="${file/#\~/$HOME}"
-	[[ "$file" != /* && -n "$TARGET_DIR" ]] && file="$TARGET_DIR/$file"
-	[[ -f "$file" && -r "$file" ]] && echo "$file"
-	return 0
+# Every file a commit takes its message from: -F<path>, -F <path>, bundled as
+# -qF, --file <path>, --file=<path>, quoted or not, one per line. Read from the
+# first `git commit` to the end of the command, so a `grep -F` before it is not
+# mistaken for one. `-` is stdin, whose heredoc is already in the payload.
+RE_COMMIT_TAIL='git[^;&|]*[[:space:]]commit([[:space:]].*)'
+commit_message_args() {
+	[[ "$COMMAND" =~ $RE_COMMIT_TAIL ]] || return 0
+	echo "${BASH_REMATCH[1]}" |
+		{ grep -oE -- "[[:space:]](-[aqsvneziop]*F|--file)([[:space:]]*=[[:space:]]*|[[:space:]]*)(\"[^\"]*\"|'[^']*'|[^[:space:];&|]+)" || true; } |
+		sed -E "s/^[[:space:]]*(-[aqsvneziop]*F|--file)[[:space:]]*=?[[:space:]]*//; s/^[\"'](.*)[\"']\$/\1/"
 }
 
 # 0. Block AI attribution trailers / signatures in commit commands AND in
-#    forge-content commands. Pure text, so it runs ahead of every rule that
-#    needs repository state: a target the hook cannot resolve must not be able
-#    to skip it.
+#    forge-content commands. Pure text, so it runs ahead of the allow-list and
+#    of every rule that needs repository state: neither an exempt repository
+#    nor a target the hook cannot resolve may skip it.
 #    The payload is what agentkit_slurp_input read from stdin. Naming any
 #    other variable here trips `set -u` in the pipeline's subshell only: the
 #    echo dies, grep reads nothing, the test is false, and this one rule never
@@ -165,10 +159,23 @@ commit_message_file() {
 if echo "$STRIPPED" | grep -qiE "$GIT_COMMIT_RE" || echo "$STRIPPED" | grep -qiE "$FORGE_WRITE_RE"; then
 	ATTRIBUTED=false
 	echo "${AGENTKIT_RAW_INPUT:-}" | grep -qiE "$ATTRIBUTION_RE" && ATTRIBUTED=true
-	MESSAGE_FILE=$(commit_message_file)
-	if [[ "$ATTRIBUTED" == false && -n "$MESSAGE_FILE" ]] && grep -qiE "$ATTRIBUTION_RE" "$MESSAGE_FILE"; then
-		ATTRIBUTED=true
-	fi
+	while IFS= read -r MESSAGE_FILE; do
+		[[ -z "$MESSAGE_FILE" || "$MESSAGE_FILE" == "-" ]] && continue
+		# The shell expands these after this hook has run; the message they
+		# name cannot be read from here, and an unread message is not a clean one.
+		case "$MESSAGE_FILE" in
+		*'$'* | *'`'*)
+			deny "BLOCKED: git-police cannot read the commit message file named by '${MESSAGE_FILE}': the shell expands it after this hook runs. Pass the literal path (git commit -F /path/to/message) so the message can be checked for AI attribution."
+			;;
+		esac
+		MESSAGE_FILE="${MESSAGE_FILE/#\~/$HOME}"
+		[[ "$MESSAGE_FILE" != /* && -n "$TARGET_DIR" ]] && MESSAGE_FILE="$TARGET_DIR/$MESSAGE_FILE"
+		# A file that does not exist yet is written by this same command, so
+		# its text is in the payload already.
+		if [[ -f "$MESSAGE_FILE" && -r "$MESSAGE_FILE" ]] && grep -qiE "$ATTRIBUTION_RE" "$MESSAGE_FILE"; then
+			ATTRIBUTED=true
+		fi
+	done < <(commit_message_args)
 	if [[ "$ATTRIBUTED" == true ]]; then
 		deny "BLOCKED: AI attribution is forbidden — in commit messages and in MR/PR/issue descriptions or comments alike. Do not add Co-authored-by, Signed-off-by, '🤖 Generated with [Claude Code]', claude.ai/code or claude.com/claude-code links, noreply@anthropic.com co-authors, or any other AI agent attribution. The author is whoever owns the git config. Remove the attribution and retry."
 	fi
@@ -188,6 +195,19 @@ GIT_PUSH_RE='\bgit([[:space:]]+(-[A-Za-z][^[:space:]]*|--[A-Za-z][A-Za-z0-9-]*(=
 #    remote history; sanctioned rewrites are pushed by the user directly.
 if echo "$STRIPPED" | grep -qiE "${GIT_PUSH_RE}"'.*(-f\b|--force\b|--force-with-lease\b)'; then
 	deny "BLOCKED: Force push is forbidden. Force pushing rewrites history and can destroy work. If a history rewrite is truly required, prepare the branch and ask the user to run the force push themselves."
+fi
+
+# allowed-repos lifts branch protection only: direct commits and pushes to
+# main/master. Attribution, --no-verify and force push are judged above it,
+# and a repository the hook could not resolve is never taken for an allowed one.
+if [[ ${#ALLOWED_REPOS[@]} -gt 0 && -z "$TARGET_NOTE" ]]; then
+	REPO_URL=$(tgit remote get-url origin 2>/dev/null || echo "")
+	REPO_NAME=$(echo "${REPO_URL%.git}" | sed -E 's|.*[:/]([^/]+/[^/]+)$|\1|')
+	for allowed in "${ALLOWED_REPOS[@]+"${ALLOWED_REPOS[@]}"}"; do
+		if [[ "$REPO_NAME" == *"$allowed"* ]]; then
+			exit 0
+		fi
+	done
 fi
 
 # The remote a push targets: the first non-flag token after `push` (empty for
@@ -237,7 +257,7 @@ if [[ "$SHARED_BRANCH_OK" != "1" ]] \
 
   git worktree add ../${REPO_BASE}-wt/<name> -b <branch> origin/<default>
 
-Intentional (nobody else is in this clone): prefix with AGENTKIT_ALLOW_SHARED_BRANCH=1."
+Intentional (nobody else is in this clone): prefix with AGENTKIT_ALLOW_SHARED_BRANCH=1.${TARGET_NOTE}"
 		fi
 	fi
 fi
@@ -247,7 +267,7 @@ if [[ -z "$PUSH_REMOTE" || "$PUSH_REMOTE" == "origin" ]] \
 	CURRENT_BRANCH=$(tgit symbolic-ref --short HEAD 2>/dev/null || echo "")
 	for branch in "${PROTECTED_BRANCHES[@]+"${PROTECTED_BRANCHES[@]}"}"; do
 		if [[ "$CURRENT_BRANCH" == "$branch" ]]; then
-			deny "BLOCKED: You are on '${branch}'. Pushing from a protected branch is forbidden. Create a feature branch first: git checkout -b feat/your-feature-name"
+			deny "BLOCKED: You are on '${branch}'. Pushing from a protected branch is forbidden. Create a feature branch first: git checkout -b feat/your-feature-name${TARGET_NOTE}"
 		fi
 	done
 fi
@@ -286,7 +306,7 @@ if [[ -z "$PUSH_REMOTE" || "$PUSH_REMOTE" == "origin" ]] \
 		tgit fetch --quiet origin "$DEFAULT_BRANCH" 2>/dev/null || true
 		BEHIND=$(tgit rev-list --count "HEAD..origin/${DEFAULT_BRANCH}" 2>/dev/null || echo 0)
 		if [[ "${BEHIND:-0}" -gt 0 ]]; then
-			deny "BLOCKED: Your branch is ${BEHIND} commit(s) behind origin/${DEFAULT_BRANCH}. Merge the latest ${DEFAULT_BRANCH} before pushing: git fetch origin && git merge origin/${DEFAULT_BRANCH} — resolve any conflicts, re-run the repo's gates, then push. Intentional stale push: prefix the command with AGENTKIT_ALLOW_STALE_PUSH=1. MRs targeting a different branch: git config agentkit.integration-branch <branch>."
+			deny "BLOCKED: Your branch is ${BEHIND} commit(s) behind origin/${DEFAULT_BRANCH}. Merge the latest ${DEFAULT_BRANCH} before pushing: git fetch origin && git merge origin/${DEFAULT_BRANCH} — resolve any conflicts, re-run the repo's gates, then push. Intentional stale push: prefix the command with AGENTKIT_ALLOW_STALE_PUSH=1. MRs targeting a different branch: git config agentkit.integration-branch <branch>.${TARGET_NOTE}"
 		fi
 	fi
 fi
@@ -296,7 +316,7 @@ if echo "$STRIPPED" | grep -qiE "$GIT_COMMIT_RE"; then
 	CURRENT_BRANCH=$(tgit symbolic-ref --short HEAD 2>/dev/null || echo "")
 	for branch in "${PROTECTED_BRANCHES[@]+"${PROTECTED_BRANCHES[@]}"}"; do
 		if [[ "$CURRENT_BRANCH" == "$branch" ]]; then
-			deny "BLOCKED: Committing directly to '${branch}' is forbidden. You are on the ${branch} branch. Create a feature branch first: git checkout -b feat/your-feature-name"
+			deny "BLOCKED: Committing directly to '${branch}' is forbidden. You are on the ${branch} branch. Create a feature branch first: git checkout -b feat/your-feature-name${TARGET_NOTE}"
 		fi
 	done
 fi
@@ -325,7 +345,7 @@ if echo "$STRIPPED" | grep -qiE '\bgit\b.*(checkout\s+-b|switch\s+-c)\b'; then
 			[[ -n "$base" && "$CURRENT_BRANCH" == "$base" ]] && ON_BASE=true
 		done
 		if [[ "$ON_BASE" == false ]]; then
-			deny "BLOCKED: The targeted repo is on feature branch '${CURRENT_BRANCH}'. Cut new branches from the freshly pulled default branch (squash merges make stacked branches conflict once the first MR merges). Run: git checkout ${DEFAULT_BRANCH:-main} && git pull, then create the branch. Intentional stacking: prefix the command with AGENTKIT_ALLOW_BRANCH_STACKING=1."
+			deny "BLOCKED: The targeted repo is on feature branch '${CURRENT_BRANCH}'. Cut new branches from the freshly pulled default branch (squash merges make stacked branches conflict once the first MR merges). Run: git checkout ${DEFAULT_BRANCH:-main} && git pull, then create the branch. Intentional stacking: prefix the command with AGENTKIT_ALLOW_BRANCH_STACKING=1.${TARGET_NOTE}"
 		fi
 	fi
 	tgit fetch -p --quiet 2>/dev/null || true
@@ -337,7 +357,7 @@ if echo "$STRIPPED" | grep -qiE '\bgit\b.*(checkout\s+-b|switch\s+-c)\b'; then
 	# and take $2 when the current-branch `*` marker is present.
 	GONE=$(tgit branch -vv 2>/dev/null | grep ': gone]' | grep -v '^+ ' | awk '{print ($1=="*") ? $2 : $1}' | tr '\n' ' ' || true)
 	if [[ -n "${GONE// /}" ]]; then
-		deny "BLOCKED: Stale local branches with deleted upstreams: ${GONE}. Clean up before starting new work: git branch -vv | grep ': gone]' | grep -v '^+ ' | awk '{print (\$1=="*")?\$2:\$1}' | xargs -r git branch -D"
+		deny "BLOCKED: Stale local branches with deleted upstreams: ${GONE}. Clean up before starting new work: git branch -vv | grep ': gone]' | grep -v '^+ ' | awk '{print (\$1=="*")?\$2:\$1}' | xargs -r git branch -D${TARGET_NOTE}"
 	fi
 fi
 
@@ -352,7 +372,7 @@ if echo "$STRIPPED" | grep -qiE '\bgit\b.*(checkout\s+-b|switch\s+-c)\b'; then
 			if [[ -n "$LOCAL_SHA" && -n "$REMOTE_SHA" && "$LOCAL_SHA" != "$REMOTE_SHA" ]]; then
 				BEHIND=$(tgit rev-list --count "$branch..origin/$branch" 2>/dev/null || echo "0")
 				if [[ "$BEHIND" -gt 0 ]]; then
-					deny "BLOCKED: Your local '${branch}' is ${BEHIND} commit(s) behind origin/${branch}. Run 'git pull origin ${branch}' first to avoid creating a branch from stale code. This prevents merge conflicts and wasted rebases."
+					deny "BLOCKED: Your local '${branch}' is ${BEHIND} commit(s) behind origin/${branch}. Run 'git pull origin ${branch}' first to avoid creating a branch from stale code. This prevents merge conflicts and wasted rebases.${TARGET_NOTE}"
 				fi
 			fi
 		fi
@@ -443,7 +463,7 @@ if [[ "$BRANCH_WIP_MAX" =~ ^[1-9][0-9]*$ ]] && [[ -r "$WIP_LIB" ]] \
 
 	if [[ "$WIP_COUNT" -ge "$BRANCH_WIP_MAX" ]]; then
 		if [[ "$WIP_ASKED" == true ]]; then
-			deny "${WIP_WARN}BLOCKED: ${WIP_COUNT} branch(es) in this repo are unfinished —${WIP_LIST}. The forge says each is either open or has never had a change raised from it, and no worktree is holding any of them. Finish one before starting another: open its MR/PR and get it merged. Only if one is genuinely dead, confirm with 'git worktree list' and 'git log' first, then delete it. Concurrent work: prefix the command with AGENTKIT_BRANCH_WIP_MAX=<n>, or AGENTKIT_BRANCH_WIP_MAX=off to switch the cap off."
+			deny "${WIP_WARN}BLOCKED: ${WIP_COUNT} branch(es) in this repo are unfinished —${WIP_LIST}. The forge says each is either open or has never had a change raised from it, and no worktree is holding any of them. Finish one before starting another: open its MR/PR and get it merged. Only if one is genuinely dead, confirm with 'git worktree list' and 'git log' first, then delete it. Concurrent work: prefix the command with AGENTKIT_BRANCH_WIP_MAX=<n>, or AGENTKIT_BRANCH_WIP_MAX=off to switch the cap off.${TARGET_NOTE}"
 		fi
 		# Silence would read as a clean repository. A repo with no remote has no
 		# forge to be unreachable, so that one stays quiet instead.
