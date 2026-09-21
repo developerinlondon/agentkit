@@ -9,6 +9,35 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+- fix(git-police): **the hook can no longer be walked around, or die into an allow.** Fixing the
+  attribution rule in v0.9.1 exposed three ways past it. A `cd $W` or a `git -C "$DIR"` reaches
+  the hook unexpanded, so the target directory did not exist, a `tgit … | sed` assignment exited
+  128 under `set -e`, and the harness read that non-zero exit as a non-blocking error: every rule
+  after that line was skipped for the most common shape of agent command, and the same happened
+  from any working directory that is not a repository. A target that is not a directory now falls
+  back to the hook's own directory, no `tgit` assignment can abort the hook, and a refusal built on
+  that guess says so and names the way through, a literal `git -C /path`. Attribution,
+  `--no-verify` and force push are pure text and now run ahead of both the repository-state rules
+  and `allowed-repos`, which still lifts every rule that reads repository state but no longer a
+  text rule; the
+  hatch was an unconditional exit above them, and an allow-listed working directory no longer
+  vouches for a target the hook could not resolve. Every file a commit takes its message from is
+  read: `-F path`, `-Fpath`, `-qF`, `--file=`, quoted paths with spaces, and each of several. A
+  message file named through a variable (`-F "$MSG"`) cannot be read before the shell expands it,
+  so it is refused with that reason rather than waved through. The pattern wants the trailer's `:`
+  or `=`, so a message that talks about the trailer is allowed. `allowed-repos` works on macOS:
+  BSD sed rejected the lazy quantifier in the repo-name extraction, so the name was always empty
+  there. And a crash the shell reports no longer reads as approval: an exit trap, installed before the payload
+  is read and written without jq, refuses a commit, push or forge write when the hook dies after
+  reading it, and reports `UNCHECKED` when the payload could not be read at all. The OpenCode
+  plugin gets the same ordering, pattern and message-file read. Eighteen tests spawn the bash hook
+  for these and all but the stall test fail against the v0.9.1 hook. `$HOME` is read as `${HOME:-}`: bash
+  3.2 skips the exit trap when `set -u` aborts a top-level assignment, so an unset `HOME` was a
+  silent exit. Forge writes
+  made through the raw API (`glab api`, `gh api`) are judged like `glab mr create`, and so are `gh pr merge --body`, `--body-file`, an annotated
+  tag and a note. A PATH without `grep` would have made every rule evaluate false in silence; the
+  hook now reports `UNCHECKED` instead.
+
 ## v0.9.2 — 2026-09-21
 
 - fix(taste): **a repository's tastes bind the commands that act in it, wherever the session
