@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { evaluateCommand, tasteLanes } from '../../skills/taste/scripts/police.ts';
@@ -328,7 +335,9 @@ describe('the cheap path stays cheap', () => {
     repository(parent, 'other');
     const lanes = tasteLanes('cd repo && git tag v0.8.0', parent, scratch(), {});
 
-    expect(lanes.map((lane) => lane.cwd)).toEqual([parent, join(parent, 'repo')]);
+    // The lane is the followed path, which on a machine whose temporary
+    // directory is a link is not the one the command spells.
+    expect(lanes.map((lane) => lane.cwd)).toEqual([parent, realpathSync(join(parent, 'repo'))]);
   });
 });
 
