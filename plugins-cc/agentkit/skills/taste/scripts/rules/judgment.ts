@@ -14,6 +14,8 @@ import {
   programInvocation,
   programOf,
   programWords,
+  SUBSHELL_CLOSE,
+  SUBSHELL_OPEN,
 } from './tag-command.ts';
 
 export const MAX_QUESTION_LENGTH = 500;
@@ -33,7 +35,12 @@ const EXPANDS = /[$`]/;
 const DASH_C = /^-[a-zA-Z]*c[a-zA-Z]*$/;
 // A wrapper inside a wrapper is legitimate and rare; deeper than this is a
 // generated command, and reading one confidently is not on offer.
-const MAX_WRAPPER_DEPTH = 3;
+export const MAX_WRAPPER_DEPTH = 3;
+// A quote the tokeniser cannot resolve. It strips one surrounding pair and
+// never unescapes, so an escaped quote inside a quoted run reads as text it is
+// not, and a quote that never closes ends the reading early — and both look
+// exactly like a command that holds no commit.
+const NESTED_QUOTE = /\\["']/;
 // A path this check may resolve itself: spelled out in the command, with
 // nothing for a shell to expand into something else.
 const LITERAL_PATH = /^[^$`*?~\[\]{}!]+$/;
@@ -133,79 +140,133 @@ function wrapped(segment: readonly string[]): { name: string; text: string } | u
   return undefined;
 }
 
-// A wrapped command whose text is spelled out is the same command with quotes
-// round it, so it is read as one. Only text a shell would build at run time is
-// genuinely out of sight, and saying so about every wrapped call would put a
-// notice on commands that were never going to commit.
-function readable(
-  segments: readonly string[][],
-  depth: number,
-): string[][] | { unchecked: string } {
-  const found: string[][] = [];
-  for (const segment of segments) {
-    const inner = wrapped(segment);
-    if (inner === undefined) {
-      found.push(segment);
-      continue;
-    }
-    if (EXPANDS.test(inner.text) || depth >= MAX_WRAPPER_DEPTH) {
-      return {
-        unchecked: `the command runs through ${inner.name} on text built at run time, so `
-          + 'whether it commits, and what it commits, is not something this check can read',
-      };
-    }
-    const expanded = readable(commandSegments(inner.text), depth + 1);
-    if (!Array.isArray(expanded)) return expanded;
-    found.push(...expanded);
+function balanced(text: string): boolean {
+  let single = false;
+  let double = false;
+  for (const char of text) {
+    if (char === "'" && !double) single = !single;
+    else if (char === '"' && !single) double = !double;
   }
-  return found;
+  return !single && !double;
+}
+
+// Said only of a command that mentions a shell wrapper, because that is where
+// quoting this cannot resolve hides a whole command rather than mangling one
+// argument of a command already in view.
+function unreadableQuoting(command: string): string | undefined {
+  const wrappers = ['eval', ...SHELLS].join('|');
+  if (!new RegExp(`(?:^|[\\s;&|(])(?:${wrappers})(?:\\s|$)`).test(command)) return undefined;
+  if (NESTED_QUOTE.test(command)) return 'an escaped quote inside a quoted run';
+  if (!balanced(command)) return 'quoting that never closes';
+  return undefined;
 }
 
 // Where a `cd` names its destination outright, reading it is not a guess; the
 // tree the commit applies to is in the command. Anything a shell would expand
 // stays unreadable, and so does `pushd`, whose later `popd` moves it back.
-function movedTo(segments: readonly string[][], before: number, cwd: string):
-  | string
-  | { unchecked: string }
-{
-  let dir = cwd;
-  for (const segment of segments.slice(0, before)) {
-    const program = programOf(segment);
-    if (program === undefined || !CHANGES_DIRECTORY.includes(program)) continue;
-
-    const args = segment.slice(segment.indexOf(program) + 1);
-    const target = args[0];
-    if (program !== 'cd' || args.length !== 1 || target === undefined
-      || !LITERAL_PATH.test(target)) {
-      return {
-        unchecked: 'the command changes directory before committing in a way this check cannot '
-          + 'read, so the repository it commits in is not the one this check would look at',
-      };
-    }
-    dir = isAbsolute(target) ? target : resolve(dir, target);
-  }
-  return dir;
-}
-
-// A directory change ahead of the commit moves the tree it applies to, and the
-// hook is told only where it was invoked. Saying so beats judging the wrong
-// repository, which would refuse or clear a change nobody is making.
-function commitIn(command: string, cwd: string): Found {
-  const read = readable(commandSegments(command), 0);
-  if (!Array.isArray(read)) return read;
-  const segments = read;
-
-  for (let index = 0; index < segments.length; index += 1) {
-    const invocation = programInvocation(segments[index] as string[], 'git', GIT_GLOBAL_VALUED);
-    if (invocation === undefined || invocation.words[0] !== 'commit') continue;
-
-    const moved = movedTo(segments, index, cwd);
-    if (typeof moved !== 'string') return moved;
+function movedBy(
+  segment: readonly string[],
+  program: string,
+  dir: string,
+): string | { unchecked: string } {
+  const args = segment.slice(segment.indexOf(program) + 1);
+  const target = args[0];
+  if (
+    program !== 'cd' || args.length !== 1 || target === undefined || !LITERAL_PATH.test(target)
+  ) {
     return {
-      commit: readCommit(invocation.words.slice(1), invocation.options, moved),
+      unchecked: 'the command changes directory before committing in a way this check cannot '
+        + 'read, so the repository it commits in is not the one this check would look at',
     };
   }
+  return isAbsolute(target) ? target : resolve(dir, target);
+}
+
+type Hit<T> = { hit: T } | { unchecked: string };
+
+interface Frame {
+  dir: string;
+  blocked: string | undefined;
+}
+
+// One walk for every shape that asks "does this command do X, and where". A
+// subshell and a wrapper are both scopes: a `cd` inside one moves what that
+// scope's own commands see and nothing after it, which is why the walk carries
+// a stack instead of flattening everything into one list.
+function walk<T>(
+  segments: readonly string[][],
+  cwd: string,
+  depth: number,
+  look: (segment: readonly string[], dir: string) => T | undefined,
+): Hit<T> | undefined {
+  const frames: Frame[] = [];
+  let dir = cwd;
+  let blocked: string | undefined;
+
+  for (const segment of segments) {
+    if (segment.length === 1 && segment[0] === SUBSHELL_OPEN) {
+      frames.push({ dir, blocked });
+      continue;
+    }
+    if (segment.length === 1 && segment[0] === SUBSHELL_CLOSE) {
+      const left = frames.pop();
+      if (left !== undefined) {
+        dir = left.dir;
+        blocked = left.blocked;
+      }
+      continue;
+    }
+
+    const inner = wrapped(segment);
+    if (inner !== undefined) {
+      if (depth + 1 > MAX_WRAPPER_DEPTH) {
+        return {
+          unchecked: `the command nests wrappers more than ${MAX_WRAPPER_DEPTH} deep, so what `
+            + 'finally runs is not something this check can read',
+        };
+      }
+      if (EXPANDS.test(inner.text)) {
+        return {
+          unchecked: `the command runs through ${inner.name} on text built at run time, so `
+            + 'whether it commits, and what it commits, is not something this check can read',
+        };
+      }
+      const found = walk(commandSegments(inner.text), dir, depth + 1, look);
+      if (found !== undefined) return found;
+      continue;
+    }
+
+    const program = programOf(segment);
+    if (program !== undefined && CHANGES_DIRECTORY.includes(program)) {
+      const moved = movedBy(segment, program, dir);
+      if (typeof moved === 'string') dir = moved;
+      else blocked = moved.unchecked;
+      continue;
+    }
+
+    const hit = look(segment, dir);
+    if (hit !== undefined) return blocked === undefined ? { hit } : { unchecked: blocked };
+  }
   return undefined;
+}
+
+function commitAt(segment: readonly string[], dir: string): Commit | undefined {
+  const invocation = programInvocation(segment, 'git', GIT_GLOBAL_VALUED);
+  if (invocation === undefined || invocation.words[0] !== 'commit') return undefined;
+  return readCommit(invocation.words.slice(1), invocation.options, dir);
+}
+
+function commitIn(command: string, cwd: string): Found {
+  const quoting = unreadableQuoting(command);
+  if (quoting !== undefined) {
+    return {
+      unchecked: `the command carries ${quoting}, so whether it commits, and what it commits, `
+        + 'is not something this check can read',
+    };
+  }
+  const found = walk(commandSegments(command), cwd, 0, commitAt);
+  if (found === undefined) return undefined;
+  return 'unchecked' in found ? found : { commit: found.hit };
 }
 
 // -C is where git runs; --git-dir and --work-tree take it apart, and a diff
@@ -230,14 +291,25 @@ function repositoryOf(commit: Commit): string | { unchecked: string } {
   return dir;
 }
 
-function mergeRequestIn(command: string): boolean {
-  for (const segment of commandSegments(command)) {
-    const gh = programWords(segment, 'gh', FORGE_GLOBAL_VALUED);
-    if (gh?.[0] === 'pr' && gh[1] === 'create') return true;
-    const glab = programWords(segment, 'glab', FORGE_GLOBAL_VALUED);
-    if (glab?.[0] === 'mr' && glab[1] === 'create') return true;
+function openingAt(segment: readonly string[]): true | undefined {
+  const gh = programWords(segment, 'gh', FORGE_GLOBAL_VALUED);
+  if (gh?.[0] === 'pr' && gh[1] === 'create') return true;
+  const glab = programWords(segment, 'glab', FORGE_GLOBAL_VALUED);
+  if (glab?.[0] === 'mr' && glab[1] === 'create') return true;
+  return undefined;
+}
+
+// The same reader the commit side uses, so a forge command inside a wrapper is
+// seen exactly as one outside it.
+function mergeRequestIn(command: string, cwd: string): Hit<true> | undefined {
+  const quoting = unreadableQuoting(command);
+  if (quoting !== undefined) {
+    return {
+      unchecked: `the command carries ${quoting}, so whether it opens a merge request is not `
+        + 'something this check can read',
+    };
   }
-  return false;
+  return walk(commandSegments(command), cwd, 0, openingAt);
 }
 
 function firstLine(text: string): string {
@@ -357,7 +429,9 @@ async function scopeOf(on: string, request: KindRequest): Promise<Scope> {
   if (on === 'commit') return await commitScope(request);
 
   if (on === 'merge-request') {
-    if (!mergeRequestIn(request.command)) return { out: true };
+    const opening = mergeRequestIn(request.command, request.cwd);
+    if (opening === undefined) return { out: true };
+    if ('unchecked' in opening) return opening;
     const diff = await mergeRequestDiff(request);
     if ('unchecked' in diff) return diff;
     return { subject: { message: '', diff: cut(diff.text, MAX_DIFF_LENGTH, DIFF_CUT) } };
@@ -382,7 +456,7 @@ export const JUDGMENT: RuleKind = {
   applies(fields: Record<string, string>, command: string, cwd: string): boolean {
     const on = fields.on ?? 'commit';
     if (on === 'any') return true;
-    if (on === 'merge-request') return mergeRequestIn(command);
+    if (on === 'merge-request') return mergeRequestIn(command, cwd) !== undefined;
     if (on !== 'commit') return false;
     return commitIn(command, cwd) !== undefined;
   },
