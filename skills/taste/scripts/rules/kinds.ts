@@ -28,7 +28,9 @@ export interface KindRequest {
 // skipped means this taste could not be applied, unchecked means the state the
 // check needed could not be read.
 export type KindOutcome =
-  | { verdict: 'fires'; finding: string }
+  // `notice` is what the kind could not look at while finding what it did: a
+  // refusal that read part of a command must not imply it read all of it.
+  | { verdict: 'fires'; finding: string; notice?: string }
   | { verdict: 'passes' }
   | { verdict: 'skipped'; detail: string }
   | { verdict: 'unchecked'; detail: string };

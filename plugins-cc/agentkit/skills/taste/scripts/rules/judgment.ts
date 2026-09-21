@@ -119,7 +119,12 @@ function readCommit(words: readonly string[], options: string[], cwd: string): C
   return { message: messages.join('\n\n'), all, amend, options, cwd };
 }
 
-type Found = { commits: Commit[] } | { unchecked: string } | undefined;
+// What was read, and what could not be. Both at once: a command can name a
+// commit this follows and then go somewhere it does not.
+interface Found {
+  commits: Commit[];
+  unread?: string;
+}
 
 // A program whose job is to run another one. It is not the command; what it
 // launches is, so a commit or a shell behind one is read exactly as it would be
@@ -139,12 +144,7 @@ const LAUNCHERS: readonly Launcher[] = [
   { name: 'nohup', valued: [], positionals: 0 },
   { name: 'sudo', valued: ['-u', '--user', '-g', '--group', '-p', '--prompt'], positionals: 0 },
   { name: 'nice', valued: ['-n', '--adjustment'], positionals: 0 },
-  {
-    name: 'xargs',
-    valued: ['-n', '-P', '-I', '-d', '-E', '-L', '-s'],
-    positionals: 0,
-    assignments: false,
-  },
+  { name: 'xargs', valued: ['-n', '-P', '-I', '-d', '-E', '-L', '-s'], positionals: 0 },
 ];
 
 // Found by name rather than by key lookup: `constructor` resolves on any plain
@@ -257,7 +257,10 @@ function movedBy(
   return isAbsolute(target) ? target : resolve(dir, target);
 }
 
-type Hit<T> = { hits: T[] } | { unchecked: string };
+interface Hit<T> {
+  hits: T[];
+  unread?: string;
+}
 
 interface Frame {
   dir: string;
@@ -302,19 +305,21 @@ function walk<T>(
     if (inner !== undefined) {
       if (depth + 1 > MAX_WRAPPER_DEPTH) {
         return {
-          unchecked: `the command nests wrappers more than ${MAX_WRAPPER_DEPTH} deep, so what `
+          hits,
+          unread: `the command nests wrappers more than ${MAX_WRAPPER_DEPTH} deep, so what `
             + 'finally runs is not something this check can read',
         };
       }
       if (EXPANDS.test(inner.text)) {
         return {
-          unchecked: `the command runs through ${inner.name} on text built at run time, so `
+          hits,
+          unread: `the command runs through ${inner.name} on text built at run time, so `
             + 'whether it commits, and what it commits, is not something this check can read',
         };
       }
       const found = walk(commandSegments(inner.text), dir, depth + 1, look, blocked);
-      if ('unchecked' in found) return found;
       hits.push(...found.hits);
+      if (found.unread !== undefined) return { hits, unread: found.unread };
       continue;
     }
 
@@ -328,10 +333,10 @@ function walk<T>(
 
     const hit = look(segment, dir);
     if (hit === undefined) continue;
-    // A command this could not follow makes every commit after it unreadable,
-    // so the first one reached under a block ends the walk rather than joining
-    // a list that would be judged against the wrong tree.
-    if (blocked !== undefined) return { unchecked: blocked };
+    // A command this could not follow makes everything after it unreadable, so
+    // the first hit reached under a block ends the walk — but what was read
+    // before the block was read correctly, and is carried out with it.
+    if (blocked !== undefined) return { hits, unread: blocked };
     hits.push(hit);
   }
   return { hits };
@@ -343,18 +348,19 @@ function commitAt(segment: readonly string[], dir: string): Commit | undefined {
   return readCommit(invocation.words.slice(1), invocation.options, dir);
 }
 
-function commitIn(command: string, cwd: string): Found {
+function commitIn(command: string, cwd: string): Found | undefined {
   const segments = commandSegments(command);
   const quoting = unreadableQuoting(command, segments);
   if (quoting !== undefined) {
     return {
-      unchecked: `the command carries ${quoting}, so whether it commits, and what it commits, `
+      commits: [],
+      unread: `the command carries ${quoting}, so whether it commits, and what it commits, `
         + 'is not something this check can read',
     };
   }
   const found = walk(segments, cwd, 0, commitAt);
-  if ('unchecked' in found) return found;
-  return found.hits.length === 0 ? undefined : { commits: found.hits };
+  if (found.hits.length === 0 && found.unread === undefined) return undefined;
+  return { commits: found.hits, unread: found.unread };
 }
 
 // -C is where git runs; --git-dir and --work-tree take it apart, and a diff
@@ -394,13 +400,14 @@ function mergeRequestIn(command: string, cwd: string): Hit<true> | undefined {
   const quoting = unreadableQuoting(command, segments);
   if (quoting !== undefined) {
     return {
-      unchecked: `the command carries ${quoting}, so whether it opens a merge request is not `
+      hits: [],
+      unread: `the command carries ${quoting}, so whether it opens a merge request is not `
         + 'something this check can read',
     };
   }
   const found = walk(segments, cwd, 0, openingAt);
-  if ('unchecked' in found) return found;
-  return found.hits.length === 0 ? undefined : found;
+  if (found.hits.length === 0 && found.unread === undefined) return undefined;
+  return found;
 }
 
 function firstLine(text: string): string {
@@ -517,7 +524,7 @@ interface Subject {
 }
 
 type Scope =
-  | { subjects: Subject[] }
+  | { subjects: Subject[]; unread?: string }
   | { unchecked: string }
   | { skipped: string }
   | { out: true };
@@ -547,7 +554,6 @@ async function subjectOf(commit: Commit, request: KindRequest): Promise<
 async function commitScope(request: KindRequest): Promise<Scope> {
   const found = commitIn(request.command, request.cwd);
   if (found === undefined) return { out: true };
-  if ('unchecked' in found) return found;
 
   const subjects: Subject[] = [];
   for (const commit of found.commits) {
@@ -555,7 +561,8 @@ async function commitScope(request: KindRequest): Promise<Scope> {
     if ('unchecked' in read) return read;
     if (read.subject !== undefined) subjects.push(read.subject);
   }
-  return subjects.length === 0 ? { out: true } : { subjects };
+  if (subjects.length > 0) return { subjects, unread: found.unread };
+  return found.unread === undefined ? { out: true } : { unchecked: found.unread };
 }
 
 async function scopeOf(on: string, request: KindRequest): Promise<Scope> {
@@ -565,10 +572,11 @@ async function scopeOf(on: string, request: KindRequest): Promise<Scope> {
   if (on === 'merge-request') {
     const opening = mergeRequestIn(request.command, request.cwd);
     if (opening === undefined) return { out: true };
-    if ('unchecked' in opening) return opening;
+    if (opening.hits.length === 0) return { unchecked: opening.unread as string };
     const diff = await mergeRequestDiff(request);
     if ('unchecked' in diff) return diff;
-    return { subjects: [{ message: '', diff: cut(diff.text, MAX_DIFF_LENGTH, DIFF_CUT) }] };
+    const subject = { message: '', diff: cut(diff.text, MAX_DIFF_LENGTH, DIFF_CUT) };
+    return { subjects: [subject], unread: opening.unread };
   }
 
   // The lint refuses an occasion that is not registered, so reaching this means
@@ -666,9 +674,16 @@ export const JUDGMENT: RuleKind = {
         };
       }
       if (answer.noul >= threshold) {
-        return { verdict: 'fires', finding: finding(subject, answer.noul, several) };
+        return {
+          verdict: 'fires',
+          finding: finding(subject, answer.noul, several),
+          notice: scope.unread,
+        };
       }
     }
+    // Nothing that was read breaks the taste, but a part of the command was not
+    // read at all, and that is not the same as a pass.
+    if (scope.unread !== undefined) return { verdict: 'unchecked', detail: scope.unread };
     return { verdict: 'passes' };
   },
 };

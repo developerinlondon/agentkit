@@ -199,6 +199,12 @@ export async function evaluateCommand(request: Request): Promise<Verdict> {
         continue;
       }
       if (outcome.verdict === 'passes') continue;
+      if (outcome.notice !== undefined) {
+        notices.push(
+          `UNCHECKED: taste ${taste.name} could not check every part of this command — `
+            + `${outcome.notice} (${taste.path}).`,
+        );
+      }
 
       if (override.state === 'granted') {
         notices.push(
