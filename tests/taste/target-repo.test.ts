@@ -714,11 +714,15 @@ describe('a taste is not shown a command the agent never typed', () => {
       'git commit -m "keep the quotes"',
     ],
   ])('%s reads as %s', (_shape, command, expected) => {
-    const parent = scratch();
-    const repo = repository(parent, 'repoA');
-    repository(parent, 'repoB');
+    // Reached through a link, because a machine whose temporary directory is
+    // one — macOS is — hands these two sides different strings for one place.
+    const real = scratch();
+    repository(real, 'repoA');
+    repository(real, 'repoB');
+    const parent = join(scratch(), 'parent');
+    symlinkSync(real, parent, 'dir');
 
-    expect(scopedCommand(command, parent, { within: repo })).toBe(expected);
+    expect(scopedCommand(command, parent, { within: join(parent, 'repoA') })).toBe(expected);
   });
 
   test('two visits to one repository are not joined into one command', async () => {

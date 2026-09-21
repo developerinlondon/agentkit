@@ -428,14 +428,22 @@ function spanOf(piece: Piece): { start: number; end: number } | undefined {
 const GAP = '\n';
 
 export function scopedCommand(command: string, cwd: string, scope: Scoped): string {
+  // Followed once, here, so a caller may hand over the path it has: a root
+  // that is not followed matches nothing on a machine whose temporary or home
+  // directory is itself a link, and matching nothing is silent.
+  const bounded: Scoped = {
+    within: scope.within === undefined ? undefined : realOf(scope.within),
+    outside: (scope.outside ?? []).map(realOf),
+  };
+
   const seen = walk(commandPieces(command), cwd, 0, (segment, dir, piece): Visit => {
     // Where the segment acts, not where the walk stood: a `-C` points
     // somewhere the directory alone does not say.
     const acts = actsIn(segment, dir);
     return {
       piece,
-      dropped: scope.within === undefined ? [] : pointerSpans(segment),
-      keep: acts !== undefined && keeps(acts, scope),
+      dropped: bounded.within === undefined ? [] : pointerSpans(segment),
+      keep: acts !== undefined && keeps(acts, bounded),
     };
   });
 
