@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { lintTasteDirectory } from '../../skills/taste/scripts/lint.ts';
+import { lintTasteDirectory, ruleFields } from '../../skills/taste/scripts/lint.ts';
 import { JUDGMENT } from '../../skills/taste/scripts/rules/judgment.ts';
 import type { KindRequest, MatchOutcome } from '../../skills/taste/scripts/rules/kinds.ts';
 
@@ -403,6 +403,15 @@ describe('the lint reads the judgment vocabulary', () => {
 
     expect(errors).toHaveLength(1);
     expect(errors[0]).toContain('rule.question');
+  });
+
+  // Bun 1.3.4 reads a bare `on` key as the boolean true and 1.3.10 does not, so
+  // the same file arrives with either key depending on which runtime read it.
+  test('an occasion the parser read as a boolean is still the on its author typed', () => {
+    expect(ruleFields({ kind: 'judgment', true: 'merge-request' }))
+      .toEqual({ kind: 'judgment', on: 'merge-request' });
+    expect(ruleFields({ kind: 'judgment', on: 'merge-request' }))
+      .toEqual({ kind: 'judgment', on: 'merge-request' });
   });
 
   test('a key belonging to another kind is unknown here', () => {

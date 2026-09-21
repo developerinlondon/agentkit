@@ -2,7 +2,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, join } from 'node:path';
 import { EXTERNAL_DIR, externalRoot, legacyExternalRoot } from './layout.ts';
-import { inspectTaste, markdownFiles, scalar } from './lint.ts';
+import { inspectTaste, markdownFiles, ruleFields, scalar } from './lint.ts';
 import { readSources, type Source } from './sources.ts';
 import { type SourceScope, TASTE } from './store.ts';
 
@@ -161,7 +161,7 @@ function isDirectory(path: string): boolean {
 function readRule(front: Record<string, unknown>): TasteRule | undefined {
   const rule = front.rule;
   if (typeof rule !== 'object' || rule === null || Array.isArray(rule)) return undefined;
-  const block = rule as Record<string, unknown>;
+  const block = ruleFields(rule as Record<string, unknown>);
   const kind = scalar(block.kind);
   const remedy = scalar(block.remedy);
   if (kind === undefined || remedy === undefined) return undefined;

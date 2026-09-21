@@ -89,6 +89,17 @@ function checkEnums(front: Frontmatter): string[] {
 // The kind decides which keys mean anything, so an unknown kind names the ones
 // agentkit implements instead of judging the rest of the block against a
 // vocabulary nobody chose.
+// YAML 1.1 reads a bare `on` key as the boolean true, and parsers disagree on
+// whether they still do — the same taste file therefore arrives with a key of
+// `on` or of `true` depending on which runtime read it. Whichever way it lands,
+// it is the `on` its author typed.
+export function ruleFields(rule: Frontmatter): Frontmatter {
+  if (!Object.hasOwn(rule, 'true')) return rule;
+  const fields: Frontmatter = { ...rule, on: rule['true'] };
+  delete fields['true'];
+  return fields;
+}
+
 function checkKind(rule: Frontmatter, kind: RuleKind | undefined): string[] {
   if (typeof rule.kind !== 'string') return [];
   if (kind === undefined) {
@@ -150,7 +161,7 @@ function checkRule(front: Frontmatter): string[] {
     return [`rule must be a block of kind, remedy, override and what the kind requires — the `
       + `kinds are ${RULE_KINDS.join(', ')}`];
   }
-  return checkRuleFields(front.rule);
+  return checkRuleFields(ruleFields(front.rule));
 }
 
 export interface Inspection {
