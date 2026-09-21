@@ -1,8 +1,9 @@
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { isAbsolute, join, resolve } from 'node:path';
 import { unquote } from '../override.ts';
 import { runBounded } from '../run.ts';
+import { type Budget, BUDGET_SPENT, JUDGMENT_CALL_MS, judgmentBudget } from './budget.ts';
 import type { KindOutcome, KindRequest, RuleKind } from './kinds.ts';
 import { carriesSubstitution } from './pattern.ts';
 import { askNoul } from './providers/typesafe.ts';
@@ -10,6 +11,8 @@ import {
   commandSegments,
   FORGE_GLOBAL_VALUED,
   GIT_GLOBAL_VALUED,
+  programInvocation,
+  programOf,
   programWords,
 } from './tag-command.ts';
 
@@ -17,20 +20,27 @@ export const MAX_QUESTION_LENGTH = 500;
 // Enough of a diff for the shape of a change to be legible, bounded because the
 // provider is priced per input token and the hook is inside the agent's wait.
 export const MAX_DIFF_LENGTH = 12000;
+export const MAX_MESSAGE_LENGTH = 2000;
 export const DEFAULT_THRESHOLD = 0.75;
 const GIT_TIMEOUT_MS = 3000;
-const TRUNCATED = '\n[diff truncated]';
+const DIFF_CUT = '\n[diff truncated]';
+const MESSAGE_CUT = '\n[message truncated]';
+const CHANGES_DIRECTORY = ['cd', 'pushd', 'popd'];
 
 export const OCCASIONS: readonly string[] = ['commit', 'merge-request', 'any'];
 
 const SHORT_OPTION = /^-[A-Za-z]/;
 const LONG_MESSAGE = '--message=';
 
+// Plain decimal only. `Number` accepts `0x1`, `1e-1`, `Infinity` and a padded
+// string, and a threshold read from one of those is not the number its author
+// wrote.
+const DECIMAL = /^\d+(?:\.\d+)?$/;
+
 export function parseThreshold(text: string): number | undefined {
-  if (text.trim() === '') return undefined;
+  if (!DECIMAL.test(text)) return undefined;
   const value = Number(text);
-  if (!Number.isFinite(value) || value < 0 || value > 1) return undefined;
-  return value;
+  return value >= 0 && value <= 1 ? value : undefined;
 }
 
 // git reads a short cluster left to right and `m` takes the rest of the token
@@ -51,16 +61,23 @@ function readCluster(token: string): { all: boolean; message?: string; wantsNext
 interface Commit {
   message: string;
   all: boolean;
+  amend: boolean;
+  // Where the command says git should run, which is not always where the hook
+  // was invoked.
+  options: string[];
 }
 
-function readCommit(words: readonly string[]): Commit {
+function readCommit(words: readonly string[], options: string[]): Commit {
   const messages: string[] = [];
   let all = false;
+  let amend = false;
 
   for (let index = 0; index < words.length; index += 1) {
     const word = words[index] as string;
     if (word === '--all') {
       all = true;
+    } else if (word === '--amend') {
+      amend = true;
     } else if (word.startsWith(LONG_MESSAGE)) {
       messages.push(word.slice(LONG_MESSAGE.length));
     } else if (word === '--message') {
@@ -79,16 +96,53 @@ function readCommit(words: readonly string[]): Commit {
     }
   }
 
-  return { message: messages.join('\n\n'), all };
+  return { message: messages.join('\n\n'), all, amend, options };
 }
 
-function commitIn(command: string): Commit | undefined {
-  for (const segment of commandSegments(command)) {
-    const words = programWords(segment, 'git', GIT_GLOBAL_VALUED);
-    if (words === undefined || words.shift() !== 'commit') continue;
-    return readCommit(words);
+type Found = { commit: Commit } | { unchecked: string } | undefined;
+
+// A directory change anywhere ahead of the commit moves the tree it applies to,
+// and the hook is told only where it was invoked. Saying so beats judging the
+// wrong repository, which would refuse or clear a change nobody is making.
+function commitIn(command: string): Found {
+  const segments = commandSegments(command);
+  for (let index = 0; index < segments.length; index += 1) {
+    const invocation = programInvocation(segments[index] as string[], 'git', GIT_GLOBAL_VALUED);
+    if (invocation === undefined || invocation.words[0] !== 'commit') continue;
+
+    const changed = segments.slice(0, index)
+      .some((earlier) => CHANGES_DIRECTORY.includes(programOf(earlier) ?? ''));
+    if (changed) {
+      return {
+        unchecked: 'the command changes directory before committing, so the repository it '
+          + 'commits in is not the one this check can read',
+      };
+    }
+    return { commit: readCommit(invocation.words.slice(1), invocation.options) };
   }
   return undefined;
+}
+
+// -C is where git runs; --git-dir and --work-tree take it apart, and a diff
+// read from either half on its own is not the change being committed.
+function repositoryOf(commit: Commit, cwd: string): string | { unchecked: string } {
+  let dir = cwd;
+  for (let index = 0; index < commit.options.length; index += 1) {
+    const option = commit.options[index] as string;
+    const name = option.split('=')[0] as string;
+    if (name === '--git-dir' || name === '--work-tree') {
+      return {
+        unchecked: `the commit names its own ${name}, so the tree it applies to is not one this `
+          + 'check can read',
+      };
+    }
+    if (option === '-C') {
+      const value = commit.options[index + 1];
+      if (value !== undefined) dir = isAbsolute(value) ? value : resolve(dir, value);
+      index += 1;
+    }
+  }
+  return dir;
 }
 
 function mergeRequestIn(command: string): boolean {
@@ -107,36 +161,38 @@ function firstLine(text: string): string {
 
 type Output = { text: string } | { unchecked: string };
 
-async function gitOutput(args: string[], request: KindRequest): Promise<Output> {
+async function gitOutput(args: string[], request: KindRequest, dir: string): Promise<Output> {
+  const budget = budgetOf(request);
+  const allowed = budget.grant(GIT_TIMEOUT_MS);
+  if (allowed <= 0) return { unchecked: BUDGET_SPENT };
+
   const env = { ...request.env, LC_ALL: 'C', LANGUAGE: 'C', LANG: 'C' };
-  const run = await runBounded(
-    ['git', '-C', request.cwd, ...args],
-    request.cwd,
-    env,
-    GIT_TIMEOUT_MS,
-  );
+  const started = Date.now();
+  const run = await runBounded(['git', '-C', dir, ...args], request.cwd, env, allowed);
+  budget.spend(Date.now() - started);
   if (run.code === null || run.timedOut) {
-    return { unchecked: `git could not be run in ${request.cwd} — ${firstLine(run.err)}` };
+    return { unchecked: `git could not be run in ${dir} — ${firstLine(run.err)}` };
   }
   if (!run.ok) {
-    return { unchecked: `git could not read the change in ${request.cwd} — ${firstLine(run.err)}` };
+    return { unchecked: `git could not read the change in ${dir} — ${firstLine(run.err)}` };
   }
   return { text: run.out };
 }
 
-function capped(diff: string): string {
-  if (diff.length <= MAX_DIFF_LENGTH) return diff;
-  return diff.slice(0, MAX_DIFF_LENGTH) + TRUNCATED;
+function cut(text: string, cap: number, note: string): string {
+  return text.length <= cap ? text : text.slice(0, cap) + note;
 }
 
 // Best effort, and deliberately so: a merge request is judged on what it adds
 // to the branch it targets, and a repository that cannot name that branch is
 // UNCHECKED rather than judged on the wrong range.
 async function targetBranch(request: KindRequest): Promise<string | undefined> {
-  const named = await gitOutput(['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'], request);
+  const head = ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'];
+  const named = await gitOutput(head, request, request.cwd);
   if ('text' in named && named.text !== '') return named.text;
   for (const candidate of ['origin/main', 'origin/master', 'main', 'master']) {
-    const seen = await gitOutput(['rev-parse', '--verify', '--quiet', candidate], request);
+    const verify = ['rev-parse', '--verify', '--quiet', candidate];
+    const seen = await gitOutput(verify, request, request.cwd);
     if ('text' in seen && seen.text !== '') return candidate;
   }
   return undefined;
@@ -147,7 +203,7 @@ async function mergeRequestDiff(request: KindRequest): Promise<Output> {
   if (branch === undefined) {
     return { unchecked: `no default branch to compare against in ${request.cwd}` };
   }
-  return await gitOutput(['diff', `${branch}...HEAD`], request);
+  return await gitOutput(['diff', `${branch}...HEAD`], request, request.cwd);
 }
 
 // The key never reaches a command line or a log: it is read here and handed
@@ -169,37 +225,68 @@ function providerKey(env: Record<string, string | undefined>): string | undefine
 const NO_KEY = 'no judgment provider key: set TYPESAFE_API_KEY or write '
   + '~/.config/agentkit/typesafe-token';
 
+// A run of one, for a caller evaluating this kind on its own. The hook builds
+// one budget per command and every judgment in it shares that.
+function budgetOf(request: KindRequest): Budget {
+  request.budget ??= judgmentBudget();
+  return request.budget;
+}
+
 interface Subject {
   message: string;
   diff: string;
 }
 
-type Scope = { subject: Subject } | { unchecked: string } | { out: true };
+type Scope =
+  | { subject: Subject }
+  | { unchecked: string }
+  | { skipped: string }
+  | { out: true };
+
+async function commitScope(request: KindRequest): Promise<Scope> {
+  const found = commitIn(request.command);
+  if (found === undefined) return { out: true };
+  if ('unchecked' in found) return found;
+
+  const commit = found.commit;
+  const dir = repositoryOf(commit, request.cwd);
+  if (typeof dir !== 'string') return dir;
+
+  const diff = await gitOutput(commit.all ? ['diff', 'HEAD'] : ['diff', '--cached'], request, dir);
+  if ('unchecked' in diff) return diff;
+
+  const message = cut(commit.message, MAX_MESSAGE_LENGTH, MESSAGE_CUT);
+  // Nothing to judge is not a judgment that found nothing. An amend is the
+  // exception: with nothing staged the new message is the whole of the change.
+  if (diff.text.trim() === '') {
+    return commit.amend ? { subject: { message, diff: '' } } : { out: true };
+  }
+  return { subject: { message, diff: cut(diff.text, MAX_DIFF_LENGTH, DIFF_CUT) } };
+}
 
 async function scopeOf(on: string, request: KindRequest): Promise<Scope> {
   if (on === 'any') return { subject: { message: '', diff: '' } };
+  if (on === 'commit') return await commitScope(request);
 
   if (on === 'merge-request') {
     if (!mergeRequestIn(request.command)) return { out: true };
     const diff = await mergeRequestDiff(request);
     if ('unchecked' in diff) return diff;
-    return { subject: { message: '', diff: capped(diff.text) } };
+    return { subject: { message: '', diff: cut(diff.text, MAX_DIFF_LENGTH, DIFF_CUT) } };
   }
 
-  const commit = commitIn(request.command);
-  if (commit === undefined) return { out: true };
-  const diff = await gitOutput(commit.all ? ['diff', 'HEAD'] : ['diff', '--cached'], request);
-  if ('unchecked' in diff) return diff;
-  // Nothing to judge is not a judgment that found nothing: a commit with an
-  // empty diff carries no change for the taste to be broken by.
-  if (diff.text.trim() === '') return { out: true };
-  return { subject: { message: commit.message, diff: capped(diff.text) } };
+  // The lint refuses an occasion that is not registered, so reaching this means
+  // the taste was never checked.
+  return {
+    skipped: `its rule.on ${JSON.stringify(on)} is not one of ${OCCASIONS.join(', ')}`,
+  };
 }
 
 export const JUDGMENT: RuleKind = {
   name: 'judgment',
   required: ['question'],
   optional: ['on', 'threshold'],
+  costly: true,
 
   validate(fields: Record<string, string>): string[] {
     const errors: string[] = [];
@@ -246,19 +333,26 @@ export const JUDGMENT: RuleKind = {
 
     const scope = await scopeOf(fields.on ?? 'commit', request);
     if ('out' in scope) return { verdict: 'passes' };
+    if ('skipped' in scope) return { verdict: 'skipped', detail: scope.skipped };
     if ('unchecked' in scope) return { verdict: 'unchecked', detail: scope.unchecked };
 
     const apiKey = providerKey(request.env);
     if (apiKey === undefined) return { verdict: 'unchecked', detail: NO_KEY };
 
-    const timeout = Number(request.env.TYPESAFE_TIMEOUT_MS);
+    const budget = budgetOf(request);
+    const allowed = budget.grant(JUDGMENT_CALL_MS);
+    if (allowed <= 0) return { verdict: 'unchecked', detail: BUDGET_SPENT };
+
+    const override = Number(request.env.TYPESAFE_TIMEOUT_MS);
+    const started = Date.now();
     const answer = await askNoul({
       apiKey,
       baseUrl: request.env.TYPESAFE_BASE_URL,
-      timeoutMs: Number.isFinite(timeout) && timeout > 0 ? timeout : undefined,
+      timeoutMs: Number.isFinite(override) && override > 0 ? Math.min(override, allowed) : allowed,
       state: { command: request.command, ...scope.subject },
       instructions: { policy: request.body ?? '', question },
     });
+    budget.spend(Date.now() - started);
 
     if (!answer.ok) {
       return {

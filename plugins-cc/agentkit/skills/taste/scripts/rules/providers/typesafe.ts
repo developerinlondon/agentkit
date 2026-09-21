@@ -26,10 +26,14 @@ function noulOf(payload: unknown): number | undefined {
   const answers = (payload as Record<string, unknown>).answers;
   if (typeof answers !== 'object' || answers === null) return undefined;
   const answer = (answers as Record<string, unknown>).q;
-  if (typeof answer === 'number') return answer;
-  if (typeof answer !== 'object' || answer === null) return undefined;
-  const noul = (answer as Record<string, unknown>).noul;
-  return typeof noul === 'number' ? noul : undefined;
+  const noul = typeof answer === 'number'
+    ? answer
+    : (answer as Record<string, unknown> | null)?.noul;
+  // A noul is a probability. Anything outside that range is the vendor
+  // answering a different question, and reading it as one would turn a
+  // malformed response into a refusal.
+  if (typeof noul !== 'number' || !Number.isFinite(noul) || noul < 0 || noul > 1) return undefined;
+  return noul;
 }
 
 function modelOf(payload: unknown): string {
@@ -63,7 +67,7 @@ export async function askNoul(ask: NoulRequest): Promise<NoulAnswer> {
 
     const payload = await response.json() as unknown;
     const noul = noulOf(payload);
-    if (noul === undefined) return { ok: false, reason: 'the answer carried no noul' };
+    if (noul === undefined) return { ok: false, reason: 'it returned an unusable answer' };
     return { ok: true, noul, model: modelOf(payload) };
   } catch (error) {
     if (controller.signal.aborted) return { ok: false, reason: `timeout after ${timeoutMs}ms` };
