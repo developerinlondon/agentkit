@@ -9,6 +9,7 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+## v0.9.0 — 2026-09-21
 - fix(git-police): **the attribution rule fires.** The shell hook's rule against `Co-authored-by`
   trailers, session links and the rest read a variable that nothing set, so under `set -u` the
   hook died on that line, emitted no decision, and the harness read silence as allow — a heredoc
