@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { lintTasteDirectory, ruleFields } from '../../skills/taste/scripts/lint.ts';
@@ -93,6 +93,18 @@ function provider(options: { noul?: number; status?: number; hang?: boolean } = 
   return { url: `http://127.0.0.1:${server.port}`, sent };
 }
 
+// A git that answers nothing and writes down that it was asked. The verdict
+// alone cannot tell a check that never ran from one that ran and found nothing,
+// so whether git was reached at all is observed rather than inferred.
+function recordingGit(): { dir: string; asked: () => boolean } {
+  const dir = scratch();
+  const marker = join(dir, 'asked');
+  const path = join(dir, 'git');
+  writeFileSync(path, `#!/bin/sh\nprintf '%s\\n' "$@" >> ${JSON.stringify(marker)}\nexit 0\n`);
+  chmodSync(path, 0o755);
+  return { dir, asked: () => existsSync(marker) };
+}
+
 function refuseToMatch(): Promise<MatchOutcome> {
   throw new Error('a judgment rule never compiles a pattern');
 }
@@ -170,12 +182,36 @@ describe('a judgment reaches the provider and its probability decides', () => {
 });
 
 describe('what the rule judges, and what it leaves alone', () => {
-  test('a command that is not a commit passes, and nothing is asked', async () => {
+  // The path every ordinary command takes, so it must cost nothing. A cwd with
+  // no repository in it is the assertion: had git been consulted at all, the
+  // verdict would be UNCHECKED rather than a pass.
+  test('a command that is not a commit passes without reading anything', async () => {
     const stub = provider({ noul: 0.99 });
-    const outcome = await evaluate({}, { command: 'bun test tests/taste', url: stub.url });
+    const git = recordingGit();
+    const outcome = await evaluate({}, {
+      command: 'bun test tests/taste',
+      cwd: scratch(),
+      url: stub.url,
+      env: { PATH: `${git.dir}:${process.env.PATH}`, TYPESAFE_API_KEY: undefined },
+    });
 
     expect(outcome.verdict).toBe('passes');
+    expect(git.asked()).toBe(false);
     expect(stub.sent).toHaveLength(0);
+  });
+
+  // The control for the case above: the same stub, a command that is in scope,
+  // and git reached. Without it, a kind that never ran git would pass both.
+  test('a commit does reach git', async () => {
+    const stub = provider({ noul: 0.99 });
+    const git = recordingGit();
+    await evaluate({}, {
+      cwd: scratch(),
+      url: stub.url,
+      env: { PATH: `${git.dir}:${process.env.PATH}`, TYPESAFE_API_KEY: undefined },
+    });
+
+    expect(git.asked()).toBe(true);
   });
 
   test('a merge request is judged when the taste says so, and not otherwise', async () => {
@@ -189,10 +225,32 @@ describe('what the rule judges, and what it leaves alone', () => {
     expect(asked.sent).toHaveLength(1);
 
     const quiet = provider({ noul: 0.99 });
-    const outcome = await evaluate({}, { command: 'gh pr create --fill', url: quiet.url });
+    const git = recordingGit();
+    const outcome = await evaluate({}, {
+      command: 'gh pr create --fill',
+      cwd: scratch(),
+      url: quiet.url,
+      env: { PATH: `${git.dir}:${process.env.PATH}`, TYPESAFE_API_KEY: undefined },
+    });
 
     expect(outcome.verdict).toBe('passes');
+    expect(git.asked()).toBe(false);
     expect(quiet.sent).toHaveLength(0);
+  });
+
+  test('a merge-request rule leaves a commit alone, and reads nothing', async () => {
+    const stub = provider({ noul: 0.99 });
+    const git = recordingGit();
+    const outcome = await evaluate({ on: 'merge-request' }, {
+      command: 'git commit -m "a change"',
+      cwd: scratch(),
+      url: stub.url,
+      env: { PATH: `${git.dir}:${process.env.PATH}`, TYPESAFE_API_KEY: undefined },
+    });
+
+    expect(outcome.verdict).toBe('passes');
+    expect(git.asked()).toBe(false);
+    expect(stub.sent).toHaveLength(0);
   });
 
   test('on: any judges the command with no diff to read', async () => {
