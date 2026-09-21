@@ -351,6 +351,74 @@ How to apply: when the cause is out of reach, say so in the commit message and
 file the follow-up — do not let the diff imply the problem is solved.
 ```
 
+## Which repository's tastes apply
+
+The project layers are read from **the repository the command acts in**. `taste-police` reads the
+command's own shape to find that — a literal `cd`, a `-C`, a subshell, a wrapper, the launchers it
+already reads through — and resolves `.agentkit/tastes/` for each checkout it works on, alongside
+the one the session started in. The user layers bind wherever the agent is working and are read
+once.
+
+**A repository's taste sees only the part of the command that acts in that repository**: the
+segments acting elsewhere are not in the text it is matched against, and a `judgment` taste is
+sent that repository's diff and message and nothing else. A taste in one checkout can neither
+refuse another checkout's commit nor be shown its diff.
+
+That part is **cut out of the command as it was typed**, never spelled again, so a pattern
+written against quoting — `match: -m 'wip'` — reads the same whether the session stands in the
+repository or reaches into it. Only the options that pointed at the directory are taken out,
+because the check supplies the directory itself.
+
+**A pattern does not span a gap.** Two visits to one checkout with a visit elsewhere between them
+are two commands, joined by a newline rather than by a separator nobody typed, so
+`match: git add \..*git push` does not fire on
+`cd a && git add . ; cd ../b && … ; cd ../a && git push`. Commands the agent did write next to
+each other keep the separator they were written with.
+
+A pattern is compiled without the multiline flag, so `^` and `$` bind the **whole** of that text
+rather than each stretch of it: on a lane reading `git add .\ngit push --force`, `^git add`
+fires and `^git push` does not. A pattern that means to reach across a gap writes the `\n`
+itself.
+
+**A command that takes its checkout apart is read where it can be.** A literal `--work-tree`
+names the tree the commit applies to as surely as `-C` names where git runs, so its tastes bind.
+A `--git-dir` with no `--work-tree` beside it, or a value the command does not spell out, leaves
+the tree unsaid and is reported as `UNCHECKED` rather than passed over.
+
+**The project layers are always read from the top of a work tree**, wherever the session stands.
+The owner's own directory is never that top: `~/.agentkit/tastes` is the user layer by
+definition, so dotfiles kept in git do not turn it into a project one for every session beneath
+it. Any other checkout above a session does govern it, an umbrella `code/` someone ran
+`git init` in included.
+A session in `repo/src` is bound by `repo`'s tastes, and so is a parent running
+`cd repo/src && git commit` — the same tastes either way, which is the point. A session in no
+checkout at all reads its own directory, as it always did.
+
+**Only a checkout brings tastes, and only where a repository command works on it.** The directory
+is followed through symlinks and resolved to the top of its work tree, so `repo/src` brings
+`repo`'s tastes. A folder under `node_modules` brings none even when it is a checkout of its own,
+because a `remedy` is prose an agent is shown and a dependency is not a place anybody vouched for
+prose. A directory that is merely listed or removed brings none either.
+
+**A repository's own `brain.taste.enabled: false` turns off its lane and no other**, including for
+a session standing inside it. Another checkout's tastes in the same command keep binding.
+
+Where a repository defines a taste the owner also defines at user level, **the repository's
+replaces it for the commands acting there and nowhere else**, exactly as it would for a session
+standing in it. One checkout overriding a name does not take the owner's taste away from another
+checkout in the same command.
+
+| The session sits in | The command                 | Judged by                  |
+| ------------------- | --------------------------- | -------------------------- |
+| the repository      | `git commit …`              | the repository's tastes    |
+| a parent directory  | `cd repo && git commit …`   | `repo`'s tastes            |
+| a parent directory  | `git -C repo commit …`      | `repo`'s tastes            |
+| a parent directory  | `cd a && … && cd ../b && …` | both `a`'s and `b`'s       |
+| a parent directory  | `cd "$D" && git commit …`   | **`UNCHECKED`** for `$D`'s |
+
+A command that changes no directory resolves exactly what it did before, and reads nothing extra
+from disk — the common case pays nothing for this.
+
 ## The source contract
 
 A source is declared in `brain.taste.sources`, in a repository's `.agentkit/config.yaml` or the
