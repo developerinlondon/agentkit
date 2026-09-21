@@ -43,13 +43,18 @@ tastes_present() {
 # A command can act in a repository the session is not standing in — `cd repo &&
 # …`, `git -C repo …`, or a wrapper carrying either. Whether that repository has
 # tastes is the evaluator's question; what this decides is only whether the
-# question is worth asking, so it reads the command's shape and nothing else.
+# question is worth asking, because every command an agent runs pays for it.
+#
+# Read in command position, never anywhere in the text: `rg -C 3`, `make -C src`
+# and a commit message mentioning a directory change are none of this hook's
+# business, and starting a runtime for them is a cost with nothing at the end.
 reaches_elsewhere() {
-	local boundary='(^|[[:space:];&|(])'
-	local wrapper="$boundary"'(cd|pushd|eval|bash|sh|zsh|dash|ksh)([[:space:]]|$)'
-	local pointed="$boundary"'(-C|--git-dir|--work-tree)([[:space:]=]|$)'
-	[[ "$COMMAND" =~ $wrapper ]] && return 0
-	[[ "$COMMAND" =~ $pointed ]] && return 0
+	local start='(^|[;&|(])[[:space:]]*'
+	local launcher='((env|timeout|nohup|sudo|nice|xargs)([[:space:]]+[^;&|()[:space:]]+)*[[:space:]]+)?'
+	local changes='(cd|pushd|eval|bash|sh|zsh|dash|ksh)([[:space:]]|$)'
+	local points='git([[:space:]][^;&|()]*)?[[:space:]](-C[[:space:]]|--git-dir[=[:space:]]|--work-tree[=[:space:]])'
+	[[ "$COMMAND" =~ ${start}${launcher}${changes} ]] && return 0
+	[[ "$COMMAND" =~ ${start}${launcher}${points} ]] && return 0
 	return 1
 }
 

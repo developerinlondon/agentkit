@@ -150,6 +150,13 @@ function ofTheProject(taste: ResolvedTaste): boolean {
   return taste.layer === 'project' || taste.layer === 'project-external';
 }
 
+export interface Lanes {
+  lanes: Lane[];
+  // A directory the command works in that this could not name, so no lane was
+  // raised for whatever tastes it holds.
+  unread?: string;
+}
+
 export interface Lane {
   cwd: string;
   // What this lane's tastes are shown: the whole command for the session's own
@@ -203,12 +210,14 @@ export function tasteLanes(
   cwd: string,
   home: string,
   env: Record<string, string | undefined>,
-): Lane[] {
+): Lanes {
   const here = resolveTastes(cwd, home, env);
   const lanes: Lane[] = [{ cwd, command, tastes: here.tastes, warnings: here.warnings }];
 
+  // Read once. Every caller wants both halves of the answer, and reading the
+  // command again to get the other half walks it again for nothing.
   const acted = actedDirectories(command, cwd);
-  if (acted.dirs.length === 0) return lanes;
+  if (acted.dirs.length === 0) return { lanes, unread: acted.unread };
 
   const reached = reachedRoots(acted.dirs, acted.atStart, repositoryRoot(cwd));
   const shadowed = new Set<string>();
@@ -243,7 +252,7 @@ export function tasteLanes(
       ),
     };
   }
-  return lanes;
+  return { lanes, unread: acted.unread };
 }
 
 export async function evaluateCommand(request: Request): Promise<Verdict> {
@@ -251,18 +260,17 @@ export async function evaluateCommand(request: Request): Promise<Verdict> {
   const env = request.env ?? process.env;
   if (!tasteEnabled(request.cwd, home, env)) return { decision: 'allow', notices: [] };
 
-  const lanes = tasteLanes(request.command, request.cwd, home, env);
+  const { lanes, unread } = tasteLanes(request.command, request.cwd, home, env);
   const notices = lanes.flatMap((lane) =>
     lane.warnings.map((warning) => `taste skipped — ${warning}`)
   );
-  const unread = actedDirectories(request.command, request.cwd).unread;
   // A repository this could not name has tastes this could not read. Said once,
   // and only where the command reaches a repository after the change — nowhere
   // else were there tastes to miss.
   if (unread !== undefined) {
     notices.push(
-      `UNCHECKED: the project tastes of the directory this command acts in could not be `
-        + `loaded — ${unread}. The command was allowed.`,
+      'UNCHECKED: the project tastes of a directory this command works in could not be loaded — '
+        + `${unread}. The command was allowed.`,
     );
   }
   const matcher = new BoundedMatcher();
@@ -274,66 +282,66 @@ export async function evaluateCommand(request: Request): Promise<Verdict> {
   try {
     for (const lane of lanes) {
       for (const taste of lane.tastes.filter(blocking)) {
-      const rule = taste.rule as TasteRule;
-      const override = overrideState(rule.override, request.command, env);
+        const rule = taste.rule as TasteRule;
+        const override = overrideState(rule.override, request.command, env);
 
-      // Read before the check, not after it, for a kind that costs something:
-      // a deliberate override must not pay a deadline or ship a diff to
-      // overrule a verdict it has already decided to ignore. Only where the
-      // rule would have run, though — an override exported into a session
-      // must not become a notice on every command in it.
-      const kind = ruleKind(rule.kind);
-      const shortCircuit = override.state === 'granted' && kind?.costly === true
-        && (kind.applies?.(rule.fields, lane.command, lane.cwd) ?? true);
+        // Read before the check, not after it, for a kind that costs something:
+        // a deliberate override must not pay a deadline or ship a diff to
+        // overrule a verdict it has already decided to ignore. Only where the
+        // rule would have run, though — an override exported into a session
+        // must not become a notice on every command in it.
+        const kind = ruleKind(rule.kind);
+        const shortCircuit = override.state === 'granted' && kind?.costly === true
+          && (kind.applies?.(rule.fields, lane.command, lane.cwd) ?? true);
 
-      if (shortCircuit) {
-        notices.push(
-          `taste ${taste.name} allowed this command: ${rule.override} is set deliberately.`,
-        );
-        continue;
-      }
+        if (shortCircuit) {
+          notices.push(
+            `taste ${taste.name} allowed this command: ${rule.override} is set deliberately.`,
+          );
+          continue;
+        }
 
-      const outcome = await evaluateRule(rule.kind, rule.fields, {
-        command: lane.command,
-        cwd: lane.cwd,
-        env,
-        match: (pattern, capture) => matcher.test(pattern, lane.command, capture),
-        body: taste.body,
-        budget,
-      });
+        const outcome = await evaluateRule(rule.kind, rule.fields, {
+          command: lane.command,
+          cwd: lane.cwd,
+          env,
+          match: (pattern, capture) => matcher.test(pattern, lane.command, capture),
+          body: taste.body,
+          budget,
+        });
 
-      if (outcome.verdict === 'skipped') {
-        notices.push(`taste ${taste.name} was not applied — ${outcome.detail} (${taste.path}).`);
-        continue;
-      }
-      // Allowed, and said so. A guard that could not read the state it needed
-      // is not a guard that found nothing.
-      if (outcome.verdict === 'unchecked') {
-        notices.push(
-          `UNCHECKED: taste ${taste.name} could not check this command — ${outcome.detail}. `
-            + `The command was allowed (${taste.path}).`,
-        );
-        continue;
-      }
-      if (outcome.verdict === 'passes') continue;
-      if (outcome.notice !== undefined) {
-        notices.push(
-          `UNCHECKED: taste ${taste.name} could not check every part of this command — `
-            + `${outcome.notice} (${taste.path}).`,
-        );
-      }
+        if (outcome.verdict === 'skipped') {
+          notices.push(`taste ${taste.name} was not applied — ${outcome.detail} (${taste.path}).`);
+          continue;
+        }
+        // Allowed, and said so. A guard that could not read the state it needed
+        // is not a guard that found nothing.
+        if (outcome.verdict === 'unchecked') {
+          notices.push(
+            `UNCHECKED: taste ${taste.name} could not check this command — ${outcome.detail}. `
+              + `The command was allowed (${taste.path}).`,
+          );
+          continue;
+        }
+        if (outcome.verdict === 'passes') continue;
+        if (outcome.notice !== undefined) {
+          notices.push(
+            `UNCHECKED: taste ${taste.name} could not check every part of this command — `
+              + `${outcome.notice} (${taste.path}).`,
+          );
+        }
 
-      if (override.state === 'granted') {
-        notices.push(
-          `taste ${taste.name} allowed this command: ${rule.override} is set deliberately.`,
-        );
-        continue;
-      }
-      return {
-        decision: 'deny',
-        reason: refusal(taste, outcome.finding, override, request.cwd, home, notices),
-        notices,
-      };
+        if (override.state === 'granted') {
+          notices.push(
+            `taste ${taste.name} allowed this command: ${rule.override} is set deliberately.`,
+          );
+          continue;
+        }
+        return {
+          decision: 'deny',
+          reason: refusal(taste, outcome.finding, override, request.cwd, home, notices),
+          notices,
+        };
       }
     }
   } finally {

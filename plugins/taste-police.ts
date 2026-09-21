@@ -56,10 +56,17 @@ function tastesPresent(cwd: string): boolean {
 // A command can act in a repository the session is not standing in — `cd repo
 // && …`, `git -C repo …`, or a wrapper carrying either. Whether that repository
 // has tastes is the evaluator's question; what this decides is only whether the
-// question is worth asking, so it reads the command's shape and nothing else.
+// question is worth asking, because every command an agent runs pays for it.
+//
+// Read in command position, never anywhere in the text: `rg -C 3`, `make -C src`
+// and a commit message mentioning a directory change are none of this plugin's
+// business, and loading an evaluator for them is a cost with nothing at the end.
+const START = '(?:^|[;&|(])\\s*';
+const LAUNCHER = '(?:(?:env|timeout|nohup|sudo|nice|xargs)(?:\\s+[^;&|()\\s]+)*\\s+)?';
+const CHANGES = '(?:cd|pushd|eval|bash|sh|zsh|dash|ksh)(?:\\s|$)';
+const POINTS = 'git(?:\\s[^;&|()]*)?\\s(?:-C\\s|--git-dir[=\\s]|--work-tree[=\\s])';
 const REACHES_ELSEWHERE = new RegExp(
-  '(?:^|[\\s;&|(])(?:cd|pushd|eval|bash|sh|zsh|dash|ksh)(?:\\s|$)'
-    + '|(?:^|\\s)(?:-C|--git-dir|--work-tree)(?:[\\s=]|$)',
+  `${START}${LAUNCHER}(?:${CHANGES}|${POINTS})`,
 );
 
 export default async function tastePolice(ctx: PluginInput) {

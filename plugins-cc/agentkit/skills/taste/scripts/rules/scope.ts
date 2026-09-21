@@ -155,8 +155,8 @@ function movedBy(
     program !== 'cd' || args.length !== 1 || target === undefined || !LITERAL_PATH.test(target)
   ) {
     return {
-      unchecked: 'the command changes directory before committing in a way this check cannot '
-        + 'read, so the repository it commits in is not the one this check would look at',
+      unchecked: 'the command changes directory in a way this check cannot read, so the '
+        + 'directory it works in is not one this check can name',
     };
   }
   return isAbsolute(target) ? target : resolve(dir, target);
