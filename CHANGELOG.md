@@ -32,7 +32,11 @@ release PR — "publish this" authorizes a release, never the tier.
   also uses replaces theirs for the commands acting there and nowhere else. That part of the
   command is cut out of the text as it was typed rather than spelled again, so a pattern written
   against quoting reads the same from either side, and two visits to one checkout with a visit
-  elsewhere between them stay two commands rather than being joined into one nobody typed. The project layers are read from the top
+  elsewhere between them stay two commands rather than being joined into one nobody typed. A
+  literal `--work-tree` is followed like a `-C`, while a `--git-dir` with none beside it is
+  `UNCHECKED` rather than a silent allow; the owner's own directory is never read as a project
+  root, so dotfiles kept in git stay the user layer; and a refusal names a taste file the way its
+  own repository does. The project layers are read from the top
   of a work tree wherever the session stands, so a session in `repo/src` is bound by `repo`'s
   tastes exactly as a parent reaching in is; a session in no checkout reads its own directory, as
   before. Both presence gates look at that top too, or the hook would exit before the evaluator

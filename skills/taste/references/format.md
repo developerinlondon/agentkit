@@ -375,7 +375,21 @@ are two commands, joined by a newline rather than by a separator nobody typed, s
 `cd a && git add . ; cd ../b && … ; cd ../a && git push`. Commands the agent did write next to
 each other keep the separator they were written with.
 
+A pattern is compiled without the multiline flag, so `^` and `$` bind the **whole** of that text
+rather than each stretch of it: on a lane reading `git add .\ngit push --force`, `^git add`
+fires and `^git push` does not. A pattern that means to reach across a gap writes the `\n`
+itself.
+
+**A command that takes its checkout apart is read where it can be.** A literal `--work-tree`
+names the tree the commit applies to as surely as `-C` names where git runs, so its tastes bind.
+A `--git-dir` with no `--work-tree` beside it, or a value the command does not spell out, leaves
+the tree unsaid and is reported as `UNCHECKED` rather than passed over.
+
 **The project layers are always read from the top of a work tree**, wherever the session stands.
+The owner's own directory is never that top: `~/.agentkit/tastes` is the user layer by
+definition, so dotfiles kept in git do not turn it into a project one for every session beneath
+it. Any other checkout above a session does govern it, an umbrella `code/` someone ran
+`git init` in included.
 A session in `repo/src` is bound by `repo`'s tastes, and so is a parent running
 `cd repo/src && git commit` — the same tastes either way, which is the point. A session in no
 checkout at all reads its own directory, as it always did.

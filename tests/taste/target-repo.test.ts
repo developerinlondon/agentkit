@@ -771,3 +771,91 @@ describe('a taste is not shown a command the agent never typed', () => {
     expect((await evaluate(command, parent)).decision).toBe('deny');
   });
 });
+
+
+describe('a command that takes its checkout apart', () => {
+  function repoWithTaste(parent: string): string {
+    const repo = repository(parent, 'repoA');
+    mkdirSync(join(repo, '.agentkit', 'tastes'), { recursive: true });
+    writeFileSync(join(repo, '.agentkit', 'tastes', 'no-aaa.md'), taste('no-aaa', 'AAA'));
+    return repo;
+  }
+
+  // A work tree spelled out names the directory as surely as -C does, and the
+  // commit really lands there.
+  test('a literal work tree is followed, and its tastes bind', async () => {
+    const parent = scratch();
+    repoWithTaste(parent);
+    const command = 'git --git-dir=repoA/.git --work-tree=repoA commit -m AAA';
+
+    expect((await evaluate(command, parent)).decision).toBe('deny');
+  });
+
+  test.each([
+    ['a git dir with no work tree beside it', 'git --git-dir=repoA/.git commit -m AAA'],
+    ['a work tree the command does not spell out', 'git --work-tree="$T" commit -m AAA'],
+  ])('%s is reported, not passed over', async (_shape, command) => {
+    const parent = scratch();
+    repoWithTaste(parent);
+    const verdict = await evaluate(command, parent);
+
+    expect(verdict.decision).toBe('allow');
+    expect(verdict.notices.join(' ')).toContain('UNCHECKED');
+    expect(verdict.notices.join(' ')).toContain('project tastes');
+  });
+});
+
+describe('the owner\'s own folder is the user layer, whatever else it is', () => {
+  // Dotfiles kept in git make the owner's own directory a checkout. Every
+  // session beneath it would otherwise read the user layer as a project one,
+  // which no repository taste could ever stand back from.
+  test('a home that is itself a checkout does not make it a project one', async () => {
+    const home = scratch();
+    git(home, 'init', '-q', '-b', 'main');
+    mkdirSync(join(home, '.agentkit', 'tastes'), { recursive: true });
+    writeFileSync(join(home, '.agentkit', 'tastes', 'shared.md'), taste('shared', 'XXX'));
+    const work = join(home, 'work');
+    mkdirSync(work, { recursive: true });
+    const repo = repository(work, 'repoA');
+    mkdirSync(join(repo, '.agentkit', 'tastes'), { recursive: true });
+    writeFileSync(join(repo, '.agentkit', 'tastes', 'shared.md'), taste('shared', 'YYY'));
+
+    const verdict = await evaluateCommand({
+      command: 'cd repoA && git commit -m XXX',
+      cwd: work,
+      home,
+      env: { PATH: process.env.PATH },
+    });
+
+    expect(verdict.decision).toBe('allow');
+  });
+
+  test('and a checkout above a session that is not home still governs it', async () => {
+    const parent = scratch();
+    const umbrella = repository(parent, 'code');
+    mkdirSync(join(umbrella, '.agentkit', 'tastes'), { recursive: true });
+    writeFileSync(join(umbrella, '.agentkit', 'tastes', 'no-tag.md'), taste('no-tag', 'git tag'));
+    const inside = join(umbrella, 'somewhere');
+    mkdirSync(inside, { recursive: true });
+
+    expect((await evaluate('git tag v1.0.0', inside)).decision).toBe('deny');
+  });
+});
+
+describe('a refusal names the file the way its repository does', () => {
+  test('the path is read against the top of the checkout, not the session', async () => {
+    const parent = scratch();
+    const repo = repository(parent, 'repoB');
+    mkdirSync(join(repo, '.agentkit', 'tastes'), { recursive: true });
+    writeFileSync(join(repo, '.agentkit', 'tastes', 'no-bbb.md'), taste('no-bbb', 'BBB'));
+    mkdirSync(join(repo, 'sub'), { recursive: true });
+
+    for (const cwd of [repo, join(repo, 'sub')]) {
+      const verdict = await evaluate('git commit -m BBB', cwd);
+
+      expect(verdict.decision, cwd).toBe('deny');
+      expect(verdict.reason, cwd).toContain('.agentkit/tastes/no-bbb.md');
+      expect(verdict.reason, cwd).not.toContain(parent);
+    }
+  });
+});
