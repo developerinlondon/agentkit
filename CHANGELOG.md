@@ -9,6 +9,8 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+## v0.9.0 — 2026-09-21
+
 - feat(taste): **a taste whose rule is prose can refuse a commit.** Fifteen of the sixteen central
   tastes sit at `advise` or `check` because "done means deployed" or "no stopgaps" is not a regular
   expression, so the same convention is broken again under load and the reviewer spends a round on
