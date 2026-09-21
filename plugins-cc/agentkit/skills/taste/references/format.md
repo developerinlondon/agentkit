@@ -168,10 +168,13 @@ the question narrows what is being asked, the body says what good looks like.
 | `any`           | every command, judged on its text alone | none                                              |
 
 **The repository judged is the one the command targets.** A `git -C <dir> commit` is read in
-`<dir>`, resolved against the directory the command runs in. Where the command moves the tree
-out from under that reading — a `cd` or `pushd` before the commit, its own `--git-dir` or
-`--work-tree` — the rule reports `UNCHECKED` rather than judging whichever repository the hook
-happened to be invoked in.
+`<dir>`, resolved against the directory the command runs in, and so is a `cd` that spells its
+destination out: `cd sub && git commit …` is judged in `sub`. Where the command moves the tree
+somewhere this cannot follow — a `cd` naming a variable, a glob, a `~` path or `--`, a `pushd`,
+or the commit's own `--git-dir` or `--work-tree` — the rule reports `UNCHECKED` rather than
+judging whichever repository the hook happened to be invoked in. That holds however far away
+the commit is: a directory change this could not read blocks a commit in a later subshell or
+inside a wrapper just as firmly as one standing next to it.
 
 **A subshell and a wrapper are scopes.** `(cd sub && git commit …)` is judged in `sub`, because
 that is where that commit runs; `(cd sub) && git commit …` is judged where the command started,
@@ -183,7 +186,9 @@ A wrapped command is read as the command it spells out. `bash -c 'git commit -m 
 without the quotes, `-C` and `cd` included, to three levels of nesting. Text a shell would build
 at run time — `bash -c "$CMD"`, a substitution, a variable spliced into the message — is
 genuinely out of sight, and so is quoting this cannot resolve: an escaped quote inside a quoted
-run, or a quote that never closes. Each of those is `UNCHECKED` naming what could not be read,
+run, a quote that never closes, or runs concatenated the way `'it'"'"'s'` joins two of them.
+Quoting is only judged where a wrapper is the thing being run — a shell named as an argument to
+something else is a word, not a command. Each of those is `UNCHECKED` naming what could not be read,
 never a silent pass. A wrapped command that never commits stays silent, because a notice on
 every wrapped call an agent makes is a notice nobody reads.
 

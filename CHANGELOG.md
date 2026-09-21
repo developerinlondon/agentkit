@@ -38,9 +38,12 @@ release PR — "publish this" authorizes a release, never the tier.
   because that one is not a guess, and so is a wrapped command: `bash -c 'git commit …'`, `sh -c`
   and `eval` with a literal argument are read as the command they spell out, to three levels of
   nesting. A subshell and a wrapper are scopes, so a `cd` inside one moves what that scope's own
-  commands see and nothing after it. Text a shell builds at run time, quoting that does not
-  close, an escaped quote inside a quoted run, and nesting past the cap are each `UNCHECKED`
-  naming what could not be read, never a silent pass. **A `judgment` taste sends the command
+  commands see and nothing after it. A directory change this cannot read blocks a commit in a later
+  scope as firmly as one beside it. Text a shell builds at run time, quoting that does not
+  close, an escaped quote inside a quoted run, runs concatenated the way `'it'"'"'s'` joins two
+  of them, and nesting past the cap are each `UNCHECKED` naming what could not be read, never a
+  silent pass — and quoting is judged only where a wrapper is the thing being run, so a shell
+  named as an argument stays a word. **A `judgment` taste sends the command
   text, the commit message and the staged diff to a third-party provider**, which the taste
   contract, the concepts page and the Boundaries page now all say outright.
 

@@ -572,6 +572,82 @@ describe('the repository judged is the one the command targets', () => {
     expect(state.diff).toContain(`the ${which} repository`);
   });
 
+  // A cd this cannot read blocks whatever follows it, and a wrapper is not a
+  // way past that: the commit inside one runs in whatever tree the cd reached.
+  test.each([
+    ['a variable', 'cd "$T" && bash -c \'git commit -m "x"\''],
+    ['a glob', 'cd build-* && bash -c \'git commit -m "x"\''],
+    ['a home-relative path', 'cd ~/proj && bash -c \'git commit -m "x"\''],
+    ['an end-of-options marker', 'cd -- inner && bash -c \'git commit -m "x"\''],
+    ['a variable, before a subshell', 'cd "$T" && (git commit -m "x")'],
+    ['a glob, before a subshell', 'cd build-* && (git commit -m "x")'],
+  ])('a cd naming %s blocks a commit in any scope after it', async (_shape, command) => {
+    const stub = provider({ noul: 0.99 });
+    const git = recordingGit();
+    const outcome = await evaluate({}, {
+      command,
+      url: stub.url,
+      env: { PATH: `${git.dir}:${process.env.PATH}` },
+    });
+
+    expect(outcome.verdict).toBe('unchecked');
+    expect(outcome.verdict === 'unchecked' ? outcome.detail : '').toContain('changes directory');
+    expect(git.asked()).toBe(false);
+    expect(stub.sent).toHaveLength(0);
+  });
+
+  // The shell idiom for an apostrophe inside a single-quoted run: close, quote
+  // the quote, reopen. The tokeniser reads one pair and stops, so the text it
+  // hands back is not the command that would run.
+  test('a wrapper whose quoting is concatenated is UNCHECKED, not mangled', async () => {
+    const stub = provider({ noul: 0.99 });
+    const outcome = await evaluate({}, {
+      command: `bash -c 'git commit -m "it'"'"'s fine"'`,
+      url: stub.url,
+    });
+
+    expect(outcome.verdict).toBe('unchecked');
+    expect(outcome.verdict === 'unchecked' ? outcome.detail : '').toContain('quot');
+    expect(stub.sent).toHaveLength(0);
+  });
+
+  test('an apostrophe in an ordinary commit message is judged, not refused', async () => {
+    const stub = provider({ noul: 0.9 });
+    const outcome = await evaluate({}, {
+      command: `git commit -m "it's fine"`,
+      url: stub.url,
+    });
+
+    expect(outcome.verdict).toBe('fires');
+    expect(stub.sent[0]?.body.state.message).toBe("it's fine");
+  });
+
+  // A wrapper word inside a message is a word, not a command. Only one in
+  // command position makes the command's quoting worth refusing over.
+  test('a message that merely mentions a shell is judged normally', async () => {
+    const stub = provider({ noul: 0.9 });
+    const outcome = await evaluate({}, {
+      command: 'git commit -m "run bash \\"now\\""',
+      url: stub.url,
+    });
+
+    expect(outcome.verdict).toBe('fires');
+    expect(stub.sent).toHaveLength(1);
+  });
+
+  // Not the first word of anything, so nothing here runs a shell: the quoting
+  // gate has no whole command to be hiding and must stay out of the way.
+  test('a shell named as an argument is not a wrapper', async () => {
+    const stub = provider({ noul: 0.9 });
+    const outcome = await evaluate({}, {
+      command: 'grep bash notes.txt && git commit -m "say \\"hi\\""',
+      url: stub.url,
+    });
+
+    expect(outcome.verdict).toBe('fires');
+    expect(stub.sent).toHaveLength(1);
+  });
+
   test('a wrapped commit carries its own cd into the reading', async () => {
     const root = repo({ marker: 'the outer repository' });
     const inner = join(root, 'inner');
