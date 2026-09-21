@@ -22,7 +22,14 @@ release PR — "publish this" authorizes a release, never the tier.
   taste is evaluated with its own repository as the working directory. A directory change the walk
   cannot read is reported as `UNCHECKED` for the tastes it could not load, and only where a
   repository command runs after it. A command that changes no directory resolves exactly what it
-  did before and reads nothing extra from disk.
+  did before and reads nothing extra from disk. **A repository's taste sees only the part of the
+  command acting in that repository**, written as it would read had it been run there, so a taste
+  in one checkout can neither refuse another's commit nor be sent its diff. Only a checkout brings
+  tastes — resolved to the top of its work tree, followed through symlinks, and never from a
+  `node_modules` folder, whose `remedy` prose an agent would otherwise be shown verbatim — and
+  only where a `git`, `gh` or `glab` command works on it. A repository's own
+  `brain.taste.enabled: false` turns off its lane and no other, and its taste of a name the owner
+  also uses replaces theirs for the commands acting there.
 
 ## v0.9.0 — 2026-09-21
 

@@ -355,9 +355,26 @@ file the follow-up — do not let the diff imply the problem is solved.
 
 The project layers are read from **the repository the command acts in**. `taste-police` reads the
 command's own shape to find that — a literal `cd`, a `-C`, a subshell, a wrapper, the launchers it
-already reads through — and resolves `.agentkit/tastes/` for each distinct directory it reaches,
-alongside the one the session started in. The user layers bind wherever the agent is working and
-are read once.
+already reads through — and resolves `.agentkit/tastes/` for each checkout it works on, alongside
+the one the session started in. The user layers bind wherever the agent is working and are read
+once.
+
+**A repository's taste sees only the part of the command that acts in that repository**, written
+as it would read had it been run there: the segments acting elsewhere are not in the text it is
+matched against, and a `judgment` taste is sent that repository's diff and message and nothing
+else. A taste in one checkout can neither refuse another checkout's commit nor be shown its diff.
+
+**Only a checkout brings tastes, and only where a repository command works on it.** The directory
+is followed through symlinks and resolved to the top of its work tree, so `repo/src` brings
+`repo`'s tastes. A folder under `node_modules` brings none even when it is a checkout of its own,
+because a `remedy` is prose an agent is shown and a dependency is not a place anybody vouched for
+prose. A directory that is merely listed or removed brings none either.
+
+**A repository's own `brain.taste.enabled: false` turns off its lane and no other.** The session's
+tastes keep binding; so do the tastes of any other checkout in the same command.
+
+Where a repository defines a taste the owner also defines at user level, **the repository's
+replaces it for the commands acting there**, exactly as it would for a session standing in it.
 
 | The session sits in | The command                 | Judged by                  |
 | ------------------- | --------------------------- | -------------------------- |

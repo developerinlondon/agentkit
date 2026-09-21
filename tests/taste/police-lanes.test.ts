@@ -49,9 +49,16 @@ How to apply: propose the patch version in the release PR.
 
 const TAG_MINOR = 'git tag v0.8.0';
 const PROJECT = { '.agentkit/tastes/release-tier.md': RELEASE_TIER };
-// The same taste one directory down, so the session sits above the repository
+// The same taste one checkout down, so the session sits above the repository
 // the command reaches — the ordinary shape on a workstation holding several.
 const NESTED = { 'repo/.agentkit/tastes/release-tier.md': RELEASE_TIER };
+
+// Only a checkout brings tastes, so the fixture has to be one.
+function nested(): string {
+  const root = sandbox(NESTED);
+  spawnSync('git', ['init', '-q', '-b', 'main'], { cwd: join(root, 'repo') });
+  return root;
+}
 
 interface HookRun {
   stdout: string;
@@ -111,7 +118,7 @@ describe('the Claude hook lane refuses from the same data', () => {
   });
 
   test('a command reaching a repository below the session is refused by its tastes', () => {
-    const cwd = sandbox(NESTED);
+    const cwd = nested();
     const denial = runHook(`cd repo && ${TAG_MINOR}`, cwd);
 
     expect(isDeny(denial.stdout)).toBe(true);
@@ -119,7 +126,7 @@ describe('the Claude hook lane refuses from the same data', () => {
   });
 
   test('a directory the command never enters brings nothing', () => {
-    const cwd = sandbox(NESTED);
+    const cwd = nested();
     const allowed = runHook(TAG_MINOR, cwd);
 
     expect(allowed.stdout.trim()).toBe('');
@@ -289,7 +296,7 @@ describe('the OpenCode plugin lane', () => {
   });
 
   test('refuses from the tastes of the repository the command reaches', async () => {
-    const cwd = sandbox(NESTED);
+    const cwd = nested();
     await expect(call(cwd, `cd repo && ${TAG_MINOR}`)).rejects.toThrow(
       'BLOCKED by taste release-tier',
     );

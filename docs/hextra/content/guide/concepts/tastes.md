@@ -60,8 +60,12 @@ location wins, and inside one location the owner's own tastes beat the ones they
 
 **Project is the repository the command acts in**, which is not always the one the session sits
 in. A session in a parent directory running `cd repo && git commit …` or `git -C repo commit …`
-is judged by `repo`'s tastes, and a command touching two repositories brings the tastes of both.
-The user layers bind wherever you are working and load once. A directory change the hook cannot
+is judged by `repo`'s tastes, and a command touching two repositories brings the tastes of both —
+each judging only the part of the command that acts in it, so a taste in one checkout never sees
+another's command or diff. The user layers bind wherever you are working and load once, and a
+repository's taste of the same name replaces one of yours for the commands acting there. Only a
+checkout brings tastes, never a `node_modules` folder, and a repository's own
+`brain.taste.enabled: false` turns off its lane and no other. A directory change the hook cannot
 read — a variable, a glob — is reported as `UNCHECKED` rather than passed over.
 
 {{< callout type="info" >}}

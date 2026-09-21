@@ -1,15 +1,98 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { evaluateCommand, tasteLanes } from '../../skills/taste/scripts/police.ts';
 import { actedDirectories } from '../../skills/taste/scripts/rules/scope.ts';
 
+const servers: { stop(force?: boolean): void }[] = [];
+
 const sandboxes: string[] = [];
 
 afterEach(() => {
+  while (servers.length > 0) (servers.pop() as { stop(force?: boolean): void }).stop(true);
   while (sandboxes.length > 0) rmSync(sandboxes.pop() as string, { recursive: true, force: true });
 });
+
+function git(dir: string, ...args: string[]): void {
+  const result = Bun.spawnSync({
+    cmd: ['git', ...args],
+    cwd: dir,
+    env: {
+      ...process.env,
+      GIT_AUTHOR_NAME: 'fixture',
+      GIT_AUTHOR_EMAIL: 'fixture@example.invalid',
+      GIT_COMMITTER_NAME: 'fixture',
+      GIT_COMMITTER_EMAIL: 'fixture@example.invalid',
+    },
+  });
+  if (result.exitCode !== 0) throw new Error(result.stderr.toString());
+}
+
+// A repository with one staged line that names itself, so a diff that reaches
+// the provider says which repository it came from.
+function repository(parent: string, name: string): string {
+  const dir = join(parent, name);
+  mkdirSync(dir, { recursive: true });
+  git(dir, 'init', '-q', '-b', 'main');
+  writeFileSync(join(dir, 'a.ts'), 'export const a = 1;\n');
+  git(dir, 'add', '-A');
+  git(dir, 'commit', '-q', '-m', 'one');
+  writeFileSync(join(dir, 'a.ts'), `export const a = 1; // SECRET_FROM_${name}\n`);
+  git(dir, 'add', '-A');
+  return dir;
+}
+
+function judgmentTaste(dir: string, name: string, question: string, override: string): void {
+  const front = [
+    `name: ${name}`,
+    'scope: project',
+    'strength: require',
+    'enforce: block',
+    'provenance: 2026-09-21 · session correction',
+    'rule:',
+    '  kind: judgment',
+    `  question: ${question}`,
+    `  remedy: Fix it the ${name} way.`,
+    `  override: ${override}`,
+  ].join('\n');
+  mkdirSync(join(dir, '.agentkit', 'tastes'), { recursive: true });
+  writeFileSync(
+    join(dir, '.agentkit', 'tastes', `${name}.md`),
+    `---\n${front}\n---\n\nThe ${name} preference.\n\nWhy: it holds.\n\n`
+      + 'How to apply: read it first.\n',
+  );
+}
+
+interface Asked {
+  command: string;
+  diff: string;
+  message: string;
+  policy: string;
+}
+
+function stubProvider(noul: number): { url: string; asked: Asked[] } {
+  const asked: Asked[] = [];
+  const server = Bun.serve({
+    hostname: '127.0.0.1',
+    port: 0,
+    async fetch(request: Request) {
+      const body = await request.json() as {
+        state: Record<string, string>;
+        questions: { q: { instructions: Record<string, string> } };
+      };
+      asked.push({
+        command: body.state.command as string,
+        diff: body.state.diff as string,
+        message: body.state.message as string,
+        policy: body.questions.q.instructions.policy as string,
+      });
+      return Response.json({ model: 'jev-1', answers: { q: { type: 'noul', noul } } });
+    },
+  });
+  servers.push(server);
+  return { url: `http://127.0.0.1:${server.port}`, asked };
+}
 
 function scratch(): string {
   const root = mkdtempSync(join(tmpdir(), 'agentkit-target-'));
@@ -35,9 +118,9 @@ function taste(name: string, match: string): string {
   return `---\n${front}\n---\n\n${body}\n`;
 }
 
-// A directory holding a repository's own tastes, under a parent that has none.
+// A repository holding its own tastes, under a parent that has none.
 function repoIn(parent: string, name: string, rule: { taste: string; match: string }): string {
-  const dir = join(parent, name);
+  const dir = repository(parent, name);
   mkdirSync(join(dir, '.agentkit', 'tastes'), { recursive: true });
   writeFileSync(
     join(dir, '.agentkit', 'tastes', `${rule.taste}.md`),
@@ -61,8 +144,9 @@ describe('which directories a command acts in', () => {
   test('a command that never leaves the directory it started in names none', () => {
     const cwd = scratch();
 
-    expect(actedDirectories('git tag v0.8.0', cwd)).toEqual({ dirs: [] });
-    expect(actedDirectories('ls -la && echo hi', cwd)).toEqual({ dirs: [] });
+    expect(actedDirectories('git tag v0.8.0', cwd).dirs).toEqual([]);
+    expect(actedDirectories('git tag v0.8.0', cwd).atStart).toBe(true);
+    expect(actedDirectories('ls -la && echo hi', cwd).dirs).toEqual([]);
   });
 
   test.each([
@@ -144,9 +228,9 @@ describe('the tastes that apply are the targeted repository\'s', () => {
     expect(second.reason).toContain('force-push');
   });
 
-  test('a directory with no tastes of its own adds nothing and says nothing', async () => {
+  test('a repository with no tastes of its own adds nothing and says nothing', async () => {
     const parent = scratch();
-    mkdirSync(join(parent, 'other'), { recursive: true });
+    repository(parent, 'other');
     const verdict = await evaluate('cd other && git status', parent);
 
     expect(verdict.decision).toBe('allow');
@@ -156,7 +240,7 @@ describe('the tastes that apply are the targeted repository\'s', () => {
   test('the taste of a directory the command never enters stays out of it', async () => {
     const parent = scratch();
     repoIn(parent, 'repo', { taste: 'release-tier', match: 'git tag' });
-    mkdirSync(join(parent, 'other'), { recursive: true });
+    repository(parent, 'other');
     const verdict = await evaluate('cd other && git tag v0.8.0', parent);
 
     expect(verdict.decision).toBe('allow');
@@ -227,9 +311,203 @@ describe('the cheap path stays cheap', () => {
   test('a command that enters one resolves two, and no more', () => {
     const parent = scratch();
     repoIn(parent, 'repo', { taste: 'release-tier', match: 'git tag' });
-    mkdirSync(join(parent, 'other'), { recursive: true });
+    repository(parent, 'other');
     const lanes = tasteLanes('cd repo && git tag v0.8.0', parent, scratch(), {});
 
     expect(lanes.map((lane) => lane.cwd)).toEqual([parent, join(parent, 'repo')]);
+  });
+});
+
+
+describe('a kind that reads a directory reads the targeted repository\'s', () => {
+  const SHAPES: [string, (repo: string, name: string) => string][] = [
+    ['cd', (_repo, name) => `cd ${name} && git commit -m "x"`],
+    ['git -C', (_repo, name) => `git -C ${name} commit -m "x"`],
+    ['a subshell', (_repo, name) => `(cd ${name} && git commit -m "x")`],
+    ['a wrapper', (_repo, name) => `bash -c 'cd ${name} && git commit -m "x"'`],
+    ['an absolute cd', (repo) => `cd ${repo} && git commit -m "x"`],
+  ];
+
+  test.each(SHAPES)('a judgment taste is reached through %s', async (_shape, shape) => {
+    const parent = scratch();
+    const repo = repository(parent, 'repoA');
+    judgmentTaste(repo, 'no-stopgaps', 'Is this a stopgap?', 'AGENTKIT_NO_STOPGAPS');
+    const stub = stubProvider(0.9);
+    const verdict = await evaluateCommand({
+      command: shape(repo, 'repoA'),
+      cwd: parent,
+      home: scratch(),
+      env: { PATH: process.env.PATH, TYPESAFE_API_KEY: 'k', TYPESAFE_BASE_URL: stub.url },
+    });
+
+    expect(verdict.decision).toBe('deny');
+    expect(verdict.reason).toContain('no-stopgaps');
+    expect(stub.asked).toHaveLength(1);
+    expect(stub.asked[0]?.diff).toContain('SECRET_FROM_repoA');
+  });
+});
+
+describe('a taste sees only the part of the command acting in its repository', () => {
+  test('a pattern is tested against that repository\'s segments alone', async () => {
+    const parent = scratch();
+    repository(parent, 'repoA');
+    const repoB = repository(parent, 'repoB');
+    mkdirSync(join(repoB, '.agentkit', 'tastes'), { recursive: true });
+    writeFileSync(join(repoB, '.agentkit', 'tastes', 'no-bbb.md'), taste('no-bbb', 'BBB'));
+    const verdict = await evaluate(
+      'cd repoA && git commit -m BBB && cd ../repoB && git status',
+      parent,
+    );
+
+    expect(verdict.decision).toBe('allow');
+  });
+
+  test('a judgment never receives another repository\'s diff', async () => {
+    const parent = scratch();
+    const repoA = repository(parent, 'repoA');
+    const repoB = repository(parent, 'repoB');
+    judgmentTaste(repoB, 'bee', 'Is this a stopgap?', 'AGENTKIT_BEE');
+    const stub = stubProvider(0.1);
+    await evaluateCommand({
+      command: `cd ${repoA} && git commit -m "in A" && cd ${repoB} && git commit -m "in B"`,
+      cwd: parent,
+      home: scratch(),
+      env: { PATH: process.env.PATH, TYPESAFE_API_KEY: 'k', TYPESAFE_BASE_URL: stub.url },
+    });
+
+    for (const one of stub.asked) {
+      expect(one.diff).not.toContain('SECRET_FROM_repoA');
+      expect(one.command).not.toContain('in A');
+    }
+    expect(stub.asked.map((one) => one.message)).toEqual(['in B']);
+  });
+});
+
+describe('a repository taste shadows the user taste of the same name', () => {
+  test('inside that repository, the repository wins', async () => {
+    const parent = scratch();
+    const repo = repository(parent, 'repoA');
+    mkdirSync(join(repo, '.agentkit', 'tastes'), { recursive: true });
+    writeFileSync(join(repo, '.agentkit', 'tastes', 'shared.md'), taste('shared', 'YYY'));
+    const home = userTaste(scratch(), 'shared', 'XXX');
+    const verdict = await evaluateCommand({
+      command: 'cd repoA && git commit -m XXX',
+      cwd: parent,
+      home,
+      env: { PATH: process.env.PATH },
+    });
+
+    expect(verdict.decision).toBe('allow');
+  });
+
+  test('and the repository\'s own rule still binds there', async () => {
+    const parent = scratch();
+    const repo = repository(parent, 'repoA');
+    mkdirSync(join(repo, '.agentkit', 'tastes'), { recursive: true });
+    writeFileSync(join(repo, '.agentkit', 'tastes', 'shared.md'), taste('shared', 'YYY'));
+    const home = userTaste(scratch(), 'shared', 'XXX');
+    const verdict = await evaluateCommand({
+      command: 'cd repoA && git commit -m YYY',
+      cwd: parent,
+      home,
+      env: { PATH: process.env.PATH },
+    });
+
+    expect(verdict.decision).toBe('deny');
+  });
+});
+
+describe('only a repository brings tastes, and only where one is worked in', () => {
+  // A dependency that is a checkout of its own is still a dependency. Its
+  // remedy is prose an agent is shown verbatim, and nobody vouched for it.
+  test.each([
+    ['named outright', (planted: string) => `cd ${planted} && git status`],
+    ['reached by ..', (planted: string) => `cd ${planted}/../evil && git status`],
+  ])('a checkout planted under node_modules and %s is never read', async (_shape, shape) => {
+    const parent = scratch();
+    const repo = repository(parent, 'repoA');
+    const planted = join(repo, 'node_modules', 'evil');
+    mkdirSync(join(planted, '.agentkit', 'tastes'), { recursive: true });
+    writeFileSync(join(planted, '.agentkit', 'tastes', 'planted.md'), taste('planted', 'git'));
+    git(planted, 'init', '-q', '-b', 'main');
+    const verdict = await evaluate(shape(planted), parent);
+
+    expect(verdict.decision).toBe('allow');
+    expect(JSON.stringify(verdict)).not.toContain('planted');
+  });
+
+  test('a symlink out of a checkout is followed before it is judged', async () => {
+    const parent = scratch();
+    const repo = repository(parent, 'repoA');
+    const planted = join(repo, 'node_modules', 'evil');
+    mkdirSync(join(planted, '.agentkit', 'tastes'), { recursive: true });
+    writeFileSync(join(planted, '.agentkit', 'tastes', 'planted.md'), taste('planted', 'git'));
+    git(planted, 'init', '-q', '-b', 'main');
+    symlinkSync(planted, join(parent, 'innocent'), 'dir');
+    const verdict = await evaluate('cd innocent && git status', parent);
+
+    expect(verdict.decision).toBe('allow');
+    expect(JSON.stringify(verdict)).not.toContain('planted');
+  });
+
+  test('a directory inside a repository brings the repository\'s tastes', async () => {
+    const parent = scratch();
+    const repo = repository(parent, 'repoA');
+    mkdirSync(join(repo, '.agentkit', 'tastes'), { recursive: true });
+    writeFileSync(join(repo, '.agentkit', 'tastes', 'no-tag.md'), taste('no-tag', 'git tag'));
+    mkdirSync(join(repo, 'src'), { recursive: true });
+    const verdict = await evaluate('cd repoA/src && git tag v1.0.0', parent);
+
+    expect(verdict.decision).toBe('deny');
+    expect(verdict.reason).toContain('no-tag');
+  });
+
+  test('a directory that is no repository brings nothing, taste folder or not', () => {
+    const parent = scratch();
+    const plain = join(parent, 'plain');
+    mkdirSync(join(plain, '.agentkit', 'tastes'), { recursive: true });
+    writeFileSync(join(plain, '.agentkit', 'tastes', 'planted.md'), taste('planted', 'git'));
+    const lanes = tasteLanes('cd plain && git status', parent, scratch(), {});
+
+    expect(lanes.map((lane) => lane.cwd)).toEqual([parent]);
+  });
+
+  test('a directory entered by something other than a repository command is passed over', () => {
+    const parent = scratch();
+    const repo = repository(parent, 'repoA');
+    mkdirSync(join(repo, '.agentkit', 'tastes'), { recursive: true });
+    writeFileSync(join(repo, '.agentkit', 'tastes', 'no-rm.md'), taste('no-rm', 'rm -rf'));
+    const lanes = tasteLanes('cd repoA && rm -rf build', parent, scratch(), {});
+
+    expect(lanes.map((lane) => lane.cwd)).toEqual([parent]);
+  });
+});
+
+describe('a repository turning tastes off turns off its own lane only', () => {
+  test('its tastes stop binding', async () => {
+    const parent = scratch();
+    const repo = repository(parent, 'repoA');
+    mkdirSync(join(repo, '.agentkit', 'tastes'), { recursive: true });
+    writeFileSync(join(repo, '.agentkit', 'tastes', 'no-tag.md'), taste('no-tag', 'git tag'));
+    writeFileSync(
+      join(repo, '.agentkit', 'config.yaml'),
+      'brain:\n  taste:\n    enabled: false\n',
+    );
+
+    expect((await evaluate('cd repoA && git tag v1.0.0', parent)).decision).toBe('allow');
+  });
+
+  test('and the session\'s own tastes keep binding', async () => {
+    const parent = scratch();
+    const repo = repository(parent, 'repoA');
+    mkdirSync(join(repo, '.agentkit'), { recursive: true });
+    writeFileSync(
+      join(repo, '.agentkit', 'config.yaml'),
+      'brain:\n  taste:\n    enabled: false\n',
+    );
+    mkdirSync(join(parent, '.agentkit', 'tastes'), { recursive: true });
+    writeFileSync(join(parent, '.agentkit', 'tastes', 'no-tag.md'), taste('no-tag', 'git tag'));
+
+    expect((await evaluate('cd repoA && git tag v1.0.0', parent)).decision).toBe('deny');
   });
 });
