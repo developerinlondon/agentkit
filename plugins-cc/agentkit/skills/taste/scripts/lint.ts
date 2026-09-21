@@ -93,6 +93,14 @@ function checkEnums(front: Frontmatter): string[] {
 // whether they still do — the same taste file therefore arrives with a key of
 // `on` or of `true` depending on which runtime read it. Whichever way it lands,
 // it is the `on` its author typed.
+export function onKeyErrors(rule: Frontmatter): string[] {
+  if (!Object.hasOwn(rule, 'true') || !Object.hasOwn(rule, 'on')) return [];
+  return [
+    'rule carries both on and true — one of them is the other read as a YAML boolean. Keep one, '
+      + 'and quote the key as "on" if your editor rewrites it',
+  ];
+}
+
 export function ruleFields(rule: Frontmatter): Frontmatter {
   if (!Object.hasOwn(rule, 'true')) return rule;
   const fields: Frontmatter = { ...rule, on: rule['true'] };
@@ -116,10 +124,14 @@ function checkKind(rule: Frontmatter, kind: RuleKind | undefined): string[] {
 
 // Every value in the block is a string, which is what makes a rule data rather
 // than structure. Which strings have to be there is the kind's business.
+// Read through `scalar` because that is what the resolver hands a kind at
+// enforcement time: a lint that judged only the quoted forms would accept an
+// unquoted number here and run something different there.
 function stringFields(rule: Frontmatter): Record<string, string> {
   const fields: Record<string, string> = {};
   for (const [key, value] of Object.entries(rule)) {
-    if (typeof value === 'string') fields[key] = value;
+    const text = scalar(value);
+    if (text !== undefined) fields[key] = text;
   }
   return fields;
 }
@@ -128,10 +140,21 @@ function checkRuleFields(rule: Frontmatter): string[] {
   const kind = typeof rule.kind === 'string' ? ruleKind(rule.kind) : undefined;
   const errors = checkKind(rule, kind);
 
-  for (const key of ['kind', 'remedy', ...(kind?.required ?? [])]) {
+  const required = ['kind', 'remedy', ...(kind?.required ?? [])];
+  for (const key of required) {
     if (typeof rule[key] !== 'string') {
       errors.push(`rule.${key} must be a string — the rule is data, not structure`);
     }
+  }
+  // A value no scalar can render reaches a kind as an absent field, which reads
+  // as the default rather than as the mistake it is. YAML 1.1 makes `yes` and
+  // `no` booleans, so this is how someone's word arrives.
+  for (const [key, value] of Object.entries(rule)) {
+    if (required.includes(key) || scalar(value) !== undefined) continue;
+    errors.push(
+      `rule.${key}: ${JSON.stringify(value ?? null)} is not a single value — a rule is data, `
+        + 'not structure',
+    );
   }
   if (kind !== undefined) errors.push(...kind.validate(stringFields(rule)));
 
@@ -161,7 +184,8 @@ function checkRule(front: Frontmatter): string[] {
     return [`rule must be a block of kind, remedy, override and what the kind requires — the `
       + `kinds are ${RULE_KINDS.join(', ')}`];
   }
-  return checkRuleFields(ruleFields(front.rule));
+  const rule = front.rule;
+  return [...onKeyErrors(rule), ...checkRuleFields(ruleFields(rule))];
 }
 
 export interface Inspection {
