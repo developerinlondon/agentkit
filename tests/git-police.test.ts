@@ -1,4 +1,4 @@
-import { describe, test, expect, mock } from 'bun:test';
+import { afterAll, describe, test, expect, mock } from 'bun:test';
 import { dirname, join } from 'node:path';
 import gitPolice from '../plugins/git-police';
 import { spawnSync } from 'node:child_process';
@@ -205,16 +205,20 @@ describe('git-police', () => {
 });
 
 describe("git-police blocks attribution in the shell hook itself", () => {
-  // The plugin tests above exercise the TypeScript hook. The bash hook is what
-  // Claude Code actually runs, and its attribution rule read a variable that
-  // was never set: under `set -u` the script died on that line, emitted no
-  // decision, and the harness read silence as allow. A heredoc commit with a
-  // trailer walked straight through.
+  // The attribution tests above exercise the TypeScript hook. The bash hook is
+  // what Claude Code actually runs, and its attribution rule piped a variable
+  // that was never set into grep: under `set -u` the pipeline's subshell died,
+  // grep read nothing, and the rule was false for every command. A heredoc
+  // commit with a trailer walked straight through while every other rule held.
+  // An empty config home, as below: a developer whose own agentkit config
+  // allow-lists this repository would otherwise exit before any rule runs.
+  const emptyConfig = mkdtempSync(join(tmpdir(), "agentkit-noconfig-"));
+  afterAll(() => rmSync(emptyConfig, { recursive: true, force: true }));
   const run = (command: string) =>
     spawnSync("bash", [join(repoRoot, "hooks", "claude", "git-police.sh")], {
       input: JSON.stringify({ tool_name: "Bash", tool_input: { command }, session_id: "t" }),
       encoding: "utf-8",
-      env: { ...process.env },
+      env: { ...process.env, XDG_CONFIG_HOME: emptyConfig },
     });
 
   test("a heredoc commit carrying a trailer is denied", () => {

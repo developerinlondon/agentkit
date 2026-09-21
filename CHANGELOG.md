@@ -10,15 +10,16 @@ release PR — "publish this" authorizes a release, never the tier.
 ## [Unreleased]
 
 - fix(git-police): **the attribution rule fires.** The shell hook's rule against `Co-authored-by`
-  trailers, session links and the rest read a variable that nothing set, so under `set -u` the
-  hook died on that line, emitted no decision, and the harness read silence as allow — a heredoc
-  commit carrying two trailers walked straight through, thirty-eight times in one afternoon. The
-  rule now reads the payload the hook actually slurped, and a test runs the bash hook itself (the
-  earlier tests covered only the TypeScript plugin) with a heredoc commit, a forge write carrying
-  a session link, and a clean commit. The class is closed as well as the instance: nothing in CI
-  runs shellcheck, so `tests/hooks-unbound-vars.test.ts` is the repository's own SC2154 — every
-  hook and hook library, for Claude and Codex alike, must assign or default-guard each upper-case
-  variable it reads, and the checker is itself tested against the line that shipped.
+  trailers, session links and the rest piped a variable that nothing set into grep. Under `set -u`
+  only the pipeline's subshell died: grep read nothing, the test was false, and that one rule
+  never fired while every other rule in the hook carried on, so commits and merge request
+  descriptions carrying attribution went through unchallenged. The rule now reads the payload the
+  hook actually slurped. Three tests run the bash hook itself against this rule, which no earlier
+  test reached: a heredoc commit carrying a trailer, a forge write carrying a session link, and a
+  clean commit. The class is closed as well as the instance: nothing in CI runs shellcheck, so
+  `tests/hooks-unbound-vars.test.ts` is the repository's own SC2154 — every hook and hook
+  library must assign or default-guard each upper-case variable it
+  reads, and the checker is itself tested against both spellings that shipped.
 
 ## v0.9.0 — 2026-09-21
 

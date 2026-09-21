@@ -3,11 +3,12 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 /**
- * Every police hook runs under `set -u`. A hook that reads a variable nothing
- * assigns does not fail loudly: it dies on that line, prints no decision, and
- * the harness reads silence as ALLOW. git-police's attribution rule shipped that
- * way twice (`$TOOL_INPUT`, then `$INPUT`) because the rule only executes for a
- * commit or a forge write, so no other test ever reached the line. Nothing in
+ * Every police hook runs under `set -u`. A rule that reads a variable nothing
+ * assigns does not fail loudly. git-police's attribution rule piped the read
+ * into grep, so only the pipeline's subshell died: grep saw nothing, the test
+ * was false, and that one rule never fired while the rest of the hook ran on.
+ * It shipped that way twice (`$TOOL_INPUT`, then `$INPUT`) because the rule only
+ * executes for a commit or a forge write, and no test reached the line. Nothing in
  * CI runs shellcheck, so this is the repository's own SC2154: an upper-case
  * variable read without a default must be assigned by the hook or by a library
  * it can source, or be guarded with a default form somewhere in the same file.
@@ -84,6 +85,7 @@ describe('no hook reads a variable that nothing assigns', () => {
   test('the checker flags the read that shipped, and clears it once it is guarded or assigned', () => {
     const shipped = 'set -euo pipefail\nCOMMAND=$(cat)\nif echo "$INPUT" | grep -q x; then exit 2; fi\n';
     expect(unboundReads(shipped, [])).toEqual(['line 3: $INPUT']);
+    expect(unboundReads(shipped.replace('$INPUT', '$TOOL_INPUT'), [])).toEqual(['line 3: $TOOL_INPUT']);
     expect(unboundReads(shipped.replace('"$INPUT"', '"${INPUT:-}"'), [])).toEqual([]);
     expect(unboundReads(shipped, ['agentkit_slurp() { INPUT=$(cat); }\n'])).toEqual([]);
     expect(unboundReads('read -r MODE TYPE _ NAME <<<"$ENTRY"\necho "$TYPE $NAME"\n', [])).toEqual(['line 1: $ENTRY']);
