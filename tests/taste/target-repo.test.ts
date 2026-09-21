@@ -196,6 +196,20 @@ describe('the tastes that apply are the targeted repository\'s', () => {
     expect(verdict.reason).toContain('Do it the release-tier way.');
   });
 
+  // macOS reaches its temporary directory through a symlink, so the followed
+  // path and the one the command names are different strings for one place.
+  // Everything here compares followed paths; a link in the way proves it.
+  test('a session reached through a symlink is judged the same way', async () => {
+    const real = scratch();
+    repoIn(real, 'repo', { taste: 'release-tier', match: 'tag .*v[0-9]+\\.[0-9]+\\.0' });
+    const linked = join(scratch(), 'parent');
+    symlinkSync(real, linked, 'dir');
+    const verdict = await evaluate('cd repo && git tag v0.8.0', linked);
+
+    expect(verdict.decision).toBe('deny');
+    expect(verdict.reason).toContain('release-tier');
+  });
+
   test('a command reaching it by git -C is judged the same way', async () => {
     const parent = scratch();
     repoIn(parent, 'repo', { taste: 'release-tier', match: 'tag .*v[0-9]+\\.[0-9]+\\.0' });

@@ -330,13 +330,19 @@ export function actedDirectories(command: string, cwd: string): Acted {
 // place anybody vouched for prose.
 const MAX_DEPTH = 40;
 
-export function repositoryRoot(dir: string): string | undefined {
-  let here: string;
+// Followed through symlinks, so a path cannot point out of the tree it appears
+// to be in — and so two readings of one directory compare equal. A directory
+// that is not there yet is its own answer; there is nothing to follow.
+function realOf(dir: string): string {
   try {
-    here = realpathSync(dir);
+    return realpathSync(dir);
   } catch {
-    return undefined;
+    return dir;
   }
+}
+
+export function repositoryRoot(dir: string): string | undefined {
+  let here = realOf(dir);
   if (here.split(sep).includes('node_modules')) return undefined;
 
   for (let depth = 0; depth < MAX_DEPTH; depth += 1) {
@@ -391,7 +397,9 @@ export function scopedCommand(command: string, cwd: string, root: string): strin
   const found = walk(commandSegments(command), cwd, 0, ranIn);
   const parts: string[] = [];
   for (const hit of found.hits) {
-    if (!inside(hit.dir, root)) continue;
+    // Against the followed path on both sides: a root is one, and on a machine
+    // whose temporary or home directory is itself a link the raw path is not.
+    if (!inside(realOf(hit.dir), root)) continue;
     parts.push(withoutPointer(hit.segment).map(requoted).join(' '));
   }
   return parts.join(' && ');
