@@ -204,6 +204,40 @@ describe('git-police', () => {
   });
 });
 
+describe("git-police blocks attribution in the shell hook itself", () => {
+  // The plugin tests above exercise the TypeScript hook. The bash hook is what
+  // Claude Code actually runs, and its attribution rule read a variable that
+  // was never set: under `set -u` the script died on that line, emitted no
+  // decision, and the harness read silence as allow. A heredoc commit with a
+  // trailer walked straight through.
+  const run = (command: string) =>
+    spawnSync("bash", [join(repoRoot, "hooks", "claude", "git-police.sh")], {
+      input: JSON.stringify({ tool_name: "Bash", tool_input: { command }, session_id: "t" }),
+      encoding: "utf-8",
+      env: { ...process.env },
+    });
+
+  test("a heredoc commit carrying a trailer is denied", () => {
+    const r = run(
+      "cd /repo && git add -A && git commit -q -F - <<'EOF'\nfix(#1): x\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF",
+    );
+    expect(`${r.stderr ?? ""}`).not.toContain("unbound variable");
+    expect(`${r.stdout ?? ""}`).toContain('"permissionDecision": "deny"');
+    expect(`${r.stdout ?? ""}`).toContain("attribution");
+  });
+
+  test("a forge write carrying a session link is denied", () => {
+    const r = run('glab mr create --title "x" --description "done\n\nhttps://claude.ai/code/session_1"');
+    expect(`${r.stdout ?? ""}`).toContain('"permissionDecision": "deny"');
+  });
+
+  test("a clean commit is allowed", () => {
+    const r = run('git commit -m "fix(#1): x"');
+    expect(`${r.stdout ?? ""}`).not.toContain("permissionDecision");
+    expect(r.status).toBe(0);
+  });
+});
+
 describe("git-police works on a stock install", () => {
   test("a force push is denied with no agentkit config present", () => {
     // `[[ -f $CONFIG ]] || return` propagated status 1 into `set -e`, so the
