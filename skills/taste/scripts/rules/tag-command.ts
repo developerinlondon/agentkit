@@ -65,10 +65,11 @@ const GH_RELEASE_CREATE: Shape = {
   dropFirst: false,
 };
 
-const GIT_GLOBAL_VALUED = ['-C', '-c', '--git-dir', '--work-tree', '--namespace', '--exec-path'];
-const GH_GLOBAL_VALUED = ['-R', '--repo'];
+export const GIT_GLOBAL_VALUED =
+  ['-C', '-c', '--git-dir', '--work-tree', '--namespace', '--exec-path'];
+export const FORGE_GLOBAL_VALUED = ['-R', '--repo'];
 
-function segments(command: string): string[][] {
+export function commandSegments(command: string): string[][] {
   const found: string[][] = [[]];
   for (const token of command.match(TOKEN) ?? []) {
     if (SEPARATOR.test(token)) {
@@ -96,25 +97,36 @@ interface Reading {
   words: string[];
 }
 
-function readingOf(segment: string[]): Reading | undefined {
+// The words a program was invoked with, or nothing when this segment invokes
+// something else. An inline assignment prefix and the program's own global
+// options are dropped, so what is left starts at the subcommand.
+export function programWords(
+  segment: readonly string[],
+  program: string,
+  valued: readonly string[] = [],
+): string[] | undefined {
   const words = [...segment];
   while (words.length > 0 && ASSIGNMENT.test(words[0] as string)) words.shift();
-  const program = words.shift();
-  if (program === undefined) return undefined;
+  const invoked = words.shift();
+  if (invoked === undefined || !named(invoked, program)) return undefined;
+  dropOptions(words, valued);
+  return words;
+}
 
-  if (named(program, 'git')) {
-    dropOptions(words, GIT_GLOBAL_VALUED);
-    const subcommand = words.shift();
-    if (subcommand === 'tag') return { shape: GIT_TAG, words };
-    if (subcommand === 'push') return { shape: GIT_PUSH, words };
+function readingOf(segment: string[]): Reading | undefined {
+  const git = programWords(segment, 'git', GIT_GLOBAL_VALUED);
+  if (git !== undefined) {
+    const subcommand = git.shift();
+    if (subcommand === 'tag') return { shape: GIT_TAG, words: git };
+    if (subcommand === 'push') return { shape: GIT_PUSH, words: git };
     return undefined;
   }
 
-  if (named(program, 'gh')) {
-    dropOptions(words, GH_GLOBAL_VALUED);
-    if (words.shift() !== 'release') return undefined;
-    if (words.shift() !== 'create') return undefined;
-    return { shape: GH_RELEASE_CREATE, words };
+  const gh = programWords(segment, 'gh', FORGE_GLOBAL_VALUED);
+  if (gh !== undefined) {
+    if (gh.shift() !== 'release') return undefined;
+    if (gh.shift() !== 'create') return undefined;
+    return { shape: GH_RELEASE_CREATE, words: gh };
   }
 
   return undefined;
@@ -150,7 +162,7 @@ function refName(word: string): string {
 // so it never becomes a proposal.
 export function proposedTags(command: string): string[] {
   const tags: string[] = [];
-  for (const segment of segments(command)) {
+  for (const segment of commandSegments(command)) {
     const reading = readingOf(segment);
     if (reading === undefined) continue;
     const words = positionals(reading);

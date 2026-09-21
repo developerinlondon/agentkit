@@ -1,3 +1,4 @@
+import { JUDGMENT } from './judgment.ts';
 import { matchErrors } from './pattern.ts';
 import { GIT_TAG_SEQUENCE } from './tag-sequence.ts';
 
@@ -13,6 +14,9 @@ export interface KindRequest {
   cwd: string;
   env: Record<string, string | undefined>;
   match: Matcher;
+  // The taste's own prose, for a kind whose check is the taste rather than a
+  // parameter of it. Absent for every kind that reads only its own fields.
+  body?: string;
 }
 
 // `fires` refuses and says what was found; `skipped` and `unchecked` both allow
@@ -53,7 +57,7 @@ const COMMAND: RuleKind = {
   },
 };
 
-const KINDS: readonly RuleKind[] = [COMMAND, GIT_TAG_SEQUENCE];
+const KINDS: readonly RuleKind[] = [COMMAND, GIT_TAG_SEQUENCE, JUDGMENT];
 
 export const RULE_KINDS: readonly string[] = KINDS.map((kind) => kind.name);
 

@@ -160,6 +160,9 @@ export interface Inspection {
   // report on it. Present whenever the frontmatter parsed as a mapping — a
   // caller reads it only after finding no errors.
   front?: Record<string, unknown>;
+  // The prose under the frontmatter, for a rule kind whose check is the taste
+  // itself rather than a pattern the taste supplies.
+  body?: string;
 }
 
 export function inspectTaste(file: string, contents: string): Inspection {
@@ -190,7 +193,7 @@ export function inspectTaste(file: string, contents: string): Inspection {
   if ((parts[2] as string).trim() === '') {
     errors.push('body is empty — a taste states the preference, why, and how to apply it');
   }
-  return { name: scalar(front.name), errors, front };
+  return { name: scalar(front.name), errors, front, body: (parts[2] as string).trim() };
 }
 
 // `skipTop` applies to the top level only: it is how the owner's own tastes are

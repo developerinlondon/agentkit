@@ -158,6 +158,7 @@ export async function evaluateCommand(request: Request): Promise<Verdict> {
         cwd: request.cwd,
         env,
         match: (pattern, capture) => matcher.test(pattern, request.command, capture),
+        body: taste.body,
       });
 
       if (outcome.verdict === 'skipped') {

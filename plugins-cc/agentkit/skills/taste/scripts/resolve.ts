@@ -29,6 +29,7 @@ export interface ResolvedTaste {
   enforce: string;
   category?: string;
   rule?: TasteRule;
+  body?: string;
   source?: string;
   shadows: Layer[];
   shadowedSources: string[];
@@ -196,6 +197,7 @@ function load(path: string, where: Directory): { taste?: ResolvedTaste; warning?
       enforce: scalar(front.enforce) ?? 'advise',
       category: scalar(front.category),
       rule: readRule(front),
+      body: inspection.body,
       source: where.source,
       shadows: [],
       shadowedSources: [],
