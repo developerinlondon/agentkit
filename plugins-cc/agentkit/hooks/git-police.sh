@@ -12,6 +12,29 @@ RE_YAML_ITEM='^[[:space:]]*-[[:space:]]+(.*)'
 PROTECTED_BRANCHES=("main" "master")
 AGENTKIT_CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/agentkit/config.yaml"
 
+# A hook that dies decides nothing, and the harness reads a non-zero exit other
+# than 2 as a non-blocking error: the command runs unjudged. So a crash refuses
+# the commands this hook exists to judge, and says UNCHECKED for anything else.
+# Installed before the payload is read, and written without jq, because jq
+# failing is one of the ways this hook dies. If the command was never read
+# there is nothing to judge, so that case reports rather than refuses: a
+# machine without jq must not lose the ability to commit.
+on_unexpected_exit() {
+	local code=$?
+	[[ $code -eq 0 ]] && return 0
+	trap - EXIT
+	local judged="${STRIPPED:-${COMMAND:-}}"
+	if [[ -n "$judged" ]] && echo "$judged" | grep -qiE '\bgit\b.*\b(commit|push)\b|\bglab[[:space:]]+(mr|issue)\b|\bgh[[:space:]]+(pr|issue|release)\b'; then
+		local reason="BLOCKED: git-police failed (exit $code) before it could judge this command, and a guard that crashed has approved nothing. Re-run the hook under bash -x to see where it died."
+		printf '{"decision":"deny","reason":"%s","hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"%s"}}\n' "$reason" "$reason"
+	else
+		local msg="UNCHECKED: git-police failed (exit $code) before it could judge this command."
+		printf '{"systemMessage":"%s","hookSpecificOutput":{"hookEventName":"PreToolUse","additionalContext":"%s"}}\n' "$msg" "$msg"
+	fi
+	exit 0
+}
+trap on_unexpected_exit EXIT
+
 # shellcheck source=lib/hook-input.sh
 # Pure bash dirname: external `dirname` is missing when PATH is empty (the
 # missing-jq fail-open probe), and a source failure under set -e would silence
@@ -63,7 +86,12 @@ git_target_dir() {
 	if [[ -z "$dir" ]]; then
 		dir=$(echo "$1" | sed -nE 's/(^|.*[;&|])[[:space:]]*cd[[:space:]]+([^[:space:];&|]+).*/\2/p' | head -1)
 	fi
-	echo "${dir/#\~/$HOME}"
+	dir="${dir/#\~/$HOME}"
+	# `cd $W` and `git -C "$DIR"` reach here unexpanded. A path that is not a
+	# directory would make every tgit call exit 128; the cwd is a better guess
+	# than a target that cannot exist.
+	[[ -n "$dir" && ! -d "$dir" ]] && dir=""
+	echo "$dir"
 }
 TARGET_DIR=$(git_target_dir "$STRIPPED")
 
@@ -73,7 +101,8 @@ tgit() {
 }
 
 if [[ ${#ALLOWED_REPOS[@]} -gt 0 ]]; then
-	REPO_NAME=$(tgit remote get-url origin 2>/dev/null | sed -E 's|.*[:/]([^/]+/[^/]+?)(\.git)?$|\1|' || echo "")
+	REPO_URL=$(tgit remote get-url origin 2>/dev/null || echo "")
+	REPO_NAME=$(echo "${REPO_URL%.git}" | sed -E 's|.*[:/]([^/]+/[^/]+)$|\1|')
 	for allowed in "${ALLOWED_REPOS[@]+"${ALLOWED_REPOS[@]}"}"; do
 		if [[ "$REPO_NAME" == *"$allowed"* ]]; then
 			exit 0
@@ -97,6 +126,53 @@ advise() {
 	agentkit_advise_json "$msg"
 	exit 0
 }
+
+# Detect `git commit` as a subcommand (not the literal substring "commit"
+# inside a config key like `git config commit.gpgsign`).
+GIT_COMMIT_RE='\bgit([[:space:]]+(-[A-Za-z][^[:space:]]*|--[A-Za-z][A-Za-z0-9-]*(=[^[:space:]]+)?)([[:space:]]+[^-[:space:]][^[:space:]]*)?)*[[:space:]]+commit\b'
+
+# Commands that publish authored content to the forge — MR/PR/issue bodies,
+# comments, release notes. Same no-AI-attribution rule as commit messages:
+# everything published under the user's name is theirs, not the agent's.
+FORGE_WRITE_RE='\bglab[[:space:]]+(mr|issue)[[:space:]]+(create|update|edit|note|comment)\b|\bgh[[:space:]]+(pr|issue|release)[[:space:]]+(create|edit|comment)\b'
+
+# A trailer is the name followed by `:` (or `=`, the --trailer form). Requiring
+# the separator lets a message that merely talks about the trailer through.
+ATTRIBUTION_RE='co-authored-by[[:space:]]*[:=]|generated with \[claude code\]|🤖 generated|claude\.ai/code|claude\.com/claude-code|noreply@anthropic\.com'
+
+# The file a commit takes its message from (-F/--file, also bundled as -qF), or
+# nothing. `-` is stdin, whose heredoc is already in the payload. A file that
+# does not exist yet is being written by this same command, so its text is in
+# the payload too.
+commit_message_file() {
+	local file
+	file=$(echo "$COMMAND" | sed -nE "s/.*[[:space:]](-[A-Za-z]*F|--file)[[:space:]=]+[\"']?([^[:space:];&|\"']+).*/\2/p" | head -1)
+	[[ -z "$file" || "$file" == "-" ]] && return 0
+	file="${file/#\~/$HOME}"
+	[[ "$file" != /* && -n "$TARGET_DIR" ]] && file="$TARGET_DIR/$file"
+	[[ -f "$file" && -r "$file" ]] && echo "$file"
+	return 0
+}
+
+# 0. Block AI attribution trailers / signatures in commit commands AND in
+#    forge-content commands. Pure text, so it runs ahead of every rule that
+#    needs repository state: a target the hook cannot resolve must not be able
+#    to skip it.
+#    The payload is what agentkit_slurp_input read from stdin. Naming any
+#    other variable here trips `set -u` in the pipeline's subshell only: the
+#    echo dies, grep reads nothing, the test is false, and this one rule never
+#    fires while every other rule carries on — which is how it shipped twice.
+if echo "$STRIPPED" | grep -qiE "$GIT_COMMIT_RE" || echo "$STRIPPED" | grep -qiE "$FORGE_WRITE_RE"; then
+	ATTRIBUTED=false
+	echo "${AGENTKIT_RAW_INPUT:-}" | grep -qiE "$ATTRIBUTION_RE" && ATTRIBUTED=true
+	MESSAGE_FILE=$(commit_message_file)
+	if [[ "$ATTRIBUTED" == false && -n "$MESSAGE_FILE" ]] && grep -qiE "$ATTRIBUTION_RE" "$MESSAGE_FILE"; then
+		ATTRIBUTED=true
+	fi
+	if [[ "$ATTRIBUTED" == true ]]; then
+		deny "BLOCKED: AI attribution is forbidden — in commit messages and in MR/PR/issue descriptions or comments alike. Do not add Co-authored-by, Signed-off-by, '🤖 Generated with [Claude Code]', claude.ai/code or claude.com/claude-code links, noreply@anthropic.com co-authors, or any other AI agent attribution. The author is whoever owns the git config. Remove the attribution and retry."
+	fi
+fi
 
 # 1. Block --no-verify (skips pre-commit/commit-msg hooks)
 if echo "$STRIPPED" | grep -qiE '\bgit\b.*--no-verify\b'; then
@@ -154,7 +230,7 @@ if [[ "$SHARED_BRANCH_OK" != "1" ]] \
 	COMMON_DIR_PATH=$(tgit rev-parse --git-common-dir 2>/dev/null || echo "")
 	# Equal ⇒ this IS the main clone; differing ⇒ already inside a worktree.
 	if [[ -n "$GIT_DIR_PATH" && "$GIT_DIR_PATH" == "$COMMON_DIR_PATH" ]]; then
-		WORKTREE_COUNT=$(tgit worktree list 2>/dev/null | wc -l | tr -d ' ')
+		WORKTREE_COUNT=$(tgit worktree list 2>/dev/null | wc -l | tr -d ' ' || echo 0)
 		if [[ "${WORKTREE_COUNT:-0}" -gt 1 ]]; then
 			REPO_BASE=$(basename "$(tgit rev-parse --show-toplevel 2>/dev/null || echo repo)")
 			deny "BLOCKED: creating a branch in a shared clone. This checkout has ${WORKTREE_COUNT} worktrees, so another agent may be working in it and a checkout swaps the tree under them. Create a worktree instead:
@@ -196,11 +272,11 @@ if [[ -z "$PUSH_REMOTE" || "$PUSH_REMOTE" == "origin" ]] \
 	INTEGRATION_BRANCH=$(tgit config --get agentkit.integration-branch 2>/dev/null || true)
 	DEFAULT_BRANCH="$INTEGRATION_BRANCH"
 	if [[ -z "$DEFAULT_BRANCH" ]]; then
-		DEFAULT_BRANCH=$(tgit symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's|^origin/||')
+		DEFAULT_BRANCH=$(tgit symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's|^origin/||' || true)
 	fi
 	if [[ -z "$DEFAULT_BRANCH" ]]; then
 		for cand in main master; do
-			if tgit show-ref --verify --quiet "refs/remotes/origin/${cand}"; then
+			if tgit show-ref --verify --quiet "refs/remotes/origin/${cand}" 2>/dev/null; then
 				DEFAULT_BRANCH="$cand"
 				break
 			fi
@@ -213,27 +289,6 @@ if [[ -z "$PUSH_REMOTE" || "$PUSH_REMOTE" == "origin" ]] \
 			deny "BLOCKED: Your branch is ${BEHIND} commit(s) behind origin/${DEFAULT_BRANCH}. Merge the latest ${DEFAULT_BRANCH} before pushing: git fetch origin && git merge origin/${DEFAULT_BRANCH} — resolve any conflicts, re-run the repo's gates, then push. Intentional stale push: prefix the command with AGENTKIT_ALLOW_STALE_PUSH=1. MRs targeting a different branch: git config agentkit.integration-branch <branch>."
 		fi
 	fi
-fi
-
-# Detect `git commit` as a subcommand (not the literal substring "commit"
-# inside a config key like `git config commit.gpgsign`).
-GIT_COMMIT_RE='\bgit([[:space:]]+(-[A-Za-z][^[:space:]]*|--[A-Za-z][A-Za-z0-9-]*(=[^[:space:]]+)?)([[:space:]]+[^-[:space:]][^[:space:]]*)?)*[[:space:]]+commit\b'
-
-# Commands that publish authored content to the forge — MR/PR/issue bodies,
-# comments, release notes. Same no-AI-attribution rule as commit messages:
-# everything published under the user's name is theirs, not the agent's.
-FORGE_WRITE_RE='\bglab[[:space:]]+(mr|issue)[[:space:]]+(create|update|edit|note|comment)\b|\bgh[[:space:]]+(pr|issue|release)[[:space:]]+(create|edit|comment)\b'
-
-# 5. Block AI attribution trailers / signatures in commit commands AND in
-#    forge-content commands (MR/PR descriptions slipped through when this
-#    was gated on `git commit` only).
-#    The payload is what agentkit_slurp_input read from stdin. Naming any
-#    other variable here trips `set -u` in the pipeline's subshell only: the
-#    echo dies, grep reads nothing, the test is false, and this one rule never
-#    fires while every other rule carries on — which is how it shipped twice.
-if { echo "$STRIPPED" | grep -qiE "$GIT_COMMIT_RE" || echo "$STRIPPED" | grep -qiE "$FORGE_WRITE_RE"; } \
-	&& echo "${AGENTKIT_RAW_INPUT:-}" | grep -qiE 'co-authored-by|generated with \[claude code\]|🤖 generated|claude\.ai/code|claude\.com/claude-code|noreply@anthropic\.com'; then
-	deny "BLOCKED: AI attribution is forbidden — in commit messages and in MR/PR/issue descriptions or comments alike. Do not add Co-authored-by, Signed-off-by, '🤖 Generated with [Claude Code]', claude.ai/code or claude.com/claude-code links, noreply@anthropic.com co-authors, or any other AI agent attribution. The author is whoever owns the git config. Remove the attribution and retry."
 fi
 
 # 6. Block direct commits to protected branches
@@ -349,10 +404,10 @@ if [[ "$BRANCH_WIP_MAX" =~ ^[1-9][0-9]*$ ]] && [[ -r "$WIP_LIB" ]] \
 	WIP_DEFAULT=$(tgit symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's|^origin/||' || true)
 	[[ -n "$WIP_DEFAULT" ]] || WIP_DEFAULT="main"
 	WIP_BASE="$WIP_DEFAULT"
-	if tgit show-ref --verify --quiet "refs/remotes/origin/$WIP_DEFAULT"; then
+	if tgit show-ref --verify --quiet "refs/remotes/origin/$WIP_DEFAULT" 2>/dev/null; then
 		WIP_BASE="origin/$WIP_DEFAULT"
 	fi
-	WIP_TREES="|$(tgit worktree list --porcelain 2>/dev/null | awk '$1 == "branch" { sub(/^refs\/heads\//, "", $2); print $2 }' | tr '\n' '|')"
+	WIP_TREES="|$(tgit worktree list --porcelain 2>/dev/null | awk '$1 == "branch" { sub(/^refs\/heads\//, "", $2); print $2 }' | tr '\n' '|' || true)"
 
 	# No gone-upstream test here: rule 7 refuses outright on a gone branch that
 	# no worktree holds, and one a worktree does hold is dropped just below, so
@@ -414,7 +469,7 @@ if echo "$STRIPPED" | grep -qiE '\bgit\b.*\b(checkout|switch|pull)\b' \
 	DEFAULT_BRANCH=$(tgit symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's|^origin/||' || true)
 	if [[ -z "$DEFAULT_BRANCH" ]]; then
 		for cand in "${PROTECTED_BRANCHES[@]+"${PROTECTED_BRANCHES[@]}"}"; do
-			if tgit show-ref --verify --quiet "refs/heads/${cand}"; then
+			if tgit show-ref --verify --quiet "refs/heads/${cand}" 2>/dev/null; then
 				DEFAULT_BRANCH="$cand"
 				break
 			fi

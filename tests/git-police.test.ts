@@ -2,7 +2,7 @@ import { afterAll, describe, test, expect, mock } from 'bun:test';
 import { dirname, join } from 'node:path';
 import gitPolice from '../plugins/git-police';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 const repoRoot = dirname(import.meta.dir);
 
@@ -239,6 +239,108 @@ describe("git-police blocks attribution in the shell hook itself", () => {
     const r = run('git commit -m "fix(#1): x"');
     expect(`${r.stdout ?? ""}`).not.toContain("permissionDecision");
     expect(r.status).toBe(0);
+  });
+});
+
+describe("git-police cannot be walked around", () => {
+  // Each of these was a way past the attribution rule while it "worked": the
+  // hook could not resolve the directory the command named, died with git's
+  // exit 128, and the harness read a non-zero exit as a non-blocking error.
+  const emptyConfig = mkdtempSync(join(tmpdir(), "agentkit-noconfig-"));
+  const scratch = mkdtempSync(join(tmpdir(), "agentkit-gp-"));
+  afterAll(() => {
+    rmSync(emptyConfig, { recursive: true, force: true });
+    rmSync(scratch, { recursive: true, force: true });
+  });
+  const TRAILER = "Co-Authored-By: Claude <noreply@anthropic.com>";
+  const hook = join(repoRoot, "hooks", "claude", "git-police.sh");
+  const run = (command: string, opts: { cwd?: string; env?: Record<string, string>; } = {}) => {
+    const r = spawnSync("bash", [hook], {
+      input: JSON.stringify({ tool_name: "Bash", tool_input: { command }, session_id: "t" }),
+      encoding: "utf-8",
+      cwd: opts.cwd ?? repoRoot,
+      env: { ...process.env, XDG_CONFIG_HOME: emptyConfig, ...opts.env },
+    });
+    return { denied: `${r.stdout ?? ""}`.includes('"permissionDecision": "deny"'), out: `${r.stdout ?? ""}`, status: r.status };
+  };
+
+  test("a `cd $VAR` the hook cannot expand does not skip the rule", () => {
+    const r = run(`W=/some/where; cd $W && git add -A && git commit -q -F - <<'EOF'\nfix: x\n\n${TRAILER}\nEOF\ngit push origin b`);
+    expect(r.status).toBe(0);
+    expect(r.denied).toBe(true);
+  });
+
+  test("a working directory that is not a repository does not skip the rule", () => {
+    const r = run(`git commit -m "x\n\n${TRAILER}" && git push origin b`, { cwd: scratch });
+    expect(r.status).toBe(0);
+    expect(r.denied).toBe(true);
+  });
+
+  test("a clean commit and push from nowhere is judged, not crashed", () => {
+    const r = run('cd $W && git commit -m "fix: x" && git push origin feat/x', { cwd: scratch });
+    expect(r.status).toBe(0);
+    expect(r.denied).toBe(false);
+  });
+
+  // The message can live in a file the agent wrote one tool call earlier.
+  test("a trailer in the commit's message file is seen, in every spelling of -F", () => {
+    const bad = join(scratch, "msg-bad");
+    const ok = join(scratch, "msg-ok");
+    writeFileSync(bad, `fix: x\n\n${TRAILER}\n`.replaceAll("\\n", "\n"));
+    writeFileSync(ok, "fix: x\n\nplain body\n".replaceAll("\\n", "\n"));
+    expect(run(`git commit -F ${bad}`).denied).toBe(true);
+    expect(run(`git commit -qF '${bad}'`).denied).toBe(true);
+    expect(run(`git commit --file=${bad}`).denied).toBe(true);
+    expect(run(`git commit --file=${ok}`).denied).toBe(false);
+  });
+
+  test("talking about the trailer is allowed; writing one is not", () => {
+    expect(run('git commit -m "chore: remove the co-authored-by trailer from the template"').denied).toBe(false);
+    expect(run('git commit -m x --trailer "Co-authored-by=Claude <c@x>"').denied).toBe(true);
+    expect(run(`git commit -m "x\n\n${TRAILER}"`).denied).toBe(true);
+  });
+
+  // The backstop for the next crash nobody has found yet.
+  test("a git that always fails neither blocks a clean commit nor frees an attributed one", () => {
+    const bin = join(scratch, "bin");
+    mkdirSync(bin, { recursive: true });
+    writeFileSync(join(bin, "git"), "#!/bin/sh\nexit 128\n".replaceAll("\\n", "\n"), { mode: 0o755 });
+    const env = { PATH: `${bin}:${process.env.PATH}` };
+    const clean = run('git commit -m "fix: x" && git push origin feat/x', { env });
+    expect(clean.status).toBe(0);
+    expect(clean.denied).toBe(false);
+    expect(run(`git commit -m "x\n\n${TRAILER}"`, { env }).denied).toBe(true);
+  });
+
+  test("a hook that dies refuses what it exists to judge instead of exiting non-zero", () => {
+    // jq missing from PATH kills the payload read; without the exit trap that
+    // is a silent non-zero exit, which the harness treats as allow.
+    const bin = join(scratch, "nojq");
+    mkdirSync(bin, { recursive: true });
+    writeFileSync(join(bin, "jq"), "#!/bin/sh\nexit 3\n".replaceAll("\\n", "\n"), { mode: 0o755 });
+    const r = run(`git commit -m "x\n\n${TRAILER}"`, { env: { PATH: `${bin}:${process.env.PATH}` } });
+    expect(r.status).toBe(0);
+    // The command was never read, so there is nothing to refuse: it says so.
+    expect(r.out).toContain("UNCHECKED: git-police failed");
+    expect(JSON.parse(r.out).hookSpecificOutput.hookEventName).toBe("PreToolUse");
+  });
+
+  // BSD sed rejected the lazy quantifier in the repo-name extraction, so on
+  // macOS the name was always empty and the allow-list never matched.
+  test("an allow-listed repository is recognised on this platform's sed", () => {
+    const repo = join(scratch, "repo");
+    mkdirSync(repo, { recursive: true });
+    spawnSync("git", ["-C", repo, "init", "-q"]);
+    spawnSync("git", ["-C", repo, "remote", "add", "origin", "git@github.com:someorg/allowed-repo.git"]);
+    const config = join(scratch, "config");
+    mkdirSync(join(config, "agentkit"), { recursive: true });
+    writeFileSync(
+      join(config, "agentkit", "config.yaml"),
+      ["git-police:", "  branch-protection:", "    allowed-repos:", "      - someorg/allowed-repo", ""].join("\n").replaceAll("\\n", "\n"),
+    );
+    const forcePush = `git -C ${repo} push --force origin main`;
+    expect(run(forcePush, { env: { XDG_CONFIG_HOME: config } }).denied).toBe(false);
+    expect(run(forcePush).denied).toBe(true);
   });
 });
 

@@ -9,6 +9,23 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+- fix(git-police): **the hook can no longer be walked around, or die into an allow.** Fixing the
+  attribution rule in v0.9.1 exposed three ways past it. A `cd $W` or a `git -C "$DIR"` reaches
+  the hook unexpanded, so the target directory did not exist, a `tgit … | sed` assignment exited
+  128 under `set -e`, and the harness read that non-zero exit as a non-blocking error: every rule
+  after that line was skipped for the most common shape of agent command, and the same happened
+  from any working directory that is not a repository. A target that is not a directory now falls
+  back to the hook's own directory, no `tgit` assignment can abort the hook, and the attribution
+  rule — pure text — runs ahead of every rule that needs repository state. A trailer in the file
+  a commit takes its message from (`-F`, `-qF`, `--file=`) is read and refused. The pattern wants
+  the trailer's `:` or `=`, so a message that talks about the trailer is allowed. The
+  `allowed-repos` escape hatch works on macOS: BSD sed rejected the lazy quantifier in the
+  repo-name extraction, so the name was always empty there. And a crash can never again read as
+  approval: an exit trap, installed before the payload is read and written without jq, refuses a
+  commit, push or forge write when the hook dies after reading it, and reports `UNCHECKED` when
+  the payload could not be read at all. Eight tests spawn the bash hook for these; all eight fail
+  against the v0.9.1 hook.
+
 ## v0.9.1 — 2026-09-21
 
 - fix(git-police): **the attribution rule fires.** The shell hook's rule against `Co-authored-by`
