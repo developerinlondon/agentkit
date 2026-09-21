@@ -73,6 +73,21 @@ refused by the lint, because that path is read by position and would be read as 
 | `check`  | re-read immediately before an action it covers                                          |
 | `block`  | `taste-police` refuses a matching command, quoting this taste's `remedy` and `override` |
 
+A `rule.kind` names a check agentkit implements; the taste supplies the data it runs on and the
+words it refuses with.
+
+| `kind`             | The taste supplies                        | agentkit inspects                     |
+| ------------------ | ----------------------------------------- | ------------------------------------- |
+| `command`          | `match`, a regular expression             | the text of the command about to run  |
+| `git-tag-sequence` | `policy`, one of three named orderings    | the tags in the repository it runs in |
+| `judgment`         | `question`, plus its own body as criteria | the change the command would make     |
+
+`judgment` is how a taste whose rule is prose reaches `block`: one typed question goes to a System
+One model with the taste's body as the criteria, and the probability it returns is read against the
+taste's own `threshold`. It needs a provider key (`TYPESAFE_API_KEY`, else
+`~/.config/agentkit/typesafe-token`) and reports `UNCHECKED` without one, so agentkit works with no
+vendor key at all.
+
 A preference that no rule kind can express stays at `check`. A new kind is a change to agentkit, not
 something a taste file can invent.
 

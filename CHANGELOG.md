@@ -9,6 +9,23 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+- feat(taste): **a taste whose rule is prose can refuse a commit.** Fifteen of the sixteen central
+  tastes sit at `advise` or `check` because "done means deployed" or "no stopgaps" is not a regular
+  expression, so the same convention is broken again under load and the reviewer spends a round on
+  it. A new `judgment` rule kind asks one typed question of a System One model instead: the taste
+  supplies a `question` of at most 500 characters, its own body travels as the criteria, and the
+  probability that comes back is read against the taste's `threshold` (default `0.75`). `on`
+  chooses what is judged — a tokenised `git commit` by default, `gh pr create` or `glab mr create`
+  at `merge-request`, the command text alone at `any` — and anything else passes without a call.
+  The state sent is the command, the message its `-m` arguments carry, and the diff, capped at
+  12 000 characters. The policy stays in the file: agentkit owns the threshold and the
+  consequence, the model only answers. The provider is TypeSafe's Jev at `POST /v1/systemone`
+  behind a seam, keyed from `TYPESAFE_API_KEY` or `~/.config/agentkit/typesafe-token`, with an
+  8-second deadline and no retry. Every way it can fail to look — no key, no repository, a diff
+  git will not read, HTTP 401/422/429/5xx, the deadline — reports `UNCHECKED` and allows the
+  command, so a machine with no vendor key keeps working and never reads enforcement into a guard
+  that never ran.
+
 ## v0.8.8 — 2026-09-07
 
 - docs(editor-police): **the docs site covers the editor gate.** A cookbook recipe, "Name the

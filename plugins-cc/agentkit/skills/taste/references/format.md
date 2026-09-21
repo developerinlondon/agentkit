@@ -46,10 +46,11 @@ keeps a taste data rather than a program, and it is why the trust property holds
 source can pick a check and word a refusal, so at worst it over-blocks you — it can never run
 anything.
 
-| `kind`             | Its own keys                      | What it inspects                               |
-| ------------------ | --------------------------------- | ---------------------------------------------- |
-| `command`          | `match` (required)                | the text of the command about to run           |
-| `git-tag-sequence` | `policy` (required), `match` (no) | the tags in the repository the command runs in |
+| `kind`             | Its own keys                                       | What it inspects                               |
+| ------------------ | -------------------------------------------------- | ---------------------------------------------- |
+| `command`          | `match` (required)                                 | the text of the command about to run           |
+| `git-tag-sequence` | `policy` (required), `match` (no)                  | the tags in the repository the command runs in |
+| `judgment`         | `question` (required), `on` (no), `threshold` (no) | the change the command is about to make        |
 
 A key belongs to one kind: `policy` inside a `command` rule is an unknown key, and the lint says
 so naming what that kind does carry.
@@ -147,6 +148,51 @@ read, to prevent a mis-ordered tag that `git tag` itself makes trivial to delete
 allow would be worse than either: the session would read enforcement into a guard that never
 ran. So it says `UNCHECKED`, names the taste and the reason, and lets the command through.
 
+### `kind: judgment`
+
+Refuses a change a **prose** convention says it should not, by asking one typed question of a
+System One model. It is the kind for a taste whose rule no regular expression can express —
+"done means deployed", "no stopgaps", "one concern per commit" — which is most of them.
+
+`question` is the yes/no the model answers, at most 500 characters and held to the same
+no-backtick, no-`$()` bound as `remedy`. It is sent as structured instructions alongside the
+**taste's own body**, so the criteria are the why and the how-to-apply the owner already wrote:
+the question narrows what is being asked, the body says what good looks like.
+
+`on` chooses which command shape the rule judges. Anything else passes without a call:
+
+| `on`            | Judges                                  | The diff it reads                                 |
+| --------------- | --------------------------------------- | ------------------------------------------------- |
+| `commit`        | a tokenised `git commit`, the default   | `git diff --cached`, or `git diff HEAD` with `-a` |
+| `merge-request` | `gh pr create` or `glab mr create`      | `git diff <default-branch>...HEAD`                |
+| `any`           | every command, judged on its text alone | none                                              |
+
+`threshold` is the probability at or above which the rule fires, defaulting to `0.75`. The model
+returns a probability; **the threshold is agentkit's and the taste's, never the model's** — which
+is what keeps the policy in a file you can read and change without a model call.
+
+The state sent is `{command, message, diff}`. The commit message is what the command's own `-m`
+arguments carry, and the diff is capped at 12 000 characters with a note where it was cut,
+because the provider is priced per input token and the hook runs inside the agent's wait.
+
+**The provider needs a key, and agentkit works without one.** `TYPESAFE_API_KEY`, else the
+trimmed contents of `~/.config/agentkit/typesafe-token`. The call is a single `POST` to
+`/v1/systemone` (base URL from `TYPESAFE_BASE_URL`) with an 8-second deadline and no retry: a
+vendor having a bad minute must cost the session one deadline, not three.
+
+It fails open, like every rule kind, and says so:
+
+| Situation                                           | What happens                                      |
+| --------------------------------------------------- | ------------------------------------------------- |
+| the command is not the shape `on` names             | passes, and nothing is sent                       |
+| a commit with an empty diff                         | passes — there is no change to judge              |
+| no key resolves                                     | **`UNCHECKED`**, naming both places to put one    |
+| git cannot read the diff, or there is no repository | **`UNCHECKED`**, naming what git said             |
+| HTTP 401, 422, 429, 5xx, or the deadline passes     | **`UNCHECKED`**, naming the status or the timeout |
+
+A taste at `enforce: block` whose key is absent is therefore a taste that reports itself
+unenforced on every commit — loud, and never a silent pass.
+
 ### What counts as using an override
 
 The override is one environment variable name — the taste's own — and using it is a decision,
@@ -212,6 +258,34 @@ backwards tag makes "latest" mean two different commits.
 
 How to apply: list the tags before tagging. If the tag you want is already
 there, or is behind one on its line, pick the next patch instead.
+```
+
+And `.agentkit/tastes/no-stopgaps.md`, the kind whose rule is the taste's own prose:
+
+```markdown
+---
+name: no-stopgaps
+scope: project
+category: engineering
+strength: require
+enforce: block
+rule:
+  kind: judgment
+  question: Does this change ship a workaround that leaves the real fix for later?
+  on: commit
+  threshold: "0.75"
+  remedy: Fix the cause, or say in the commit message why the workaround is the fix.
+  override: AGENTKIT_ALLOW_STOPGAP
+provenance: 2026-09-21 · session correction
+---
+
+Fix the cause. A workaround that leaves the real fix for later is not a fix.
+
+Why: a stopgap is invisible the day after it ships, and the outage it defers
+arrives without the context that would explain it.
+
+How to apply: when the cause is out of reach, say so in the commit message and
+file the follow-up — do not let the diff imply the problem is solved.
 ```
 
 ## The source contract
