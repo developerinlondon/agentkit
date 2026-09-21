@@ -66,16 +66,16 @@ const ATTRIBUTION_RE =
 // Every -F/--file after the first `git commit`. A file that does not exist yet
 // is written by the same command, so its text is already in the command.
 function messageFilesCarryAttribution(command: string, cwd: string): boolean {
-  const tail = command.match(/git[^;&|]*\scommit(\s[\s\S]*)/)?.[1];
+  const tail = command.match(/(?:git[^;&|]*\s(?:commit|tag|notes)|gh\s+(?:pr|issue|release))(\s[\s\S]*)/)?.[1];
   if (!tail) return false;
-  const args = tail.matchAll(/\s(?:-[aqsvneziop]*F|--file)(?:\s*=\s*|\s*)("[^"]*"|'[^']*'|[^\s;&|]+)/g);
+  const args = tail.matchAll(/\s(?:-[aqsvneziop]*F|--file|--body-file|--notes-file)(?:\s*=\s*|\s*)("[^"]*"|'[^']*'|[^\s;&|]+)/g);
   for (const m of args) {
     const named = m[1].replace(/^["'](.*)["']$/, '$1');
     if (!named || named === '-') continue;
     if (/[$`]/.test(named)) {
       throw new Error(
-        `BLOCKED: git-police cannot read the commit message file named by '${named}': the shell\n` +
-          `expands it after this check runs. Pass the literal path (git commit -F /path/to/message)\n` +
+        `BLOCKED: git-police cannot read the message file named by '${named}': the shell\n` +
+          `expands it after this check runs. Pass the literal path (-F /path/to/message)\n` +
           `so the message can be checked for AI attribution.`,
       );
     }
@@ -120,7 +120,7 @@ function isForgeWriteCommand(command: string): boolean {
   // Commands that publish authored content to the forge — MR/PR/issue
   // bodies, comments, release notes. Same no-AI-attribution rule as commit
   // messages: everything published under the user's name is theirs.
-  return /\bglab\s+(mr|issue)\s+(create|update|edit|note|comment)\b|\bgh\s+(pr|issue|release)\s+(create|edit|comment)\b|\b(glab|gh)\s+api\b.*\s((-X|--method)[\s=]*(POST|PUT|PATCH)\b|(-f|-F|--field|--raw-field|--input)\b)/i.test(
+  return /\bglab\s+(mr|issue)\s+(create|update|edit|note|comment)\b|\bgh\s+(pr|issue|release)\s+(create|edit|comment|merge|review)\b|\b(glab|gh)\s+api\b.*\s((-X|--method)[\s=]*(POST|PUT|PATCH)\b|(-f|-F|--field|--raw-field|--input)\b)/i.test(
     command,
   );
 }
@@ -205,7 +205,7 @@ export default async function gitPolice(ctx: PluginInput) {
       // Text rules come first: allowed-repos lifts branch protection only, so
       // it must not be able to skip attribution, --no-verify or force push.
       if (
-        (isGitCommitCommand(stripped) || isForgeWriteCommand(stripped)) &&
+        (isGitCommitCommand(stripped) || /\bgit\b[^;&|]*\s(tag|notes)\s/i.test(stripped) || isForgeWriteCommand(stripped)) &&
         (ATTRIBUTION_RE.test(command) || messageFilesCarryAttribution(command, ctx.directory))
       ) {
         throw new Error(

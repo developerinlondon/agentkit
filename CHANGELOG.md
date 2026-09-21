@@ -29,9 +29,11 @@ release PR — "publish this" authorizes a release, never the tier.
   there. And a crash can never again read as approval: an exit trap, installed before the payload
   is read and written without jq, refuses a commit, push or forge write when the hook dies after
   reading it, and reports `UNCHECKED` when the payload could not be read at all. The OpenCode
-  plugin gets the same ordering, pattern and message-file read. Twelve tests spawn the bash hook
-  for these and all twelve fail against the v0.9.1 hook. Forge writes
-  made through the raw API (`glab api`, `gh api`) are judged like `glab mr create`.
+  plugin gets the same ordering, pattern and message-file read. Fifteen tests spawn the bash hook
+  for these and all fifteen fail against the v0.9.1 hook. Forge writes
+  made through the raw API (`glab api`, `gh api`) are judged like `glab mr create`, and so are `gh pr merge --body`, `--body-file`, an annotated
+  tag and a note. A PATH without `grep` would have made every rule evaluate false in silence; the
+  hook now reports `UNCHECKED` instead.
 
 ## v0.9.2 — 2026-09-21
 

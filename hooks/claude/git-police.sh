@@ -36,6 +36,10 @@ on_unexpected_exit() {
 }
 trap on_unexpected_exit EXIT
 
+# Every rule below is a grep over text. Without grep each one evaluates false
+# and the hook would exit 0 having judged nothing, which no trap can see.
+command -v grep >/dev/null 2>&1 && command -v sed >/dev/null 2>&1 || exit 127
+
 # shellcheck source=lib/hook-input.sh
 # Pure bash dirname: external `dirname` is missing when PATH is empty (the
 # missing-jq fail-open probe), and a source failure under set -e would silence
@@ -127,25 +131,28 @@ advise() {
 # inside a config key like `git config commit.gpgsign`).
 GIT_COMMIT_RE='\bgit([[:space:]]+(-[A-Za-z][^[:space:]]*|--[A-Za-z][A-Za-z0-9-]*(=[^[:space:]]+)?)([[:space:]]+[^-[:space:]][^[:space:]]*)?)*[[:space:]]+commit\b'
 
+# An annotated tag and a note carry a message the same way a commit does.
+GIT_ANNOTATE_RE='\bgit\b[^;&|]*[[:space:]](tag|notes)[[:space:]]'
+
 # Commands that publish authored content to the forge — MR/PR/issue bodies,
 # comments, release notes, and raw API calls that write (a method or a field). Same no-AI-attribution rule as commit messages:
 # everything published under the user's name is theirs, not the agent's.
-FORGE_WRITE_RE='\bglab[[:space:]]+(mr|issue)[[:space:]]+(create|update|edit|note|comment)\b|\bgh[[:space:]]+(pr|issue|release)[[:space:]]+(create|edit|comment)\b|\b(glab|gh)[[:space:]]+api\b.*[[:space:]](-X|--method)[[:space:]=]*(POST|PUT|PATCH)\b|\b(glab|gh)[[:space:]]+api\b.*[[:space:]](-f|-F|--field|--raw-field|--input)\b'
+FORGE_WRITE_RE='\bglab[[:space:]]+(mr|issue)[[:space:]]+(create|update|edit|note|comment)\b|\bgh[[:space:]]+(pr|issue|release)[[:space:]]+(create|edit|comment|merge|review)\b|\b(glab|gh)[[:space:]]+api\b.*[[:space:]](-X|--method)[[:space:]=]*(POST|PUT|PATCH)\b|\b(glab|gh)[[:space:]]+api\b.*[[:space:]](-f|-F|--field|--raw-field|--input)\b'
 
 # A trailer is the name followed by `:` (or `=`, the --trailer form). Requiring
 # the separator lets a message that merely talks about the trailer through.
 ATTRIBUTION_RE='co-authored-by[[:space:]]*[:=]|generated with \[claude code\]|🤖 generated|claude\.ai/code|claude\.com/claude-code|noreply@anthropic\.com'
 
-# Every file a commit takes its message from: -F<path>, -F <path>, bundled as
+# Every file a commit, tag, note or gh write takes its message from: -F<path>, -F <path>, bundled as
 # -qF, --file <path>, --file=<path>, quoted or not, one per line. Read from the
-# first `git commit` to the end of the command, so a `grep -F` before it is not
+# first such command to the end of the command, so a `grep -F` before it is not
 # mistaken for one. `-` is stdin, whose heredoc is already in the payload.
-RE_COMMIT_TAIL='git[^;&|]*[[:space:]]commit([[:space:]].*)'
+RE_COMMIT_TAIL='(git[^;&|]*[[:space:]](commit|tag|notes)|gh[[:space:]]+(pr|issue|release))([[:space:]].*)'
 commit_message_args() {
 	[[ "$COMMAND" =~ $RE_COMMIT_TAIL ]] || return 0
-	echo "${BASH_REMATCH[1]}" |
-		{ grep -oE -- "[[:space:]](-[aqsvneziop]*F|--file)([[:space:]]*=[[:space:]]*|[[:space:]]*)(\"[^\"]*\"|'[^']*'|[^[:space:];&|]+)" || true; } |
-		sed -E "s/^[[:space:]]*(-[aqsvneziop]*F|--file)[[:space:]]*=?[[:space:]]*//; s/^[\"'](.*)[\"']\$/\1/"
+	echo "${BASH_REMATCH[4]}" |
+		{ grep -oE -- "[[:space:]](-[aqsvneziop]*F|--file|--body-file|--notes-file)([[:space:]]*=[[:space:]]*|[[:space:]]*)(\"[^\"]*\"|'[^']*'|[^[:space:];&|]+)" || true; } |
+		sed -E "s/^[[:space:]]*(-[aqsvneziop]*F|--file|--body-file|--notes-file)[[:space:]]*=?[[:space:]]*//; s/^[\"'](.*)[\"']\$/\1/"
 }
 
 # 0. Block AI attribution trailers / signatures in commit commands AND in
@@ -156,7 +163,7 @@ commit_message_args() {
 #    other variable here trips `set -u` in the pipeline's subshell only: the
 #    echo dies, grep reads nothing, the test is false, and this one rule never
 #    fires while every other rule carries on — which is how it shipped twice.
-if echo "$STRIPPED" | grep -qiE "$GIT_COMMIT_RE" || echo "$STRIPPED" | grep -qiE "$FORGE_WRITE_RE"; then
+if echo "$STRIPPED" | grep -qiE "$GIT_COMMIT_RE" || echo "$STRIPPED" | grep -qiE "$GIT_ANNOTATE_RE" || echo "$STRIPPED" | grep -qiE "$FORGE_WRITE_RE"; then
 	ATTRIBUTED=false
 	echo "${AGENTKIT_RAW_INPUT:-}" | grep -qiE "$ATTRIBUTION_RE" && ATTRIBUTED=true
 	while IFS= read -r MESSAGE_FILE; do
@@ -165,7 +172,7 @@ if echo "$STRIPPED" | grep -qiE "$GIT_COMMIT_RE" || echo "$STRIPPED" | grep -qiE
 		# name cannot be read from here, and an unread message is not a clean one.
 		case "$MESSAGE_FILE" in
 		*'$'* | *'`'*)
-			deny "BLOCKED: git-police cannot read the commit message file named by '${MESSAGE_FILE}': the shell expands it after this hook runs. Pass the literal path (git commit -F /path/to/message) so the message can be checked for AI attribution."
+			deny "BLOCKED: git-police cannot read the message file named by '${MESSAGE_FILE}': the shell expands it after this hook runs. Pass the literal path (-F /path/to/message) so the message can be checked for AI attribution."
 			;;
 		esac
 		MESSAGE_FILE="${MESSAGE_FILE/#\~/$HOME}"

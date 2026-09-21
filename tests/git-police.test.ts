@@ -2,7 +2,7 @@ import { afterAll, describe, test, expect, mock } from 'bun:test';
 import { dirname, join } from 'node:path';
 import gitPolice from '../plugins/git-police';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 const repoRoot = dirname(import.meta.dir);
 
@@ -352,6 +352,33 @@ describe("git-police cannot be walked around", () => {
     expect(run(`gh api repos/o/r/pulls -X POST -f title=x -f body="${body}"`).denied).toBe(true);
     // Reading the forge to look for attribution is an audit, not a write.
     expect(run('gh api repos/o/r/commits | grep -c "Co-Authored-By:"').denied).toBe(false);
+  });
+
+  test("tags, notes, merges and body files carry messages too", () => {
+    const bad = join(scratch, "body-bad");
+    writeFileSync(bad, `Summary\n\n${TRAILER}\n`);
+    expect(run(`git tag -a v1 -m "v1\n\n${TRAILER}"`).denied).toBe(true);
+    expect(run(`git notes add -m "${TRAILER}"`).denied).toBe(true);
+    expect(run(`gh pr merge 5 --squash --body "x\n\n${TRAILER}"`).denied).toBe(true);
+    expect(run(`gh pr create --title x --body-file ${bad}`).denied).toBe(true);
+    expect(run(`gh issue comment 5 -F ${bad}`).denied).toBe(true);
+    expect(run("git tag -a v1 -m v1").denied).toBe(false);
+  });
+
+  test("a PATH without grep is reported, not passed in silence", () => {
+    const bin = join(scratch, "nogrep");
+    mkdirSync(bin, { recursive: true });
+    for (const tool of ["bash", "jq", "sed", "cat"]) {
+      const real = spawnSync("bash", ["-c", `command -v ${tool}`], { encoding: "utf-8" }).stdout.trim();
+      if (real) symlinkSync(real, join(bin, tool));
+    }
+    const r = spawnSync(join(bin, "bash"), [hook], {
+      input: JSON.stringify({ tool_name: "Bash", tool_input: { command: `git commit -m "${TRAILER}"` } }),
+      encoding: "utf-8",
+      env: { PATH: bin, HOME: emptyConfig, XDG_CONFIG_HOME: emptyConfig },
+    });
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain("UNCHECKED: git-police failed");
   });
 
   test("talking about the trailer is allowed; writing one is not", () => {
