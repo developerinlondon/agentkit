@@ -49,6 +49,9 @@ How to apply: propose the patch version in the release PR.
 
 const TAG_MINOR = 'git tag v0.8.0';
 const PROJECT = { '.agentkit/tastes/release-tier.md': RELEASE_TIER };
+// The same taste one directory down, so the session sits above the repository
+// the command reaches — the ordinary shape on a workstation holding several.
+const NESTED = { 'repo/.agentkit/tastes/release-tier.md': RELEASE_TIER };
 
 interface HookRun {
   stdout: string;
@@ -105,6 +108,21 @@ describe('the Claude hook lane refuses from the same data', () => {
     expect(json.reason).toContain('Cut a patch tag');
     expect(json.reason).toContain('AGENTKIT_RELEASE_TIER');
     expect(json.hookSpecificOutput.permissionDecisionReason).toBe(json.reason);
+  });
+
+  test('a command reaching a repository below the session is refused by its tastes', () => {
+    const cwd = sandbox(NESTED);
+    const denial = runHook(`cd repo && ${TAG_MINOR}`, cwd);
+
+    expect(isDeny(denial.stdout)).toBe(true);
+    expect(parse(denial.stdout).reason).toContain('BLOCKED by taste release-tier');
+  });
+
+  test('a directory the command never enters brings nothing', () => {
+    const cwd = sandbox(NESTED);
+    const allowed = runHook(TAG_MINOR, cwd);
+
+    expect(allowed.stdout.trim()).toBe('');
   });
 
   test('a command the rule does not match is not answered at all', () => {
@@ -268,6 +286,13 @@ describe('the OpenCode plugin lane', () => {
   test('refuses a matching command with the taste\'s own remedy', async () => {
     const cwd = sandbox(PROJECT);
     await expect(call(cwd, TAG_MINOR)).rejects.toThrow('BLOCKED by taste release-tier');
+  });
+
+  test('refuses from the tastes of the repository the command reaches', async () => {
+    const cwd = sandbox(NESTED);
+    await expect(call(cwd, `cd repo && ${TAG_MINOR}`)).rejects.toThrow(
+      'BLOCKED by taste release-tier',
+    );
   });
 
   test('passes a command no rule matches', async () => {

@@ -131,6 +131,7 @@ export const TEST_SLICES = {
     'tests/taste/sources.test.ts',
     'tests/taste/sync.test.ts',
     'tests/taste/tag-sequence.test.ts',
+    'tests/taste/target-repo.test.ts',
     'tests/taste/visibility.test.ts',
   ],
   wip: [

@@ -9,6 +9,21 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+- fix(taste): **a repository's tastes bind the commands that act in it, wherever the session
+  sits.** `taste-police` resolved tastes from the hook's working directory alone, so an agent in a
+  parent directory reaching a repository with `cd repo && git commit …` or `git -C repo commit …`
+  was judged by the parent's tastes — usually none — and the repository's own `.agentkit/tastes/`
+  never loaded. Measured on v0.9.0: the same commit refused from inside the repository and allowed,
+  silently, from one directory up. It predates the `judgment` kind and held for `command` and
+  `git-tag-sequence` too, which made a project taste decoration on any workstation holding several
+  repositories. The scoped walk the `judgment` kind already used to find the tree a commit applies
+  to now lives in its own module and answers the same question for the hook: project layers are
+  resolved for every distinct directory the command reaches, the user layers load once, and each
+  taste is evaluated with its own repository as the working directory. A directory change the walk
+  cannot read is reported as `UNCHECKED` for the tastes it could not load, and only where a
+  repository command runs after it. A command that changes no directory resolves exactly what it
+  did before and reads nothing extra from disk.
+
 ## v0.9.0 — 2026-09-21
 
 - feat(taste): **a taste whose rule is prose can refuse a commit.** Fifteen of the sixteen central

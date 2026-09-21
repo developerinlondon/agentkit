@@ -58,6 +58,12 @@ the lower one outright; two tastes are never merged into a third nobody wrote.
 Precedence runs **project > project external > user > user external > kit**. The more specific
 location wins, and inside one location the owner's own tastes beat the ones they pulled in.
 
+**Project is the repository the command acts in**, which is not always the one the session sits
+in. A session in a parent directory running `cd repo && git commit …` or `git -C repo commit …`
+is judged by `repo`'s tastes, and a command touching two repositories brings the tastes of both.
+The user layers bind wherever you are working and load once. A directory change the hook cannot
+read — a variable, a glob — is reported as `UNCHECKED` rather than passed over.
+
 {{< callout type="info" >}}
 `external` is reserved at the root of a tastes tree. A taste or category directory of that name is
 refused by the lint, because that path is read by position and would be read as a source.
