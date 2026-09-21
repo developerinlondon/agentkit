@@ -46,10 +46,11 @@ keeps a taste data rather than a program, and it is why the trust property holds
 source can pick a check and word a refusal, so at worst it over-blocks you — it can never run
 anything.
 
-| `kind`             | Its own keys                      | What it inspects                               |
-| ------------------ | --------------------------------- | ---------------------------------------------- |
-| `command`          | `match` (required)                | the text of the command about to run           |
-| `git-tag-sequence` | `policy` (required), `match` (no) | the tags in the repository the command runs in |
+| `kind`             | Its own keys                                       | What it inspects                               |
+| ------------------ | -------------------------------------------------- | ---------------------------------------------- |
+| `command`          | `match` (required)                                 | the text of the command about to run           |
+| `git-tag-sequence` | `policy` (required), `match` (no)                  | the tags in the repository the command runs in |
+| `judgment`         | `question` (required), `on` (no), `threshold` (no) | the change the command is about to make        |
 
 A key belongs to one kind: `policy` inside a `command` rule is an unknown key, and the lint says
 so naming what that kind does carry.
@@ -147,6 +148,114 @@ read, to prevent a mis-ordered tag that `git tag` itself makes trivial to delete
 allow would be worse than either: the session would read enforcement into a guard that never
 ran. So it says `UNCHECKED`, names the taste and the reason, and lets the command through.
 
+### `kind: judgment`
+
+Refuses a change a **prose** convention says it should not, by asking one typed question of a
+System One model. It is the kind for a taste whose rule no regular expression can express —
+"done means deployed", "no stopgaps", "one concern per commit" — which is most of them.
+
+`question` is the yes/no the model answers, at most 500 characters and held to the same
+no-backtick, no-`$()` bound as `remedy`. It is sent as structured instructions alongside the
+**taste's own body**, so the criteria are the why and the how-to-apply the owner already wrote:
+the question narrows what is being asked, the body says what good looks like.
+
+`on` chooses which command shape the rule judges. Anything else passes without a call:
+
+| `on`            | Judges                                  | The diff it reads                                 |
+| --------------- | --------------------------------------- | ------------------------------------------------- |
+| `commit`        | a tokenised `git commit`, the default   | `git diff --cached`, or `git diff HEAD` with `-a` |
+| `merge-request` | `gh pr create` or `glab mr create`      | `git diff <default-branch>...HEAD`                |
+| `any`           | every command, judged on its text alone | none                                              |
+
+**The repository judged is the one the command targets.** A `git -C <dir> commit` is read in
+`<dir>`, resolved against the directory the command runs in, and so is a `cd` that spells its
+destination out: `cd sub && git commit …` is judged in `sub`. Where the command moves the tree
+somewhere this cannot follow — a `cd` naming a variable, a glob, a `~` path or `--`, a `pushd`,
+or the commit's own `--git-dir` or `--work-tree` — the rule reports `UNCHECKED` rather than
+judging whichever repository the hook happened to be invoked in. That holds however far away
+the commit is: a directory change this could not read blocks a commit in a later subshell or
+inside a wrapper just as firmly as one standing next to it.
+
+**A subshell and a wrapper are scopes.** `(cd sub && git commit …)` is judged in `sub`, because
+that is where that commit runs; `(cd sub) && git commit …` is judged where the command started,
+because the subshell's directory change ends with it. The same holds for `bash -c 'cd sub'`
+followed by a commit outside it.
+
+A wrapped command is read as the command it spells out. `bash -c 'git commit -m "x"'`,
+`sh -c` and `eval` with a literal argument are tokenised and judged exactly as the same command
+without the quotes, `-C` and `cd` included, to three levels of nesting. Text a shell would build
+at run time — `bash -c "$CMD"`, a substitution, a variable spliced into the message — is
+genuinely out of sight, and so is quoting this cannot resolve: an escaped quote inside a quoted
+run, a quote that never closes, or runs concatenated the way `'it'"'"'s'` joins two of them.
+Quoting is only judged where a wrapper is the thing being run — a shell named as an argument to
+something else is a word, not a command. Each of those is `UNCHECKED` naming what could not be read,
+never a silent pass. A wrapped command that never commits stays silent, because a notice on
+every wrapped call an agent makes is a notice nobody reads.
+
+**A launcher is read through.** `timeout`, `nohup`, `nice`, `env`, `sudo` and `xargs` are
+programs whose job is to run another one, so a commit or a wrapper behind one is read exactly as
+it would be in front: `timeout 10 bash -c 'git commit …'` is judged. Anything else standing in
+front of a command might do anything, and what it runs stays out of sight.
+
+**Every commit in the command is judged, not the first.**
+`git commit -m one && git commit -m two` asks one question per commit, out of the one budget the
+command has, and the refusal names which commit broke the taste.
+
+**What was read is judged even when the rest was not.** A command that names a commit this can
+follow and then goes somewhere it cannot — `git commit -m one && cd "$D" && git commit -m two` —
+is judged on the first and says `UNCHECKED` about what came after. A refusal earned on the part
+it read carries that alongside, so a session never reads a refusal as proof the whole command
+was examined.
+
+**`git-tag-sequence` does not read wrappers.** `bash -c 'git tag v1.2.3'` is not judged by that
+kind, which reads the command text directly. That is a limit of the older kind, not of this one.
+
+An amend is the one commit judged with an empty diff. `git commit --amend -m …` with nothing
+staged changes only the message, and the message is what a taste about commit messages reads.
+
+`threshold` is the probability at or above which the rule fires, defaulting to `0.75`. The model
+returns a probability; **the threshold is agentkit's and the taste's, never the model's** — which
+is what keeps the policy in a file you can read and change without a model call.
+
+**The change leaves your machine.** The state sent is `{command, message, diff}`: the text of the
+command, the message its own `-m` arguments carry, capped at 2 000 characters, and the diff,
+capped at 12 000 characters, each with a note where it was cut. Those are POSTed to the provider
+over TLS on every judged command. A repository whose diffs may not leave the building does not
+get a `judgment` taste at `enforce: block`, and the caps bound the size of what travels, not
+whether it travels.
+
+`on: any` is the setting to be deliberate about: at `enforce: block` it is a network round trip
+on **every** command the agent runs, `ls` included. Use it for a narrow, stated purpose, and
+prefer `commit`, which is one round trip per commit.
+
+**The provider needs a key, and agentkit works without one.** `TYPESAFE_API_KEY`, else the
+trimmed contents of `~/.config/agentkit/typesafe-token`. The call is a single `POST` to
+`/v1/systemone` (base URL from `TYPESAFE_BASE_URL`) with no retry: a vendor having a bad minute
+must cost the session one deadline, not three.
+
+**One budget covers every judgment in a command, not each one.** Five seconds for the whole
+command, and at most four for any single call, shared by every `judgment` taste that runs on it.
+A per-call deadline alone would not hold: `taste-police` runs its evaluator under a process cap,
+three stalled tastes together would reach it, and an evaluator killed there writes nothing — so
+**every** blocking taste goes unenforced, the `command` ones included. A taste reached after the
+budget is spent reports `UNCHECKED` naming it, and the tastes after it keep enforcing.
+
+It fails open, like every rule kind, and says so:
+
+| Situation                                            | What happens                                          |
+| ---------------------------------------------------- | ----------------------------------------------------- |
+| the command is not the shape `on` names              | passes, and nothing is sent                           |
+| a commit with an empty diff                          | passes — there is no change to judge                  |
+| no key resolves                                      | **`UNCHECKED`**, naming both places to put one        |
+| git cannot read the diff, or there is no repository  | **`UNCHECKED`**, naming what git said                 |
+| the command moves the tree, or names its own git dir | **`UNCHECKED`**, naming which                         |
+| HTTP 401, 422, 429, 5xx, or the deadline passes      | **`UNCHECKED`**, naming the status or the timeout     |
+| the answer is not a probability between 0 and 1      | **`UNCHECKED`** — a malformed answer is not a verdict |
+| the command's judgment budget is already spent       | **`UNCHECKED`**, naming the budget                    |
+
+A taste at `enforce: block` whose key is absent is therefore a taste that reports itself
+unenforced on every commit — loud, and never a silent pass.
+
 ### What counts as using an override
 
 The override is one environment variable name — the taste's own — and using it is a decision,
@@ -212,6 +321,34 @@ backwards tag makes "latest" mean two different commits.
 
 How to apply: list the tags before tagging. If the tag you want is already
 there, or is behind one on its line, pick the next patch instead.
+```
+
+And `.agentkit/tastes/no-stopgaps.md`, the kind whose rule is the taste's own prose:
+
+```markdown
+---
+name: no-stopgaps
+scope: project
+category: engineering
+strength: require
+enforce: block
+rule:
+  kind: judgment
+  question: Does this change ship a workaround that leaves the real fix for later?
+  on: commit
+  threshold: "0.75"
+  remedy: Fix the cause, or say in the commit message why the workaround is the fix.
+  override: AGENTKIT_ALLOW_STOPGAP
+provenance: 2026-09-21 · session correction
+---
+
+Fix the cause. A workaround that leaves the real fix for later is not a fix.
+
+Why: a stopgap is invisible the day after it ships, and the outage it defers
+arrives without the context that would explain it.
+
+How to apply: when the cause is out of reach, say so in the commit message and
+file the follow-up — do not let the diff imply the problem is solved.
 ```
 
 ## The source contract

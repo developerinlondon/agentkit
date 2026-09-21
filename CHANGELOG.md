@@ -9,6 +9,49 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+- feat(taste): **a taste whose rule is prose can refuse a commit.** Fifteen of the sixteen central
+  tastes sit at `advise` or `check` because "done means deployed" or "no stopgaps" is not a regular
+  expression, so the same convention is broken again under load and the reviewer spends a round on
+  it. A new `judgment` rule kind asks one typed question of a System One model instead: the taste
+  supplies a `question` of at most 500 characters, its own body travels as the criteria, and the
+  probability that comes back is read against the taste's `threshold` (default `0.75`). `on`
+  chooses what is judged — a tokenised `git commit` by default, `gh pr create` or `glab mr create`
+  at `merge-request`, the command text alone at `any` — and anything else passes without a call.
+  The state sent is the command, the message its `-m` arguments carry (capped at 2 000
+  characters) and the diff (capped at 12 000) — which means the change leaves the machine, stated
+  plainly in the docs, along with the warning that `on: any` at `enforce: block` is a round trip
+  on every command the agent runs. The policy stays in the file: agentkit owns the threshold and the
+  consequence, the model only answers. The provider is TypeSafe's Jev at `POST /v1/systemone`
+  behind a seam, keyed from `TYPESAFE_API_KEY` or `~/.config/agentkit/typesafe-token`, with no
+  retry and an answer refused unless it is a probability between 0 and 1. Every way it can fail to look — no key, no repository, a diff
+  git will not read, HTTP 401/422/429/5xx, the deadline — reports `UNCHECKED` and allows the
+  command, so a machine with no vendor key keeps working and never reads enforcement into a guard
+  that never ran. Every judgment in one command shares a five-second budget, because
+  `taste-police` runs its evaluator under a process cap and an evaluator killed there writes
+  nothing — which would leave every blocking taste unenforced, the `command` ones included. A
+  granted override is read before the check rather than after it, so a deliberate override never
+  pays a deadline or ships a diff to overrule a verdict it has already decided to ignore. The
+  repository judged is the one the command targets: `git -C <dir> commit` is read in `<dir>`, a
+  commit inside a subshell is still judged, and a `cd`, a `pushd`, a `--git-dir` or a
+  `--work-tree` that moves the tree out from under that reading reports `UNCHECKED` rather than
+  judging the wrong repository. A `cd` that spells its destination out is resolved like `-C`,
+  because that one is not a guess, and so is a wrapped command: `bash -c 'git commit …'`, `sh -c`
+  and `eval` with a literal argument are read as the command they spell out, to three levels of
+  nesting. A subshell and a wrapper are scopes, so a `cd` inside one moves what that scope's own
+  commands see and nothing after it. A directory change this cannot read blocks a commit in a later
+  scope as firmly as one beside it. Text a shell builds at run time, quoting that does not
+  close, an escaped quote inside a quoted run, runs concatenated the way `'it'"'"'s'` joins two
+  of them, and nesting past the cap are each `UNCHECKED` naming what could not be read, never a
+  silent pass — and quoting is judged only where a wrapper is the thing being run, so a shell
+  named as an argument stays a word. A launcher — `timeout`, `nohup`, `nice`, `env`, `sudo`,
+  `xargs` — is read through, and every commit in a chain is judged rather than the first, with
+  the refusal naming which one broke the taste. A command this can read part of is judged on that
+  part and reports `UNCHECKED` about the rest, rather than throwing away what it read. **`git-tag-sequence` does not read wrappers**:
+  `bash -c 'git tag v1.2.3'` is not judged by that kind, which reads the command text directly,
+  and that limit is unchanged here. **A `judgment` taste sends the command
+  text, the commit message and the staged diff to a third-party provider**, which the taste
+  contract, the concepts page and the Boundaries page now all say outright.
+
 ## v0.8.8 — 2026-09-07
 
 - docs(editor-police): **the docs site covers the editor gate.** A cookbook recipe, "Name the

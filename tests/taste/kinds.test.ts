@@ -38,8 +38,8 @@ function request(command = 'git tag v1.0.0', match?: () => Promise<MatchOutcome>
 }
 
 describe('the registry is what a kind name resolves to', () => {
-  test('both kinds agentkit implements are registered', () => {
-    expect(RULE_KINDS).toEqual(['command', 'git-tag-sequence']);
+  test('every kind agentkit implements is registered', () => {
+    expect(RULE_KINDS).toEqual(['command', 'git-tag-sequence', 'judgment']);
   });
 
   test('a kind declares the fields the lint reads', () => {
@@ -48,6 +48,17 @@ describe('the registry is what a kind name resolves to', () => {
     expect(ruleKeys(command as NonNullable<typeof command>)).toEqual([
       'kind',
       'match',
+      'remedy',
+      'override',
+    ]);
+
+    const judgment = ruleKind('judgment');
+    expect(judgment?.required).toEqual(['question']);
+    expect(ruleKeys(judgment as NonNullable<typeof judgment>)).toEqual([
+      'kind',
+      'question',
+      'on',
+      'threshold',
       'remedy',
       'override',
     ]);
