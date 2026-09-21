@@ -34,9 +34,10 @@ release PR — "publish this" authorizes a release, never the tier.
   repository judged is the one the command targets: `git -C <dir> commit` is read in `<dir>`, a
   commit inside a subshell is still judged, and a `cd`, a `pushd`, a `--git-dir` or a
   `--work-tree` that moves the tree out from under that reading reports `UNCHECKED` rather than
-  judging the wrong repository — as does a commit wrapped in `eval`, `bash -c` or `sh -c`, where
-  what runs is built at runtime and cannot be read at all. A `cd` that spells its destination out
-  is resolved like `-C`, because that one is not a guess. **A `judgment` taste sends the command
+  judging the wrong repository. A `cd` that spells its destination out is resolved like `-C`,
+  because that one is not a guess, and so is a wrapped command: `bash -c 'git commit …'`, `sh -c`
+  and `eval` with a literal argument are read as the command they spell out, while text a shell
+  builds at run time is `UNCHECKED` naming the wrapper. **A `judgment` taste sends the command
   text, the commit message and the staged diff to a third-party provider**, which the taste
   contract, the concepts page and the Boundaries page now all say outright.
 

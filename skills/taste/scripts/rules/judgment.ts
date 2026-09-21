@@ -27,6 +27,13 @@ const DIFF_CUT = '\n[diff truncated]';
 const MESSAGE_CUT = '\n[message truncated]';
 const CHANGES_DIRECTORY = ['cd', 'pushd', 'popd'];
 const SHELLS = ['bash', 'sh', 'zsh', 'dash', 'ksh'];
+// What a shell would turn into something else before running it. Their absence
+// is what makes a wrapped command readable as written.
+const EXPANDS = /[$`]/;
+const DASH_C = /^-[a-zA-Z]*c[a-zA-Z]*$/;
+// A wrapper inside a wrapper is legitimate and rare; deeper than this is a
+// generated command, and reading one confidently is not on offer.
+const MAX_WRAPPER_DEPTH = 3;
 // A path this check may resolve itself: spelled out in the command, with
 // nothing for a shell to expand into something else.
 const LITERAL_PATH = /^[^$`*?~\[\]{}!]+$/;
@@ -106,22 +113,52 @@ function readCommit(words: readonly string[], options: string[], cwd: string): C
 
 type Found = { commit: Commit } | { unchecked: string } | undefined;
 
-// A command built at runtime is a command this cannot read. Everywhere else a
-// check that could not look says so, and a wrapper is the one shape where the
-// commit is genuinely out of sight.
-function wrapperIn(segments: readonly string[][]): string | undefined {
-  for (const segment of segments) {
-    const program = programOf(segment);
-    if (program === undefined) continue;
-    if (program === 'eval' || program.endsWith('/eval')) return 'eval';
-    const shell = SHELLS.find((name) => program === name || program.endsWith(`/${name}`));
-    if (shell === undefined) continue;
-    const dashC = segment.slice(1).some((word) =>
-      /^-[a-zA-Z]*c[a-zA-Z]*$/.test(word) || word === '--command'
-    );
-    if (dashC) return `${shell} -c`;
+// The text a wrapper would run, and the name to say if it cannot be read.
+function wrapped(segment: readonly string[]): { name: string; text: string } | undefined {
+  const evaluated = programInvocation(segment, 'eval');
+  if (evaluated !== undefined) {
+    return { name: 'eval', text: [...evaluated.options, ...evaluated.words].join(' ') };
+  }
+
+  for (const shell of SHELLS) {
+    const invocation = programInvocation(segment, shell);
+    if (invocation === undefined) continue;
+    const words = [...invocation.options, ...invocation.words];
+    const at = words.findIndex((word) => DASH_C.test(word) || word === '--command');
+    // A shell without -c runs a file, which is not a command this can read
+    // either — but it is also not one this can see a commit in.
+    if (at === -1) return undefined;
+    return { name: `${shell} -c`, text: words[at + 1] ?? '' };
   }
   return undefined;
+}
+
+// A wrapped command whose text is spelled out is the same command with quotes
+// round it, so it is read as one. Only text a shell would build at run time is
+// genuinely out of sight, and saying so about every wrapped call would put a
+// notice on commands that were never going to commit.
+function readable(
+  segments: readonly string[][],
+  depth: number,
+): string[][] | { unchecked: string } {
+  const found: string[][] = [];
+  for (const segment of segments) {
+    const inner = wrapped(segment);
+    if (inner === undefined) {
+      found.push(segment);
+      continue;
+    }
+    if (EXPANDS.test(inner.text) || depth >= MAX_WRAPPER_DEPTH) {
+      return {
+        unchecked: `the command runs through ${inner.name} on text built at run time, so `
+          + 'whether it commits, and what it commits, is not something this check can read',
+      };
+    }
+    const expanded = readable(commandSegments(inner.text), depth + 1);
+    if (!Array.isArray(expanded)) return expanded;
+    found.push(...expanded);
+  }
+  return found;
 }
 
 // Where a `cd` names its destination outright, reading it is not a guess; the
@@ -154,14 +191,9 @@ function movedTo(segments: readonly string[][], before: number, cwd: string):
 // hook is told only where it was invoked. Saying so beats judging the wrong
 // repository, which would refuse or clear a change nobody is making.
 function commitIn(command: string, cwd: string): Found {
-  const segments = commandSegments(command);
-  const wrapper = wrapperIn(segments);
-  if (wrapper !== undefined) {
-    return {
-      unchecked: `the command runs through ${wrapper}, so whether it commits, and what it `
-        + 'commits, is not something this check can read',
-    };
-  }
+  const read = readable(commandSegments(command), 0);
+  if (!Array.isArray(read)) return read;
+  const segments = read;
 
   for (let index = 0; index < segments.length; index += 1) {
     const invocation = programInvocation(segments[index] as string[], 'git', GIT_GLOBAL_VALUED);

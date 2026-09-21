@@ -174,6 +174,13 @@ out from under that reading — a `cd` or `pushd` before the commit, its own `--
 happened to be invoked in. A commit inside a subshell is still a commit: `(git commit …)` is
 judged, and `(cd sub && git commit …)` is `UNCHECKED`.
 
+A wrapped command is read as the command it spells out. `bash -c 'git commit -m "x"'`,
+`sh -c` and `eval` with a literal argument are tokenised and judged exactly as the same command
+without the quotes, `-C` and `cd` included. Only text a shell would build at run time —
+`bash -c "$CMD"`, a substitution, a variable spliced into the message — is genuinely out of
+sight, and that is `UNCHECKED` naming the wrapper. A wrapped command that never commits stays
+silent, because a notice on every wrapped call an agent makes is a notice nobody reads.
+
 An amend is the one commit judged with an empty diff. `git commit --amend -m …` with nothing
 staged changes only the message, and the message is what a taste about commit messages reads.
 

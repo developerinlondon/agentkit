@@ -412,9 +412,10 @@ describe('the repository judged is the one the command targets', () => {
     ['a cd with an option', 'cd -P inner && git commit -m "x"', 'changes directory'],
     ['a commit naming its own git dir', 'git --git-dir=/o/.git commit -m "x"', '--git-dir'],
     ['a commit naming its own work tree', 'git --work-tree=/o commit -m "x"', '--work-tree'],
-    ['a commit inside eval', 'eval "git commit -m x"', 'eval'],
-    ['a commit inside bash -c', 'bash -c \'git commit -m x\'', 'bash -c'],
-    ['a commit inside sh -c', 'sh -c \'git commit -m x\'', 'sh -c'],
+    ['a bash -c on text built at run time', 'bash -c "$CMD"', 'bash -c'],
+    ['an eval on text built at run time', 'eval "$CMD"', 'eval'],
+    ['a message spliced in by the shell', 'sh -c "git commit -m $MSG"', 'sh -c'],
+    ['a wrapped command holding a substitution', 'bash -c "git commit -m `date`"', 'bash -c'],
   ])('%s is UNCHECKED, and says which', async (_shape, command, because) => {
     const stub = provider({ noul: 0.99 });
     const git = recordingGit();
@@ -457,9 +458,90 @@ describe('the repository judged is the one the command targets', () => {
     ['a commit under the merge-request occasion', { on: 'merge-request' }, 'git commit', false],
     ['anything at all under any', { on: 'any' }, 'ls', true],
     ['an occasion no version of this knows', { on: 'sometimes' }, 'git commit -m "x"', false],
+    ['a commit spelled out in a wrapper', {}, 'bash -c \'git commit -m x\'', true],
+    ['a wrapped command that never commits', {}, 'bash -c \'ls\'', false],
+    ['a wrapper on text built at run time', {}, 'bash -c "$CMD"', true],
   ])('applies: %s', (_shape, fields, command, expected) => {
     expect(JUDGMENT.applies?.({ question: QUESTION, ...fields }, command, scratch()))
       .toBe(expected);
+  });
+
+  // A wrapped command whose text is spelled out is the same command with quotes
+  // round it. Refusing to read it would put an UNCHECKED notice on every
+  // wrapped call an agent makes, including the ones that never commit.
+  test.each([
+    ['bash -c', 'bash -c \'git commit -m "wrapped"\''],
+    ['sh -c', 'sh -c \'git commit -m "wrapped"\''],
+    ['eval', 'eval "git commit -m wrapped"'],
+    ['a login shell', 'bash -lc \'git commit -m "wrapped"\''],
+  ])('a commit spelled out inside %s is judged like any other', async (_shape, command) => {
+    const stub = provider({ noul: 0.9 });
+    const outcome = await evaluate({}, { command, url: stub.url });
+
+    expect(outcome.verdict).toBe('fires');
+    expect(stub.sent).toHaveLength(1);
+    expect(stub.sent[0]?.body.state.message).toBe('wrapped');
+  });
+
+  test('a wrapped command that never commits says nothing and reads nothing', async () => {
+    const stub = provider({ noul: 0.99 });
+    const git = recordingGit();
+    const outcome = await evaluate({}, {
+      command: 'bash -c \'ls -la\'',
+      cwd: scratch(),
+      url: stub.url,
+      env: { PATH: `${git.dir}:${process.env.PATH}`, TYPESAFE_API_KEY: undefined },
+    });
+
+    expect(outcome.verdict).toBe('passes');
+    expect(git.asked()).toBe(false);
+    expect(stub.sent).toHaveLength(0);
+  });
+
+  // A shell handed a file is not a wrapper this can read into, but neither does
+  // it hide a commit standing next to it: it is passed over, not reported on.
+  test('a shell running a script file hides nothing and is not reported', async () => {
+    const stub = provider({ noul: 0.9 });
+    const outcome = await evaluate({}, {
+      command: 'bash deploy.sh && git commit -m "after the script"',
+      url: stub.url,
+    });
+
+    expect(outcome.verdict).toBe('fires');
+    expect(stub.sent[0]?.body.state.message).toBe('after the script');
+  });
+
+  test('a shell running a script file on its own is silent', async () => {
+    const stub = provider({ noul: 0.99 });
+    const git = recordingGit();
+    const outcome = await evaluate({}, {
+      command: 'bash deploy.sh',
+      cwd: scratch(),
+      url: stub.url,
+      env: { PATH: `${git.dir}:${process.env.PATH}`, TYPESAFE_API_KEY: undefined },
+    });
+
+    expect(outcome.verdict).toBe('passes');
+    expect(git.asked()).toBe(false);
+    expect(stub.sent).toHaveLength(0);
+  });
+
+  test('a wrapped commit carries its own cd into the reading', async () => {
+    const root = repo({ marker: 'the outer repository' });
+    const inner = join(root, 'inner');
+    mkdirSync(inner, { recursive: true });
+    git(inner, 'init', '-q', '-b', 'main');
+    writeFileSync(join(inner, 'a.ts'), 'export const a = 1; // the inner repository\n');
+    git(inner, 'add', '-A');
+    const stub = provider({ noul: 0.1 });
+    await evaluate({}, {
+      command: 'bash -c \'cd inner && git commit -m "in there"\'',
+      cwd: root,
+      url: stub.url,
+    });
+    const state = stub.sent[0]?.body.state as Record<string, string>;
+
+    expect(state.diff).toContain('the inner repository');
   });
 
   test('a commit inside a subshell is still judged', async () => {
