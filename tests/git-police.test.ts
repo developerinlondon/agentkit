@@ -455,6 +455,43 @@ describe("git-police cannot be walked around", () => {
     expect(run(`grep -F ${bad} /dev/null; git commit -m "fix: x"`).denied).toBe(false);
   });
 
+  test("a -F that belongs to the next command in the chain is not a message file", () => {
+    const chained = [
+      'git commit -m "fix: x" && grep -F "$pattern" src/app.ts',
+      'git commit -m "fix; still one message" && docker compose --file "$COMPOSE_FILE" up -d',
+      'git commit -m "fix: x" && curl -F "file=@$P" https://x/y',
+      'git tag -l | grep -F "$v"',
+      'git notes show HEAD && grep -F "$n" f',
+    ];
+    for (const cmd of chained) expect(run(cmd).denied).toBe(false);
+    // A second commit in the chain is still a commit.
+    const bad = join(scratch, "msg-bad-3");
+    writeFileSync(bad, `fix: x\n\n${TRAILER}\n`);
+    expect(run(`git commit -m "a; b" -F ${bad}`).denied).toBe(true);
+    expect(run(`git commit -m ok && git commit --amend -F ${bad}`).denied).toBe(true);
+  });
+
+  test("an unset HOME is not a silent exit", () => {
+    const env: Record<string, string> = { ...process.env, XDG_CONFIG_HOME: emptyConfig } as Record<string, string>;
+    delete env.HOME;
+    const r = spawnSync("bash", [hook], {
+      input: JSON.stringify({ tool_name: "Bash", tool_input: { command: `git commit -m "x\n\n${TRAILER}"` } }),
+      encoding: "utf-8",
+      cwd: repoRoot,
+      env,
+    });
+    expect(r.status).toBe(0);
+    expect(r.stdout).toMatch(/"permissionDecision":\s*"deny"/);
+    delete env.XDG_CONFIG_HOME;
+    const bare = spawnSync("bash", [hook], {
+      input: JSON.stringify({ tool_name: "Bash", tool_input: { command: `git commit -m "x\n\n${TRAILER}"` } }),
+      encoding: "utf-8",
+      cwd: repoRoot,
+      env,
+    });
+    expect(bare.stdout).toMatch(/"permissionDecision":\s*"deny"/);
+  });
+
   test("a message file the hook cannot read is refused, and says why", () => {
     const r = run('git commit -F "$MSG"');
     expect(r.denied).toBe(true);

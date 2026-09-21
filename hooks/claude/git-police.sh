@@ -11,7 +11,7 @@ set -euo pipefail
 RE_YAML_ITEM='^[[:space:]]*-[[:space:]]+(.*)'
 
 PROTECTED_BRANCHES=("main" "master")
-AGENTKIT_CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/agentkit/config.yaml"
+AGENTKIT_CONFIG="${XDG_CONFIG_HOME:-${HOME:-}/.config}/agentkit/config.yaml"
 
 # A hook that dies decides nothing, and the harness reads a non-zero exit other
 # than 2 as a non-blocking error: the command runs unjudged. So a crash refuses
@@ -94,7 +94,9 @@ git_target_dir() {
 	echo "$dir"
 }
 NAMED_DIR=$(git_target_dir "$STRIPPED")
-TARGET_DIR="${NAMED_DIR/#\~/$HOME}"
+# ${HOME:-}: bash 3.2 skips the EXIT trap when set -u aborts a top-level
+# assignment, so an unset HOME here would be a silent exit the harness allows.
+TARGET_DIR="${NAMED_DIR/#\~/${HOME:-}}"
 
 # `cd $W` and `git -C "$DIR"` reach here unexpanded or emptied. A path that is
 # not a directory would make every tgit call exit 128, so the hook's cwd is
@@ -143,16 +145,42 @@ FORGE_WRITE_RE='\bglab[[:space:]]+(mr|issue)[[:space:]]+(create|update|edit|note
 # the separator lets a message that merely talks about the trailer through.
 ATTRIBUTION_RE='co-authored-by[[:space:]]*[:=]|generated with \[claude code\]|🤖 generated|claude\.ai/code|claude\.com/claude-code|noreply@anthropic\.com'
 
-# Every file a commit, tag, note or gh write takes its message from: -F<path>, -F <path>, bundled as
-# -qF, --file <path>, --file=<path>, quoted or not, one per line. Read from the
-# first such command to the end of the command, so a `grep -F` before it is not
-# mistaken for one. `-` is stdin, whose heredoc is already in the payload.
+# Every file a commit, tag, note or gh write takes its message from: -F<path>,
+# -F <path>, bundled as -qF, --file <path>, --file=<path>, quoted or not, one
+# per line. Each such command is read up to its first unquoted separator, so
+# the `grep -F "$x"` chained after it is not mistaken for a message file. `-`
+# is stdin, whose heredoc is already in the payload.
 RE_COMMIT_TAIL='(git[^;&|]*[[:space:]](commit|tag|notes)|gh[[:space:]]+(pr|issue|release))([[:space:]].*)'
+RE_FILE_FLAG='(-[aqsvneziop]*F|--file|--body-file|--notes-file)'
+
+# Sets SEGMENT to the head of $1 that ends before an unquoted ; & | or newline.
+first_segment() {
+	local text="$1" quote="" ch i
+	for ((i = 0; i < ${#text}; i++)); do
+		ch="${text:i:1}"
+		if [[ -n "$quote" ]]; then
+			[[ "$quote" == '"' && "$ch" == "\\" ]] && ((i++))
+			[[ "$ch" == "$quote" ]] && quote=""
+			continue
+		fi
+		case "$ch" in
+		'"' | "'") quote="$ch" ;;
+		';' | '&' | '|' | $'\n') break ;;
+		esac
+	done
+	SEGMENT="${text:0:i}"
+}
+
 commit_message_args() {
-	[[ "$COMMAND" =~ $RE_COMMIT_TAIL ]] || return 0
-	echo "${BASH_REMATCH[4]}" |
-		{ grep -oE -- "[[:space:]](-[aqsvneziop]*F|--file|--body-file|--notes-file)([[:space:]]*=[[:space:]]*|[[:space:]]*)(\"[^\"]*\"|'[^']*'|[^[:space:];&|]+)" || true; } |
-		sed -E "s/^[[:space:]]*(-[aqsvneziop]*F|--file|--body-file|--notes-file)[[:space:]]*=?[[:space:]]*//; s/^[\"'](.*)[\"']\$/\1/"
+	local rest="$COMMAND"
+	while [[ "$rest" =~ $RE_COMMIT_TAIL ]]; do
+		rest="${BASH_REMATCH[4]}"
+		first_segment "$rest"
+		rest="${rest:${#SEGMENT}}"
+		echo "$SEGMENT" |
+			{ grep -oE -- "[[:space:]]${RE_FILE_FLAG}([[:space:]]*=[[:space:]]*|[[:space:]]*)(\"[^\"]*\"|'[^']*'|[^[:space:];&|]+)" || true; } |
+			sed -E "s/^[[:space:]]*${RE_FILE_FLAG}[[:space:]]*=?[[:space:]]*//; s/^[\"'](.*)[\"']\$/\1/"
+	done
 }
 
 # 0. Block AI attribution trailers / signatures in commit commands AND in
@@ -175,7 +203,7 @@ if echo "$STRIPPED" | grep -qiE "$GIT_COMMIT_RE" || echo "$STRIPPED" | grep -qiE
 			deny "BLOCKED: git-police cannot read the message file named by '${MESSAGE_FILE}': the shell expands it after this hook runs. Pass the literal path (-F /path/to/message) so the message can be checked for AI attribution."
 			;;
 		esac
-		MESSAGE_FILE="${MESSAGE_FILE/#\~/$HOME}"
+		MESSAGE_FILE="${MESSAGE_FILE/#\~/${HOME:-}}"
 		[[ "$MESSAGE_FILE" != /* && -n "$TARGET_DIR" ]] && MESSAGE_FILE="$TARGET_DIR/$MESSAGE_FILE"
 		# A file that does not exist yet is written by this same command, so
 		# its text is in the payload already.
@@ -204,9 +232,8 @@ if echo "$STRIPPED" | grep -qiE "${GIT_PUSH_RE}"'.*(-f\b|--force\b|--force-with-
 	deny "BLOCKED: Force push is forbidden. Force pushing rewrites history and can destroy work. If a history rewrite is truly required, prepare the branch and ask the user to run the force push themselves."
 fi
 
-# allowed-repos lifts branch protection only: direct commits and pushes to
-# main/master. Attribution, --no-verify and force push are judged above it,
-# and a repository the hook could not resolve is never taken for an allowed one.
+# allowed-repos lifts the rules below, which read repository state. The text
+# rules (attribution, --no-verify, force push) are judged above it, and a repository the hook could not resolve is never taken for an allowed one.
 if [[ ${#ALLOWED_REPOS[@]} -gt 0 && -z "$TARGET_NOTE" ]]; then
 	REPO_URL=$(tgit remote get-url origin 2>/dev/null || echo "")
 	REPO_NAME=$(echo "${REPO_URL%.git}" | sed -E 's|.*[:/]([^/]+/[^/]+)$|\1|')

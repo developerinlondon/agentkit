@@ -18,7 +18,8 @@ release PR — "publish this" authorizes a release, never the tier.
   back to the hook's own directory, no `tgit` assignment can abort the hook, and a refusal built on
   that guess says so and names the way through, a literal `git -C /path`. Attribution,
   `--no-verify` and force push are pure text and now run ahead of both the repository-state rules
-  and `allowed-repos`, which lifts branch protection only, as its documentation always said; the
+  and `allowed-repos`, which still lifts every rule that reads repository state but no longer a
+  text rule; the
   hatch was an unconditional exit above them, and an allow-listed working directory no longer
   vouches for a target the hook could not resolve. Every file a commit takes its message from is
   read: `-F path`, `-Fpath`, `-qF`, `--file=`, quoted paths with spaces, and each of several. A
@@ -26,11 +27,13 @@ release PR — "publish this" authorizes a release, never the tier.
   so it is refused with that reason rather than waved through. The pattern wants the trailer's `:`
   or `=`, so a message that talks about the trailer is allowed. `allowed-repos` works on macOS:
   BSD sed rejected the lazy quantifier in the repo-name extraction, so the name was always empty
-  there. And a crash can never again read as approval: an exit trap, installed before the payload
+  there. And a crash the shell reports no longer reads as approval: an exit trap, installed before the payload
   is read and written without jq, refuses a commit, push or forge write when the hook dies after
   reading it, and reports `UNCHECKED` when the payload could not be read at all. The OpenCode
-  plugin gets the same ordering, pattern and message-file read. Fifteen tests spawn the bash hook
-  for these and all fifteen fail against the v0.9.1 hook. Forge writes
+  plugin gets the same ordering, pattern and message-file read. Seventeen tests spawn the bash hook
+  for these and all seventeen fail against the v0.9.1 hook. `$HOME` is read as `${HOME:-}`: bash
+  3.2 skips the exit trap when `set -u` aborts a top-level assignment, so an unset `HOME` was a
+  silent exit. Forge writes
   made through the raw API (`glab api`, `gh api`) are judged like `glab mr create`, and so are `gh pr merge --body`, `--body-file`, an annotated
   tag and a note. A PATH without `grep` would have made every rule evaluate false in silence; the
   hook now reports `UNCHECKED` instead.

@@ -63,12 +63,15 @@ function isAllowedRepo(cwd: string): boolean {
 const ATTRIBUTION_RE =
   /co-authored-by\s*[:=]|generated with \[claude code\]|🤖 generated|claude\.ai\/code|claude\.com\/claude-code|noreply@anthropic\.com/i;
 
-// Every -F/--file after the first `git commit`. A file that does not exist yet
+// Every -F/--file of a message-carrying command. A file that does not exist yet
 // is written by the same command, so its text is already in the command.
 function messageFilesCarryAttribution(command: string, cwd: string): boolean {
-  const tail = command.match(/(?:git[^;&|]*\s(?:commit|tag|notes)|gh\s+(?:pr|issue|release))(\s[\s\S]*)/)?.[1];
-  if (!tail) return false;
-  const args = tail.matchAll(/\s(?:-[aqsvneziop]*F|--file|--body-file|--notes-file)(?:\s*=\s*|\s*)("[^"]*"|'[^']*'|[^\s;&|]+)/g);
+  const FLAG = /\s(?:-[aqsvneziop]*F|--file|--body-file|--notes-file)(?:\s*=\s*|\s*)("[^"]*"|'[^']*'|[^\s;&|]+)/g;
+  // Each message-carrying command, up to its first unquoted separator, so a
+  // `grep -F "$x"` chained after it is not mistaken for a message file.
+  const SEGMENT =
+    /(?:git[^;&|]*\s(?:commit|tag|notes)|gh\s+(?:pr|issue|release))(\s(?:"(?:[^"\\]|\\.)*"|'[^']*'|[^;&|\n"'])*)/g;
+  const args = [...command.matchAll(SEGMENT)].flatMap((seg) => [...seg[1].matchAll(FLAG)]);
   for (const m of args) {
     const named = m[1].replace(/^["'](.*)["']$/, '$1');
     if (!named || named === '-') continue;
