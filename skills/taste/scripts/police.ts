@@ -1,7 +1,8 @@
 import { homedir } from 'node:os';
 import { offValueLine, type Override, readOverride, unquote } from './override.ts';
 import { type ResolvedTaste, resolveTastes, type TasteRule } from './resolve.ts';
-import { evaluateRule, type MatchOutcome } from './rules/kinds.ts';
+import { judgmentBudget } from './rules/budget.ts';
+import { evaluateRule, type MatchOutcome, ruleKind } from './rules/kinds.ts';
 import { configFiles, unitSection } from './sources.ts';
 import { TASTE } from './store.ts';
 
@@ -149,16 +150,33 @@ export async function evaluateCommand(request: Request): Promise<Verdict> {
   const { tastes, warnings } = resolveTastes(request.cwd, home, env);
   const notices = warnings.map((warning) => `taste skipped — ${warning}`);
   const matcher = new BoundedMatcher();
+  // One allowance for the whole command. A kind that reaches the network or
+  // runs git spends from it, so three such tastes together cannot hold the
+  // hook past the cap its process runs under.
+  const budget = judgmentBudget();
 
   try {
     for (const taste of tastes.filter(blocking)) {
       const rule = taste.rule as TasteRule;
+      const override = overrideState(rule.override, request.command, env);
+
+      // Read before the check, not after it, for a kind that costs something:
+      // a deliberate override must not pay a deadline or ship a diff to
+      // overrule a verdict it has already decided to ignore.
+      if (override.state === 'granted' && ruleKind(rule.kind)?.costly === true) {
+        notices.push(
+          `taste ${taste.name} allowed this command: ${rule.override} is set deliberately.`,
+        );
+        continue;
+      }
+
       const outcome = await evaluateRule(rule.kind, rule.fields, {
         command: request.command,
         cwd: request.cwd,
         env,
         match: (pattern, capture) => matcher.test(pattern, request.command, capture),
         body: taste.body,
+        budget,
       });
 
       if (outcome.verdict === 'skipped') {
@@ -176,7 +194,6 @@ export async function evaluateCommand(request: Request): Promise<Verdict> {
       }
       if (outcome.verdict === 'passes') continue;
 
-      const override = overrideState(rule.override, request.command, env);
       if (override.state === 'granted') {
         notices.push(
           `taste ${taste.name} allowed this command: ${rule.override} is set deliberately.`,
