@@ -359,10 +359,21 @@ already reads through — and resolves `.agentkit/tastes/` for each checkout it 
 the one the session started in. The user layers bind wherever the agent is working and are read
 once.
 
-**A repository's taste sees only the part of the command that acts in that repository**, written
-as it would read had it been run there: the segments acting elsewhere are not in the text it is
-matched against, and a `judgment` taste is sent that repository's diff and message and nothing
-else. A taste in one checkout can neither refuse another checkout's commit nor be shown its diff.
+**A repository's taste sees only the part of the command that acts in that repository**: the
+segments acting elsewhere are not in the text it is matched against, and a `judgment` taste is
+sent that repository's diff and message and nothing else. A taste in one checkout can neither
+refuse another checkout's commit nor be shown its diff.
+
+That part is **cut out of the command as it was typed**, never spelled again, so a pattern
+written against quoting — `match: -m 'wip'` — reads the same whether the session stands in the
+repository or reaches into it. Only the options that pointed at the directory are taken out,
+because the check supplies the directory itself.
+
+**A pattern does not span a gap.** Two visits to one checkout with a visit elsewhere between them
+are two commands, joined by a newline rather than by a separator nobody typed, so
+`match: git add \..*git push` does not fire on
+`cd a && git add . ; cd ../b && … ; cd ../a && git push`. Commands the agent did write next to
+each other keep the separator they were written with.
 
 **The project layers are always read from the top of a work tree**, wherever the session stands.
 A session in `repo/src` is bound by `repo`'s tastes, and so is a parent running
@@ -379,7 +390,9 @@ prose. A directory that is merely listed or removed brings none either.
 a session standing inside it. Another checkout's tastes in the same command keep binding.
 
 Where a repository defines a taste the owner also defines at user level, **the repository's
-replaces it for the commands acting there**, exactly as it would for a session standing in it.
+replaces it for the commands acting there and nowhere else**, exactly as it would for a session
+standing in it. One checkout overriding a name does not take the owner's taste away from another
+checkout in the same command.
 
 | The session sits in | The command                 | Judged by                  |
 | ------------------- | --------------------------- | -------------------------- |

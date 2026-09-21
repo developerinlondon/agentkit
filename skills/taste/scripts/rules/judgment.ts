@@ -15,6 +15,7 @@ import {
   walk,
 } from './scope.ts';
 import {
+  commandPieces,
   commandSegments,
   FORGE_GLOBAL_VALUED,
   GIT_GLOBAL_VALUED,
@@ -133,7 +134,7 @@ function commitIn(command: string, cwd: string): Found | undefined {
         + 'is not something this check can read',
     };
   }
-  const found = walk(segments, cwd, 0, commitAt);
+  const found = walk(commandPieces(command), cwd, 0, commitAt);
   if (found.hits.length === 0 && found.unread === undefined) return undefined;
   return { commits: found.hits, unread: found.unread };
 }
@@ -160,7 +161,7 @@ function mergeRequestIn(command: string, cwd: string): Hit<true> | undefined {
         + 'something this check can read',
     };
   }
-  const found = walk(segments, cwd, 0, openingAt);
+  const found = walk(commandPieces(command), cwd, 0, openingAt);
   if (found.hits.length === 0 && found.unread === undefined) return undefined;
   return found;
 }

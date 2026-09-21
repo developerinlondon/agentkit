@@ -204,6 +204,42 @@ function reachedRoots(dirs: readonly string[], atStart: boolean, sessionRoot?: s
   return { roots, elsewhere };
 }
 
+// The session's own lane, split where the owner's taste of a name a checkout
+// also defines has to stand back for the commands acting in that checkout — and
+// only for those. Everywhere else it still binds, which is what "the more
+// specific location wins" has always meant inside a repository.
+function sessionLanes(
+  session: Lane,
+  overridden: ReadonlyMap<string, string[]>,
+  cwd: string,
+): Lane[] {
+  const byScope = new Map<string, Lane>();
+
+  for (const taste of session.tastes) {
+    const outside = ofTheProject(taste) ? [] : overridden.get(taste.name) ?? [];
+    const key = outside.join('\u0000');
+    const lane = byScope.get(key);
+    if (lane !== undefined) {
+      lane.tastes.push(taste);
+      continue;
+    }
+    byScope.set(key, {
+      cwd: session.cwd,
+      command: outside.length === 0
+        ? session.command
+        : scopedCommand(session.command, cwd, { outside }),
+      tastes: [taste],
+      warnings: byScope.size === 0 ? session.warnings : [],
+    });
+  }
+
+  // A session with no tastes of its own still has a lane: it is where the
+  // warnings live, and where a taste added later would land.
+  if (byScope.size === 0) return [session];
+  // A taste with nothing left to read is not a taste that found nothing.
+  return [...byScope.values()].filter((lane) => lane.command !== '' || lane.warnings.length > 0);
+}
+
 // One lane per repository whose tastes bind this command: the one the session
 // sits in, as before, and every checkout the command works on from there. The
 // user's own layers load once, with the session's lane, because they bind
@@ -231,19 +267,23 @@ export function tasteLanes(
   if (acted.dirs.length === 0) return { lanes, unread: acted.unread };
 
   const reached = reachedRoots(acted.dirs, acted.atStart, repositoryRoot(cwd));
-  const shadowed = new Set<string>();
-  let raised = 0;
+  // Which checkouts name which taste, so a name defined in one speaks for the
+  // commands acting there and nowhere else. Collected across lanes and applied
+  // per taste: one repository overriding a name must not take the owner's own
+  // taste away from every other repository in the same command.
+  const overridden = new Map<string, string[]>();
 
   for (const root of reached.roots) {
     if (!projectTasteEnabled(root)) continue;
     const there = resolveTastes(root, home, env);
     const tastes = there.tastes.filter(ofTheProject);
     if (tastes.length === 0) continue;
-    raised += 1;
-    for (const one of tastes) shadowed.add(one.name);
+    for (const one of tastes) {
+      overridden.set(one.name, [...(overridden.get(one.name) ?? []), root]);
+    }
     lanes.push({
       cwd: root,
-      command: scopedCommand(command, cwd, root),
+      command: scopedCommand(command, cwd, { within: root }),
       tastes,
       // The user layers are the same files the session's lane already read, so
       // only what this checkout added is new to say.
@@ -251,17 +291,8 @@ export function tasteLanes(
     });
   }
 
-  // The same name in a repository replaces the owner's own inside it, exactly
-  // as it does for a session standing there. Where the command works on nothing
-  // else, the replacement is the whole of it.
-  const replaced = !reached.elsewhere && raised === reached.roots.length;
-  if (replaced && shadowed.size > 0) {
-    lanes[0] = {
-      ...(lanes[0] as Lane),
-      tastes: (lanes[0] as Lane).tastes.filter((one) =>
-        ofTheProject(one) || !shadowed.has(one.name)
-      ),
-    };
+  if (overridden.size > 0) {
+    lanes.splice(0, 1, ...sessionLanes(lanes[0] as Lane, overridden, cwd));
   }
   return { lanes, unread: acted.unread };
 }

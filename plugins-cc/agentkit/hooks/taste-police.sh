@@ -81,7 +81,8 @@ reaches_elsewhere() {
 	local start='(^|[;&|(])[[:space:]]*'
 	local launcher='((env|timeout|nohup|sudo|nice|xargs)([[:space:]]+[^;&|()[:space:]]+)*[[:space:]]+)?'
 	local changes='(cd|pushd|eval|bash|sh|zsh|dash|ksh)([[:space:]]|$)'
-	local points='git([[:space:]][^;&|()]*)?[[:space:]](-C[[:space:]]|--git-dir[=[:space:]]|--work-tree[=[:space:]])'
+	local option='(-[^[:space:];&|()]+|[^[:space:];&|()=]+=[^[:space:];&|()]*)'
+	local points="git([[:space:]]+$option)*[[:space:]]+(-C[[:space:]]|--git-dir[=[:space:]]|--work-tree[=[:space:]])"
 	[[ "$COMMAND" =~ ${start}${launcher}${changes} ]] && return 0
 	[[ "$COMMAND" =~ ${start}${launcher}${points} ]] && return 0
 	return 1

@@ -1,8 +1,10 @@
 import { existsSync, realpathSync } from 'node:fs';
 import { dirname, isAbsolute, join, resolve, sep } from 'node:path';
 import {
+  commandPieces,
   commandSegments,
   GIT_GLOBAL_VALUED,
+  type Piece,
   programInvocation,
   programOf,
   SUBSHELL_CLOSE,
@@ -177,10 +179,10 @@ interface Frame {
 // scope's own commands see and nothing after it, which is why the walk carries
 // a stack instead of flattening everything into one list.
 export function walk<T>(
-  segments: readonly string[][],
+  pieces: readonly Piece[],
   cwd: string,
   depth: number,
-  look: (segment: readonly string[], dir: string) => T | undefined,
+  look: (segment: readonly string[], dir: string, piece: Piece) => T | undefined,
   // Carried in from the scope that opened this one: a directory change this
   // could not read still binds whatever runs after it, and a wrapper is not a
   // way out of that.
@@ -191,8 +193,8 @@ export function walk<T>(
   let dir = cwd;
   let blocked: string | undefined = from;
 
-  for (const raw of segments) {
-    const segment = launched(raw);
+  for (const piece of pieces) {
+    const segment = launched(piece.words);
     if (segment.length === 1 && segment[0] === SUBSHELL_OPEN) {
       frames.push({ dir, blocked });
       continue;
@@ -222,7 +224,7 @@ export function walk<T>(
             + 'whether it commits, and what it commits, is not something this check can read',
         };
       }
-      const found = walk(commandSegments(inner.text), dir, depth + 1, look, blocked);
+      const found = walk(commandPieces(inner.text), dir, depth + 1, look, blocked);
       hits.push(...found.hits);
       if (found.unread !== undefined) return { hits, unread: found.unread };
       continue;
@@ -236,7 +238,7 @@ export function walk<T>(
       continue;
     }
 
-    const hit = look(segment, dir);
+    const hit = look(segment, dir, piece);
     if (hit === undefined) continue;
     // A command this could not follow makes everything after it unreadable, so
     // the first hit reached under a block ends the walk — but what was read
@@ -307,11 +309,11 @@ export interface Acted {
 // directories, because a directory that merely gets listed has no tastes worth
 // loading and every extra one loaded is prose from a folder nobody vouched for.
 export function actedDirectories(command: string, cwd: string): Acted {
-  const segments = commandSegments(command);
-  const quoting = unreadableQuoting(command, segments);
+  const pieces = commandPieces(command);
+  const quoting = unreadableQuoting(command, pieces.map((piece) => piece.words));
   if (quoting !== undefined) return { dirs: [], atStart: false, unread: quoting };
 
-  const reached = walk(segments, cwd, 0, reachesARepository);
+  const reached = walk(pieces, cwd, 0, reachesARepository);
   const dirs: string[] = [];
   let atStart = false;
   for (const dir of reached.hits) {
@@ -358,49 +360,114 @@ function inside(dir: string, root: string): boolean {
   return dir === root || dir.startsWith(root.endsWith(sep) ? root : root + sep);
 }
 
-// A word that needs no quoting to survive being read again.
-const PLAIN = /^[A-Za-z0-9_@%+=:,./-]+$/;
-
-function requoted(word: string): string {
-  return PLAIN.test(word) ? word : JSON.stringify(word);
-}
-
 // `-C` said where to run, and the caller is about to say that itself.
-function withoutPointer(segment: readonly string[]): string[] {
-  if (programInvocation(segment, 'git', GIT_GLOBAL_VALUED) === undefined) return [...segment];
-  const words: string[] = [];
+function pointerSpans(segment: readonly string[]): number[] {
+  if (programInvocation(segment, 'git', GIT_GLOBAL_VALUED) === undefined) return [];
+  const dropped: number[] = [];
   for (let index = 0; index < segment.length; index += 1) {
-    const word = segment[index] as string;
-    if (word === '-C') {
-      index += 1;
-      continue;
-    }
-    words.push(word);
+    if (segment[index] !== '-C') continue;
+    dropped.push(index, index + 1);
+    index += 1;
   }
-  return words;
+  return dropped;
 }
 
-interface Ran {
-  dir: string;
-  segment: readonly string[];
-}
-
-function ranIn(segment: readonly string[], dir: string): Ran {
-  return { dir: actsIn(segment, dir) ?? dir, segment };
-}
-
-// The command as it would read if it had been run inside `root`: the segments
-// that act there and nothing else, with the options that pointed at it dropped
-// because the caller supplies the directory. A taste of one repository must
-// never be shown another repository's command, let alone judge by it.
-export function scopedCommand(command: string, cwd: string, root: string): string {
-  const found = walk(commandSegments(command), cwd, 0, ranIn);
+// Cut out of the text the agent typed, never spelled again: quoting is how a
+// pattern is written, and a token re-quoted by its own rules is a different
+// string to match against. Only the tokens that pointed at a directory are
+// taken out, by slicing around them.
+function sourceOf(piece: Piece, dropped: readonly number[]): string {
+  const spans = piece.spans;
+  if (spans.length === 0) return '';
   const parts: string[] = [];
-  for (const hit of found.hits) {
-    // Against the followed path on both sides: a root is one, and on a machine
-    // whose temporary or home directory is itself a link the raw path is not.
-    if (!inside(realOf(hit.dir), root)) continue;
-    parts.push(withoutPointer(hit.segment).map(requoted).join(' '));
+  let at = (spans[0] as { start: number }).start;
+
+  for (let index = 0; index < spans.length; index += 1) {
+    if (!dropped.includes(index)) continue;
+    const span = spans[index] as { start: number; end: number };
+    parts.push(piece.source.slice(at, span.start).replace(/\s+$/, ''));
+    at = span.end;
   }
-  return parts.join(' && ');
+  const last = spans[spans.length - 1] as { end: number };
+  parts.push(piece.source.slice(at, last.end));
+  return parts.join('').trim();
+}
+
+export interface Scoped {
+  // Keep only what acts inside this checkout, and drop what pointed at it.
+  within?: string;
+  // Drop what acts inside any of these, keeping the rest as it was typed.
+  outside?: readonly string[];
+}
+
+interface Visit {
+  piece: Piece;
+  dropped: number[];
+  keep: boolean;
+}
+
+function keeps(dir: string, scope: Scoped): boolean {
+  const real = realOf(dir);
+  if (scope.within !== undefined && !inside(real, scope.within)) return false;
+  return !(scope.outside ?? []).some((root) => inside(real, root));
+}
+
+function spanOf(piece: Piece): { start: number; end: number } | undefined {
+  const spans = piece.spans;
+  if (spans.length === 0) return undefined;
+  return {
+    start: (spans[0] as { start: number }).start,
+    end: (spans[spans.length - 1] as { end: number }).end,
+  };
+}
+
+// Runs of segments the agent wrote next to each other keep the separator they
+// were written with; a gap does not become one. Two visits to a checkout either
+// side of a visit somewhere else are two commands, and a pattern spanning the
+// join between them would be matching text nobody typed.
+const GAP = '\n';
+
+export function scopedCommand(command: string, cwd: string, scope: Scoped): string {
+  const seen = walk(commandPieces(command), cwd, 0, (segment, dir, piece): Visit => {
+    // Where the segment acts, not where the walk stood: a `-C` points
+    // somewhere the directory alone does not say.
+    const acts = actsIn(segment, dir);
+    return {
+      piece,
+      dropped: scope.within === undefined ? [] : pointerSpans(segment),
+      keep: acts !== undefined && keeps(acts, scope),
+    };
+  });
+
+  // One run per stretch the agent wrote without going anywhere else.
+  const runs: Visit[][] = [];
+  let run: Visit[] = [];
+  for (const visit of seen.hits) {
+    const carries = visit.keep && visit.piece.spans.length > 0;
+    const elsewhere = run.length > 0 && (run[0] as Visit).piece.source !== visit.piece.source;
+    const breaks = !carries || elsewhere;
+    if (breaks && run.length > 0) {
+      runs.push(run);
+      run = [];
+    }
+    if (carries) run.push(visit);
+  }
+  if (run.length > 0) runs.push(run);
+
+  return runs.map(render).filter((text) => text !== '').join(GAP);
+}
+
+function render(run: readonly Visit[]): string {
+  let text = '';
+  let previous: Visit | undefined;
+  for (const visit of run) {
+    if (previous !== undefined) {
+      const before = spanOf(previous.piece) as { end: number };
+      const here = spanOf(visit.piece) as { start: number };
+      text += visit.piece.source.slice(before.end, here.start);
+    }
+    text += sourceOf(visit.piece, visit.dropped);
+    previous = visit;
+  }
+  return text.trim();
 }
