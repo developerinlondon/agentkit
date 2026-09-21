@@ -81,7 +81,9 @@ interface Stub {
   sent: Sent[];
 }
 
-function provider(options: { noul?: number; status?: number; hang?: boolean } = {}): Stub {
+function provider(
+  options: { noul?: number; nouls?: number[]; status?: number; hang?: boolean } = {},
+): Stub {
   const sent: Sent[] = [];
   const server = Bun.serve({
     hostname: '127.0.0.1',
@@ -93,9 +95,10 @@ function provider(options: { noul?: number; status?: number; hang?: boolean } = 
       });
       if (options.hang === true) return await new Promise<Response>(() => {});
       if (options.status !== undefined) return new Response('refused', { status: options.status });
+      const answered = options.nouls?.[sent.length - 1] ?? options.noul ?? 0;
       return Response.json({
         model: 'jev-1.13.0',
-        answers: { q: { type: 'noul', noul: options.noul ?? 0 } },
+        answers: { q: { type: 'noul', noul: answered } },
         usage: { input_tokens: 307, output_tokens: 20 },
       });
     },
@@ -304,6 +307,32 @@ describe('what the rule judges, and what it leaves alone', () => {
 
     expect(diff.endsWith('[diff truncated]')).toBe(true);
     expect(diff.length).toBeLessThan(12100);
+  });
+
+  // A chain writes more than one commit, and the taste binds each of them.
+  test('every commit in the command is judged, and the finding names which', async () => {
+    const stub = provider({ nouls: [0.1, 0.9] });
+    const outcome = await evaluate({}, {
+      command: 'git add a && git commit -m "ok" && git add b && git commit -m "slop"',
+      url: stub.url,
+    });
+
+    expect(stub.sent).toHaveLength(2);
+    expect(stub.sent[0]?.body.state.message).toBe('ok');
+    expect(stub.sent[1]?.body.state.message).toBe('slop');
+    expect(outcome.verdict).toBe('fires');
+    expect(outcome.verdict === 'fires' ? outcome.finding : '').toContain('slop');
+  });
+
+  test('a chain stops at the first commit that breaks the taste', async () => {
+    const stub = provider({ nouls: [0.9, 0.1] });
+    const outcome = await evaluate({}, {
+      command: 'git commit -m "slop" && git commit -m "ok"',
+      url: stub.url,
+    });
+
+    expect(outcome.verdict).toBe('fires');
+    expect(stub.sent).toHaveLength(1);
   });
 
   test('a long commit message is cut, and says where', async () => {
@@ -558,6 +587,7 @@ describe('the repository judged is the one the command targets', () => {
     ['an outer cd the wrapper starts in', 'inner', 'cd inner && bash -c \'git commit -m "x"\''],
     ['a cd that stays inside its subshell', 'outer', '(cd inner) && git commit -m "x"'],
     ['a cd and a commit sharing one subshell', 'inner', '(cd inner && git commit -m "x")'],
+    ['an unreadable cd shut inside a subshell', 'outer', '(cd "$T" && ls) && git commit -m "x"'],
   ])('%s reads the %s repository', async (_shape, which, command) => {
     const root = repo({ marker: 'the outer repository' });
     const inner = join(root, 'inner');
@@ -646,6 +676,37 @@ describe('the repository judged is the one the command targets', () => {
 
     expect(outcome.verdict).toBe('fires');
     expect(stub.sent).toHaveLength(1);
+  });
+
+  // A launcher is not a command of its own: what it runs is the command, and a
+  // shell behind one hides a commit exactly as a shell in front of it would.
+  test.each([
+    ['timeout', 'timeout 10 bash -c \'git commit -m "wrapped"\''],
+    ['sudo naming a user', 'sudo -u me bash -c \'git commit -m "wrapped"\''],
+    ['env setting a variable', 'env LC_ALL=C bash -c \'git commit -m "wrapped"\''],
+    ['nohup', 'nohup bash -c \'git commit -m "wrapped"\''],
+    ['nice', 'nice -n 5 bash -c \'git commit -m "wrapped"\''],
+    ['timeout, on git itself', 'timeout 10 git commit -m "wrapped"'],
+  ])('a commit behind %s is judged like any other', async (_shape, command) => {
+    const stub = provider({ noul: 0.9 });
+    const outcome = await evaluate({}, { command, url: stub.url });
+
+    expect(outcome.verdict).toBe('fires');
+    expect(stub.sent[0]?.body.state.message).toBe('wrapped');
+  });
+
+  test('a program that is not a launcher still hides what it runs', async () => {
+    const stub = provider({ noul: 0.99 });
+    const git = recordingGit();
+    const outcome = await evaluate({}, {
+      command: 'mytool bash -c \'git commit -m "x"\'',
+      cwd: scratch(),
+      url: stub.url,
+      env: { PATH: `${git.dir}:${process.env.PATH}`, TYPESAFE_API_KEY: undefined },
+    });
+
+    expect(outcome.verdict).toBe('passes');
+    expect(stub.sent).toHaveLength(0);
   });
 
   test('a wrapped commit carries its own cd into the reading', async () => {

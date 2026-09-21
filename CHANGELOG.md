@@ -43,7 +43,11 @@ release PR — "publish this" authorizes a release, never the tier.
   close, an escaped quote inside a quoted run, runs concatenated the way `'it'"'"'s'` joins two
   of them, and nesting past the cap are each `UNCHECKED` naming what could not be read, never a
   silent pass — and quoting is judged only where a wrapper is the thing being run, so a shell
-  named as an argument stays a word. **A `judgment` taste sends the command
+  named as an argument stays a word. A launcher — `timeout`, `nohup`, `nice`, `env`, `sudo`,
+  `xargs` — is read through, and every commit in a chain is judged rather than the first, with
+  the refusal naming which one broke the taste. **`git-tag-sequence` does not read wrappers**:
+  `bash -c 'git tag v1.2.3'` is not judged by that kind, which reads the command text directly,
+  and that limit is unchanged here. **A `judgment` taste sends the command
   text, the commit message and the staged diff to a third-party provider**, which the taste
   contract, the concepts page and the Boundaries page now all say outright.
 

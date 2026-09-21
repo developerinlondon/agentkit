@@ -192,6 +192,15 @@ something else is a word, not a command. Each of those is `UNCHECKED` naming wha
 never a silent pass. A wrapped command that never commits stays silent, because a notice on
 every wrapped call an agent makes is a notice nobody reads.
 
+**A launcher is read through.** `timeout`, `nohup`, `nice`, `env`, `sudo` and `xargs` are
+programs whose job is to run another one, so a commit or a wrapper behind one is read exactly as
+it would be in front: `timeout 10 bash -c 'git commit …'` is judged. Anything else standing in
+front of a command might do anything, and what it runs stays out of sight.
+
+**Every commit in the command is judged, not the first.**
+`git commit -m one && git commit -m two` asks one question per commit, out of the one budget the
+command has, and the refusal names which commit broke the taste.
+
 **`git-tag-sequence` does not read wrappers.** `bash -c 'git tag v1.2.3'` is not judged by that
 kind, which reads the command text directly. That is a limit of the older kind, not of this one.
 
