@@ -201,6 +201,12 @@ front of a command might do anything, and what it runs stays out of sight.
 `git commit -m one && git commit -m two` asks one question per commit, out of the one budget the
 command has, and the refusal names which commit broke the taste.
 
+**What was read is judged even when the rest was not.** A command that names a commit this can
+follow and then goes somewhere it cannot — `git commit -m one && cd "$D" && git commit -m two` —
+is judged on the first and says `UNCHECKED` about what came after. A refusal earned on the part
+it read carries that alongside, so a session never reads a refusal as proof the whole command
+was examined.
+
 **`git-tag-sequence` does not read wrappers.** `bash -c 'git tag v1.2.3'` is not judged by that
 kind, which reads the command text directly. That is a limit of the older kind, not of this one.
 

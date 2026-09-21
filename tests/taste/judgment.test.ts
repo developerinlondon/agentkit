@@ -324,6 +324,48 @@ describe('what the rule judges, and what it leaves alone', () => {
     expect(outcome.verdict === 'fires' ? outcome.finding : '').toContain('slop');
   });
 
+  // What was read before the command went somewhere unreadable is still read.
+  // Discarding it would let a commit this judged against the right tree, and
+  // would have refused, through on the strength of the one it could not see.
+  test('a commit read before an unreadable cd is still judged', async () => {
+    const stub = provider({ noul: 0.9 });
+    const outcome = await evaluate({}, {
+      command: 'git commit -m "slop" && cd "$T" && git commit -m "later"',
+      url: stub.url,
+    });
+
+    expect(outcome.verdict).toBe('fires');
+    expect(stub.sent).toHaveLength(1);
+    expect(stub.sent[0]?.body.state.message).toBe('slop');
+    expect(outcome.verdict === 'fires' ? outcome.notice : '').toContain('changes directory');
+  });
+
+  test('a commit that passes before an unreadable cd leaves the rest UNCHECKED', async () => {
+    const stub = provider({ noul: 0.1 });
+    const outcome = await evaluate({}, {
+      command: 'git commit -m "ok" && cd "$T" && git commit -m "later"',
+      url: stub.url,
+    });
+
+    expect(outcome.verdict).toBe('unchecked');
+    expect(outcome.verdict === 'unchecked' ? outcome.detail : '').toContain('changes directory');
+    expect(stub.sent).toHaveLength(1);
+  });
+
+  test('an unreadable cd before every commit reads none of them', async () => {
+    const stub = provider({ noul: 0.9 });
+    const git = recordingGit();
+    const outcome = await evaluate({}, {
+      command: 'cd "$T" && git commit -m "x" && git commit -m "y"',
+      url: stub.url,
+      env: { PATH: `${git.dir}:${process.env.PATH}` },
+    });
+
+    expect(outcome.verdict).toBe('unchecked');
+    expect(git.asked()).toBe(false);
+    expect(stub.sent).toHaveLength(0);
+  });
+
   test('a chain stops at the first commit that breaks the taste', async () => {
     const stub = provider({ nouls: [0.9, 0.1] });
     const outcome = await evaluate({}, {
@@ -1177,6 +1219,21 @@ describe('a deliberate override is read before the check it overrules', () => {
     expect(verdict.decision).toBe('allow');
     expect(verdict.notices).toEqual([]);
     expect(stub.sent).toHaveLength(0);
+  });
+
+  test('the refusal says which part of the command went unchecked', async () => {
+    const stub = provider({ noul: 0.9 });
+    const cwd = project({ 'aa-stalls': JUDGE('aa') });
+    const verdict = await evaluateCommand({
+      command: 'git commit -m "slop" && cd "$T" && git commit -m "later"',
+      cwd,
+      home: scratch(),
+      env: { PATH: process.env.PATH, TYPESAFE_API_KEY: 'sk-test', TYPESAFE_BASE_URL: stub.url },
+    });
+
+    expect(verdict.decision).toBe('deny');
+    expect(verdict.reason).toContain('changes directory');
+    expect(verdict.notices.join(' ')).toContain('changes directory');
   });
 
   test('an override that does not read as deliberate still pays for the check', async () => {

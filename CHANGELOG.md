@@ -45,7 +45,8 @@ release PR — "publish this" authorizes a release, never the tier.
   silent pass — and quoting is judged only where a wrapper is the thing being run, so a shell
   named as an argument stays a word. A launcher — `timeout`, `nohup`, `nice`, `env`, `sudo`,
   `xargs` — is read through, and every commit in a chain is judged rather than the first, with
-  the refusal naming which one broke the taste. **`git-tag-sequence` does not read wrappers**:
+  the refusal naming which one broke the taste. A command this can read part of is judged on that
+  part and reports `UNCHECKED` about the rest, rather than throwing away what it read. **`git-tag-sequence` does not read wrappers**:
   `bash -c 'git tag v1.2.3'` is not judged by that kind, which reads the command text directly,
   and that limit is unchanged here. **A `judgment` taste sends the command
   text, the commit message and the staged diff to a third-party provider**, which the taste
