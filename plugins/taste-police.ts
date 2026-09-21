@@ -85,7 +85,8 @@ function tastesPresent(cwd: string): boolean {
 const START = '(?:^|[;&|(])\\s*';
 const LAUNCHER = '(?:(?:env|timeout|nohup|sudo|nice|xargs)(?:\\s+[^;&|()\\s]+)*\\s+)?';
 const CHANGES = '(?:cd|pushd|eval|bash|sh|zsh|dash|ksh)(?:\\s|$)';
-const POINTS = 'git(?:\\s[^;&|()]*)?\\s(?:-C\\s|--git-dir[=\\s]|--work-tree[=\\s])';
+const OPTION = '(?:-[^\\s;&|()]+|[^\\s;&|()=]+=[^\\s;&|()]*)';
+const POINTS = `git(?:\\s+${OPTION})*\\s+(?:-C\\s|--git-dir[=\\s]|--work-tree[=\\s])`;
 const REACHES_ELSEWHERE = new RegExp(
   `${START}${LAUNCHER}(?:${CHANGES}|${POINTS})`,
 );
