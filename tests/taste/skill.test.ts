@@ -37,6 +37,8 @@ const RULE_KINDS: [string, string][] = [
   ['version skew must not disable an older hook', 'must not brick an older hook'],
   ['a check that cannot look says so per taste', 'for that one taste and allows'],
   ['silence would be read as enforcement', 'read enforcement into a guard that never ran'],
+  ['a judgment\'s threshold is the taste\'s, not the model\'s', 'the policy stays in the file, the model only answers'],
+  ['a judgment needs a key, and agentkit works without one', 'with no vendor key at all'],
 ];
 
 // The asymmetry with the vendoring guard, and the reason for it. Written down

@@ -76,9 +76,13 @@ REQUEST=$(_agentkit_jq -n --arg command "$COMMAND" --arg cwd "$WORKDIR" \
 
 # A bounded pattern against a bounded subject is still someone else's regular
 # expression: the ceiling stops a pathological one from holding the session.
+# It sits above every deadline inside the evaluator — the match deadline, git,
+# and the whole-command judgment budget — so the inner one always fires first
+# and answers. Killed here, the evaluator writes nothing, and every blocking
+# taste goes unenforced rather than one.
 RUN=("$BUN" "$POLICE")
 if command -v timeout >/dev/null 2>&1; then
-	RUN=(timeout 8 "$BUN" "$POLICE")
+	RUN=(timeout 12 "$BUN" "$POLICE")
 fi
 VERDICT=$(printf '%s' "$REQUEST" | "${RUN[@]+"${RUN[@]}"}" 2>/dev/null || true)
 

@@ -2,7 +2,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, join } from 'node:path';
 import { EXTERNAL_DIR, externalRoot, legacyExternalRoot } from './layout.ts';
-import { inspectTaste, markdownFiles, scalar } from './lint.ts';
+import { inspectTaste, markdownFiles, ruleFields, scalar } from './lint.ts';
 import { readSources, type Source } from './sources.ts';
 import { type SourceScope, TASTE } from './store.ts';
 
@@ -29,6 +29,7 @@ export interface ResolvedTaste {
   enforce: string;
   category?: string;
   rule?: TasteRule;
+  body?: string;
   source?: string;
   shadows: Layer[];
   shadowedSources: string[];
@@ -160,7 +161,7 @@ function isDirectory(path: string): boolean {
 function readRule(front: Record<string, unknown>): TasteRule | undefined {
   const rule = front.rule;
   if (typeof rule !== 'object' || rule === null || Array.isArray(rule)) return undefined;
-  const block = rule as Record<string, unknown>;
+  const block = ruleFields(rule as Record<string, unknown>);
   const kind = scalar(block.kind);
   const remedy = scalar(block.remedy);
   if (kind === undefined || remedy === undefined) return undefined;
@@ -196,6 +197,7 @@ function load(path: string, where: Directory): { taste?: ResolvedTaste; warning?
       enforce: scalar(front.enforce) ?? 'advise',
       category: scalar(front.category),
       rule: readRule(front),
+      body: inspection.body,
       source: where.source,
       shadows: [],
       shadowedSources: [],
