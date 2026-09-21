@@ -171,6 +171,7 @@ describe('the Claude hook lane refuses from the same data', () => {
     ['a flag passed through a runner', 'npm run build -- -C .', false],
     ['a message naming a directory change', 'git commit -m "fix the cd in build"', false],
     ['a message that mentions a shell', 'git commit -m "run sh later"', false],
+    ['a message that mentions a git dir', 'git commit -m "use --git-dir carefully"', false],
     ['an ordinary command', 'ls -la', false],
     ['a directory change', 'cd repo && git tag v0.8.0', true],
     ['a change after a separator', 'make; cd repo && git tag v0.8.0', true],

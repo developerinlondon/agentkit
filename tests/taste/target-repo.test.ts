@@ -10,7 +10,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { evaluateCommand, tasteLanes } from '../../skills/taste/scripts/police.ts';
-import { actedDirectories } from '../../skills/taste/scripts/rules/scope.ts';
+import { actedDirectories, scopedCommand } from '../../skills/taste/scripts/rules/scope.ts';
 
 const servers: { stop(force?: boolean): void }[] = [];
 
@@ -607,5 +607,163 @@ describe('a repository turning tastes off turns off its own lane only', () => {
     writeFileSync(join(parent, '.agentkit', 'tastes', 'no-tag.md'), taste('no-tag', 'git tag'));
 
     expect((await evaluate('cd repoA && git tag v1.0.0', parent)).decision).toBe('deny');
+  });
+});
+
+
+describe('the same taste gives the same verdict wherever the session sits', () => {
+  // A pattern is written against the command an agent types. Re-spelling the
+  // text to scope it must not change what that pattern sees, or a taste means
+  // one thing inside its repository and another from one directory up.
+  const QUOTED: [string, string, string][] = [
+    ['a single-quoted word', "-m 'wip'", 'git commit -m \'wip\''],
+    ['a quote inside a message', 'say "hi"', 'git commit -m \'say "hi" now\''],
+    ['a message with spaces', 'fix the thing', 'git commit -m "fix the thing"'],
+    ['a flag and its value', '--no-verify', 'git commit --no-verify -m "x"'],
+  ];
+
+  test.each(QUOTED)('%s reads the same from every direction', async (_shape, match, command) => {
+    const parent = scratch();
+    const repo = repository(parent, 'repoA');
+    mkdirSync(join(repo, '.agentkit', 'tastes'), { recursive: true });
+    writeFileSync(join(repo, '.agentkit', 'tastes', 'shaped.md'), taste('shaped', match));
+
+    const inside = await evaluate(command, repo);
+    expect(inside.decision).toBe('deny');
+
+    // A wrapper carries the command verbatim in whichever quote it does not
+    // already use. One using both cannot be wrapped without the concatenation
+    // idiom, which this deliberately refuses to read, so it is left out here
+    // rather than tested for the wrong answer.
+    const wrapper = command.includes('"')
+      ? (command.includes("'") ? undefined : `bash -c 'cd repoA && ${command}'`)
+      : `bash -c "cd repoA && ${command}"`;
+
+    for (const reach of [
+      `cd repoA && ${command}`,
+      command.replace('git ', 'git -C repoA '),
+      `(cd repoA && ${command})`,
+      ...(wrapper === undefined ? [] : [wrapper]),
+    ]) {
+      expect((await evaluate(reach, parent)).decision, reach).toBe('deny');
+    }
+  });
+});
+
+describe('one repository\'s name does not speak for another', () => {
+  // Both are checkouts with tastes of their own, so both raise a lane. Only
+  // repoA names `shared`; repoB has a taste of its own that matches nothing.
+  function pair(): { parent: string; home: string } {
+    const parent = scratch();
+    const repoA = repository(parent, 'repoA');
+    const repoB = repository(parent, 'repoB');
+    mkdirSync(join(repoA, '.agentkit', 'tastes'), { recursive: true });
+    writeFileSync(join(repoA, '.agentkit', 'tastes', 'shared.md'), taste('shared', 'YYY'));
+    mkdirSync(join(repoB, '.agentkit', 'tastes'), { recursive: true });
+    writeFileSync(join(repoB, '.agentkit', 'tastes', 'other.md'), taste('other', 'QQQ'));
+    return { parent, home: userTaste(scratch(), 'shared', 'ZZZ') };
+  }
+
+  test('the owner\'s taste still binds a repository that overrides nothing', async () => {
+    const { parent, home } = pair();
+    const alone = await evaluateCommand({
+      command: 'cd repoB && git commit -m ZZZ',
+      cwd: parent,
+      home,
+      env: { PATH: process.env.PATH },
+    });
+
+    expect(alone.decision).toBe('deny');
+  });
+
+  test('and an unrelated visit to the one that does override it changes nothing', async () => {
+    const { parent, home } = pair();
+    const beside = await evaluateCommand({
+      command: 'cd repoA && git status && cd ../repoB && git commit -m ZZZ',
+      cwd: parent,
+      home,
+      env: { PATH: process.env.PATH },
+    });
+
+    expect(beside.decision).toBe('deny');
+  });
+});
+
+describe('a taste is not shown a command the agent never typed', () => {
+  // Asserted on the text itself, because what a pattern is matched against is
+  // the whole of what a taste of this kind can see.
+  test.each([
+    [
+      'two visits with another repository between them',
+      'cd repoA && git add . ; cd ../repoB && git status ; cd ../repoA && git push',
+      'git add .\ngit push',
+    ],
+    [
+      'two commands written next to each other',
+      'cd repoA && git add . ; git commit -m x',
+      'git add . ; git commit -m x',
+    ],
+    [
+      'a command outside a wrapper and one inside it',
+      "cd repoA && git add . && bash -c 'git commit -m x'",
+      'git add .\ngit commit -m x',
+    ],
+    [
+      'a pointer the caller is about to supply itself',
+      'git -C repoA commit -m "keep the quotes"',
+      'git commit -m "keep the quotes"',
+    ],
+  ])('%s reads as %s', (_shape, command, expected) => {
+    const parent = scratch();
+    const repo = repository(parent, 'repoA');
+    repository(parent, 'repoB');
+
+    expect(scopedCommand(command, parent, { within: repo })).toBe(expected);
+  });
+
+  test('two visits to one repository are not joined into one command', async () => {
+    const parent = scratch();
+    const repoA = repository(parent, 'repoA');
+    repository(parent, 'repoB');
+    mkdirSync(join(repoA, '.agentkit', 'tastes'), { recursive: true });
+    writeFileSync(
+      join(repoA, '.agentkit', 'tastes', 'joined.md'),
+      // `.` does not cross a line break, so this matches only if the two
+      // visits were run together into one command.
+      taste('joined', 'git add \\..*git push'),
+    );
+    const command = 'cd repoA && git add . ; cd ../repoB && git status ; '
+      + 'cd ../repoA && git push --force';
+
+    expect((await evaluate(command, parent)).decision).toBe('allow');
+  });
+
+  test('and the separator between two adjacent ones is the one that was typed', async () => {
+    const parent = scratch();
+    const repoA = repository(parent, 'repoA');
+    mkdirSync(join(repoA, '.agentkit', 'tastes'), { recursive: true });
+    writeFileSync(
+      join(repoA, '.agentkit', 'tastes', 'typed.md'),
+      taste('typed', 'git add \\. ; git commit'),
+    );
+
+    const verdict = await evaluate('cd repoA && git add . ; git commit -m x', parent);
+
+    expect(verdict.decision).toBe('deny');
+  });
+
+  test('but each visit is still read', async () => {
+    const parent = scratch();
+    const repoA = repository(parent, 'repoA');
+    repository(parent, 'repoB');
+    mkdirSync(join(repoA, '.agentkit', 'tastes'), { recursive: true });
+    writeFileSync(
+      join(repoA, '.agentkit', 'tastes', 'no-force.md'),
+      taste('no-force', 'git push --force'),
+    );
+    const command = 'cd repoA && git add . ; cd ../repoB && git status ; '
+      + 'cd ../repoA && git push --force';
+
+    expect((await evaluate(command, parent)).decision).toBe('deny');
   });
 });
