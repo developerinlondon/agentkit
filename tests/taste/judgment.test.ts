@@ -482,7 +482,7 @@ describe('the repository judged is the one the command targets', () => {
     ['a cd with no argument at all', 'cd && git commit -m "x"', 'changes directory'],
     ['a cd with an option', 'cd -P inner && git commit -m "x"', 'changes directory'],
     ['a commit naming its own git dir', 'git --git-dir=/o/.git commit -m "x"', '--git-dir'],
-    ['a commit naming its own work tree', 'git --work-tree=/o commit -m "x"', '--work-tree'],
+    ['a work tree not spelled out', 'git --work-tree="$T" commit -m "x"', '--work-tree'],
     ['a bash -c on text built at run time', 'bash -c "$CMD"', 'bash -c'],
     ['an eval on text built at run time', 'eval "$CMD"', 'eval'],
     ['a message spliced in by the shell', 'sh -c "git commit -m $MSG"', 'sh -c'],
