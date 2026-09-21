@@ -30,8 +30,8 @@ release PR — "publish this" authorizes a release, never the tier.
   there. And a crash the shell reports no longer reads as approval: an exit trap, installed before the payload
   is read and written without jq, refuses a commit, push or forge write when the hook dies after
   reading it, and reports `UNCHECKED` when the payload could not be read at all. The OpenCode
-  plugin gets the same ordering, pattern and message-file read. Seventeen tests spawn the bash hook
-  for these and all seventeen fail against the v0.9.1 hook. `$HOME` is read as `${HOME:-}`: bash
+  plugin gets the same ordering, pattern and message-file read. Eighteen tests spawn the bash hook
+  for these and all but the stall test fail against the v0.9.1 hook. `$HOME` is read as `${HOME:-}`: bash
   3.2 skips the exit trap when `set -u` aborts a top-level assignment, so an unset `HOME` was a
   silent exit. Forge writes
   made through the raw API (`glab api`, `gh api`) are judged like `glab mr create`, and so are `gh pr merge --body`, `--body-file`, an annotated

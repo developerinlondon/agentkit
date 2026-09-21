@@ -492,6 +492,17 @@ describe("git-police cannot be walked around", () => {
     expect(bare.stdout).toMatch(/"permissionDecision":\s*"deny"/);
   });
 
+  // A PreToolUse hook that takes a minute is a session that looks hung.
+  test("a long message does not stall the hook", () => {
+    const long = "word; and 'more' && \\\"text\\\" | ".repeat(2500);
+    const bad = join(scratch, "msg-bad-4");
+    writeFileSync(bad, `fix: x\n\n${TRAILER}\n`);
+    const started = Date.now();
+    expect(run(`git commit -m "${long}" -F ${bad}`).denied).toBe(true);
+    expect(run(`git commit -m "${long}" && grep -F "$x" f`).denied).toBe(false);
+    expect(Date.now() - started).toBeLessThan(10_000);
+  });
+
   test("a message file the hook cannot read is refused, and says why", () => {
     const r = run('git commit -F "$MSG"');
     expect(r.denied).toBe(true);

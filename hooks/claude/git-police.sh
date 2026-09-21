@@ -153,26 +153,18 @@ ATTRIBUTION_RE='co-authored-by[[:space:]]*[:=]|generated with \[claude code\]|ðŸ
 RE_COMMIT_TAIL='(git[^;&|]*[[:space:]](commit|tag|notes)|gh[[:space:]]+(pr|issue|release))([[:space:]].*)'
 RE_FILE_FLAG='(-[aqsvneziop]*F|--file|--body-file|--notes-file)'
 
-# Sets SEGMENT to the head of $1 that ends before an unquoted ; & | or newline.
+# Sets SEGMENT to the head of $1 that ends before an unquoted ; & | or line
+# break. One sed pass: walking the text in bash, by character or by pattern
+# removal, is quadratic, and a long commit message stalled the session. Line
+# breaks arrive as \001 so that sed sees a single line.
+SEGMENT_RE=$'^(([^"\';&|\001]|"([^"\\\\]|\\\\.)*"|\'[^\']*\')*).*'
 first_segment() {
-	local text="$1" quote="" ch i
-	for ((i = 0; i < ${#text}; i++)); do
-		ch="${text:i:1}"
-		if [[ -n "$quote" ]]; then
-			[[ "$quote" == '"' && "$ch" == "\\" ]] && ((i++))
-			[[ "$ch" == "$quote" ]] && quote=""
-			continue
-		fi
-		case "$ch" in
-		'"' | "'") quote="$ch" ;;
-		';' | '&' | '|' | $'\n') break ;;
-		esac
-	done
-	SEGMENT="${text:0:i}"
+	SEGMENT=$(printf '%s\n' "$1" | sed -E "s/${SEGMENT_RE}/\\1/")
 }
 
 commit_message_args() {
-	local rest="$COMMAND"
+	local rest
+	rest=$(printf '%s' "$COMMAND" | tr '\n' '\001')
 	while [[ "$rest" =~ $RE_COMMIT_TAIL ]]; do
 		rest="${BASH_REMATCH[4]}"
 		first_segment "$rest"
@@ -233,7 +225,8 @@ if echo "$STRIPPED" | grep -qiE "${GIT_PUSH_RE}"'.*(-f\b|--force\b|--force-with-
 fi
 
 # allowed-repos lifts the rules below, which read repository state. The text
-# rules (attribution, --no-verify, force push) are judged above it, and a repository the hook could not resolve is never taken for an allowed one.
+# rules (attribution, --no-verify, force push) are judged above it, and a
+# repository the hook could not resolve is never taken for an allowed one.
 if [[ ${#ALLOWED_REPOS[@]} -gt 0 && -z "$TARGET_NOTE" ]]; then
 	REPO_URL=$(tgit remote get-url origin 2>/dev/null || echo "")
 	REPO_NAME=$(echo "${REPO_URL%.git}" | sed -E 's|.*[:/]([^/]+/[^/]+)$|\1|')
