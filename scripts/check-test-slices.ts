@@ -36,6 +36,7 @@ export const TEST_SLICES = {
     'tests/git-police-hygiene.test.ts',
     'tests/git-police.test.ts',
     'tests/hook-payload-compat.test.ts',
+    'tests/hooks-unbound-vars.test.ts',
     'tests/hook-supervisor.test.ts',
     'tests/hooks/branch-wip-cap.test.ts',
     'tests/hooks/editor-police.test.ts',

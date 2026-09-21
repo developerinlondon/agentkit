@@ -227,10 +227,12 @@ FORGE_WRITE_RE='\bglab[[:space:]]+(mr|issue)[[:space:]]+(create|update|edit|note
 # 5. Block AI attribution trailers / signatures in commit commands AND in
 #    forge-content commands (MR/PR descriptions slipped through when this
 #    was gated on `git commit` only).
-#    $INPUT is the full PreToolUse JSON payload from stdin; the previous
-#    version referenced an undefined $TOOL_INPUT and silently never matched.
+#    The payload is what agentkit_slurp_input read from stdin; naming any
+#    other variable here trips `set -u`, the hook dies before it can decide,
+#    and silence is read as allow — which is how this rule shipped twice
+#    without ever firing.
 if { echo "$STRIPPED" | grep -qiE "$GIT_COMMIT_RE" || echo "$STRIPPED" | grep -qiE "$FORGE_WRITE_RE"; } \
-	&& echo "$INPUT" | grep -qiE 'co-authored-by|generated with \[claude code\]|🤖 generated|claude\.ai/code|claude\.com/claude-code|noreply@anthropic\.com'; then
+	&& echo "${AGENTKIT_RAW_INPUT:-}" | grep -qiE 'co-authored-by|generated with \[claude code\]|🤖 generated|claude\.ai/code|claude\.com/claude-code|noreply@anthropic\.com'; then
 	deny "BLOCKED: AI attribution is forbidden — in commit messages and in MR/PR/issue descriptions or comments alike. Do not add Co-authored-by, Signed-off-by, '🤖 Generated with [Claude Code]', claude.ai/code or claude.com/claude-code links, noreply@anthropic.com co-authors, or any other AI agent attribution. The author is whoever owns the git config. Remove the attribution and retry."
 fi
 
