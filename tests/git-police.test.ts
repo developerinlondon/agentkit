@@ -1,4 +1,4 @@
-import { describe, test, expect, mock } from 'bun:test';
+import { afterAll, describe, test, expect, mock } from 'bun:test';
 import { dirname, join } from 'node:path';
 import gitPolice from '../plugins/git-police';
 import { spawnSync } from 'node:child_process';
@@ -201,6 +201,44 @@ describe('git-police', () => {
     const input = { tool: 'edit', sessionID: 'test', callID: 'test' };
     const output = { args: { command: 'git push --force origin main' } };
     expect(hooks['tool.execute.before']!(input, output)).resolves.toBeUndefined();
+  });
+});
+
+describe("git-police blocks attribution in the shell hook itself", () => {
+  // The attribution tests above exercise the TypeScript hook. The bash hook is
+  // what Claude Code actually runs, and its attribution rule piped a variable
+  // that was never set into grep: under `set -u` the pipeline's subshell died,
+  // grep read nothing, and the rule was false for every command. A heredoc
+  // commit with a trailer walked straight through while every other rule held.
+  // An empty config home, as below: a developer whose own agentkit config
+  // allow-lists this repository would otherwise exit before any rule runs.
+  const emptyConfig = mkdtempSync(join(tmpdir(), "agentkit-noconfig-"));
+  afterAll(() => rmSync(emptyConfig, { recursive: true, force: true }));
+  const run = (command: string) =>
+    spawnSync("bash", [join(repoRoot, "hooks", "claude", "git-police.sh")], {
+      input: JSON.stringify({ tool_name: "Bash", tool_input: { command }, session_id: "t" }),
+      encoding: "utf-8",
+      env: { ...process.env, XDG_CONFIG_HOME: emptyConfig },
+    });
+
+  test("a heredoc commit carrying a trailer is denied", () => {
+    const r = run(
+      "cd /repo && git add -A && git commit -q -F - <<'EOF'\nfix(#1): x\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF",
+    );
+    expect(`${r.stderr ?? ""}`).not.toContain("unbound variable");
+    expect(`${r.stdout ?? ""}`).toContain('"permissionDecision": "deny"');
+    expect(`${r.stdout ?? ""}`).toContain("attribution");
+  });
+
+  test("a forge write carrying a session link is denied", () => {
+    const r = run('glab mr create --title "x" --description "done\n\nhttps://claude.ai/code/session_1"');
+    expect(`${r.stdout ?? ""}`).toContain('"permissionDecision": "deny"');
+  });
+
+  test("a clean commit is allowed", () => {
+    const r = run('git commit -m "fix(#1): x"');
+    expect(`${r.stdout ?? ""}`).not.toContain("permissionDecision");
+    expect(r.status).toBe(0);
   });
 });
 
