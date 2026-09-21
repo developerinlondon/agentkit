@@ -9,6 +9,8 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+## v0.9.2 — 2026-09-21
+
 - fix(taste): **a repository's tastes bind the commands that act in it, wherever the session
   sits.** `taste-police` resolved tastes from the hook's working directory alone, so an agent in a
   parent directory reaching a repository with `cd repo && git commit …` or `git -C repo commit …`
