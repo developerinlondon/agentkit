@@ -26,6 +26,10 @@ const GIT_TIMEOUT_MS = 3000;
 const DIFF_CUT = '\n[diff truncated]';
 const MESSAGE_CUT = '\n[message truncated]';
 const CHANGES_DIRECTORY = ['cd', 'pushd', 'popd'];
+const SHELLS = ['bash', 'sh', 'zsh', 'dash', 'ksh'];
+// A path this check may resolve itself: spelled out in the command, with
+// nothing for a shell to expand into something else.
+const LITERAL_PATH = /^[^$`*?~\[\]{}!]+$/;
 
 export const OCCASIONS: readonly string[] = ['commit', 'merge-request', 'any'];
 
@@ -65,9 +69,10 @@ interface Commit {
   // Where the command says git should run, which is not always where the hook
   // was invoked.
   options: string[];
+  cwd: string;
 }
 
-function readCommit(words: readonly string[], options: string[]): Commit {
+function readCommit(words: readonly string[], options: string[], cwd: string): Commit {
   const messages: string[] = [];
   let all = false;
   let amend = false;
@@ -96,37 +101,85 @@ function readCommit(words: readonly string[], options: string[]): Commit {
     }
   }
 
-  return { message: messages.join('\n\n'), all, amend, options };
+  return { message: messages.join('\n\n'), all, amend, options, cwd };
 }
 
 type Found = { commit: Commit } | { unchecked: string } | undefined;
 
-// A directory change anywhere ahead of the commit moves the tree it applies to,
-// and the hook is told only where it was invoked. Saying so beats judging the
-// wrong repository, which would refuse or clear a change nobody is making.
-function commitIn(command: string): Found {
+// A command built at runtime is a command this cannot read. Everywhere else a
+// check that could not look says so, and a wrapper is the one shape where the
+// commit is genuinely out of sight.
+function wrapperIn(segments: readonly string[][]): string | undefined {
+  for (const segment of segments) {
+    const program = programOf(segment);
+    if (program === undefined) continue;
+    if (program === 'eval' || program.endsWith('/eval')) return 'eval';
+    const shell = SHELLS.find((name) => program === name || program.endsWith(`/${name}`));
+    if (shell === undefined) continue;
+    const dashC = segment.slice(1).some((word) =>
+      /^-[a-zA-Z]*c[a-zA-Z]*$/.test(word) || word === '--command'
+    );
+    if (dashC) return `${shell} -c`;
+  }
+  return undefined;
+}
+
+// Where a `cd` names its destination outright, reading it is not a guess; the
+// tree the commit applies to is in the command. Anything a shell would expand
+// stays unreadable, and so does `pushd`, whose later `popd` moves it back.
+function movedTo(segments: readonly string[][], before: number, cwd: string):
+  | string
+  | { unchecked: string }
+{
+  let dir = cwd;
+  for (const segment of segments.slice(0, before)) {
+    const program = programOf(segment);
+    if (program === undefined || !CHANGES_DIRECTORY.includes(program)) continue;
+
+    const args = segment.slice(segment.indexOf(program) + 1);
+    const target = args[0];
+    if (program !== 'cd' || args.length !== 1 || target === undefined
+      || !LITERAL_PATH.test(target)) {
+      return {
+        unchecked: 'the command changes directory before committing in a way this check cannot '
+          + 'read, so the repository it commits in is not the one this check would look at',
+      };
+    }
+    dir = isAbsolute(target) ? target : resolve(dir, target);
+  }
+  return dir;
+}
+
+// A directory change ahead of the commit moves the tree it applies to, and the
+// hook is told only where it was invoked. Saying so beats judging the wrong
+// repository, which would refuse or clear a change nobody is making.
+function commitIn(command: string, cwd: string): Found {
   const segments = commandSegments(command);
+  const wrapper = wrapperIn(segments);
+  if (wrapper !== undefined) {
+    return {
+      unchecked: `the command runs through ${wrapper}, so whether it commits, and what it `
+        + 'commits, is not something this check can read',
+    };
+  }
+
   for (let index = 0; index < segments.length; index += 1) {
     const invocation = programInvocation(segments[index] as string[], 'git', GIT_GLOBAL_VALUED);
     if (invocation === undefined || invocation.words[0] !== 'commit') continue;
 
-    const changed = segments.slice(0, index)
-      .some((earlier) => CHANGES_DIRECTORY.includes(programOf(earlier) ?? ''));
-    if (changed) {
-      return {
-        unchecked: 'the command changes directory before committing, so the repository it '
-          + 'commits in is not the one this check can read',
-      };
-    }
-    return { commit: readCommit(invocation.words.slice(1), invocation.options) };
+    const moved = movedTo(segments, index, cwd);
+    if (typeof moved !== 'string') return moved;
+    return {
+      commit: readCommit(invocation.words.slice(1), invocation.options, moved),
+    };
   }
   return undefined;
 }
 
 // -C is where git runs; --git-dir and --work-tree take it apart, and a diff
 // read from either half on its own is not the change being committed.
-function repositoryOf(commit: Commit, cwd: string): string | { unchecked: string } {
-  let dir = cwd;
+function repositoryOf(commit: Commit): string | { unchecked: string } {
+  let dir = commit.cwd;
   for (let index = 0; index < commit.options.length; index += 1) {
     const option = commit.options[index] as string;
     const name = option.split('=')[0] as string;
@@ -244,12 +297,12 @@ type Scope =
   | { out: true };
 
 async function commitScope(request: KindRequest): Promise<Scope> {
-  const found = commitIn(request.command);
+  const found = commitIn(request.command, request.cwd);
   if (found === undefined) return { out: true };
   if ('unchecked' in found) return found;
 
   const commit = found.commit;
-  const dir = repositoryOf(commit, request.cwd);
+  const dir = repositoryOf(commit);
   if (typeof dir !== 'string') return dir;
 
   const diff = await gitOutput(commit.all ? ['diff', 'HEAD'] : ['diff', '--cached'], request, dir);
@@ -257,9 +310,12 @@ async function commitScope(request: KindRequest): Promise<Scope> {
 
   const message = cut(commit.message, MAX_MESSAGE_LENGTH, MESSAGE_CUT);
   // Nothing to judge is not a judgment that found nothing. An amend is the
-  // exception: with nothing staged the new message is the whole of the change.
+  // exception: with nothing staged the new message is the whole of the change —
+  // and an amend that writes no message either is no evidence at all, so
+  // judging it would refuse on whatever the provider happened to return.
   if (diff.text.trim() === '') {
-    return commit.amend ? { subject: { message, diff: '' } } : { out: true };
+    const amending = commit.amend && message.trim() !== '';
+    return amending ? { subject: { message, diff: '' } } : { out: true };
   }
   return { subject: { message, diff: cut(diff.text, MAX_DIFF_LENGTH, DIFF_CUT) } };
 }
@@ -287,6 +343,17 @@ export const JUDGMENT: RuleKind = {
   required: ['question'],
   optional: ['on', 'threshold'],
   costly: true,
+
+  // Reads the command and nothing else. An override may be honoured before the
+  // check runs only where the check would have run at all, or an override
+  // exported into a session becomes a notice on every command in it.
+  applies(fields: Record<string, string>, command: string, cwd: string): boolean {
+    const on = fields.on ?? 'commit';
+    if (on === 'any') return true;
+    if (on === 'merge-request') return mergeRequestIn(command);
+    if (on !== 'commit') return false;
+    return commitIn(command, cwd) !== undefined;
+  },
 
   validate(fields: Record<string, string>): string[] {
     const errors: string[] = [];
