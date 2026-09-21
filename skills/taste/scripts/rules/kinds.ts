@@ -45,6 +45,10 @@ export interface RuleKind {
   // or a request that leaves the machine. A granted override short-circuits
   // one of these, so a deliberate override never pays for what it overrules.
   costly?: boolean;
+  // Whether this rule has anything to say about this command, decided by
+  // reading the command alone — no git, no file, no network. Absent means it
+  // might, which is the honest answer for a kind that cannot tell cheaply.
+  applies?(fields: Record<string, string>, command: string, cwd: string): boolean;
   validate(fields: Record<string, string>): string[];
   evaluate(fields: Record<string, string>, request: KindRequest): Promise<KindOutcome>;
 }

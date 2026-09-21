@@ -162,8 +162,14 @@ export async function evaluateCommand(request: Request): Promise<Verdict> {
 
       // Read before the check, not after it, for a kind that costs something:
       // a deliberate override must not pay a deadline or ship a diff to
-      // overrule a verdict it has already decided to ignore.
-      if (override.state === 'granted' && ruleKind(rule.kind)?.costly === true) {
+      // overrule a verdict it has already decided to ignore. Only where the
+      // rule would have run, though — an override exported into a session
+      // must not become a notice on every command in it.
+      const kind = ruleKind(rule.kind);
+      const shortCircuit = override.state === 'granted' && kind?.costly === true
+        && (kind.applies?.(rule.fields, request.command, request.cwd) ?? true);
+
+      if (shortCircuit) {
         notices.push(
           `taste ${taste.name} allowed this command: ${rule.override} is set deliberately.`,
         );
