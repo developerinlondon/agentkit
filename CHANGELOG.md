@@ -26,6 +26,42 @@ release PR — "publish this" authorizes a release, never the tier.
   the payload could not be read at all. Eight tests spawn the bash hook for these; all eight fail
   against the v0.9.1 hook.
 
+## v0.9.2 — 2026-09-21
+
+- fix(taste): **a repository's tastes bind the commands that act in it, wherever the session
+  sits.** `taste-police` resolved tastes from the hook's working directory alone, so an agent in a
+  parent directory reaching a repository with `cd repo && git commit …` or `git -C repo commit …`
+  was judged by the parent's tastes — usually none — and the repository's own `.agentkit/tastes/`
+  never loaded. Measured on v0.9.0: the same commit refused from inside the repository and allowed,
+  silently, from one directory up. It predates the `judgment` kind and held for `command` and
+  `git-tag-sequence` too, which made a project taste decoration on any workstation holding several
+  repositories. The scoped walk the `judgment` kind already used to find the tree a commit applies
+  to now lives in its own module and answers the same question for the hook: project layers are
+  resolved for every distinct directory the command reaches, the user layers load once, and each
+  taste is evaluated with its own repository as the working directory. A directory change the walk
+  cannot read is reported as `UNCHECKED` for the tastes it could not load, and only where a
+  repository command runs after it. A command that changes no directory resolves exactly what it
+  did before and reads nothing extra from disk. **A repository's taste sees only the part of the
+  command acting in that repository**, written as it would read had it been run there, so a taste
+  in one checkout can neither refuse another's commit nor be sent its diff. Only a checkout brings
+  tastes — resolved to the top of its work tree, followed through symlinks, and never from a
+  `node_modules` folder, whose `remedy` prose an agent would otherwise be shown verbatim — and
+  only where a `git`, `gh` or `glab` command works on it. A repository's own
+  `brain.taste.enabled: false` turns off its lane and no other, and its taste of a name the owner
+  also uses replaces theirs for the commands acting there and nowhere else. That part of the
+  command is cut out of the text as it was typed rather than spelled again, so a pattern written
+  against quoting reads the same from either side, and two visits to one checkout with a visit
+  elsewhere between them stay two commands rather than being joined into one nobody typed. A
+  literal `--work-tree` is followed like a `-C`, while a `--git-dir` with none beside it is
+  `UNCHECKED` rather than a silent allow; the owner's own directory is never read as a project
+  root, so dotfiles kept in git stay the user layer; and a refusal names a taste file the way its
+  own repository does. The project layers are read from the top
+  of a work tree wherever the session stands, so a session in `repo/src` is bound by `repo`'s
+  tastes exactly as a parent reaching in is; a session in no checkout reads its own directory, as
+  before. Both presence gates look at that top too, or the hook would exit before the evaluator
+  it now has something for, and the OpenCode plugin reads `$HOME` like every other lane rather
+  than the password entry.
+
 ## v0.9.1 — 2026-09-21
 
 - fix(git-police): **the attribution rule fires.** The shell hook's rule against `Co-authored-by`

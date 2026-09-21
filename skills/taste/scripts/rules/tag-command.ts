@@ -78,19 +78,46 @@ export const FORGE_GLOBAL_VALUED = ['-R', '--repo'];
 export const SUBSHELL_OPEN = '(';
 export const SUBSHELL_CLOSE = ')';
 
-export function commandSegments(command: string): string[][] {
-  const found: string[][] = [[]];
-  for (const token of command.match(TOKEN) ?? []) {
+// A segment with the text it came from still attached. Quoting is how an owner
+// writes a pattern — `-m 'wip'` — so a caller that has to hand a taste part of
+// a command cuts that part out of the original rather than spelling it again.
+export interface Piece {
+  words: string[];
+  spans: { start: number; end: number }[];
+  // The string the spans index into: the command, or a wrapper's own argument.
+  source: string;
+}
+
+export function commandPieces(command: string): Piece[] {
+  const found: Piece[] = [{ words: [], spans: [], source: command }];
+  const open = () => {
+    found.push({ words: [], spans: [], source: command });
+    return found[found.length - 1] as Piece;
+  };
+
+  for (const match of command.matchAll(TOKEN)) {
+    const token = match[0];
+    const at = match.index;
     if (!SEPARATOR.test(token)) {
-      (found[found.length - 1] as string[]).push(unquote(token));
+      const piece = found[found.length - 1] as Piece;
+      piece.words.push(unquote(token));
+      piece.spans.push({ start: at, end: at + token.length });
       continue;
     }
-    for (const char of token) {
-      if (char === SUBSHELL_OPEN || char === SUBSHELL_CLOSE) found.push([char]);
+    for (let index = 0; index < token.length; index += 1) {
+      const char = token[index] as string;
+      if (char !== SUBSHELL_OPEN && char !== SUBSHELL_CLOSE) continue;
+      const marker = open();
+      marker.words.push(char);
+      marker.spans.push({ start: at + index, end: at + index + 1 });
     }
-    found.push([]);
+    open();
   }
   return found;
+}
+
+export function commandSegments(command: string): string[][] {
+  return commandPieces(command).map((piece) => piece.words);
 }
 
 function named(word: string, program: string): boolean {
