@@ -3,8 +3,14 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { lintTasteDirectory, ruleFields } from '../../skills/taste/scripts/lint.ts';
+import { evaluateCommand } from '../../skills/taste/scripts/police.ts';
+import { JUDGMENT_BUDGET_MS } from '../../skills/taste/scripts/rules/budget.ts';
 import { JUDGMENT } from '../../skills/taste/scripts/rules/judgment.ts';
 import type { KindRequest, MatchOutcome } from '../../skills/taste/scripts/rules/kinds.ts';
+
+// Nothing here may reach api.typesafe.ai. Port 9 is discard: a test that
+// forgets its stub fails on a refused connection rather than on the vendor.
+const NOWHERE = 'http://127.0.0.1:9';
 
 const POLICY = 'No stopgaps.\n\nWhy: a workaround left in place is the next outage.\n\n'
   + 'How to apply: fix the cause, or say why the workaround is the fix.';
@@ -42,14 +48,15 @@ function git(dir: string, ...args: string[]): void {
 }
 
 // A repository whose one staged change is the thing the judgment reads.
-function repo(options: { staged?: boolean } = {}): string {
+function repo(options: { staged?: boolean; marker?: string } = {}): string {
+  const marker = options.marker ?? 'stopgap until the fix';
   const dir = scratch();
   git(dir, 'init', '-q', '-b', 'main');
   writeFileSync(join(dir, 'retry.ts'), 'export const retries = 1;\n');
   git(dir, 'add', '-A');
   git(dir, 'commit', '-q', '-m', 'one');
   if (options.staged === false) return dir;
-  writeFileSync(join(dir, 'retry.ts'), 'export const retries = 1; // stopgap until the fix\n');
+  writeFileSync(join(dir, 'retry.ts'), `export const retries = 1; // ${marker}\n`);
   git(dir, 'add', '-A');
   return dir;
 }
@@ -127,7 +134,7 @@ function evaluate(fields: Record<string, string>, options: Options = {}) {
       HOME: home,
       XDG_CONFIG_HOME: join(home, '.config'),
       TYPESAFE_API_KEY: 'sk-test',
-      TYPESAFE_BASE_URL: options.url,
+      TYPESAFE_BASE_URL: options.url ?? NOWHERE,
       ...options.env,
     },
     match: refuseToMatch as KindRequest['match'],
@@ -163,6 +170,16 @@ describe('a judgment reaches the provider and its probability decides', () => {
     const stub = provider({ noul: 0.6 });
 
     expect((await evaluate({}, { url: stub.url })).verdict).toBe('passes');
+  });
+
+  // The comparison is "at or above", and only a noul exactly on the threshold
+  // tells that apart from "above".
+  test('a noul exactly on the threshold fires, and one just under it passes', async () => {
+    const onIt = provider({ noul: 0.75 });
+    expect((await evaluate({ threshold: '0.75' }, { url: onIt.url })).verdict).toBe('fires');
+
+    const under = provider({ noul: 0.7499 });
+    expect((await evaluate({ threshold: '0.75' }, { url: under.url })).verdict).toBe('passes');
   });
 
   test('the call carries the diff, the message, the taste body and the question', async () => {
@@ -285,6 +302,30 @@ describe('what the rule judges, and what it leaves alone', () => {
     expect(diff.length).toBeLessThan(12100);
   });
 
+  test('a long commit message is cut, and says where', async () => {
+    const stub = provider({ noul: 0.1 });
+    await evaluate({}, { command: `git commit -m "${'word '.repeat(600)}"`, url: stub.url });
+    const message = stub.sent[0]?.body.state.message as string;
+
+    expect(message.endsWith('[message truncated]')).toBe(true);
+    expect(message.length).toBeLessThan(2100);
+  });
+
+  // An amend with nothing staged rewrites the message, which is the whole of
+  // the change and the thing a taste about commit messages judges.
+  test('an amend with nothing staged is judged on its message', async () => {
+    const stub = provider({ noul: 0.9 });
+    const outcome = await evaluate({}, {
+      command: 'git commit --amend -m "a better message"',
+      cwd: repo({ staged: false }),
+      url: stub.url,
+    });
+
+    expect(outcome.verdict).toBe('fires');
+    expect(stub.sent[0]?.body.state.message).toBe('a better message');
+    expect(stub.sent[0]?.body.state.diff).toBe('');
+  });
+
   test('git commit -a is judged on the working tree rather than the index', async () => {
     const dir = repo({ staged: false });
     writeFileSync(join(dir, 'retry.ts'), 'export const retries = 1; // stopgap until the fix\n');
@@ -294,6 +335,62 @@ describe('what the rule judges, and what it leaves alone', () => {
 
     expect(state.diff).toContain('stopgap until the fix');
     expect(state.message).toBe('paper over it');
+  });
+});
+
+describe('the repository judged is the one the command targets', () => {
+  test('git -C names the repository, not the directory the hook runs in', async () => {
+    const here = repo({ marker: 'the wrong repository' });
+    const there = repo({ marker: 'the right repository' });
+    const stub = provider({ noul: 0.1 });
+    await evaluate({}, {
+      command: `git -C ${there} commit -m "over there"`,
+      cwd: here,
+      url: stub.url,
+    });
+    const state = stub.sent[0]?.body.state as Record<string, string>;
+
+    expect(state.diff).toContain('the right repository');
+    expect(state.diff).not.toContain('the wrong repository');
+  });
+
+  test('a relative git -C resolves against the directory the command runs in', async () => {
+    const root = repo({ marker: 'the outer repository' });
+    const inner = join(root, 'inner');
+    mkdirSync(inner, { recursive: true });
+    git(inner, 'init', '-q', '-b', 'main');
+    writeFileSync(join(inner, 'a.ts'), 'export const a = 1; // the inner repository\n');
+    git(inner, 'add', '-A');
+    const stub = provider({ noul: 0.1 });
+    await evaluate({}, { command: 'git -C inner commit -m "in there"', cwd: root, url: stub.url });
+    const state = stub.sent[0]?.body.state as Record<string, string>;
+
+    expect(state.diff).toContain('the inner repository');
+  });
+
+  test.each([
+    ['a directory change before the commit', 'cd elsewhere && git commit -m "x"'],
+    ['a pushd before the commit', 'pushd elsewhere && git commit -m "x"'],
+    ['a subshell that changes directory', '(cd elsewhere && git commit -m "x")'],
+    ['a commit naming its own git dir', 'git --git-dir=/srv/other/.git commit -m "x"'],
+    ['a commit naming its own work tree', 'git --work-tree=/srv/other commit -m "x"'],
+  ])('%s is UNCHECKED rather than judged against the wrong tree', async (_shape, command) => {
+    const stub = provider({ noul: 0.99 });
+    const outcome = await evaluate({}, { command, url: stub.url });
+
+    expect(outcome.verdict).toBe('unchecked');
+    expect(stub.sent).toHaveLength(0);
+  });
+
+  test('a commit inside a subshell is still judged', async () => {
+    const stub = provider({ noul: 0.9 });
+    const outcome = await evaluate({}, {
+      command: '(git commit -m "in a subshell")',
+      url: stub.url,
+    });
+
+    expect(outcome.verdict).toBe('fires');
+    expect(stub.sent[0]?.body.state.message).toBe('in a subshell');
   });
 });
 
@@ -350,6 +447,17 @@ describe('it never refuses on its own uncertainty', () => {
     expect(outcome.verdict).toBe('unchecked');
     expect(detail).toContain('git');
     expect(stub.sent).toHaveLength(0);
+  });
+
+  test.each([
+    ['above one', 42],
+    ['below zero', -3],
+  ])('a probability %s is unusable, not a verdict', async (_shape, noul) => {
+    const stub = provider({ noul });
+    const outcome = await evaluate({}, { url: stub.url });
+
+    expect(outcome.verdict).toBe('unchecked');
+    expect(outcome.verdict === 'unchecked' ? outcome.detail : '').toContain('unusable');
   });
 
   test('an HTTP error is UNCHECKED and names the status', async () => {
@@ -447,6 +555,43 @@ describe('the lint reads the judgment vocabulary', () => {
     expect(errors[0]).toContain('rule.threshold');
   });
 
+  test.each([
+    ['an unquoted number above the range', 'threshold: 2'],
+    ['an unquoted negative', 'threshold: -1'],
+    ['an unquoted fraction above the range', 'threshold: 1.5'],
+    ['a hexadecimal that Number would accept', 'threshold: "0x1"'],
+    ['a float in exponent form', 'threshold: "1e-1"'],
+  ])('a threshold written as %s is refused', (_shape, line) => {
+    const errors = lint(`  kind: judgment\n  question: ${QUESTION}\n  ${line}\n  remedy: Fix it.`);
+
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain('rule.threshold');
+  });
+
+  test('an occasion written as an unquoted number is refused', () => {
+    const errors = lint(`  kind: judgment\n  question: ${QUESTION}\n  on: 2\n  remedy: Fix it.`);
+
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain('rule.on');
+  });
+
+  // YAML 1.1 reads the value `yes` as the boolean true, so this arrives as a
+  // value no rule can carry rather than as the word someone typed.
+  test('an occasion written as a YAML boolean is refused', () => {
+    const errors = lint(`  kind: judgment\n  question: ${QUESTION}\n  on: yes\n  remedy: Fix it.`);
+
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain('rule.on');
+  });
+
+  test('a threshold at either end of the range is accepted', () => {
+    for (const value of ['0', '1', '0.75']) {
+      expect(lint(
+        `  kind: judgment\n  question: ${QUESTION}\n  threshold: "${value}"\n  remedy: Fix it.`,
+      )).toEqual([]);
+    }
+  });
+
   test('a threshold outside 0 to 1 is refused', () => {
     const errors = lint(
       `  kind: judgment\n  question: ${QUESTION}\n  threshold: "1.5"\n  remedy: Fix the cause.`,
@@ -479,5 +624,139 @@ describe('the lint reads the judgment vocabulary', () => {
 
     expect(errors).toHaveLength(1);
     expect(errors[0]).toContain('unknown rule key: policy');
+  });
+});
+
+
+// A taste folder the lint accepts, so the whole hook lane runs over it rather
+// than the kind alone. Names decide the order tastes are evaluated in, which is
+// what lets a later taste prove it still enforces after an earlier one stalled.
+function blockingTaste(name: string, rule: Record<string, string>): string {
+  const lines = [
+    `name: ${name}`,
+    'scope: project',
+    'strength: require',
+    'enforce: block',
+    'provenance: 2026-09-21 · session correction',
+    'rule:',
+    ...Object.entries(rule).map(([key, value]) => `  ${key}: ${JSON.stringify(value)}`),
+  ];
+  return `---\n${lines.join('\n')}\n---\n\n${POLICY}\n`;
+}
+
+function project(tastes: Record<string, Record<string, string>>): string {
+  const dir = repo();
+  mkdirSync(join(dir, '.agentkit', 'tastes'), { recursive: true });
+  for (const [name, rule] of Object.entries(tastes)) {
+    writeFileSync(join(dir, '.agentkit', 'tastes', `${name}.md`), blockingTaste(name, rule));
+  }
+  return dir;
+}
+
+const JUDGE = (name: string) => ({
+  kind: 'judgment',
+  question: QUESTION,
+  remedy: `Fix the cause (${name}).`,
+  override: 'AGENTKIT_ALLOW_STOPGAP',
+});
+
+describe('one budget for every judgment in a command', () => {
+  // The hook runs the evaluator under a process cap and reads nothing when it
+  // is killed, so every blocking taste goes unenforced. The budget has to bound
+  // the whole run, not each call.
+  test('two stalled judgments still leave a command taste enforcing', async () => {
+    const stub = provider({ hang: true });
+    const cwd = project({
+      'aa-stalls': JUDGE('aa'),
+      'ab-stalls': JUDGE('ab'),
+      'zz-tag-tier': {
+        kind: 'command',
+        match: 'git commit',
+        remedy: 'Say what the commit does.',
+        override: 'AGENTKIT_TAG_TIER',
+      },
+    });
+    const started = Date.now();
+    const verdict = await evaluateCommand({
+      command: 'git commit -m "paper over it"',
+      cwd,
+      home: scratch(),
+      env: { PATH: process.env.PATH, TYPESAFE_API_KEY: 'sk-test', TYPESAFE_BASE_URL: stub.url },
+    });
+    const elapsed = Date.now() - started;
+
+    expect(verdict.decision).toBe('deny');
+    expect(verdict.reason).toContain('Say what the commit does.');
+    expect(verdict.notices.filter((notice) => notice.includes('UNCHECKED'))).toHaveLength(2);
+    expect(elapsed).toBeLessThan(JUDGMENT_BUDGET_MS + 2500);
+  }, 20000);
+
+  test('a judgment reached after the budget is spent says so', async () => {
+    const stub = provider({ hang: true });
+    const cwd = project({
+      'aa-stalls': JUDGE('aa'),
+      'ab-stalls': JUDGE('ab'),
+      'ac-stalls': JUDGE('ac'),
+    });
+    const verdict = await evaluateCommand({
+      command: 'git commit -m "paper over it"',
+      cwd,
+      home: scratch(),
+      env: { PATH: process.env.PATH, TYPESAFE_API_KEY: 'sk-test', TYPESAFE_BASE_URL: stub.url },
+    });
+
+    expect(verdict.decision).toBe('allow');
+    expect(verdict.notices.join(' ')).toContain('judgment budget for this command is spent');
+    expect(stub.sent.length).toBeLessThan(3);
+  }, 20000);
+});
+
+describe('a deliberate override is read before the check it overrules', () => {
+  test('an override set on the command sends nothing to the provider', async () => {
+    const stub = provider({ noul: 0.99 });
+    const cwd = project({ 'aa-stalls': JUDGE('aa') });
+    const verdict = await evaluateCommand({
+      command: 'AGENTKIT_ALLOW_STOPGAP=1 git commit -m "paper over it"',
+      cwd,
+      home: scratch(),
+      env: { PATH: process.env.PATH, TYPESAFE_API_KEY: 'sk-test', TYPESAFE_BASE_URL: stub.url },
+    });
+
+    expect(verdict.decision).toBe('allow');
+    expect(verdict.notices.join(' ')).toContain('set deliberately');
+    expect(stub.sent).toHaveLength(0);
+  });
+
+  test('an override exported into the session does the same', async () => {
+    const stub = provider({ noul: 0.99 });
+    const cwd = project({ 'aa-stalls': JUDGE('aa') });
+    const verdict = await evaluateCommand({
+      command: 'git commit -m "paper over it"',
+      cwd,
+      home: scratch(),
+      env: {
+        PATH: process.env.PATH,
+        TYPESAFE_API_KEY: 'sk-test',
+        TYPESAFE_BASE_URL: stub.url,
+        AGENTKIT_ALLOW_STOPGAP: '1',
+      },
+    });
+
+    expect(verdict.decision).toBe('allow');
+    expect(stub.sent).toHaveLength(0);
+  });
+
+  test('an override that does not read as deliberate still pays for the check', async () => {
+    const stub = provider({ noul: 0.99 });
+    const cwd = project({ 'aa-stalls': JUDGE('aa') });
+    const verdict = await evaluateCommand({
+      command: 'AGENTKIT_ALLOW_STOPGAP=0 git commit -m "paper over it"',
+      cwd,
+      home: scratch(),
+      env: { PATH: process.env.PATH, TYPESAFE_API_KEY: 'sk-test', TYPESAFE_BASE_URL: stub.url },
+    });
+
+    expect(verdict.decision).toBe('deny');
+    expect(stub.sent).toHaveLength(1);
   });
 });

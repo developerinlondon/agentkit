@@ -175,7 +175,7 @@ Why: it is the shape the evaluator has to survive.
 How to apply: it never matches anything in time.
 `;
 
-  // The hook's own `timeout 8` would also stop this, and returning fast only
+  // The hook's own outer timeout would also stop this, and returning fast only
   // rules out a hang — it cannot tell the two bounds apart. What proves the
   // evaluator's own deadline ran is the notice naming the taste: an outer kill
   // reports UNCHECKED and names nothing.

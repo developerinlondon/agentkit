@@ -347,6 +347,13 @@ taste's `threshold` — the policy stays in the file, the model only answers. It
 key (`TYPESAFE_API_KEY`, else `~/.config/agentkit/typesafe-token`); with none it reports
 `UNCHECKED` on every judged command and allows it, so agentkit works with no vendor key at all.
 
+**It sends the change off the machine.** The command text, the commit message up to 2 000
+characters and the staged diff up to 12 000 are POSTed to the provider on every judged command.
+Say so before proposing one, and never propose `on: any` at `enforce: block` without meaning it:
+that is a network round trip on every command the agent runs, `ls` included. Every judgment in
+one command shares a five-second budget, so a stalled provider cannot stop the other tastes
+enforcing.
+
 A preference that no kind can express stays at `enforce: check`. **A new kind is a change to
 agentkit**, proposed and reviewed like one — never bespoke code smuggled into a taste folder.
 `references/format.md` carries each kind's fields, the three tag policies, and worked examples.

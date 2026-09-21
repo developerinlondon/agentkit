@@ -167,28 +167,55 @@ the question narrows what is being asked, the body says what good looks like.
 | `merge-request` | `gh pr create` or `glab mr create`      | `git diff <default-branch>...HEAD`                |
 | `any`           | every command, judged on its text alone | none                                              |
 
+**The repository judged is the one the command targets.** A `git -C <dir> commit` is read in
+`<dir>`, resolved against the directory the command runs in. Where the command moves the tree
+out from under that reading — a `cd` or `pushd` before the commit, its own `--git-dir` or
+`--work-tree` — the rule reports `UNCHECKED` rather than judging whichever repository the hook
+happened to be invoked in. A commit inside a subshell is still a commit: `(git commit …)` is
+judged, and `(cd sub && git commit …)` is `UNCHECKED`.
+
+An amend is the one commit judged with an empty diff. `git commit --amend -m …` with nothing
+staged changes only the message, and the message is what a taste about commit messages reads.
+
 `threshold` is the probability at or above which the rule fires, defaulting to `0.75`. The model
 returns a probability; **the threshold is agentkit's and the taste's, never the model's** — which
 is what keeps the policy in a file you can read and change without a model call.
 
-The state sent is `{command, message, diff}`. The commit message is what the command's own `-m`
-arguments carry, and the diff is capped at 12 000 characters with a note where it was cut,
-because the provider is priced per input token and the hook runs inside the agent's wait.
+**The change leaves your machine.** The state sent is `{command, message, diff}`: the text of the
+command, the message its own `-m` arguments carry, capped at 2 000 characters, and the diff,
+capped at 12 000 characters, each with a note where it was cut. Those are POSTed to the provider
+over TLS on every judged command. A repository whose diffs may not leave the building does not
+get a `judgment` taste at `enforce: block`, and the caps bound the size of what travels, not
+whether it travels.
+
+`on: any` is the setting to be deliberate about: at `enforce: block` it is a network round trip
+on **every** command the agent runs, `ls` included. Use it for a narrow, stated purpose, and
+prefer `commit`, which is one round trip per commit.
 
 **The provider needs a key, and agentkit works without one.** `TYPESAFE_API_KEY`, else the
 trimmed contents of `~/.config/agentkit/typesafe-token`. The call is a single `POST` to
-`/v1/systemone` (base URL from `TYPESAFE_BASE_URL`) with an 8-second deadline and no retry: a
-vendor having a bad minute must cost the session one deadline, not three.
+`/v1/systemone` (base URL from `TYPESAFE_BASE_URL`) with no retry: a vendor having a bad minute
+must cost the session one deadline, not three.
+
+**One budget covers every judgment in a command, not each one.** Five seconds for the whole
+command, and at most four for any single call, shared by every `judgment` taste that runs on it.
+A per-call deadline alone would not hold: `taste-police` runs its evaluator under a process cap,
+three stalled tastes together would reach it, and an evaluator killed there writes nothing — so
+**every** blocking taste goes unenforced, the `command` ones included. A taste reached after the
+budget is spent reports `UNCHECKED` naming it, and the tastes after it keep enforcing.
 
 It fails open, like every rule kind, and says so:
 
-| Situation                                           | What happens                                      |
-| --------------------------------------------------- | ------------------------------------------------- |
-| the command is not the shape `on` names             | passes, and nothing is sent                       |
-| a commit with an empty diff                         | passes — there is no change to judge              |
-| no key resolves                                     | **`UNCHECKED`**, naming both places to put one    |
-| git cannot read the diff, or there is no repository | **`UNCHECKED`**, naming what git said             |
-| HTTP 401, 422, 429, 5xx, or the deadline passes     | **`UNCHECKED`**, naming the status or the timeout |
+| Situation                                            | What happens                                          |
+| ---------------------------------------------------- | ----------------------------------------------------- |
+| the command is not the shape `on` names              | passes, and nothing is sent                           |
+| a commit with an empty diff                          | passes — there is no change to judge                  |
+| no key resolves                                      | **`UNCHECKED`**, naming both places to put one        |
+| git cannot read the diff, or there is no repository  | **`UNCHECKED`**, naming what git said                 |
+| the command moves the tree, or names its own git dir | **`UNCHECKED`**, naming which                         |
+| HTTP 401, 422, 429, 5xx, or the deadline passes      | **`UNCHECKED`**, naming the status or the timeout     |
+| the answer is not a probability between 0 and 1      | **`UNCHECKED`** — a malformed answer is not a verdict |
+| the command's judgment budget is already spent       | **`UNCHECKED`**, naming the budget                    |
 
 A taste at `enforce: block` whose key is absent is therefore a taste that reports itself
 unenforced on every commit — loud, and never a silent pass.

@@ -17,14 +17,24 @@ release PR — "publish this" authorizes a release, never the tier.
   probability that comes back is read against the taste's `threshold` (default `0.75`). `on`
   chooses what is judged — a tokenised `git commit` by default, `gh pr create` or `glab mr create`
   at `merge-request`, the command text alone at `any` — and anything else passes without a call.
-  The state sent is the command, the message its `-m` arguments carry, and the diff, capped at
-  12 000 characters. The policy stays in the file: agentkit owns the threshold and the
+  The state sent is the command, the message its `-m` arguments carry (capped at 2 000
+  characters) and the diff (capped at 12 000) — which means the change leaves the machine, stated
+  plainly in the docs, along with the warning that `on: any` at `enforce: block` is a round trip
+  on every command the agent runs. The policy stays in the file: agentkit owns the threshold and the
   consequence, the model only answers. The provider is TypeSafe's Jev at `POST /v1/systemone`
-  behind a seam, keyed from `TYPESAFE_API_KEY` or `~/.config/agentkit/typesafe-token`, with an
-  8-second deadline and no retry. Every way it can fail to look — no key, no repository, a diff
+  behind a seam, keyed from `TYPESAFE_API_KEY` or `~/.config/agentkit/typesafe-token`, with no
+  retry and an answer refused unless it is a probability between 0 and 1. Every way it can fail to look — no key, no repository, a diff
   git will not read, HTTP 401/422/429/5xx, the deadline — reports `UNCHECKED` and allows the
   command, so a machine with no vendor key keeps working and never reads enforcement into a guard
-  that never ran.
+  that never ran. Every judgment in one command shares a five-second budget, because
+  `taste-police` runs its evaluator under a process cap and an evaluator killed there writes
+  nothing — which would leave every blocking taste unenforced, the `command` ones included. A
+  granted override is read before the check rather than after it, so a deliberate override never
+  pays a deadline or ships a diff to overrule a verdict it has already decided to ignore. The
+  repository judged is the one the command targets: `git -C <dir> commit` is read in `<dir>`, a
+  commit inside a subshell is still judged, and a `cd`, a `pushd`, a `--git-dir` or a
+  `--work-tree` that moves the tree out from under that reading reports `UNCHECKED` rather than
+  judging the wrong repository.
 
 ## v0.8.8 — 2026-09-07
 
