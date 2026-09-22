@@ -9,6 +9,23 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+## v0.9.4 — 2026-09-22
+
+- fix(install): **agent CLIs started from an IDE terminal run in the session slice again.** The
+  installer wrote the shim PATH block to `~/.bashrc` only, and skipped it when the block was already
+  there. A stock `~/.profile` sources `.bashrc` first and then prepends `~/.local/bin`, so a login
+  shell found the real `~/.local/bin/claude` ahead of the `agent-session` shim. code-server and VS
+  Code terminals are login shells, so every agent started from one ran inside
+  `code-server.service`'s cgroup instead of `agent-sessions.slice`. On 2026-09-04 that froze the
+  editor three times: unscoped `bun test` runs at 39 to 43 GiB pushed code-server past
+  `MemoryHigh=56G`, stalled every process in it and returned Cloudflare 524s. The block is now also
+  written to the login profile bash reads (`~/.bash_profile`, else `~/.bash_login`, else
+  `~/.profile`), and it strips any existing shim entry and prepends one in POSIX `sh`, so the shim
+  is forced to the front instead of skipped as already present. Every install rewrites the block,
+  which upgrades an older `.bashrc`-only install in place, and uninstall removes both copies. The
+  uninstall test plants a stock `~/.profile` and a real `~/.local/bin/claude` and asserts a `bash -l`
+  shell resolves `claude` to the shim; it fails against the v0.9.3 installer.
+
 ## v0.9.3 — 2026-09-21
 
 - fix(git-police): **the hook can no longer be walked around, or die into an allow.** Fixing the
