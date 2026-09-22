@@ -58,6 +58,17 @@ the lower one outright; two tastes are never merged into a third nobody wrote.
 Precedence runs **project > project external > user > user external > kit**. The more specific
 location wins, and inside one location the owner's own tastes beat the ones they pulled in.
 
+**Project is the repository the command acts in**, read from the top of its work tree and not from
+whichever directory the session sits in. A session in `repo/src` is bound by `repo`'s tastes, and
+so is a parent reaching in — the same tastes either way. A session in a parent directory running `cd repo && git commit …` or `git -C repo commit …`
+is judged by `repo`'s tastes, and a command touching two repositories brings the tastes of both —
+each judging only the part of the command that acts in it, so a taste in one checkout never sees
+another's command or diff. The user layers bind wherever you are working and load once, and a
+repository's taste of the same name replaces one of yours for the commands acting there. Only a
+checkout brings tastes, never a `node_modules` folder, and a repository's own
+`brain.taste.enabled: false` turns off its lane and no other. A directory change the hook cannot
+read — a variable, a glob — is reported as `UNCHECKED` rather than passed over.
+
 {{< callout type="info" >}}
 `external` is reserved at the root of a tastes tree. A taste or category directory of that name is
 refused by the lint, because that path is read by position and would be read as a source.
@@ -72,6 +83,30 @@ refused by the lint, because that path is read by position and would be read as 
 | `advise` | loaded as context; the agent is expected to honour it                                   |
 | `check`  | re-read immediately before an action it covers                                          |
 | `block`  | `taste-police` refuses a matching command, quoting this taste's `remedy` and `override` |
+
+A `rule.kind` names a check agentkit implements; the taste supplies the data it runs on and the
+words it refuses with.
+
+| `kind`             | The taste supplies                        | agentkit inspects                     |
+| ------------------ | ----------------------------------------- | ------------------------------------- |
+| `command`          | `match`, a regular expression             | the text of the command about to run  |
+| `git-tag-sequence` | `policy`, one of three named orderings    | the tags in the repository it runs in |
+| `judgment`         | `question`, plus its own body as criteria | the change the command would make     |
+
+`judgment` is how a taste whose rule is prose reaches `block`: one typed question goes to a System
+One model with the taste's body as the criteria, and the probability it returns is read against the
+taste's own `threshold`. It needs a provider key (`TYPESAFE_API_KEY`, else
+`~/.config/agentkit/typesafe-token`) and reports `UNCHECKED` without one, so agentkit works with no
+vendor key at all.
+
+{{< callout type="warning" >}}
+**A `judgment` taste sends your change to a third party.** On every judged command it POSTs the
+command text, the commit message up to 2 000 characters and the staged diff up to 12 000 to the
+provider. The caps bound how much travels, not whether it travels, so a repository whose diffs may
+not leave the building does not get one at `enforce: block`. `on: any` is the setting to be
+deliberate about: at `block` it is a network round trip on every command the agent runs, `ls`
+included.
+{{< /callout >}}
 
 A preference that no rule kind can express stays at `check`. A new kind is a change to agentkit, not
 something a taste file can invent.

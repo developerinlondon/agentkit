@@ -1,7 +1,10 @@
 import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { offValueLine, type Override, readOverride, unquote } from './override.ts';
 import { type ResolvedTaste, resolveTastes, type TasteRule } from './resolve.ts';
-import { evaluateRule, type MatchOutcome } from './rules/kinds.ts';
+import { judgmentBudget } from './rules/budget.ts';
+import { actedDirectories, repositoryRoot, scopedCommand } from './rules/scope.ts';
+import { evaluateRule, type MatchOutcome, ruleKind } from './rules/kinds.ts';
 import { configFiles, unitSection } from './sources.ts';
 import { TASTE } from './store.ts';
 
@@ -32,7 +35,7 @@ function tasteEnabled(
   home: string,
   env: Record<string, string | undefined>,
 ): boolean {
-  for (const path of configFiles(cwd, home, env)) {
+  for (const path of configFiles(projectRoot(cwd, home), home, env)) {
     const enabled = unitSection(path, TASTE)?.enabled;
     if (typeof enabled === 'boolean') return enabled;
   }
@@ -141,52 +144,257 @@ function blocking(taste: ResolvedTaste): boolean {
   return taste.enforce === 'block' && taste.rule !== undefined;
 }
 
+// A repository's own tastes, which bind whoever commits in it rather than
+// whoever happens to be standing in it.
+function ofTheProject(taste: ResolvedTaste): boolean {
+  return taste.layer === 'project' || taste.layer === 'project-external';
+}
+
+export interface Lanes {
+  lanes: Lane[];
+  // A directory the command works in that this could not name, so no lane was
+  // raised for whatever tastes it holds.
+  unread?: string;
+}
+
+export interface Lane {
+  cwd: string;
+  // Where this lane's tastes were read from, which is what a refusal renders
+  // their paths against: a file is named the way its own repository names it.
+  root: string;
+  // What this lane's tastes are shown: the whole command for the session's own
+  // lane, and for a repository's lane only the part that acts in it, written
+  // as it would read had it been run there.
+  command: string;
+  tastes: ResolvedTaste[];
+  warnings: string[];
+}
+
+// A repository's own setting, read from its own config and nowhere else: one
+// checkout turning tastes off must not turn off the session's.
+// Where this session's own project layers live: the top of the checkout it
+// stands in, so standing inside one reads the same tastes as reaching into it
+// from outside. A directory in no checkout is its own answer, as it always was.
+function projectRoot(cwd: string, home: string): string {
+  return repositoryRoot(cwd, home) ?? cwd;
+}
+
+function projectTasteEnabled(root: string): boolean {
+  const enabled = unitSection(join(root, '.agentkit', 'config.yaml'), TASTE)?.enabled;
+  return typeof enabled === 'boolean' ? enabled : true;
+}
+
+interface Reached {
+  roots: string[];
+  // Whether the command works on a repository this raised no lane for — its
+  // own directory, one that is no checkout, one that opted out. What that
+  // decides is whether the owner's own taste of a shadowed name still has
+  // something to bind.
+  elsewhere: boolean;
+}
+
+function reachedRoots(
+  dirs: readonly string[],
+  atStart: boolean,
+  home: string,
+  sessionRoot?: string,
+): Reached {
+  const roots: string[] = [];
+  let elsewhere = atStart;
+  for (const dir of dirs) {
+    const root = repositoryRoot(dir, home);
+    if (root === undefined || root === sessionRoot) {
+      elsewhere = true;
+      continue;
+    }
+    if (!roots.includes(root)) roots.push(root);
+  }
+  return { roots, elsewhere };
+}
+
+// The session's own lane, split where the owner's taste of a name a checkout
+// also defines has to stand back for the commands acting in that checkout — and
+// only for those. Everywhere else it still binds, which is what "the more
+// specific location wins" has always meant inside a repository.
+function sessionLanes(
+  session: Lane,
+  overridden: ReadonlyMap<string, string[]>,
+  cwd: string,
+): Lane[] {
+  const byScope = new Map<string, Lane>();
+
+  for (const taste of session.tastes) {
+    const outside = ofTheProject(taste) ? [] : overridden.get(taste.name) ?? [];
+    const key = outside.join('\u0000');
+    const lane = byScope.get(key);
+    if (lane !== undefined) {
+      lane.tastes.push(taste);
+      continue;
+    }
+    byScope.set(key, {
+      cwd: session.cwd,
+      root: session.root,
+      command: outside.length === 0
+        ? session.command
+        : scopedCommand(session.command, cwd, { outside }),
+      tastes: [taste],
+      warnings: byScope.size === 0 ? session.warnings : [],
+    });
+  }
+
+  // A session with no tastes of its own still has a lane: it is where the
+  // warnings live, and where a taste added later would land.
+  if (byScope.size === 0) return [session];
+  // A taste with nothing left to read is not a taste that found nothing.
+  return [...byScope.values()].filter((lane) => lane.command !== '' || lane.warnings.length > 0);
+}
+
+// One lane per repository whose tastes bind this command: the one the session
+// sits in, as before, and every checkout the command works on from there. The
+// user's own layers load once, with the session's lane, because they bind
+// wherever the agent is working.
+//
+// A session above its repositories is the ordinary case on a workstation with
+// several of them, and resolving only the session's directory made every taste
+// in those repositories decoration.
+export function tasteLanes(
+  command: string,
+  cwd: string,
+  home: string,
+  env: Record<string, string | undefined>,
+): Lanes {
+  // Resolved at the top of the session's own checkout, while the lane keeps the
+  // directory the command actually runs in: a relative path in the command is
+  // relative to where the agent stands, not to the top.
+  const root = projectRoot(cwd, home);
+  const here = resolveTastes(root, home, env);
+  const lanes: Lane[] = [{ cwd, root, command, tastes: here.tastes, warnings: here.warnings }];
+
+  // Read once. Every caller wants both halves of the answer, and reading the
+  // command again to get the other half walks it again for nothing.
+  const acted = actedDirectories(command, cwd);
+  if (acted.dirs.length === 0) return { lanes, unread: acted.unread };
+
+  const reached = reachedRoots(acted.dirs, acted.atStart, home, repositoryRoot(cwd, home));
+  // Which checkouts name which taste, so a name defined in one speaks for the
+  // commands acting there and nowhere else. Collected across lanes and applied
+  // per taste: one repository overriding a name must not take the owner's own
+  // taste away from every other repository in the same command.
+  const overridden = new Map<string, string[]>();
+
+  for (const root of reached.roots) {
+    if (!projectTasteEnabled(root)) continue;
+    const there = resolveTastes(root, home, env);
+    const tastes = there.tastes.filter(ofTheProject);
+    if (tastes.length === 0) continue;
+    for (const one of tastes) {
+      overridden.set(one.name, [...(overridden.get(one.name) ?? []), root]);
+    }
+    lanes.push({
+      cwd: root,
+      root,
+      command: scopedCommand(command, cwd, { within: root }),
+      tastes,
+      // The user layers are the same files the session's lane already read, so
+      // only what this checkout added is new to say.
+      warnings: there.warnings.filter((warning) => !here.warnings.includes(warning)),
+    });
+  }
+
+  if (overridden.size > 0) {
+    lanes.splice(0, 1, ...sessionLanes(lanes[0] as Lane, overridden, cwd));
+  }
+  return { lanes, unread: acted.unread };
+}
+
 export async function evaluateCommand(request: Request): Promise<Verdict> {
   const home = request.home ?? homedir();
   const env = request.env ?? process.env;
   if (!tasteEnabled(request.cwd, home, env)) return { decision: 'allow', notices: [] };
 
-  const { tastes, warnings } = resolveTastes(request.cwd, home, env);
-  const notices = warnings.map((warning) => `taste skipped — ${warning}`);
+  const { lanes, unread } = tasteLanes(request.command, request.cwd, home, env);
+  const notices = lanes.flatMap((lane) =>
+    lane.warnings.map((warning) => `taste skipped — ${warning}`)
+  );
+  // A repository this could not name has tastes this could not read. Said once,
+  // and only where the command reaches a repository after the change — nowhere
+  // else were there tastes to miss.
+  if (unread !== undefined) {
+    notices.push(
+      'UNCHECKED: the project tastes of a directory this command works in could not be loaded — '
+        + `${unread}. The command was allowed.`,
+    );
+  }
   const matcher = new BoundedMatcher();
+  // One allowance for the whole command. A kind that reaches the network or
+  // runs git spends from it, so three such tastes together cannot hold the
+  // hook past the cap its process runs under.
+  const budget = judgmentBudget();
 
   try {
-    for (const taste of tastes.filter(blocking)) {
-      const rule = taste.rule as TasteRule;
-      const outcome = await evaluateRule(rule.kind, rule.fields, {
-        command: request.command,
-        cwd: request.cwd,
-        env,
-        match: (pattern, capture) => matcher.test(pattern, request.command, capture),
-      });
+    for (const lane of lanes) {
+      for (const taste of lane.tastes.filter(blocking)) {
+        const rule = taste.rule as TasteRule;
+        const override = overrideState(rule.override, request.command, env);
 
-      if (outcome.verdict === 'skipped') {
-        notices.push(`taste ${taste.name} was not applied — ${outcome.detail} (${taste.path}).`);
-        continue;
-      }
-      // Allowed, and said so. A guard that could not read the state it needed
-      // is not a guard that found nothing.
-      if (outcome.verdict === 'unchecked') {
-        notices.push(
-          `UNCHECKED: taste ${taste.name} could not check this command — ${outcome.detail}. `
-            + `The command was allowed (${taste.path}).`,
-        );
-        continue;
-      }
-      if (outcome.verdict === 'passes') continue;
+        // Read before the check, not after it, for a kind that costs something:
+        // a deliberate override must not pay a deadline or ship a diff to
+        // overrule a verdict it has already decided to ignore. Only where the
+        // rule would have run, though — an override exported into a session
+        // must not become a notice on every command in it.
+        const kind = ruleKind(rule.kind);
+        const shortCircuit = override.state === 'granted' && kind?.costly === true
+          && (kind.applies?.(rule.fields, lane.command, lane.cwd) ?? true);
 
-      const override = overrideState(rule.override, request.command, env);
-      if (override.state === 'granted') {
-        notices.push(
-          `taste ${taste.name} allowed this command: ${rule.override} is set deliberately.`,
-        );
-        continue;
+        if (shortCircuit) {
+          notices.push(
+            `taste ${taste.name} allowed this command: ${rule.override} is set deliberately.`,
+          );
+          continue;
+        }
+
+        const outcome = await evaluateRule(rule.kind, rule.fields, {
+          command: lane.command,
+          cwd: lane.cwd,
+          env,
+          match: (pattern, capture) => matcher.test(pattern, lane.command, capture),
+          body: taste.body,
+          budget,
+        });
+
+        if (outcome.verdict === 'skipped') {
+          notices.push(`taste ${taste.name} was not applied — ${outcome.detail} (${taste.path}).`);
+          continue;
+        }
+        // Allowed, and said so. A guard that could not read the state it needed
+        // is not a guard that found nothing.
+        if (outcome.verdict === 'unchecked') {
+          notices.push(
+            `UNCHECKED: taste ${taste.name} could not check this command — ${outcome.detail}. `
+              + `The command was allowed (${taste.path}).`,
+          );
+          continue;
+        }
+        if (outcome.verdict === 'passes') continue;
+        if (outcome.notice !== undefined) {
+          notices.push(
+            `UNCHECKED: taste ${taste.name} could not check every part of this command — `
+              + `${outcome.notice} (${taste.path}).`,
+          );
+        }
+
+        if (override.state === 'granted') {
+          notices.push(
+            `taste ${taste.name} allowed this command: ${rule.override} is set deliberately.`,
+          );
+          continue;
+        }
+        return {
+          decision: 'deny',
+          reason: refusal(taste, outcome.finding, override, lane.root, home, notices),
+          notices,
+        };
       }
-      return {
-        decision: 'deny',
-        reason: refusal(taste, outcome.finding, override, request.cwd, home, notices),
-        notices,
-      };
     }
   } finally {
     matcher.stop();

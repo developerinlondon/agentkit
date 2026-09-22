@@ -23,23 +23,23 @@ Why: a long description is skimmed, so the one paragraph that mattered is the on
 How to apply: lead with the outcome, link the issue, and stop.
 ```
 
-| Field | Values | Notes |
-| --- | --- | --- |
-| `name` | kebab-case | the key everything resolves on; the same name at a higher scope wins outright |
-| `strength` | `prefer`, `require` | how hard to push when it conflicts with something else |
-| `enforce` | `advise`, `check`, `block` | the owner's setting, never a rank a taste earns |
-| `category` | free text | grouping only |
-| `provenance` | a date and an origin | never a guess |
+| Field        | Values                     | Notes                                                                         |
+| ------------ | -------------------------- | ----------------------------------------------------------------------------- |
+| `name`       | kebab-case                 | the key everything resolves on; the same name at a higher scope wins outright |
+| `strength`   | `prefer`, `require`        | how hard to push when it conflicts with something else                        |
+| `enforce`    | `advise`, `check`, `block` | the owner's setting, never a rank a taste earns                               |
+| `category`   | free text                  | grouping only                                                                 |
+| `provenance` | a date and an origin       | never a guess                                                                 |
 
 The body carries the preference, then **Why**, then **How to apply**. The why is what lets an agent
 apply it to a case you did not anticipate.
 
 ## Where to put it
 
-| You want it | Put it in |
-| --- | --- |
-| in this repository, for everyone who clones it | `.agentkit/tastes/` |
-| on this machine, for every repository | `~/.agentkit/tastes/` |
+| You want it                                    | Put it in             |
+| ---------------------------------------------- | --------------------- |
+| in this repository, for everyone who clones it | `.agentkit/tastes/`   |
+| on this machine, for every repository          | `~/.agentkit/tastes/` |
 
 Precedence is project > project external > user > user external > kit. `external/` is reserved — it
 is read by position as the vendored-sources layer, and the lint refuses a taste or category of that
@@ -54,10 +54,23 @@ with **that taste's** own `remedy` and its named `override`.
 ```yaml
 enforce: block
 rule:
-  kind: command-match
+  kind: command
   match: "git push --force"
-remedy: Push a new commit instead; force-push rewrites history other clones already have.
-override: ALLOW_FORCE_PUSH
+  remedy: Push a new commit instead; force-push rewrites history other clones already have.
+  override: ALLOW_FORCE_PUSH
+```
+
+A convention a pattern cannot express reaches `block` through `kind: judgment` instead: it carries a
+`question` rather than a `match`, and the taste's own body is what the answer is judged against.
+
+```yaml
+enforce: block
+rule:
+  kind: judgment
+  question: Does this change ship a workaround that leaves the real fix for later?
+  threshold: "0.75"
+  remedy: Fix the cause, or say in the commit message why the workaround is the fix.
+  override: AGENTKIT_ALLOW_STOPGAP
 ```
 
 Bounds keep a blocking taste from becoming a denial-of-service on your own shell: `match` is capped

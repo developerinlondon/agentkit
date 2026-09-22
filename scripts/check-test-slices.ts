@@ -37,7 +37,9 @@ export const TEST_SLICES = {
     'tests/git-police.test.ts',
     'tests/hook-payload-compat.test.ts',
     'tests/hook-supervisor.test.ts',
+    'tests/hooks-unbound-vars.test.ts',
     'tests/hooks/branch-wip-cap.test.ts',
+    'tests/hooks/editor-police.test.ts',
     'tests/hooks/issue-police.test.ts',
     'tests/hooks/prose-police.test.ts',
     'tests/hooks/wait-for.test.ts',
@@ -118,6 +120,7 @@ export const TEST_SLICES = {
   ],
   session: ['tests/session/agent-session.test.ts', 'tests/session/install-session-slice.test.ts'],
   taste: [
+    'tests/taste/judgment.test.ts',
     'tests/taste/key-path.test.ts',
     'tests/taste/kinds.test.ts',
     'tests/taste/layout.test.ts',
@@ -129,6 +132,7 @@ export const TEST_SLICES = {
     'tests/taste/sources.test.ts',
     'tests/taste/sync.test.ts',
     'tests/taste/tag-sequence.test.ts',
+    'tests/taste/target-repo.test.ts',
     'tests/taste/visibility.test.ts',
   ],
   wip: [

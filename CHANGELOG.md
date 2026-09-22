@@ -9,6 +9,174 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+## v0.9.3 — 2026-09-21
+
+- fix(git-police): **the hook can no longer be walked around, or die into an allow.** Fixing the
+  attribution rule in v0.9.1 exposed three ways past it. A `cd $W` or a `git -C "$DIR"` reaches
+  the hook unexpanded, so the target directory did not exist, a `tgit … | sed` assignment exited
+  128 under `set -e`, and the harness read that non-zero exit as a non-blocking error: every rule
+  after that line was skipped for the most common shape of agent command, and the same happened
+  from any working directory that is not a repository. A target that is not a directory now falls
+  back to the hook's own directory, no `tgit` assignment can abort the hook, and a refusal built on
+  that guess says so and names the way through, a literal `git -C /path`. Attribution,
+  `--no-verify` and force push are pure text and now run ahead of both the repository-state rules
+  and `allowed-repos`, which still lifts every rule that reads repository state but no longer a
+  text rule; the
+  hatch was an unconditional exit above them, and an allow-listed working directory no longer
+  vouches for a target the hook could not resolve. Every file a commit takes its message from is
+  read: `-F path`, `-Fpath`, `-qF`, `--file=`, quoted paths with spaces, and each of several. A
+  message file named through a variable (`-F "$MSG"`) cannot be read before the shell expands it,
+  so it is refused with that reason rather than waved through. The pattern wants the trailer's `:`
+  or `=`, so a message that talks about the trailer is allowed. `allowed-repos` works on macOS:
+  BSD sed rejected the lazy quantifier in the repo-name extraction, so the name was always empty
+  there. And a crash the shell reports no longer reads as approval: an exit trap, installed before the payload
+  is read and written without jq, refuses a commit, push or forge write when the hook dies after
+  reading it, and reports `UNCHECKED` when the payload could not be read at all. The OpenCode
+  plugin gets the same ordering, pattern and message-file read. Eighteen tests spawn the bash hook
+  for these and all but the stall test fail against the v0.9.1 hook. `$HOME` is read as `${HOME:-}`: bash
+  3.2 skips the exit trap when `set -u` aborts a top-level assignment, so an unset `HOME` was a
+  silent exit. Forge writes
+  made through the raw API (`glab api`, `gh api`) are judged like `glab mr create`, and so are `gh pr merge --body`, `--body-file`, an annotated
+  tag and a note. A PATH without `grep` would have made every rule evaluate false in silence; the
+  hook now reports `UNCHECKED` instead.
+
+## v0.9.2 — 2026-09-21
+
+- fix(taste): **a repository's tastes bind the commands that act in it, wherever the session
+  sits.** `taste-police` resolved tastes from the hook's working directory alone, so an agent in a
+  parent directory reaching a repository with `cd repo && git commit …` or `git -C repo commit …`
+  was judged by the parent's tastes — usually none — and the repository's own `.agentkit/tastes/`
+  never loaded. Measured on v0.9.0: the same commit refused from inside the repository and allowed,
+  silently, from one directory up. It predates the `judgment` kind and held for `command` and
+  `git-tag-sequence` too, which made a project taste decoration on any workstation holding several
+  repositories. The scoped walk the `judgment` kind already used to find the tree a commit applies
+  to now lives in its own module and answers the same question for the hook: project layers are
+  resolved for every distinct directory the command reaches, the user layers load once, and each
+  taste is evaluated with its own repository as the working directory. A directory change the walk
+  cannot read is reported as `UNCHECKED` for the tastes it could not load, and only where a
+  repository command runs after it. A command that changes no directory resolves exactly what it
+  did before and reads nothing extra from disk. **A repository's taste sees only the part of the
+  command acting in that repository**, written as it would read had it been run there, so a taste
+  in one checkout can neither refuse another's commit nor be sent its diff. Only a checkout brings
+  tastes — resolved to the top of its work tree, followed through symlinks, and never from a
+  `node_modules` folder, whose `remedy` prose an agent would otherwise be shown verbatim — and
+  only where a `git`, `gh` or `glab` command works on it. A repository's own
+  `brain.taste.enabled: false` turns off its lane and no other, and its taste of a name the owner
+  also uses replaces theirs for the commands acting there and nowhere else. That part of the
+  command is cut out of the text as it was typed rather than spelled again, so a pattern written
+  against quoting reads the same from either side, and two visits to one checkout with a visit
+  elsewhere between them stay two commands rather than being joined into one nobody typed. A
+  literal `--work-tree` is followed like a `-C`, while a `--git-dir` with none beside it is
+  `UNCHECKED` rather than a silent allow; the owner's own directory is never read as a project
+  root, so dotfiles kept in git stay the user layer; and a refusal names a taste file the way its
+  own repository does. The project layers are read from the top
+  of a work tree wherever the session stands, so a session in `repo/src` is bound by `repo`'s
+  tastes exactly as a parent reaching in is; a session in no checkout reads its own directory, as
+  before. Both presence gates look at that top too, or the hook would exit before the evaluator
+  it now has something for, and the OpenCode plugin reads `$HOME` like every other lane rather
+  than the password entry.
+
+## v0.9.1 — 2026-09-21
+
+- fix(git-police): **the attribution rule fires.** The shell hook's rule against `Co-authored-by`
+  trailers, session links and the rest piped a variable that nothing set into grep. Under `set -u`
+  only the pipeline's subshell died: grep read nothing, the test was false, and that one rule
+  never fired while every other rule in the hook carried on, so commits and merge request
+  descriptions carrying attribution went through unchallenged. The rule now reads the payload the
+  hook actually slurped. Three tests run the bash hook itself against this rule, which no earlier
+  test reached: a heredoc commit carrying a trailer, a forge write carrying a session link, and a
+  clean commit. The class is closed as well as the instance: nothing in CI runs shellcheck, so
+  `tests/hooks-unbound-vars.test.ts` is the repository's own SC2154 — every hook and hook
+  library must assign or default-guard each upper-case variable it
+  reads, and the checker is itself tested against both spellings that shipped.
+
+## v0.9.0 — 2026-09-21
+
+- feat(taste): **a taste whose rule is prose can refuse a commit.** Fifteen of the sixteen central
+  tastes sit at `advise` or `check` because "done means deployed" or "no stopgaps" is not a regular
+  expression, so the same convention is broken again under load and the reviewer spends a round on
+  it. A new `judgment` rule kind asks one typed question of a System One model instead: the taste
+  supplies a `question` of at most 500 characters, its own body travels as the criteria, and the
+  probability that comes back is read against the taste's `threshold` (default `0.75`). `on`
+  chooses what is judged — a tokenised `git commit` by default, `gh pr create` or `glab mr create`
+  at `merge-request`, the command text alone at `any` — and anything else passes without a call.
+  The state sent is the command, the message its `-m` arguments carry (capped at 2 000
+  characters) and the diff (capped at 12 000) — which means the change leaves the machine, stated
+  plainly in the docs, along with the warning that `on: any` at `enforce: block` is a round trip
+  on every command the agent runs. The policy stays in the file: agentkit owns the threshold and the
+  consequence, the model only answers. The provider is TypeSafe's Jev at `POST /v1/systemone`
+  behind a seam, keyed from `TYPESAFE_API_KEY` or `~/.config/agentkit/typesafe-token`, with no
+  retry and an answer refused unless it is a probability between 0 and 1. Every way it can fail to look — no key, no repository, a diff
+  git will not read, HTTP 401/422/429/5xx, the deadline — reports `UNCHECKED` and allows the
+  command, so a machine with no vendor key keeps working and never reads enforcement into a guard
+  that never ran. Every judgment in one command shares a five-second budget, because
+  `taste-police` runs its evaluator under a process cap and an evaluator killed there writes
+  nothing — which would leave every blocking taste unenforced, the `command` ones included. A
+  granted override is read before the check rather than after it, so a deliberate override never
+  pays a deadline or ships a diff to overrule a verdict it has already decided to ignore. The
+  repository judged is the one the command targets: `git -C <dir> commit` is read in `<dir>`, a
+  commit inside a subshell is still judged, and a `cd`, a `pushd`, a `--git-dir` or a
+  `--work-tree` that moves the tree out from under that reading reports `UNCHECKED` rather than
+  judging the wrong repository. A `cd` that spells its destination out is resolved like `-C`,
+  because that one is not a guess, and so is a wrapped command: `bash -c 'git commit …'`, `sh -c`
+  and `eval` with a literal argument are read as the command they spell out, to three levels of
+  nesting. A subshell and a wrapper are scopes, so a `cd` inside one moves what that scope's own
+  commands see and nothing after it. A directory change this cannot read blocks a commit in a later
+  scope as firmly as one beside it. Text a shell builds at run time, quoting that does not
+  close, an escaped quote inside a quoted run, runs concatenated the way `'it'"'"'s'` joins two
+  of them, and nesting past the cap are each `UNCHECKED` naming what could not be read, never a
+  silent pass — and quoting is judged only where a wrapper is the thing being run, so a shell
+  named as an argument stays a word. A launcher — `timeout`, `nohup`, `nice`, `env`, `sudo`,
+  `xargs` — is read through, and every commit in a chain is judged rather than the first, with
+  the refusal naming which one broke the taste. A command this can read part of is judged on that
+  part and reports `UNCHECKED` about the rest, rather than throwing away what it read. **`git-tag-sequence` does not read wrappers**:
+  `bash -c 'git tag v1.2.3'` is not judged by that kind, which reads the command text directly,
+  and that limit is unchanged here. **A `judgment` taste sends the command
+  text, the commit message and the staged diff to a third-party provider**, which the taste
+  contract, the concepts page and the Boundaries page now all say outright.
+
+## v0.8.8 — 2026-09-07
+
+- docs(editor-police): **the docs site covers the editor gate.** A cookbook recipe, "Name the
+  person at the keyboard", walks through the roster, the refusal, the one-question prompt, the
+  trailer and a handover with the hook's real output; the hook reference gains its row and its
+  off-by-default entry, the configuration reference an `editor-police` section, and the CLI
+  reference a `wiki-editor` section with verbs and exit codes.
+
+- feat(editor-police): **commits in configured repos name the person editing.** Knowledgebases
+  edited through one shared agent session all carried the machine identity, so page stamps could
+  not say who changed what. A new `editor-police` hook refuses a `git commit` in any repo matched
+  by `editor-police.repos` until the session has recorded an editor with the new `wiki-editor`
+  tool (`set <name> --session <id>`, names matched case-insensitively against
+  `editor-police.editors`, a typed name taking `fallback-email`), and again unless the commit
+  carries `--trailer="Edited-by: Name <email>"`, written out in full: an unexpanded
+  `$(wiki-editor trailer …)` is refused, because off `PATH` it substitutes to nothing and git
+  accepts an empty trailer. The trailer, not the author, is required because a squash merge
+  rewrites the author and keeps the trailers. The hook tokenises the command with
+  shell quoting honoured and judges the repo each commit actually targets (its `-C`, `--git-dir`
+  or working directory after any `cd`, a linked worktree counting as its clone, a `bash -c` string
+  or a command substitution counting as a command), so global options in any order are seen and
+  the words inside a quoted string, a comment or a heredoc body are not. When it cannot judge (no
+  `awk` or `jq`, more than 1500 statements) it refuses with an `UNCHECKED` reason rather than
+  allowing quietly. The `wiki-editor` skill carries the
+  one-question flow: ask who is editing, record once, never ask again in that session. Off per
+  session with `AGENTKIT_SKIP_HOOKS=editor-police`, off per machine with `enabled: false`; inert
+  when no repos are listed.
+- feat(prose-police): **time-of-day naming is refused, because the writer's clock is not the
+  reader's.** An agent working late named a product routine "the morning pass" and carried that
+  name into product copy, seat instructions, a guide and issue titles; the operators it serves are
+  in several time zones, and the name was wrong for most of them the moment it was written. The
+  `writing-discipline` rule gains a "Time-zone-neutral vocabulary" section: name routines, features,
+  schedules and reports by what they do ("the daily pass", "the reply round", "since the last
+  pass"), keep `this morning`, `tonight`, `this evening`, `this afternoon`, `overnight`, `later
+  today`, `first thing tomorrow`, `morning pass` and `morning briefing` out of product copy, tool
+  descriptions, agent instructions, guide text, issue and MR titles, commit subjects and status
+  reports, and give an absolute time a zone. `prose-police` enforces the list mechanically on both
+  arms. Bare `morning` is deliberately not banned: "a reply at two in the morning must not get a
+  letter at nine" describes the reader's clock, and clock-time examples like it stay legal, as does
+  anything inside a code fence or a code span. `first thing` is matched only in its time sense, so
+  "the first thing to check is the log" passes.
+
 ## v0.8.7 — 2026-09-04
 
 - feat(publish-page): **figures fit the screen by default, with per-figure zoom and full-screen

@@ -1,3 +1,5 @@
+import type { Budget } from './budget.ts';
+import { JUDGMENT } from './judgment.ts';
 import { matchErrors } from './pattern.ts';
 import { GIT_TAG_SEQUENCE } from './tag-sequence.ts';
 
@@ -13,6 +15,12 @@ export interface KindRequest {
   cwd: string;
   env: Record<string, string | undefined>;
   match: Matcher;
+  // The taste's own prose, for a kind whose check is the taste rather than a
+  // parameter of it. Absent for every kind that reads only its own fields.
+  body?: string;
+  // Shared by every costly kind in one command, so what they may spend
+  // together is bounded rather than what each may spend alone.
+  budget?: Budget;
 }
 
 // `fires` refuses and says what was found; `skipped` and `unchecked` both allow
@@ -20,7 +28,9 @@ export interface KindRequest {
 // skipped means this taste could not be applied, unchecked means the state the
 // check needed could not be read.
 export type KindOutcome =
-  | { verdict: 'fires'; finding: string }
+  // `notice` is what the kind could not look at while finding what it did: a
+  // refusal that read part of a command must not imply it read all of it.
+  | { verdict: 'fires'; finding: string; notice?: string }
   | { verdict: 'passes' }
   | { verdict: 'skipped'; detail: string }
   | { verdict: 'unchecked'; detail: string };
@@ -33,6 +43,14 @@ export interface RuleKind {
   // Beyond `kind`, `remedy` and `override`, which every kind carries.
   required: readonly string[];
   optional: readonly string[];
+  // Whether evaluating this costs more than reading the command: git, a file,
+  // or a request that leaves the machine. A granted override short-circuits
+  // one of these, so a deliberate override never pays for what it overrules.
+  costly?: boolean;
+  // Whether this rule has anything to say about this command, decided by
+  // reading the command alone — no git, no file, no network. Absent means it
+  // might, which is the honest answer for a kind that cannot tell cheaply.
+  applies?(fields: Record<string, string>, command: string, cwd: string): boolean;
   validate(fields: Record<string, string>): string[];
   evaluate(fields: Record<string, string>, request: KindRequest): Promise<KindOutcome>;
 }
@@ -53,7 +71,7 @@ const COMMAND: RuleKind = {
   },
 };
 
-const KINDS: readonly RuleKind[] = [COMMAND, GIT_TAG_SEQUENCE];
+const KINDS: readonly RuleKind[] = [COMMAND, GIT_TAG_SEQUENCE, JUDGMENT];
 
 export const RULE_KINDS: readonly string[] = KINDS.map((kind) => kind.name);
 

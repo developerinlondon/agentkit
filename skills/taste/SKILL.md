@@ -327,6 +327,18 @@ agentkit installs to. It resolves the same folders this skill does, takes the ta
 process. Nothing in a taste is ever executed. Adding a blocking taste changes no code
 anywhere: it is a file.
 
+**The project tastes that apply are the ones of the repository the command acts in**, read from
+the top of its work tree rather than from whichever directory the session happens to sit in — so a
+session in `repo/src` is bound by `repo`'s tastes, exactly as a parent reaching in is. A session in a parent directory running
+`cd repo && git commit …` or `git -C repo commit …` is judged by `repo`'s tastes; a command
+reaching two repositories brings both, **each judging only the part of the command that acts in
+it** — a taste in one checkout never sees another's command text or diff. The owner's own
+`~/.agentkit/tastes/` bind wherever the agent is working and load once, and a repository taste of
+the same name replaces one of theirs for the commands acting there. Only a checkout brings tastes,
+resolved to the top of its work tree and never from a `node_modules` folder. Where a directory
+change cannot be read — a variable, a glob — the hook says `UNCHECKED` for the project tastes it
+could not load, rather than reading silence as a clean bill.
+
 ### What a rule can check: the kinds
 
 **The enforcement vocabulary is extensible by agentkit and parameterised by tastes.** A
@@ -335,10 +347,24 @@ words it refuses with. The taste never carries the code, which is the whole reas
 somewhere else is safe to load: **a hostile source can at worst over-block you**, because
 picking a check and wording a refusal is all a taste can do.
 
-| `kind`             | The taste supplies                     | agentkit inspects                     |
-| ------------------ | -------------------------------------- | ------------------------------------- |
-| `command`          | `match`, a regular expression          | the text of the command about to run  |
-| `git-tag-sequence` | `policy`, one of three named orderings | the tags in the repository it runs in |
+| `kind`             | The taste supplies                        | agentkit inspects                     |
+| ------------------ | ----------------------------------------- | ------------------------------------- |
+| `command`          | `match`, a regular expression             | the text of the command about to run  |
+| `git-tag-sequence` | `policy`, one of three named orderings    | the tags in the repository it runs in |
+| `judgment`         | `question`, plus its own body as criteria | the change the command would make     |
+
+`judgment` is the kind for a taste whose rule is prose. One typed question goes to a System One
+model with the taste's body as the criteria, and the probability it returns is read against the
+taste's `threshold` — the policy stays in the file, the model only answers. It needs a provider
+key (`TYPESAFE_API_KEY`, else `~/.config/agentkit/typesafe-token`); with none it reports
+`UNCHECKED` on every judged command and allows it, so agentkit works with no vendor key at all.
+
+**It sends the change off the machine.** The command text, the commit message up to 2 000
+characters and the staged diff up to 12 000 are POSTed to the provider on every judged command.
+Say so before proposing one, and never propose `on: any` at `enforce: block` without meaning it:
+that is a network round trip on every command the agent runs, `ls` included. Every judgment in
+one command shares a five-second budget, so a stalled provider cannot stop the other tastes
+enforcing.
 
 A preference that no kind can express stays at `enforce: check`. **A new kind is a change to
 agentkit**, proposed and reviewed like one — never bespoke code smuggled into a taste folder.
@@ -360,8 +386,10 @@ taste written against a newer agentkit must not brick an older hook.
 - **An unrunnable hook** (no `bun`, no evaluator) says `UNCHECKED` and allows. It never
   refuses on its own uncertainty, and it never goes quiet where there were tastes to read.
 - **A check that cannot read what it needs** says `UNCHECKED` for that one taste and allows the
-  command — `git-tag-sequence` where git will not answer, for instance. Silence there would be
-  worse than either verdict: the session would read enforcement into a guard that never ran.
+  command — `git-tag-sequence` where git will not answer, or `judgment` with no provider key,
+  no diff to read, or a provider that returned an error or ran past its deadline. Silence there
+  would be worse than either verdict: the session would
+  read enforcement into a guard that never ran.
 - **Bounds**: `rule.match` is capped at 200 characters, only the first 4000 characters of a
   command are examined, and the match itself is abandoned after 250ms — length is not safety,
   since a short pattern can still backtrack forever. `references/format.md` carries the
