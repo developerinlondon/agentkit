@@ -119,6 +119,18 @@ function run(
   });
 }
 
+/**
+ * What `claude` means in an IDE terminal: a login shell whose profile put
+ * ~/.local/bin ahead of whatever .bashrc added. The shim has to win anyway.
+ */
+function resolveClaudeInLoginShell(home: string): string {
+  const shell = spawnSync('bash', ['-l', '-c', 'type -P claude'], {
+    env: { HOME: home, PATH: `${join(home, '.local', 'bin')}:/usr/bin:/bin` },
+    encoding: 'utf-8',
+  });
+  return shell.stdout.trim();
+}
+
 // existsSync follows symlinks, so a leftover link into a deleted shared root
 // reads as absent. Only lstat sees the link itself still sitting there.
 function expectMissing(path: string): void {
@@ -144,6 +156,13 @@ function plantUserContent(fixture: Fixture): void {
   writeFixtureFile(join(home, '.claude', 'skills', 'my-own-skill', 'SKILL.md'), '# Mine\n');
   writeFixtureFile(join(home, '.local', 'bin', 'my-own-tool'), '#!/bin/sh\n', true);
   writeFixtureFile(join(home, '.bashrc'), 'export MY_OWN=1\n');
+  // Stock Ubuntu shape: a login shell runs .bashrc first, then puts
+  // ~/.local/bin in front of everything it added.
+  writeFixtureFile(
+    join(home, '.profile'),
+    '. "$HOME/.bashrc"\nPATH="$HOME/.local/bin:$PATH"\nexport MY_OWN_LOGIN=1\n',
+  );
+  writeFixtureFile(join(home, '.local', 'bin', 'claude'), '#!/bin/sh\n', true);
   writeFixtureFile(
     join(home, '.config', 'opencode', 'opencode.json'),
     JSON.stringify({
@@ -173,6 +192,10 @@ function expectUserContentIntact(fixture: Fixture): void {
   expect(bashrc).toContain('export MY_OWN=1');
   expect(bashrc).not.toContain('agentkit session shims');
 
+  const profile = readFileSync(join(home, '.profile'), 'utf-8');
+  expect(profile).toContain('export MY_OWN_LOGIN=1');
+  expect(profile).not.toContain('agentkit session shims');
+
   const opencode = JSON.parse(
     readFileSync(join(home, '.config', 'opencode', 'opencode.json'), 'utf-8'),
   );
@@ -187,7 +210,9 @@ describe('install.sh --uninstall (global)', () => {
     try {
       plantUserContent(fixture);
 
-      const installed = run(fixture, ['--global', '--with', 'adversarial-review']);
+      const installed = run(fixture, ['--global', '--with', 'adversarial-review'], {
+        PATH: `${join(home, '.local', 'bin')}:${process.env.PATH}`,
+      });
       expect(installed.status, installed.stderr).toBe(0);
 
       // The install must have produced what the uninstall is asked to remove.
@@ -201,6 +226,8 @@ describe('install.sh --uninstall (global)', () => {
       expect(existsSync(join(home, '.config', 'systemd', 'user', 'agent-sessions.slice'))).toBe(true);
       expect(readFileSync(join(home, '.codex', 'config.toml'), 'utf-8')).toContain('Sample Prompt');
       expect(readFileSync(join(home, '.bashrc'), 'utf-8')).toContain('agentkit session shims');
+      expect(readFileSync(join(home, '.profile'), 'utf-8')).toContain('agentkit session shims');
+      expect(resolveClaudeInLoginShell(home)).toBe(join(home, '.local', 'share', 'agentkit', 'shims', 'claude'));
 
       // A hook the operator wired in after installing agentkit.
       const settingsPath = join(home, '.claude', 'settings.json');
