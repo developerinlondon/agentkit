@@ -1,0 +1,134 @@
+name: Install pinned proto toolchain
+description: >-
+  Restores the proto toolchain from cache and uses it without downloading anything when the
+  pinned versions match; otherwise installs it with moonrepo/setup-toolchain, retrying with
+  backoff, because that action fetches the proto binary from GitHub Releases on every run.
+
+inputs:
+  use-cache:
+    description: >-
+      Restore and save the cached toolchain. Jobs that hold publish secrets pass "false" so they
+      never run binaries a cache entry supplied.
+    required: false
+    default: "true"
+  github-token:
+    description: Token proto uses to resolve tool versions against the GitHub API.
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Restore the cached toolchain
+      id: cache
+      if: inputs.use-cache == 'true'
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          ~/.proto/bin
+          ~/.proto/shims
+          ~/.proto/tools
+          ~/.proto/plugins
+        # Hosted and self-hosted runners keep ~ at different depths from the
+        # workspace, and actions/cache archives relative to it, so they never share.
+        key: proto-v2-${{ runner.environment }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.prototools', '.moon/toolchains.yml') }}
+
+    # A hit is used only if every pinned tool answers at its pinned version.
+    - name: Use the cached toolchain
+      id: cached
+      if: steps.cache.outputs.cache-hit == 'true'
+      shell: bash
+      run: |
+        export PATH="$HOME/.proto/shims:$HOME/.proto/bin:$PATH"
+        # moon setup installs moon's own pinned proto into ~/.proto/tools; with a
+        # complete cache it has nothing to fetch, and if it fails the retried
+        # install below runs instead.
+        if "$GITHUB_ACTION_PATH/cached-ok.sh" .prototools && moon setup; then
+          echo "$HOME/.proto/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.proto/shims" >> "$GITHUB_PATH"
+          echo "ok=true" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Install the toolchain (attempt 1 of 5)
+      id: a1
+      if: steps.cached.outputs.ok != 'true'
+      continue-on-error: true
+      uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+      with:
+        auto-install: true
+        # moon ci would otherwise fetch moon's pinned proto later, unretried, and
+        # the job that saves the cache first (Docs) never runs moon.
+        auto-setup: true
+        cache: false
+
+    - name: Wait before attempt 2
+      if: steps.cached.outputs.ok != 'true' && steps.a1.outcome == 'failure'
+      shell: bash
+      run: sleep 20
+    - name: Install the toolchain (attempt 2 of 5)
+      id: a2
+      if: steps.cached.outputs.ok != 'true' && steps.a1.outcome == 'failure'
+      continue-on-error: true
+      uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+      with:
+        auto-install: true
+        # moon ci would otherwise fetch moon's pinned proto later, unretried, and
+        # the job that saves the cache first (Docs) never runs moon.
+        auto-setup: true
+        cache: false
+
+    - name: Wait before attempt 3
+      if: steps.cached.outputs.ok != 'true' && steps.a2.outcome == 'failure'
+      shell: bash
+      run: sleep 40
+    - name: Install the toolchain (attempt 3 of 5)
+      id: a3
+      if: steps.cached.outputs.ok != 'true' && steps.a2.outcome == 'failure'
+      continue-on-error: true
+      uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+      with:
+        auto-install: true
+        # moon ci would otherwise fetch moon's pinned proto later, unretried, and
+        # the job that saves the cache first (Docs) never runs moon.
+        auto-setup: true
+        cache: false
+
+    - name: Wait before attempt 4
+      if: steps.cached.outputs.ok != 'true' && steps.a3.outcome == 'failure'
+      shell: bash
+      run: sleep 80
+    - name: Install the toolchain (attempt 4 of 5)
+      id: a4
+      if: steps.cached.outputs.ok != 'true' && steps.a3.outcome == 'failure'
+      continue-on-error: true
+      uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+      with:
+        auto-install: true
+        # moon ci would otherwise fetch moon's pinned proto later, unretried, and
+        # the job that saves the cache first (Docs) never runs moon.
+        auto-setup: true
+        cache: false
+
+    - name: Wait before attempt 5
+      if: steps.cached.outputs.ok != 'true' && steps.a4.outcome == 'failure'
+      shell: bash
+      run: sleep 120
+    - name: Install the toolchain (attempt 5 of 5)
+      if: steps.cached.outputs.ok != 'true' && steps.a4.outcome == 'failure'
+      uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+      with:
+        auto-install: true
+        # moon ci would otherwise fetch moon's pinned proto later, unretried, and
+        # the job that saves the cache first (Docs) never runs moon.
+        auto-setup: true
+        cache: false
