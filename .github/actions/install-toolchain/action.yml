@@ -5,6 +5,12 @@ description: >-
   backoff, because that action fetches the proto binary from GitHub Releases on every run.
 
 inputs:
+  use-cache:
+    description: >-
+      Restore and save the cached toolchain. Jobs that hold publish secrets pass "false" so they
+      never run binaries a cache entry supplied.
+    required: false
+    default: "true"
   github-token:
     description: Token proto uses to resolve tool versions against the GitHub API.
     required: false
@@ -15,6 +21,7 @@ runs:
   steps:
     - name: Restore the cached toolchain
       id: cache
+      if: inputs.use-cache == 'true'
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: |
@@ -22,7 +29,9 @@ runs:
           ~/.proto/shims
           ~/.proto/tools
           ~/.proto/plugins
-        key: proto-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.prototools', '.moon/toolchains.yml') }}
+        # Hosted and self-hosted runners keep ~ at different depths from the
+        # workspace, and actions/cache archives relative to it, so they never share.
+        key: proto-v2-${{ runner.environment }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.prototools', '.moon/toolchains.yml') }}
 
     # A hit is used only if every pinned tool answers at its pinned version.
     - name: Use the cached toolchain
@@ -31,7 +40,10 @@ runs:
       shell: bash
       run: |
         export PATH="$HOME/.proto/shims:$HOME/.proto/bin:$PATH"
-        if "$GITHUB_ACTION_PATH/cached-ok.sh" .prototools; then
+        # moon setup installs moon's own pinned proto into ~/.proto/tools; with a
+        # complete cache it has nothing to fetch, and if it fails the retried
+        # install below runs instead.
+        if "$GITHUB_ACTION_PATH/cached-ok.sh" .prototools && moon setup; then
           echo "$HOME/.proto/bin" >> "$GITHUB_PATH"
           echo "$HOME/.proto/shims" >> "$GITHUB_PATH"
           echo "ok=true" >> "$GITHUB_OUTPUT"
@@ -46,6 +58,9 @@ runs:
         GITHUB_TOKEN: ${{ inputs.github-token }}
       with:
         auto-install: true
+        # moon ci would otherwise fetch moon's pinned proto later, unretried, and
+        # the job that saves the cache first (Docs) never runs moon.
+        auto-setup: true
         cache: false
 
     - name: Wait before attempt 2
@@ -61,6 +76,9 @@ runs:
         GITHUB_TOKEN: ${{ inputs.github-token }}
       with:
         auto-install: true
+        # moon ci would otherwise fetch moon's pinned proto later, unretried, and
+        # the job that saves the cache first (Docs) never runs moon.
+        auto-setup: true
         cache: false
 
     - name: Wait before attempt 3
@@ -76,6 +94,9 @@ runs:
         GITHUB_TOKEN: ${{ inputs.github-token }}
       with:
         auto-install: true
+        # moon ci would otherwise fetch moon's pinned proto later, unretried, and
+        # the job that saves the cache first (Docs) never runs moon.
+        auto-setup: true
         cache: false
 
     - name: Wait before attempt 4
@@ -91,6 +112,9 @@ runs:
         GITHUB_TOKEN: ${{ inputs.github-token }}
       with:
         auto-install: true
+        # moon ci would otherwise fetch moon's pinned proto later, unretried, and
+        # the job that saves the cache first (Docs) never runs moon.
+        auto-setup: true
         cache: false
 
     - name: Wait before attempt 5
@@ -104,4 +128,7 @@ runs:
         GITHUB_TOKEN: ${{ inputs.github-token }}
       with:
         auto-install: true
+        # moon ci would otherwise fetch moon's pinned proto later, unretried, and
+        # the job that saves the cache first (Docs) never runs moon.
+        auto-setup: true
         cache: false

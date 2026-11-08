@@ -36,6 +36,29 @@ describe('the toolchain install survives a release-download outage', () => {
     expect(installs.slice(0, 4).every((s) => s['continue-on-error'] === true)).toBe(true);
     expect(installs[4]['continue-on-error']).toBeUndefined();
   });
+
+  // moon ci installs moon's own pinned proto unretried unless the install already did,
+  // and whichever job saves the cache first must save a toolchain that includes it.
+  test('every install attempt also runs moon setup, and so does a cache hit', () => {
+    const raw = readFileSync(join(actionDir, 'action.yml'), 'utf-8');
+    const action = YAML.parse(raw) as { runs: { steps: (Step & { run?: string })[] } };
+    const installs = action.runs.steps.filter((s) => s.uses?.startsWith('moonrepo/setup-toolchain@'));
+    expect(installs.every((s) => s.with?.['auto-setup'] === true)).toBe(true);
+    const cached = action.runs.steps.find((s) => s.id === 'cached');
+    expect(cached?.run).toMatch(/cached-ok\.sh" \.prototools && moon setup/);
+  });
+
+  test('hosted and self-hosted runners never share an entry, and publish jobs skip the cache', () => {
+    const action = YAML.parse(readFileSync(join(actionDir, 'action.yml'), 'utf-8')) as { runs: { steps: Step[] } };
+    expect(String(action.runs.steps.find((s) => s.id === 'cache')?.with?.key)).toContain('${{ runner.environment }}');
+    const workflow = YAML.parse(readFileSync(join(repoRoot, '.github/workflows/ci.yml'), 'utf-8')) as {
+      jobs: Record<string, { steps?: Step[] }>;
+    };
+    for (const job of ['worker-publish', 'docs-publish']) {
+      const step = workflow.jobs[job].steps?.find((s) => s.uses === './.github/actions/install-toolchain');
+      expect(step?.with?.['use-cache']).toBe('false');
+    }
+  });
 });
 
 describe('a cached toolchain is used only at its pinned versions', () => {
