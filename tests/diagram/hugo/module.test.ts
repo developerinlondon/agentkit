@@ -31,14 +31,14 @@ interface Build {
 let counter = 0;
 
 // Each build gets its own copy so a mutation in one case cannot leak into another.
-function build(mutate?: (site: string) => void): Build {
+function build(mutate?: (site: string) => void, minify = true): Build {
   const site = join(scratch, `site-${++counter}`);
   cpSync(EXAMPLE, site, { recursive: true });
   // The example points at the module relative to itself; a copy has to name it.
   edit(site, 'hugo.yaml', 'themesDir: ../..', `themesDir: ${MODULE_PARENT}`);
   mutate?.(site);
   const run = Bun.spawnSync(
-    [HUGO as string, '--minify', '-s', site, '-d', join(site, 'public')],
+    [HUGO as string, ...(minify ? ['--minify'] : []), '-s', site, '-d', join(site, 'public')],
     { stdout: 'pipe', stderr: 'pipe' },
   );
   const log = `${run.stdout.toString()}${run.stderr.toString()}`;
@@ -238,6 +238,36 @@ describe('the build refuses what it cannot draw faithfully', () => {
       /dark_selector: .* is not one of/,
     ],
     [
+      'a project icon with a shape inside its title',
+      (s) => writeFileSync(join(s, 'assets/icons/acme/widget.svg'), '<svg viewBox="0 0 8 8"><title><rect width="2" height="2"/></title><rect width="3" height="3"/></svg>'),
+      /<rect> inside <title>, which may hold text only/,
+    ],
+    [
+      'a project icon with a path inside its desc',
+      (s) => writeFileSync(join(s, 'assets/icons/acme/widget.svg'), '<svg viewBox="0 0 8 8"><desc><path d="M0 0h4"/></desc></svg>'),
+      /<path> inside <desc>, which may hold text only/,
+    ],
+    [
+      'a project icon whose paint hides url( behind an entity',
+      (s) => writeFileSync(join(s, 'assets/icons/acme/widget.svg'), '<svg viewBox="0 0 8 8"><rect width="8" height="8" fill="u&#114;l(http://example.org/x.svg#g)"/></svg>'),
+      /project icons may hold only/,
+    ],
+    [
+      'a project icon whose mask hides url( behind an entity',
+      (s) => writeFileSync(join(s, 'assets/icons/acme/widget.svg'), '<svg viewBox="0 0 8 8"><rect width="8" height="8" mask="u&#x72;l(http://example.org/m.svg#m)"/></svg>'),
+      /project icons may hold only/,
+    ],
+    [
+      'a project icon whose clip-path hides url( behind a CSS escape',
+      (s) => writeFileSync(join(s, 'assets/icons/acme/widget.svg'), '<svg viewBox="0 0 8 8"><rect width="8" height="8" clip-path="\\75 rl(http://example.org/c.svg#c)"/></svg>'),
+      /clip-path=.*not a valid clip-path value/,
+    ],
+    [
+      'a project icon that borrows a page class',
+      (s) => writeFileSync(join(s, 'assets/icons/acme/widget.svg'), '<svg viewBox="0 0 8 8"><rect class="dg-node" width="8" height="8"/></svg>'),
+      /attribute class; project icons may hold only/,
+    ],
+    [
       'a font token that ends its declaration',
       (s) => edit(s, 'hugo.yaml', 'radius: 6', 'radius: 6\n      sans: "Inter; color: red"'),
       /tokens.sans: .* is not a font name/,
@@ -274,18 +304,31 @@ describe('the build refuses what it cannot draw faithfully', () => {
 });
 
 describe('edges of the rules', () => {
-  test('a project icon is rebuilt from its parsed shapes, comments and prolog dropped', () => {
+  test('a project icon\'s ids are prefixed and its url(#id) references follow them', () => {
     const result = build((s) =>
       writeFileSync(
         join(s, 'assets/icons/acme/widget.svg'),
-        '<?xml version="1.0"?>\n<!-- exported -->\n<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"><title>W &amp; x</title><rect   x=\'1\'  y="1"\n width="6" height="6" rx="1" /></svg>\n',
+        '<svg viewBox="0 0 8 8"><defs><linearGradient id="g"><stop offset="0" stop-color="#000"/></linearGradient></defs><rect width="8" height="8" fill="url(#g)"/></svg>',
       )
     );
+    expect(result.log).not.toMatch(/ERROR/);
+    const checkout = figures(result.html)[0];
+    expect(checkout).toContain('<linearGradient id="dgi-acme-widget-g">');
+    expect(checkout).toContain('fill="url(#dgi-acme-widget-g)"');
+    expect(checkout).not.toMatch(/id="g"/);
+  });
+
+  test('a project icon is rebuilt from its parsed shapes, comments and prolog dropped', () => {
+    const exported = '<?xml version="1.0"?>\n<!-- exported -->\n<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8">'
+      + '<title>W &amp; x &#60;b&#62;</title><rect   x=\'1\'  y="1"\n width="6" height="6" rx="1" /></svg>\n';
+    const result = build((s) => writeFileSync(join(s, 'assets/icons/acme/widget.svg'), exported), false);
     expect(result.log).not.toMatch(/ERROR/);
     const icons = [...figures(result.html)[0].matchAll(/<g class="dg-icon dg-icon-stroke"[^>]*>(.*?)<\/g>/g)].map((m) => m[1]);
     const icon = icons.find((body) => body.includes('<rect')) ?? '';
     expect(icon).toContain('<rect x="1" y="1" width="6" height="6" rx="1"/>');
-    expect(icon).toContain('<title>W &amp; x</title>');
+    // Unminified, so the module's own output is what is read: text is decoded and re-escaped,
+    // never copied, and a numeric entity comes out named.
+    expect(icon).toContain('<title>W &amp; x &lt;b&gt;</title>');
     expect(icon).not.toContain('exported');
   });
 

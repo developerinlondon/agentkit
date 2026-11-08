@@ -16,7 +16,7 @@
     {{- $mode := cond (reflect.IsMap $cfg) ($cfg.mode | default "color") "color" -}}
     {{- $file := printf "%s/%s.svg" (strings.TrimSuffix "/" $dir) (index $parts 1) -}}
     {{- with resources.Get $file -}}
-      {{- $parsed := partialCached "diagram/icon-safe.html" .Content $file -}}
+      {{- $parsed := partialCached "diagram/icon-safe.html" (dict "svg" .Content "prefix" (printf "dgi-%s-%s-" (anchorize (index $parts 0)) (anchorize (index $parts 1)))) $file -}}
       {{- if not (in (slice "stroke" "mono" "color") $mode) -}}
         {{- $out = dict "err" (printf "icon pack %q: mode %q is not stroke, mono or color" (index $parts 0) $mode) -}}
       {{- else if $parsed.err -}}
