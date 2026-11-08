@@ -24,9 +24,9 @@ function mutate(args: string[], testCommand: string): ReturnType<typeof spawnSyn
 function suite(redWhen: string): string {
   return [
     `if grep -q '${redWhen}' '${target}'; then`,
-    "  printf '\\n 2 pass\\n 1 fail\\n'",
+    "  printf '\\n 2 pass\\n 1 fail\\nRan 3 tests across 1 file.\\n'",
     'else',
-    "  printf '\\n 3 pass\\n 0 fail\\n'",
+    "  printf '\\n 3 pass\\n 0 fail\\nRan 3 tests across 1 file.\\n'",
     'fi',
   ].join('\n');
 }
@@ -94,22 +94,40 @@ describe('verdicts', () => {
   test('a test that prints an errors line is not a load error', () => {
     const result = mutate(
       ['--replace', 'LIMIT = 10', '--with', 'LIMIT = 99'],
-      "printf ' 3 errors\\n 3 pass\\n 0 fail\\n 4 expect() calls\\n 2 errors\\n'",
+      "printf ' 3 errors\\n 3 pass\\n 0 fail\\n 4 expect() calls\\n 2 errors\\nRan 3 tests across 1 file.\\n'",
     );
 
     expect(result.stderr).toContain('SURVIVED');
     expect(result.status).toBe(1);
   });
 
+  test('a pass and fail pair a test prints is not a summary', () => {
+    const result = mutate(
+      ['--replace', 'LIMIT = 10', '--with', 'LIMIT = 99'],
+      "printf ' 0 pass\\n 1 fail\\n 5 pass\\n 0 fail\\nRan 5 tests across 1 file.\\n'",
+    );
+
+    expect(result.stderr).toContain('SURVIVED — 5 pass / 0 fail');
+    expect(result.status).toBe(1);
+  });
+
+  test('load errors from every summary are added up', () => {
+    const file = ' 1 pass\\n 0 fail\\n 1 error\\nRan 1 test across 1 file.\\n';
+    const result = mutate(['--replace', 'LIMIT = 10', '--with', 'LIMIT = 99'], `printf '${file}${file}'`);
+
+    expect(result.stderr).toContain('CAUGHT — 2 pass / 0 fail / 2 load errors');
+    expect(result.status).toBe(0);
+  });
+
   // A runner that drives several files prints a summary per file.
   for (const [name, earlier] of [
-    ['load error', ' 1 pass\\n 0 fail\\n 1 error'],
-    ['failure', ' 1 pass\\n 2 fail'],
+    ['load error', ' 1 pass\\n 0 fail\\n 1 error\\nRan 1 test across 1 file.'],
+    ['failure', ' 1 pass\\n 2 fail\\nRan 3 tests across 1 file.'],
   ]) {
     test(`a clean later summary does not hide an earlier file's ${name}`, () => {
       const result = mutate(
         ['--replace', 'LIMIT = 10', '--with', 'LIMIT = 99'],
-        `printf '${earlier}\\n 3 pass\\n 0 fail\\n'`,
+        `printf '${earlier}\\n 3 pass\\n 0 fail\\nRan 3 tests across 1 file.\\n'`,
       );
 
       expect(result.stderr).toContain('CAUGHT — 4 pass');
@@ -148,7 +166,7 @@ describe('restoration', () => {
   test('a restore that cannot write the file is a hard error, not a verdict', () => {
     const result = mutate(
       ['--replace', 'LIMIT = 10', '--with', 'LIMIT = 99'],
-      `chmod 444 '${target}'; printf '\\n 2 pass\\n 1 fail\\n'`,
+      `chmod 444 '${target}'; printf '\\n 2 pass\\n 1 fail\\nRan 3 tests across 1 file.\\n'`,
     );
     chmodSync(target, 0o644);
 
@@ -160,7 +178,7 @@ describe('restoration', () => {
   test('each restore fault names its own cause', () => {
     const unwritable = mutate(
       ['--replace', 'LIMIT = 10', '--with', 'LIMIT = 99'],
-      `chmod 444 '${target}'; printf '\\n 2 pass\\n 1 fail\\n'`,
+      `chmod 444 '${target}'; printf '\\n 2 pass\\n 1 fail\\nRan 3 tests across 1 file.\\n'`,
     );
     chmodSync(target, 0o644);
 
@@ -171,7 +189,7 @@ describe('restoration', () => {
   test('a restore that writes the wrong bytes is a hard error', () => {
     const result = mutate(
       ['--replace', 'LIMIT = 10', '--with', 'LIMIT = 99'],
-      `for d in "\${TMPDIR:-/tmp}"/agentkit-mutate.*; do [ -f "$d/source.ts" ] && printf 'TAMPERED\\n' > "$d/source.ts"; done; printf '\\n 2 pass\\n 1 fail\\n'`,
+      `for d in "\${TMPDIR:-/tmp}"/agentkit-mutate.*; do [ -f "$d/source.ts" ] && printf 'TAMPERED\\n' > "$d/source.ts"; done; printf '\\n 2 pass\\n 1 fail\\nRan 3 tests across 1 file.\\n'`,
     );
 
     expect(result.stderr).toContain('RESTORE FAILED');
@@ -181,7 +199,7 @@ describe('restoration', () => {
   test('a failed restore keeps the backup and names where it is', () => {
     const result = mutate(
       ['--replace', 'LIMIT = 10', '--with', 'LIMIT = 99'],
-      `chmod 444 '${target}'; printf '\\n 2 pass\\n 1 fail\\n'`,
+      `chmod 444 '${target}'; printf '\\n 2 pass\\n 1 fail\\nRan 3 tests across 1 file.\\n'`,
     );
     chmodSync(target, 0o644);
 

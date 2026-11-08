@@ -17,14 +17,16 @@ test_verdict() {
 
 	# A runner that drives several files prints one summary per file, and a
 	# clean later summary must not hide an earlier failure, so every summary is
-	# summed. A summary is a fail count with the nearest pass count before it.
-	# A file that throws while bun collects it drops its tests from both counts
-	# and shows only as "N errors" on the line after the fail count; any other
-	# "N errors" line is something a test printed.
+	# summed. A summary is a fail count with the nearest pass count before it,
+	# and counts only once bun's "Ran N tests across" line closes it: pass and
+	# fail lines a test prints come before bun's own. A file that throws while
+	# bun collects it drops its tests from both counts and shows only as
+	# "N errors" on the line after the fail count.
 	counts="$(awk '
 		/^[[:space:]]*[0-9]+ pass/ { last_pass = $1; have_pass = 1 }
-		/^[[:space:]]*[0-9]+ fail/ && have_pass { p += last_pass; f += $1; blocks++; have_pass = 0; after = NR }
-		after && NR == after + 1 && /^[[:space:]]*[0-9]+ errors?[[:space:]]*$/ { e += $1 }
+		/^[[:space:]]*[0-9]+ fail/ && have_pass { bp = last_pass; bf = $1; be = 0; open = 1; have_pass = 0; after = NR }
+		after && NR == after + 1 && /^[[:space:]]*[0-9]+ errors?[[:space:]]*$/ { be = $1 }
+		/^Ran [0-9]+ tests? across/ && open { p += bp; f += bf; e += be; blocks++; open = 0 }
 		END { if (blocks) print p + 0, f + 0, e + 0 }
 	' "$output")"
 	read -r pass fail errors <<<"$counts"
