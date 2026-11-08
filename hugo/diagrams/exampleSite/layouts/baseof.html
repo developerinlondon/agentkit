@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ .Title }}</title>
+<style>body{max-width:44rem;margin:2rem auto;padding:0 1rem;font-family:system-ui,sans-serif}@media (prefers-color-scheme:dark){body{background:#0f1016;color:#e8e8f0}}</style>
+{{ partial "diagram/head.html" . }}
+</head>
+<body>
+<main>{{ block "main" . }}{{ end }}</main>
+</body>
+</html>

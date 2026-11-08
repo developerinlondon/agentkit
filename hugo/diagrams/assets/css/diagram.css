@@ -1,0 +1,216 @@
+/* House theme. A site restyles every diagram through params.diagrams.tokens,
+   which the head partial emits after this file. `.dark` is the class Hextra
+   stamps on <html>. Dark values live in the head partial so a site can move
+   them to another selector or to a prefers-color-scheme query. */
+:root {
+  --dg-surface: #fbfafd;
+  --dg-sunk: #eeedf2;
+  --dg-ink: #14151c;
+  --dg-muted: #5c5d6b;
+  --dg-line: #d3d2dd;
+  --dg-accent: #0f6e7a;
+  --dg-accent-soft: #dbebee;
+  --dg-gate: #96600f;
+  --dg-gate-soft: #f2e6d0;
+  --dg-deny: #a32b2b;
+  --dg-allow: #2f6b45;
+  --dg-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  --dg-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --dg-radius: 3px;
+  --dg-group-radius: 5px;
+  --dg-icon-stroke: 1.4px;
+}
+
+
+figure.dg {
+  position: relative;
+  margin: 1.75rem 0;
+  background: var(--dg-surface);
+  border: 1px solid var(--dg-line);
+  border-radius: 6px;
+  padding: 2.1rem 1.4rem 1rem;
+}
+
+.dg-scroll { overflow-x: auto; }
+
+/* Natural size, never upscaled; shrinks to the column down to 460px, then scrolls. */
+.dg-svg {
+  display: block;
+  width: var(--dg-w);
+  max-width: 100%;
+  min-width: min(var(--dg-w), 460px);
+  height: auto;
+  margin: 0 auto;
+  color: var(--dg-ink);
+}
+
+figure.dg figcaption {
+  font-family: var(--dg-mono);
+  font-size: 0.76rem;
+  line-height: 1.55;
+  color: var(--dg-muted);
+  border-top: 1px solid var(--dg-line);
+  padding-top: 0.8rem;
+  margin-top: 1rem;
+}
+
+.dg-shape { stroke-width: 1.2; }
+.dg-node:not(.dg-pill) > rect.dg-shape, .dg-note > rect.dg-shape { rx: var(--dg-radius); ry: var(--dg-radius); }
+.dg-group > rect.dg-shape { rx: var(--dg-group-radius); ry: var(--dg-group-radius); }
+.dg-k-box .dg-shape { fill: var(--dg-surface); stroke: var(--dg-ink); }
+.dg-k-fill .dg-shape { fill: var(--dg-sunk); stroke: var(--dg-ink); }
+.dg-k-accent .dg-shape { fill: var(--dg-accent-soft); stroke: var(--dg-accent); stroke-width: 1.4; }
+.dg-k-gate .dg-shape { fill: var(--dg-gate-soft); stroke: var(--dg-gate); stroke-width: 1.4; }
+.dg-k-deny .dg-shape { fill: var(--dg-surface); stroke: var(--dg-deny); stroke-width: 1.4; }
+.dg-k-allow .dg-shape { fill: var(--dg-surface); stroke: var(--dg-allow); stroke-width: 1.4; }
+.dg-k-ghost .dg-shape { fill: none; stroke: var(--dg-muted); stroke-dasharray: 3 3; }
+.dg-k-accent .dg-icon { color: var(--dg-accent); }
+.dg-k-gate .dg-icon { color: var(--dg-gate); }
+
+.dg-g-dashed .dg-shape { fill: none; stroke: var(--dg-ink); stroke-dasharray: 5 4; }
+.dg-g-solid .dg-shape { fill: var(--dg-surface); stroke: var(--dg-ink); }
+.dg-g-tint .dg-shape { fill: var(--dg-sunk); stroke: none; }
+.dg-g-gate .dg-shape { fill: none; stroke: var(--dg-gate); stroke-width: 1.6; stroke-dasharray: 4 4; }
+.dg-faint-group > .dg-shape { opacity: 0.55; }
+.dg-dashed .dg-shape { stroke-dasharray: 5 4; }
+
+/* Single-colour icons are normalised to the theme ink and stroke; full-colour
+   brand artwork (dg-icon-color) is never restyled. */
+.dg-icon-stroke, .dg-icon-stroke * { fill: none; stroke: currentColor; stroke-width: var(--dg-icon-stroke); vector-effect: non-scaling-stroke; }
+.dg-icon-mono { fill: currentColor; }
+
+.dg-line { fill: none; stroke-width: 1.2; }
+.dg-c-ink .dg-line { stroke: var(--dg-ink); }
+.dg-c-accent .dg-line { stroke: var(--dg-accent); stroke-width: 1.6; }
+.dg-c-gate .dg-line { stroke: var(--dg-gate); stroke-width: 1.6; }
+.dg-c-deny .dg-line { stroke: var(--dg-deny); stroke-width: 1.4; }
+.dg-c-allow .dg-line { stroke: var(--dg-allow); stroke-width: 1.4; }
+.dg-dash { stroke-dasharray: 4 4; }
+.dg-arrow-ink { fill: var(--dg-ink); }
+.dg-arrow-accent { fill: var(--dg-accent); }
+.dg-arrow-gate { fill: var(--dg-gate); }
+.dg-arrow-deny { fill: var(--dg-deny); }
+.dg-arrow-allow { fill: var(--dg-allow); }
+.dg-plate { fill: var(--dg-surface); }
+
+.dg-rule { stroke: var(--dg-ink); stroke-width: 1.2; }
+.dg-faint { opacity: 0.45; }
+.dg-lifeline { stroke: var(--dg-line); stroke-width: 1.4; }
+.dg-frame { fill: none; stroke: var(--dg-gate); stroke-width: 1; opacity: 0.8; }
+.dg-frame-tab { fill: var(--dg-gate-soft); stroke: var(--dg-gate); stroke-width: 1; }
+.dg-note .dg-shape { fill: var(--dg-gate-soft); stroke: var(--dg-gate); stroke-width: 1; }
+
+.dg-t, .dg-tb { font-family: var(--dg-sans); font-size: 13px; fill: var(--dg-ink); }
+.dg-tb { font-weight: 700; }
+.dg-ts, .dg-ta, .dg-tg, .dg-td, .dg-tl { font-family: var(--dg-mono); font-size: 11px; fill: var(--dg-muted); }
+.dg-ta { fill: var(--dg-accent); }
+.dg-tg { fill: var(--dg-gate); }
+.dg-td { fill: var(--dg-deny); }
+.dg-tl { fill: var(--dg-allow); }
+.dg-mid { text-anchor: middle; }
+.dg-end { text-anchor: end; }
+
+.dg-text { margin-top: 0.75rem; font-size: 0.85rem; color: var(--dg-muted); }
+figure.dg .dg-text > summary { cursor: pointer; font-family: var(--dg-mono); font-size: 0.72rem; letter-spacing: 0.03em; text-transform: uppercase; }
+figure.dg .dg-text-body { margin-top: 0.5rem; color: var(--dg-ink); }
+.dg-text-body ul, .dg-text-body ol { margin: 0.25rem 0 0.75rem; }
+.dg-text-h { margin: 0.5rem 0 0; font-weight: 600; }
+
+/* Enhancement layer: only present once diagram.js has run. */
+.dg-live .dg-node { cursor: default; outline: none; }
+.dg-live .dg-node, .dg-live .dg-edge, .dg-live .dg-group { transition: opacity 0.15s ease; }
+.dg-live.is-focusing .dg-node:not(.is-hot),
+.dg-live.is-focusing .dg-edge:not(.is-hot),
+.dg-live.is-focusing .dg-group:not(.is-hot) { opacity: 0.28; }
+.dg-live .dg-edge.is-hot .dg-line { stroke-width: 2.2; }
+.dg-live .dg-node.is-hot .dg-shape { stroke-width: 2; }
+.dg-live .dg-node:focus-visible .dg-shape { stroke: var(--dg-accent); stroke-width: 2.6; }
+.dg-tip {
+  position: absolute;
+  z-index: 2;
+  max-width: 18rem;
+  padding: 0.5rem 0.65rem;
+  background: var(--dg-surface);
+  color: var(--dg-ink);
+  border: 1px solid var(--dg-line);
+  border-left: 3px solid var(--dg-accent);
+  border-radius: 4px;
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.12);
+  font-size: 0.8rem;
+  line-height: 1.45;
+  pointer-events: none;
+}
+.dg-tip[hidden] { display: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .dg-live .dg-node, .dg-live .dg-edge, .dg-live .dg-group { transition: none; }
+}
+
+/* Enlarge: a small affordance on the figure, and a full-viewport dialog that
+   shows the canvas at 1:1 so every label is at its native size. */
+.dg-enlarge {
+  position: absolute;
+  top: 0.45rem;
+  right: 0.45rem;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0.45rem;
+  font: 0.68rem/1.2 var(--dg-mono);
+  color: var(--dg-muted);
+  background: var(--dg-surface);
+  border: 1px solid var(--dg-line);
+  border-radius: 4px;
+  cursor: zoom-in;
+}
+.dg-enlarge:hover, .dg-enlarge:focus-visible { color: var(--dg-ink); border-color: var(--dg-muted); }
+.dg-enlarge svg { width: 0.75rem; height: 0.75rem; fill: none; stroke: currentColor; stroke-width: 1.6; }
+.dg-live { cursor: zoom-in; }
+.dg-live .dg-node, .dg-live .dg-group { cursor: pointer; }
+
+.dg-zoom {
+  width: 100vw;
+  height: 100dvh;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: var(--dg-surface);
+  color: var(--dg-ink);
+}
+.dg-zoom::backdrop { background: rgb(0 0 0 / 0.5); }
+.dg-zoom-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 1rem;
+  padding: 0.6rem 0.9rem;
+  border-bottom: 1px solid var(--dg-line);
+  font: 0.75rem/1.2 var(--dg-mono);
+  color: var(--dg-muted);
+}
+.dg-zoom-close {
+  padding: 0.35rem 0.75rem;
+  font: inherit;
+  color: var(--dg-ink);
+  background: var(--dg-sunk);
+  border: 1px solid var(--dg-line);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.dg-zoom-pane {
+  position: relative;
+  height: calc(100% - 2.6rem);
+  overflow: auto;
+  padding: 1.5rem;
+  touch-action: pan-x pan-y pinch-zoom;
+  -webkit-overflow-scrolling: touch;
+}
+.dg-zoom-pane .dg-svg { max-width: none; min-width: 0; height: auto; margin: 0 auto; cursor: default; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .dg-zoom[open] { animation: dg-zoom-in 0.14s ease-out; }
+  @keyframes dg-zoom-in { from { opacity: 0; } to { opacity: 1; } }
+}

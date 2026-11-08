@@ -1,0 +1,18 @@
+{{- $e := .e }}{{ $rt := .rt }}{{ $f := "diagram/fmt.html" -}}
+{{- $style := $e.style | default "sync" -}}
+{{- $color := index (dict "sync" "ink" "async" "ink" "data" "accent" "gate" "gate" "deny" "deny" "allow" "allow") $style -}}
+{{- $dashed := or (eq $style "async") ($e.dashed | default false) -}}
+{{- $d := "" -}}
+{{- range $i, $p := $rt.pts }}{{ $d = printf "%s%s %s %s " $d (cond (eq $i 0) "M" "L") (partial $f $p.x) (partial $f $p.y) }}{{ end -}}
+{{- $arrow := $e.arrow | default "end" -}}
+<g class="dg-edge dg-c-{{ $color }}" data-from="{{ $e.from }}" data-to="{{ $e.to }}"><path class="dg-line{{ if $dashed }} dg-dash{{ end }}" d="{{ strings.TrimSpace $d }}"{{ if ne $arrow "none" }} marker-end="url(#{{ .uid }}-m-{{ $color }})"{{ end }}{{ if eq $arrow "both" }} marker-start="url(#{{ .uid }}-m-{{ $color }})"{{ end }}/>
+{{- with $e.label -}}
+  {{- $lg := partial "diagram/label.html" (dict "e" $e "rt" $rt "cw" $.cw "rh" $.rh) -}}
+  {{- $tcls := index (dict "ink" "dg-ts" "accent" "dg-ta" "gate" "dg-tg" "deny" "dg-td" "allow" "dg-tl") $color -}}
+  {{- $anchor := $lg.anchor }}{{ $lx := $lg.lx }}{{ $top := $lg.top }}{{ $lines := $lg.lines -}}
+  <rect class="dg-plate" x="{{ partial $f $lg.x }}" y="{{ partial $f $lg.y }}" width="{{ partial $f $lg.w }}" height="{{ partial $f $lg.h }}" rx="2"/>
+  {{- range $i, $l := $lines -}}
+  <text class="{{ $tcls }}{{ if eq $anchor "middle" }} dg-mid{{ else if eq $anchor "end" }} dg-end{{ end }}" x="{{ partial $f $lx }}" y="{{ partial $f (add $top (add 10.5 (mul 14 (float $i)))) }}">{{ $l }}</text>
+  {{- end -}}
+{{- end -}}
+</g>

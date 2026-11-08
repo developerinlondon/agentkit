@@ -1,0 +1,110 @@
+{{- $spec := .spec -}}{{- $uid := .uid -}}
+{{- $g := $spec.grid | default dict -}}
+{{- $cw := float ($g.col | default 200) -}}
+{{- $rh := float ($g.row | default 90) -}}
+{{- $dw := float (($spec.defaults | default dict).w | default 150) -}}
+{{- $dir := $spec.direction | default "LR" -}}
+{{- $boxes := dict -}}
+{{- $nodes := slice -}}
+{{- range $spec.nodes -}}
+  {{- $b := partial "diagram/box.html" (dict "n" . "cw" $cw "rh" $rh "dw" $dw) -}}
+  {{- $boxes = merge $boxes (dict .id $b) -}}
+  {{- $nodes = $nodes | append (dict "n" . "b" $b) -}}
+{{- end -}}
+{{- $notes := slice -}}
+{{- range $spec.notes -}}
+  {{- $style := .style | default "muted" -}}
+  {{- $mono := in (slice "muted" "caps" "accent" "gate" "deny" "allow") $style -}}
+  {{- $lines := partial "diagram/lines.html" .text -}}
+  {{- if eq $style "caps" }}{{ $up := slice }}{{ range $lines }}{{ $up = $up | append (upper .) }}{{ end }}{{ $lines = $up }}{{ end -}}
+  {{- $w := partial "diagram/textw.html" (dict "s" $lines "size" (cond $mono 11 13) "mono" $mono "bold" (eq $style "bold")) -}}
+  {{- $anchor := .anchor | default "start" -}}
+  {{- $x := mul (float .col) $cw }}{{ $y := mul (float .row) $rh -}}
+  {{- $x0 := cond (eq $anchor "middle") (sub $x (div $w 2.0)) (cond (eq $anchor "end") (sub $x $w) $x) -}}
+  {{- $lead := cond $mono 15.0 17.0 -}}
+      {{- $notes = $notes | append (dict "x" $x "y" $y "lines" $lines "style" $style "anchor" $anchor "lead" $lead "group" .group "bx" $x0 "by" (sub $y 11) "br" (add $x0 $w) "bb" (add $y (add 4 (mul $lead (sub (len $lines) 1))))) -}}
+{{- end -}}
+{{- $groups := slice -}}
+{{- range $spec.groups -}}
+  {{- $gr := . -}}
+  {{- $pad := float ($gr.pad | default 16) -}}
+  {{- $top := add $pad (cond (gt (len ($gr.label | default "")) 0) 16.0 0.0) -}}
+  {{- $x := 1e9 }}{{ $y := 1e9 }}{{ $r := -1e9 }}{{ $bt := -1e9 -}}
+  {{- range $spec.nodes -}}
+    {{- if eq .group $gr.id -}}
+      {{- $b := index $boxes .id -}}
+      {{- $x = math.Min $x $b.x }}{{ $y = math.Min $y $b.y }}{{ $r = math.Max $r $b.r }}{{ $bt = math.Max $bt $b.b -}}
+    {{- end -}}
+  {{- end -}}
+  {{- range $notes -}}
+    {{- if eq .group $gr.id }}{{ $x = math.Min $x .bx }}{{ $y = math.Min $y .by }}{{ $r = math.Max $r .br }}{{ $bt = math.Max $bt .bb }}{{ end -}}
+  {{- end -}}
+  {{- $x = sub $x $pad }}{{ $y = sub $y $top }}{{ $r = add $r $pad }}{{ $bt = add $bt $pad -}}
+  {{- with $gr.col }}{{ $x = mul (float .) $cw }}{{ end -}}
+  {{- with $gr.row }}{{ $y = mul (float .) $rh }}{{ end -}}
+  {{- with $gr.w }}{{ $r = add $x (float .) }}{{ end -}}
+  {{- with $gr.h }}{{ $bt = add $y (float .) }}{{ end -}}
+  {{- $b := dict "id" $gr.id "x" $x "y" $y "w" (sub $r $x) "h" (sub $bt $y) "r" $r "b" $bt "cx" (div (add $x $r) 2.0) "cy" (div (add $y $bt) 2.0) "shape" "rect" -}}
+  {{- $boxes = merge $boxes (dict $gr.id $b) -}}
+  {{- $groups = $groups | append (dict "g" $gr "b" $b) -}}
+{{- end -}}
+{{- $edges := slice -}}
+{{- range $spec.edges -}}
+  {{- $rt := partial "diagram/route.html" (dict "a" (index $boxes .from) "b" (index $boxes .to) "e" . "dir" $dir "cw" $cw "rh" $rh) -}}
+  {{- $edges = $edges | append (dict "e" . "rt" $rt) -}}
+{{- end -}}
+{{- /* Canvas: the union of everything drawn. */ -}}
+{{- $minX := 1e9 }}{{ $minY := 1e9 }}{{ $maxX := -1e9 }}{{ $maxY := -1e9 -}}
+{{- range $boxes -}}
+  {{- $minX = math.Min $minX .x }}{{ $minY = math.Min $minY .y }}{{ $maxX = math.Max $maxX .r }}{{ $maxY = math.Max $maxY .b -}}
+{{- end -}}
+{{- range $edges -}}
+  {{- if .e.label -}}
+    {{- $lg := partial "diagram/label.html" (dict "e" .e "rt" .rt "cw" $cw "rh" $rh) -}}
+    {{- if not .e.label_at -}}
+      {{- $need := cond (eq .rt.orient "h") $lg.w $lg.h -}}
+      {{- if gt $need (sub .rt.seglen 12) }}{{ warnf "diagram %q: label %q on %s → %s is longer than its segment; move the nodes apart or pin it with label_at" $.name .e.label .e.from .e.to }}{{ end -}}
+    {{- end -}}
+    {{- $minX = math.Min $minX $lg.x }}{{ $minY = math.Min $minY $lg.y }}{{ $maxX = math.Max $maxX (add $lg.x $lg.w) }}{{ $maxY = math.Max $maxY (add $lg.y $lg.h) -}}
+  {{- end -}}
+  {{- range .rt.pts }}{{ $minX = math.Min $minX .x }}{{ $maxX = math.Max $maxX .x }}{{ $minY = math.Min $minY .y }}{{ $maxY = math.Max $maxY .y }}{{ end -}}
+{{- end -}}
+{{- range $notes }}{{ $minX = math.Min $minX .bx }}{{ $maxX = math.Max $maxX .br }}{{ $minY = math.Min $minY .by }}{{ $maxY = math.Max $maxY .bb }}{{ end -}}
+{{- range $spec.rules -}}
+  {{- range (slice .from .to) }}{{ $px := mul (float (index . 0)) $cw }}{{ $py := mul (float (index . 1)) $rh }}{{ $minX = math.Min $minX $px }}{{ $maxX = math.Max $maxX $px }}{{ $minY = math.Min $minY $py }}{{ $maxY = math.Max $maxY $py }}{{ end -}}
+{{- end -}}
+{{- $m := 3.0 -}}
+{{- $vx := sub $minX $m }}{{ $vy := sub $minY $m }}{{ $vw := add (sub $maxX $minX) (mul 2 $m) }}{{ $vh := add (sub $maxY $minY) (mul 2 $m) -}}
+{{- partial "diagram/readable.html" (dict "name" $.name "w" $vw) -}}
+{{- $f := "diagram/fmt.html" -}}
+<svg class="dg-svg" viewBox="{{ partial $f $vx }} {{ partial $f $vy }} {{ partial $f $vw }} {{ partial $f $vh }}" style="--dg-w:{{ partial $f $vw }}px" role="img" aria-labelledby="{{ $uid }}-t {{ $uid }}-d"><title id="{{ $uid }}-t">{{ $spec.title }}</title><desc id="{{ $uid }}-d">{{ $spec.description }}</desc>
+{{- partial "diagram/markers.html" $uid -}}
+{{- range $groups -}}
+  {{- $b := .b }}{{ $gr := .g -}}
+  <g class="dg-group dg-g-{{ $gr.style | default "dashed" }}{{ if $gr.faint }} dg-faint-group{{ end }}" data-id="{{ $gr.id }}"{{ with $gr.description }} data-desc="{{ . }}"{{ end }}><rect class="dg-shape" x="{{ partial $f $b.x }}" y="{{ partial $f $b.y }}" width="{{ partial $f $b.w }}" height="{{ partial $f $b.h }}" rx="5"/>
+  {{- with $gr.label -}}
+    {{- if eq $gr.label_align "middle" -}}
+      <text class="{{ if eq $gr.style "gate" }}dg-tg{{ else }}dg-ts{{ end }} dg-mid" x="{{ partial $f $b.cx }}" y="{{ partial $f (add $b.y 20) }}">{{ cond (eq $gr.style "gate") . (upper .) }}</text>
+    {{- else -}}
+      <text class="{{ if eq $gr.style "gate" }}dg-tg{{ else }}dg-ts{{ end }}" x="{{ partial $f (add $b.x 12) }}" y="{{ partial $f (add $b.y 20) }}">{{ cond (eq $gr.style "gate") . (upper .) }}</text>
+    {{- end -}}
+  {{- end -}}
+  </g>
+{{- end -}}
+{{- range $spec.rules -}}
+  <line class="dg-rule{{ if .dashed }} dg-dash{{ end }}{{ if .faint }} dg-faint{{ end }}" x1="{{ partial $f (mul (float (index .from 0)) $cw) }}" y1="{{ partial $f (mul (float (index .from 1)) $rh) }}" x2="{{ partial $f (mul (float (index .to 0)) $cw) }}" y2="{{ partial $f (mul (float (index .to 1)) $rh) }}"/>
+{{- end -}}
+{{- range $edges -}}
+  {{- partial "diagram/edge.html" (dict "e" .e "rt" .rt "uid" $uid "cw" $cw "rh" $rh) -}}
+{{- end -}}
+{{- range $nodes -}}
+  {{- partial "diagram/node.html" (dict "n" .n "b" .b) -}}
+{{- end -}}
+{{- range $notes -}}
+  {{- $cls := index (dict "muted" "dg-ts" "caps" "dg-ts" "accent" "dg-ta" "gate" "dg-tg" "deny" "dg-td" "allow" "dg-tl" "ink" "dg-t" "bold" "dg-tb") .style -}}
+  {{- $n := . -}}
+  {{- range $i, $l := .lines -}}
+  <text class="{{ $cls }}{{ if eq $n.anchor "middle" }} dg-mid{{ else if eq $n.anchor "end" }} dg-end{{ end }}" x="{{ partial $f $n.x }}" y="{{ partial $f (add $n.y (mul (float $i) $n.lead)) }}">{{ $l }}</text>
+  {{- end -}}
+{{- end -}}
+</svg>

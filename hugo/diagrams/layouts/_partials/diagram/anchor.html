@@ -1,0 +1,13 @@
+{{- /* Point on a box side; .at slides it along the side from the centre, in px.
+       On a diamond the point stays on the slanted edge. */ -}}
+{{- $b := .b -}}{{- $at := float (.at | default 0) -}}
+{{- $hw := div $b.w 2.0 }}{{ $hh := div $b.h 2.0 -}}
+{{- $p := dict "x" $b.cx "y" $b.cy -}}
+{{- if in (slice "left" "right") .side -}}
+  {{- $dx := cond (eq $b.shape "diamond") (mul $hw (sub 1.0 (div (math.Abs $at) $hh))) $hw -}}
+  {{- $p = dict "x" (cond (eq .side "right") (add $b.cx $dx) (sub $b.cx $dx)) "y" (add $b.cy $at) -}}
+{{- else if in (slice "top" "bottom") .side -}}
+  {{- $dy := cond (eq $b.shape "diamond") (mul $hh (sub 1.0 (div (math.Abs $at) $hw))) $hh -}}
+  {{- $p = dict "x" (add $b.cx $at) "y" (cond (eq .side "bottom") (add $b.cy $dy) (sub $b.cy $dy)) -}}
+{{- end -}}
+{{- return $p -}}

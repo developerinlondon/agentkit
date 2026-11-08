@@ -1,0 +1,21 @@
+title: Refund approval
+description: >-
+  A customer asks for a refund; the API parks it for an approver, who either approves it and the
+  payment is reversed, or declines it with a reason.
+kind: sequence
+actors:
+  - { id: c, label: Customer }
+  - { id: a, label: API }
+  - { id: p, label: Approver }
+messages:
+  - { from: c, to: a, label: request refund }
+  - { from: a, to: p, label: "parked for approval", style: gate }
+  - alt:
+      - label: approved
+        messages:
+          - { from: p, to: a, label: approve }
+          - { from: a, to: c, label: refunded, style: reply }
+      - label: declined
+        messages:
+          - { from: p, to: a, label: decline with a reason }
+          - { from: a, to: c, label: the reason, style: reply }

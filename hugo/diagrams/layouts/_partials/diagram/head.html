@@ -1,0 +1,7 @@
+{{- if .HasShortcode "diagram" -}}
+{{- $css := resources.Get "css/diagram.css" | minify | fingerprint -}}
+<link rel="stylesheet" href="{{ $css.RelPermalink }}" integrity="{{ $css.Data.Integrity }}">
+{{- partial "diagram/tokens.html" . -}}
+{{- $js := resources.Get "js/diagram.js" | js.Build (dict "minify" true "target" "es2018") | fingerprint -}}
+<script defer src="{{ $js.RelPermalink }}" integrity="{{ $js.Data.Integrity }}"></script>
+{{- end -}}

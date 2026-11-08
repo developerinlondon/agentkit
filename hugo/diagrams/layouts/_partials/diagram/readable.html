@@ -1,0 +1,9 @@
+{{- /* The smallest label is the 11px monospace size in diagram.css. Inline it
+       shrinks with the column; the enlarge view shows it at 1:1. */ -}}
+{{- $smallest := 11.0 -}}
+{{- $column := float (site.Params.diagrams.content_width | default 625) -}}
+{{- $floor := float (site.Params.diagrams.min_inline_px | default 8) -}}
+{{- $inline := mul $smallest (math.Min 1.0 (div $column .w)) -}}
+{{- if lt $inline $floor -}}
+  {{- errorf "diagram %q: smallest label shows at %.1fpx in a %.0fpx column (floor %.0fpx); the canvas is %.0fpx, keep it under %.0fpx" .name $inline $column $floor .w (div (mul $smallest $column) $floor) -}}
+{{- end -}}

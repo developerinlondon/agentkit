@@ -9,6 +9,21 @@ release PR — "publish this" authorizes a release, never the tier.
 
 ## [Unreleased]
 
+- feat(diagram): **a Hugo module that draws docs figures from data at build time.** `hugo/diagrams/`
+  is its own Go module, imported as `github.com/developerinlondon/agentkit/hugo/diagrams` (tags
+  `hugo/diagrams/vX.Y.Z`). A figure is a YAML spec in a site's `data/diagrams/`, placed with
+  `{{< diagram "name" >}}`: flows on an explicit grid (groups, labelled orthogonal edges, notes)
+  and sequences (actors, messages, alt/else). The build renders inline SVG in the house style with
+  `<title>`/`<desc>`, a generated text version, and `/architecture.json` for agents; it fails on a
+  ```mermaid block, invalid specs, and a canvas whose smallest label would show below 8 px in the
+  text column. A small script highlights a node's connections on hover, tap or focus and opens any
+  figure at 1:1 in a full-viewport dialog. Icon layers: heroicons, plus the skill's CC0
+  simple-icons and logos packs (one source, `scripts/sync-hugo-diagram-icons.ts`), plus a
+  project's own packs as `@pack/name`. Project design tokens (colours, fonts, radii, light and
+  dark) restyle every figure; full-colour vendor logos are never recoloured. The `diagram` skill now
+  routes Hugo docs figures to the module and never to Mermaid. CI installs a pinned Hugo for the
+  module's tests.
+
 ## v0.9.3 — 2026-09-21
 
 - fix(git-police): **the hook can no longer be walked around, or die into an allow.** Fixing the
