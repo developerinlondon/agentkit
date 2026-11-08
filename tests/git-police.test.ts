@@ -21,6 +21,8 @@ function makeInput(command: string) {
 function featureBranchRepo() {
   const repo = mkdtempSync(join(tmpdir(), 'agentkit-gp-feat-'));
   spawnSync('git', ['init', '-q', '-b', 'feat/test', repo]);
+  const head = spawnSync('git', ['-C', repo, 'symbolic-ref', '--short', 'HEAD'], { encoding: 'utf-8' });
+  if (head.stdout.trim() !== 'feat/test') throw new Error(`featureBranchRepo: ${repo} is not on feat/test`);
   return repo;
 }
 
@@ -493,7 +495,7 @@ describe("git-police cannot be walked around", () => {
     const r = spawnSync("bash", [hook], {
       input: JSON.stringify({ tool_name: "Bash", tool_input: { command: `git commit -m "x\n\n${TRAILER}"` } }),
       encoding: "utf-8",
-      cwd: repoRoot,
+      cwd: featRepo,
       env,
     });
     expect(r.status).toBe(0);
@@ -502,7 +504,7 @@ describe("git-police cannot be walked around", () => {
     const bare = spawnSync("bash", [hook], {
       input: JSON.stringify({ tool_name: "Bash", tool_input: { command: `git commit -m "x\n\n${TRAILER}"` } }),
       encoding: "utf-8",
-      cwd: repoRoot,
+      cwd: featRepo,
       env,
     });
     expect(bare.stdout).toMatch(/"permissionDecision":\s*"deny"/);
