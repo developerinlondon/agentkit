@@ -229,9 +229,11 @@ module does the harmless clean-up itself:
 
 - a leading byte-order mark, the XML prolog, a doctype and comments are dropped;
 - editor data is dropped: namespaced elements and attributes (`sodipodi:`, `inkscape:`,
-  `figma:`, …), `xmlns`, `data-*` and `<metadata>`; an `svg:` prefix is read as plain SVG;
-- a gradient may inherit its stops through `href` or `xlink:href` to a `#id` in the same file;
-  a link anywhere else fails;
+  `figma:`, …), `xmlns`, `data-*` and `<metadata>`; a prefix bound to the SVG namespace is read
+  as plain SVG, whatever its spelling;
+- a gradient that inherits through `href` or `xlink:href` from a gradient defined earlier in
+  the file is resolved at build time: it gets that gradient's stops and the attributes it
+  leaves unset, and no link is emitted; a link anywhere else fails;
 - a `style` attribute becomes the equivalent presentation attributes; a declaration for a
   property the module draws must pass that attribute's grammar or the build fails, and other
   properties (fonts, editor state) are dropped;
@@ -243,14 +245,14 @@ Figma, Lucide, Tabler and Inkscape exports build as they are. A `<style>` elemen
 module's config:
 
 ```sh
-curl -fsSLO https://raw.githubusercontent.com/developerinlondon/agentkit/v<version>/hugo/diagrams/svgo.config.mjs
+curl -fsSLO https://raw.githubusercontent.com/developerinlondon/agentkit/<ref>/hugo/diagrams/assets/diagrams/svgo.config.mjs
 npx svgo@4.0.2 --config svgo.config.mjs -i exported.svg -o assets/icons/<pack>/<name>.svg
 ```
 
-`<version>` is the agentkit release the site pins (`hugo/diagrams/v<version>` and `v<version>` tag
-the same commit). After `hugo mod vendor` the file is also at
-`_vendor/github.com/developerinlondon/agentkit/hugo/diagrams/svgo.config.mjs`, and a site that
-copied the module has it at `themes/diagrams/svgo.config.mjs`.
+`<ref>` is the release the site pins (`v<version>`) or, before the first release, a commit sha.
+The file also ships inside the module: after `hugo mod vendor` it is at
+`_vendor/github.com/developerinlondon/agentkit/hugo/diagrams/assets/diagrams/svgo.config.mjs`,
+and in a copied module at `themes/diagrams/assets/diagrams/svgo.config.mjs`.
 
 svgo cannot inline `<use>`: unlink clones in the editor before exporting (Inkscape: Edit ›
 Clone › Unlink Clone; Illustrator: Object › Expand).

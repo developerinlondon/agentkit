@@ -29,7 +29,8 @@ pin the diagrams module.
   attributes, each value checked against its own grammar, so no raw icon text reaches a page.
   Common exports build as they are: a byte-order mark, comments and editor data are dropped, a
   `style` attribute becomes presentation attributes, and the root's presentation attributes carry
-  over; the README's "Preparing icons" gives an svgo config for the rest. Design tokens are checked
+  over, chained gradients are resolved at build time, and prefixes bound to the SVG namespace
+  are read as SVG; the README's "Preparing icons" gives an svgo config for the rest. Design tokens are checked
   against per-field grammars and font names are quoted by the module. Requires Hugo 0.164 or later. CI installs a pinned Hugo for the module's tests.
   ```
 

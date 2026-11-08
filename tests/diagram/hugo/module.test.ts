@@ -326,6 +326,11 @@ describe('the build refuses what it cannot draw faithfully', () => {
       /a pill's rounded right side cannot hold a loop; use top or bottom/,
     ],
     [
+      'a gradient that links to a gradient not defined before it',
+      (s) => writeFileSync(join(s, 'assets/icons/acme/widget.svg'), '<svg viewBox="0 0 8 8"><linearGradient id="g" href="#later"/><linearGradient id="later"><stop offset="0" stop-color="red"/></linearGradient><rect width="8" height="8" fill="url(#g)"/></svg>'),
+      /a gradient href #later that names no gradient defined before it/,
+    ],
+    [
       'a font token that ends its declaration',
       (s) => edit(s, 'hugo.yaml', 'radius: 6', 'radius: 6\n      sans: "Inter; color: red"'),
       /tokens.sans: .* is not a font name/,
@@ -397,6 +402,17 @@ describe('edges of the rules', () => {
       expect(all).toContain(id);
       expect(result.html).toContain(`fill="url(#${id})"`);
     }
+  });
+
+  test('a gradient written open-and-closed with no stops takes the stops it links to', () => {
+    const result = build((s) =>
+      writeFileSync(
+        join(s, 'assets/icons/acme/widget.svg'),
+        '<svg viewBox="0 0 8 8"><linearGradient id="s"><stop offset="0" stop-color="red"/></linearGradient><linearGradient id="g" href="#s"></linearGradient><rect width="8" height="8" fill="url(#g)"/></svg>',
+      )
+    );
+    expect(result.log).not.toMatch(/ERROR/);
+    expect(figures(result.html)[0]).toMatch(/<linearGradient id="?dg1-checkout-n4-0-g"?><stop offset="?0"? stop-color="?red"?\/><\/linearGradient>/);
   });
 
   test('a project icon is rebuilt from its parsed shapes, comments and prolog dropped', () => {
@@ -494,8 +510,13 @@ const PAINTED: Record<string, RegExp[]> = {
   'inkscape-plain.svg': [/fill="none"/, /stroke="#000(000)?"/],
   'figma-mask.svg': [/mask-type="alpha"/],
   'lucide.svg': [/^<g fill="none" stroke="currentColor" stroke-width="2"/],
-  'inkscape-gradient.svg': [/<linearGradient href="#dg1-checkout-n4-0-s" id="dg1-checkout-n4-0-g"|<linearGradient id="dg1-checkout-n4-0-g"[^>]*href="#dg1-checkout-n4-0-s"/, /stop-color="(red|#f00(00)?)"/],
-  'svg-prefixed.svg': [/<rect width="8" height="8" fill="(red|#f00)"/],
+  // A chained gradient is resolved at build time: each link carries its own copy of the stops.
+  'inkscape-gradient.svg': [
+    /<linearGradient id="dg1-checkout-n4-0-h"(?=[^>]*x2="16")(?=[^>]*gradientUnits="userSpaceOnUse")[^>]*>(<stop[^>]*\/>){2}<\/linearGradient>/,
+    /^(?![\s\S]*href)/,
+  ],
+  // Prefixes resolve by namespace: d: is bound to SVG and kept; svg: here is bound elsewhere and dropped.
+  'svg-prefixed.svg': [/<rect width="8" height="8" fill="(red|#f00)"/, /^(?![\s\S]*width="4")/],
 };
 const REFUSED: Record<string, RegExp> = {
   'illustrator.svg': /<style>/,
@@ -579,21 +600,37 @@ async function page(run: (session: Session) => Promise<void>, site: Build = good
 }
 
 describe.if(chrome !== null)('a gradient that inherits its stops', () => {
-  test('resolves its href to the stops in a real browser', async () => {
+  // Pixels, not markup: the chain s <- g <- h must paint red into blue across the icon.
+  test('paints red on the left and blue on the right in a real browser', async () => {
     const site = build((s) => {
       cpSync(join(ICONS, 'inkscape-gradient.svg'), join(s, 'assets/icons/acme/widget.svg'));
       edit(s, 'hugo.yaml', 'mode: stroke', 'mode: color');
     });
     expect(site.ok).toBe(true);
     await page(async (s) => {
-      const stops = await evaluate(
+      await evaluate(
         s,
-        `(() => { const g = document.getElementById('dg1-checkout-n4-0-g');
-          const base = document.querySelector(g.href.baseVal);
-          return base ? [...base.querySelectorAll('stop')].map((x) => getComputedStyle(x).stopColor).join('|') : 'unresolved'; })()`,
+        `(() => { const icon = document.querySelector('.dg-node[data-id="worker"] .dg-icon');
+          const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16">'
+            + icon.innerHTML + '</svg>';
+          const img = new Image();
+          img.onload = () => { const c = document.createElement('canvas'); c.width = 16; c.height = 16;
+            const x = c.getContext('2d'); x.drawImage(img, 0, 0);
+            window.__px = [2, 13].map((px) => [...x.getImageData(px, 8, 1, 1).data].slice(0, 3)); };
+          img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg); })()`,
       );
-      expect(stops).toBe('rgb(255, 0, 0)|rgb(0, 0, 255)');
-    }, site).catch((e: unknown) => rethrowLaunchFailure(e, 'the linked gradient assertions'));
+      let px: number[][] | undefined;
+      for (let i = 0; i < 50 && !px; i++) {
+        px = (await evaluate(s, 'window.__px')) as number[][] | undefined;
+        if (!px) await Bun.sleep(100);
+      }
+      expect(px).toBeDefined();
+      const [left, right] = px as number[][];
+      expect(left[0]).toBeGreaterThan(180);
+      expect(left[2]).toBeLessThan(80);
+      expect(right[2]).toBeGreaterThan(180);
+      expect(right[0]).toBeLessThan(80);
+    }, site).catch((e: unknown) => rethrowLaunchFailure(e, 'the chained gradient pixel assertions'));
   }, 120_000);
 });
 

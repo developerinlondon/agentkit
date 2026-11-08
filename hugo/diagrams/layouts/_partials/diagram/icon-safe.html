@@ -45,7 +45,15 @@
   {{- with .Err }}{{ $err = printf "not well-formed XML (%s)" . }}{{ end -}}
 {{- end -}}
 {{- $src := $svg | replaceRE `(?s)<!--.*?-->` "" | replaceRE `(?s)^\s*<\?xml[^>]*\?>` "" | replaceRE `(?s)^\s*<!DOCTYPE[^>]*>` "" -}}
+{{- /* Prefixes are resolved by the namespace they are bound to, not by spelling. */ -}}
+{{- $svgNS := slice }}{{ $xlinkNS := slice -}}
+{{- range findRESubmatch `xmlns:([A-Za-z_][A-Za-z0-9._-]*)\s*=\s*["']([^"']*)["']` $src -1 -}}
+  {{- if eq (index . 2) "http://www.w3.org/2000/svg" }}{{ $svgNS = $svgNS | append (index . 1) }}{{ end -}}
+  {{- if eq (index . 2) "http://www.w3.org/1999/xlink" }}{{ $xlinkNS = $xlinkNS | append (index . 1) }}{{ end -}}
+{{- end -}}
 {{- $stack := slice }}{{ $skip := 0 }}{{ $root := 0 -}}
+{{- /* Gradients seen so far, by source id: type, inheritable attributes, stops. */ -}}
+{{- $grads := dict }}{{ $cap := dict -}}
 {{- range findRE `<[^>]*>?|[^<]+` $src -}}
   {{- if $err }}{{ break }}{{ end -}}
   {{- $tok := . -}}
@@ -60,10 +68,13 @@
   {{- if not $m }}{{ $err = printf "%q is not a plain tag" (strings.Truncate 40 $tok) }}{{ break }}{{ end -}}
   {{- $m = index $m 0 -}}
   {{- $closing := eq (index $m 1) "/" }}{{ $name := index $m 2 }}{{ $self := eq (index $m 4) "/" -}}
-  {{- /* svg: is the drawing namespace written out; any other prefix is editor
-         data, dropped with everything inside it. */ -}}
-  {{- $name = strings.TrimPrefix "svg:" $name -}}
-  {{- if or (gt $skip 0) (in $name ":") (in $dropped $name) -}}
+  {{- /* A prefix bound to the SVG namespace is plain SVG; any other prefix is
+         editor data, dropped with everything inside it. */ -}}
+  {{- $foreign := false -}}
+  {{- with findRESubmatch `^([^:]+):(.+)$` $name 1 -}}
+    {{- if in $svgNS (index (index . 0) 1) }}{{ $name = index (index . 0) 2 }}{{ else }}{{ $foreign = true }}{{ end -}}
+  {{- end -}}
+  {{- if or (gt $skip 0) $foreign (in $dropped $name) -}}
     {{- if $closing }}{{ $skip = sub $skip 1 }}{{ else if not $self }}{{ $skip = add $skip 1 }}{{ end -}}
     {{- continue -}}
   {{- end -}}
@@ -71,8 +82,13 @@
   {{- $raw := dict }}{{ $order := slice -}}
   {{- range findRESubmatch `([A-Za-z_][A-Za-z0-9:._-]*)\s*=\s*(?:"([^"]*)"|'([^']*)')` (index $m 3) -}}
     {{- $an := index . 1 }}{{ $av := printf "%s%s" (index . 2) (index . 3) -}}
+    {{- if eq $an "xlink:href" }}{{ $an = "href" }}{{ end -}}
+    {{- with findRESubmatch `^([^:]+):(.+)$` $an 1 -}}
+      {{- $pre := index (index . 0) 1 }}{{ $local := index (index . 0) 2 -}}
+      {{- if in $svgNS $pre }}{{ $an = $local }}{{ else if and (in $xlinkNS $pre) (eq $local "href") }}{{ $an = "href" }}{{ end -}}
+    {{- end -}}
     {{- /* A gradient inherits stops through href; that one link is drawing data. */ -}}
-    {{- if in (slice "href" "xlink:href") $an -}}
+    {{- if eq $an "href" -}}
       {{- if not (in (slice "linearGradient" "radialGradient") $name) }}{{ $err = printf "%s on <%s> (only a gradient may link, to a #id in the same file)" $an $name }}{{ break }}{{ end -}}
       {{- $an = "href" -}}
     {{- else if or (in $an ":") (eq $an "xmlns") (strings.HasPrefix $an "data-") -}}
@@ -124,23 +140,61 @@
   {{- if $closing -}}
     {{- if or (eq (len $stack) 0) (ne $top $name) }}{{ $err = printf "a </%s> that closes nothing open" $name }}{{ break }}{{ end -}}
     {{- $stack = first (sub (len $stack) 1) $stack -}}
+    {{- if and $cap.active (eq $name "stop") }}{{ $cap = merge $cap (dict "stops" ($cap.stops | append "</stop>")) }}{{ end -}}
+    {{- if and $cap.active (eq $name $cap.type) -}}
+      {{- $stops := delimit $cap.stops "" -}}
+      {{- if not $stops }}{{ $stops = $cap.inherit }}{{ $out = $out | append $stops }}{{ end -}}
+      {{- with $cap.id }}{{ $grads = merge $grads (dict . (dict "type" $cap.type "attrs" $cap.attrs "stops" $stops)) }}{{ end -}}
+      {{- $cap = dict -}}
+    {{- end -}}
     {{- $out = $out | append (printf "</%s>" $name) -}}
     {{- continue -}}
   {{- end -}}
-  {{- $attrs := slice -}}
+  {{- $isGrad := in (slice "linearGradient" "radialGradient") $name -}}
+  {{- $valid := dict }}{{ $names := slice -}}
   {{- range $order -}}
     {{- $an := . }}{{ $av := index $raw . -}}
     {{- $g := index $grammar $an -}}
     {{- if not $g }}{{ $err = printf "attribute %s" $an }}{{ break }}{{ end -}}
     {{- if not (findRE $g $av 1) }}{{ $err = printf "%s=%q (not a valid %s value)" $an $av $an }}{{ break }}{{ end -}}
+    {{- $valid = merge $valid (dict $an $av) }}{{ $names = $names | append $an -}}
+  {{- end -}}
+  {{- if $err }}{{ break }}{{ end -}}
+  {{- /* A gradient's href is resolved here: the gradient it names, defined
+         earlier in the file, lends its stops and the attributes this one
+         leaves unset. Nothing links at render time. */ -}}
+  {{- $inherit := "" -}}
+  {{- with index $valid "href" -}}
+    {{- $ref := index $grads (strings.TrimPrefix "#" .) -}}
+    {{- if not $ref }}{{ $err = printf "a gradient href %s that names no gradient defined before it" . }}{{ break }}{{ end -}}
+    {{- range $k, $v := $ref.attrs -}}
+      {{- if and (not (isset $valid $k)) (or (in (slice "gradientUnits" "gradientTransform" "spreadMethod") $k) (eq $ref.type $name)) -}}
+        {{- $valid = merge $valid (dict $k $v) }}{{ $names = $names | append $k -}}
+      {{- end -}}
+    {{- end -}}
+    {{- $inherit = $ref.stops -}}
+  {{- end -}}
+  {{- if $err }}{{ break }}{{ end -}}
+  {{- $attrs := slice }}{{ $kept := dict -}}
+  {{- range $names -}}
+    {{- $an := . }}{{ $av := index $valid . -}}
+    {{- if eq $an "href" }}{{ continue }}{{ end -}}
+    {{- if ne $an "id" }}{{ $kept = merge $kept (dict $an $av) }}{{ end -}}
     {{- /* Ids are prefixed so an icon cannot shadow page anchors or another icon. */ -}}
     {{- if eq $an "id" }}{{ $av = printf "%s%s" $prefix $av }}{{ end -}}
     {{- $av = replaceRE `url\(#` (printf "url(#%s" $prefix) $av -}}
-    {{- if eq $an "href" }}{{ $av = printf "#%s%s" $prefix (strings.TrimPrefix "#" $av) }}{{ end -}}
     {{- $attrs = $attrs | append (printf ` %s="%s"` $an $av) -}}
   {{- end -}}
-  {{- if $err }}{{ break }}{{ end -}}
-  {{- $out = $out | append (printf "<%s%s%s>" $name (delimit $attrs "") (cond $self "/" "")) -}}
+  {{- $tag := printf "<%s%s%s>" $name (delimit $attrs "") (cond $self "/" "") -}}
+  {{- if and $isGrad $self -}}
+    {{- $tag = printf "<%s%s>%s</%s>" $name (delimit $attrs "") $inherit $name -}}
+    {{- with index $valid "id" }}{{ $grads = merge $grads (dict . (dict "type" $name "attrs" $kept "stops" $inherit)) }}{{ end -}}
+  {{- else if $isGrad -}}
+    {{- $cap = dict "active" true "id" (index $valid "id") "type" $name "attrs" $kept "stops" (slice) "inherit" $inherit -}}
+  {{- else if and $cap.active (eq $name "stop") -}}
+    {{- $cap = merge $cap (dict "stops" ($cap.stops | append $tag)) -}}
+  {{- end -}}
+  {{- $out = $out | append $tag -}}
   {{- if not $self }}{{ $stack = $stack | append $name }}{{ end -}}
 {{- end -}}
 {{- if not $err -}}

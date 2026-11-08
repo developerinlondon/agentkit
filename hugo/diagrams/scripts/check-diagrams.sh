@@ -49,7 +49,7 @@ if [ -n "$nested" ]; then
   fail=1
 fi
 
-specs=$(find data/diagrams -name '*.yaml' | wc -l)
+specs=$(find data/diagrams -name '*.yaml' | wc -l | tr -d ' ')
 json() { node -e 'const d=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")); console.log(eval(process.argv[2]))' "$out/architecture.json" "$1"; }
 listed=$(json 'd.diagrams.length')
 if [ "$specs" -ne "$listed" ]; then

@@ -3,6 +3,7 @@
   <defs>
     <linearGradient id="s"><stop offset="0" style="stop-color:#ff0000;stop-opacity:1"/><stop offset="1" style="stop-color:#0000ff;stop-opacity:1"/></linearGradient>
     <linearGradient xlink:href="#s" id="g" x1="0" y1="0" x2="16" y2="0" gradientUnits="userSpaceOnUse"/>
+    <linearGradient xlink:href="#g" id="h"/>
   </defs>
-  <rect width="16" height="16" style="fill:url(#g)"/>
+  <rect width="16" height="16" style="fill:url(#h)"/>
 </svg>
