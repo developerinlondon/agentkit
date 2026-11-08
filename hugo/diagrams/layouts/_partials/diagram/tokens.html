@@ -1,35 +1,42 @@
 {{- /* House theme dark values plus params.diagrams.tokens, as CSS custom
-       properties. Unknown keys, and values that could leave their declaration
-       or open a string, fail the build rather than vanish. */ -}}
+       properties. Every value is checked against a grammar for its field and
+       font names are quoted here, so nothing a site writes reaches the
+       stylesheet as raw text. */ -}}
 {{- $t := site.Params.diagrams.tokens | default dict -}}
 {{- $colours := dict "surface" "surface" "sunk" "sunk" "ink" "ink" "muted" "muted" "line" "line" "accent" "accent" "accent_soft" "accent-soft" "gate" "gate" "gate_soft" "gate-soft" "deny" "deny" "allow" "allow" -}}
-{{- $global := dict "sans" "sans" "mono" "mono" "radius" "radius" "group_radius" "group-radius" "icon_stroke" "icon-stroke" -}}
-{{- $darkHouse := dict "surface" "#181924" "sunk" "#13141c" "ink" "#e8e8f0" "muted" "#9698a8" "line" "#2c2d3a" "accent" "#5bd2e0" "accent_soft" "#14313a" "gate" "#e3ac5a" "gate_soft" "#2e2517" "deny" "#ee8078" "allow" "#74c795" -}}
+{{- $numbers := dict "radius" "radius" "group_radius" "group-radius" "icon_stroke" "icon-stroke" -}}
+{{- $fonts := dict "sans" "sans" "mono" "mono" -}}
+{{- $generic := slice "serif" "sans-serif" "monospace" "system-ui" "ui-serif" "ui-sans-serif" "ui-monospace" "ui-rounded" "cursive" "fantasy" "math" "emoji" -}}
+{{- $colourRE := `^(#[0-9a-fA-F]{3}|#[0-9a-fA-F]{4}|#[0-9a-fA-F]{6}|#[0-9a-fA-F]{8}|(rgb|rgba|hsl|hsla)\(\s*[0-9.]+(deg|%)?\s*[, ]\s*[0-9.]+%?\s*[, ]\s*[0-9.]+%?\s*([,/]\s*[0-9.]+%?\s*)?\))$` -}}
+{{- $darkVals := dict "surface" "#181924" "sunk" "#13141c" "ink" "#e8e8f0" "muted" "#9698a8" "line" "#2c2d3a" "accent" "#5bd2e0" "accent_soft" "#14313a" "gate" "#e3ac5a" "gate_soft" "#2e2517" "deny" "#ee8078" "allow" "#74c795" -}}
 {{- $root := slice -}}
-{{- $darkVals := $darkHouse -}}
 {{- range $k, $v := $t -}}
   {{- if in (slice "light" "dark") $k -}}
     {{- range $ck, $cv := $v -}}
       {{- if not (index $colours $ck) }}{{ errorf "params.diagrams.tokens.%s.%s: unknown colour token (known: surface, sunk, ink, muted, line, accent, accent_soft, gate, gate_soft, deny, allow)" $k $ck }}{{ end -}}
-      {{- if not (findRE `^(#[0-9a-fA-F]{3,8}|[a-z]+|(rgb|rgba|hsl|hsla|oklch|oklab)\([0-9a-zA-Z.,%/ -]+\))$` (string $cv) 1) }}{{ errorf "params.diagrams.tokens.%s.%s: %q is not a colour" $k $ck $cv }}{{ end -}}
+      {{- if not (findRE $colourRE (string $cv) 1) }}{{ errorf "params.diagrams.tokens.%s.%s: %q is not a colour (#hex, rgb(), rgba(), hsl() or hsla())" $k $ck $cv }}{{ end -}}
       {{- if eq $k "light" }}{{ $root = $root | append (printf "--dg-%s:%s" (index $colours $ck) $cv) }}{{ else }}{{ $darkVals = merge $darkVals (dict $ck (string $cv)) }}{{ end -}}
     {{- end -}}
-  {{- else -}}
-    {{- $var := index $global $k -}}
-    {{- if not $var }}{{ errorf "params.diagrams.tokens.%s: unknown token (known: light, dark, sans, mono, radius, group_radius, icon_stroke)" $k }}{{ end -}}
-    {{- $val := string $v -}}
-    {{- if in (slice "radius" "group_radius" "icon_stroke") $k -}}
-      {{- if not (findRE `^[0-9]+(\.[0-9]+)?$` $val 1) }}{{ errorf "params.diagrams.tokens.%s: %q is not a number of px" $k $v }}{{ end -}}
-      {{- $val = printf "%spx" $val -}}
-    {{- else if not (findRE `^\s*(?:[A-Za-z0-9_-]+(?: [A-Za-z0-9_-]+)*|"[A-Za-z0-9 _-]*"|'[A-Za-z0-9 _-]*')(?:\s*,\s*(?:[A-Za-z0-9_-]+(?: [A-Za-z0-9_-]+)*|"[A-Za-z0-9 _-]*"|'[A-Za-z0-9 _-]*'))*\s*$` $val 1) -}}
-      {{- errorf "params.diagrams.tokens.%s: %q is not a font-family list (comma-separated names, each bare or wholly quoted)" $k $v -}}
+  {{- else if index $numbers $k -}}
+    {{- if not (findRE `^[0-9]{1,3}(\.[0-9]{1,2})?$` (string $v) 1) }}{{ errorf "params.diagrams.tokens.%s: %q is not a number of px" $k $v }}{{ end -}}
+    {{- $root = $root | append (printf "--dg-%s:%spx" (index $numbers $k) (string $v)) -}}
+  {{- else if index $fonts $k -}}
+    {{- $names := $v -}}
+    {{- if not (reflect.IsSlice $v) }}{{ $names = split (string $v) "," }}{{ end -}}
+    {{- $list := slice -}}
+    {{- range $names -}}
+      {{- $n := strings.TrimSpace (string .) -}}
+      {{- if not (findRE `^[A-Za-z0-9][A-Za-z0-9 -]*$` $n 1) }}{{ errorf "params.diagrams.tokens.%s: %q is not a font name (letters, digits, spaces and hyphens; the module adds the quotes)" $k $n }}{{ end -}}
+      {{- $list = $list | append (cond (in $generic $n) $n (printf `"%s"` $n)) -}}
     {{- end -}}
-    {{- $root = $root | append (printf "--dg-%s:%s" $var $val) -}}
+    {{- $root = $root | append (printf "--dg-%s:%s" (index $fonts $k) (delimit $list ",")) -}}
+  {{- else -}}
+    {{- errorf "params.diagrams.tokens.%s: unknown token (known: light, dark, sans, mono, radius, group_radius, icon_stroke)" $k -}}
   {{- end -}}
 {{- end -}}
 {{- $dark := slice }}{{ range $k, $v := $darkVals }}{{ $dark = $dark | append (printf "--dg-%s:%s" (index $colours $k) $v) }}{{ end -}}
+{{- $selectors := dict ".dark" ".dark{%s}" "html.dark" "html.dark{%s}" "[data-theme=dark]" "[data-theme=dark]{%s}" "media" "@media (prefers-color-scheme:dark){:root{%s}}" -}}
 {{- $sel := site.Params.diagrams.dark_selector | default ".dark" -}}
-{{- if not (findRE `^(@media \(prefers-color-scheme: ?dark\)|[.#:\[\]a-zA-Z0-9_= -]+)$` $sel 1) }}{{ errorf "params.diagrams.dark_selector: %q is neither a selector nor @media (prefers-color-scheme: dark)" $sel }}{{ end -}}
-<style>{{ with $root }}:root{ {{- delimit . ";" | safeCSS -}} }{{ end }}
-{{- if strings.HasPrefix $sel "@media" }}{{ $sel | safeCSS }}{:root{ {{- delimit $dark ";" | safeCSS -}} }}{{ else }}{{ $sel | safeCSS }}{ {{- delimit $dark ";" | safeCSS -}} }{{ end -}}
-</style>
+{{- $rule := index $selectors $sel -}}
+{{- if not $rule }}{{ errorf "params.diagrams.dark_selector: %q is not one of .dark, html.dark, [data-theme=dark], media" $sel }}{{ end -}}
+<style>{{ with $root }}:root{ {{- delimit . ";" | safeCSS -}} }{{ end }}{{ printf $rule (delimit $dark ";") | safeCSS }}</style>

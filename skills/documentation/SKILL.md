@@ -1,9 +1,10 @@
 ---
 name: documentation
 description: >-
-  Documentation standards: surface-aware diagrams (Mermaid where markdown renders, ASCII for
-  terminals and diffs), structured plan format, compact tables for comparisons. Use when writing
-  docs, plans, READMEs, or architecture documents in any project.
+  Documentation standards: surface-aware diagrams (build-time specs on Hugo docs sites, Mermaid
+  where other markdown renders, ASCII for terminals and diffs), structured plan format, compact
+  tables for comparisons. Use when writing docs, plans, READMEs, or architecture documents in any
+  project.
 ---
 
 # Documentation Standards

@@ -8,7 +8,7 @@ disableKinds: [taxonomy, term, RSS, sitemap, robotsTXT]
 params:
   diagrams:
     content_width: 640
-    dark_selector: "@media (prefers-color-scheme: dark)"
+    dark_selector: media
     icons:
       acme:
         path: icons/acme

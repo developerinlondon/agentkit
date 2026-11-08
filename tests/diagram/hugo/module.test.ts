@@ -89,6 +89,11 @@ describe('the example site builds', () => {
     for (const d of json.diagrams) expect(d.pages).toEqual(['https://example.org/']);
   });
 
+  test('font names are quoted by the module, generic families left bare', () => {
+    const result = build((s) => edit(s, 'hugo.yaml', 'radius: 6', 'radius: 6\n      sans: [Inter Display, system-ui]'));
+    expect(result.html).toContain('--dg-sans:"Inter Display",system-ui');
+  });
+
   test('project tokens become custom properties, dark values in the configured query', () => {
     expect(good.html).toContain('--dg-accent:#5b3cc4');
     expect(good.html).toContain('--dg-radius:6px');
@@ -135,7 +140,7 @@ describe('the build refuses what it cannot draw faithfully', () => {
     [
       'a project icon that nests an <svg>',
       (s) => writeFileSync(join(s, 'assets/icons/acme/widget.svg'), '<svg viewBox="0 0 8 8"><svg><rect/></svg></svg>'),
-      /contains a nested or stray <svg>/,
+      /a nested, repeated or misplaced <svg>/,
     ],
     [
       'a mermaid code block',
@@ -153,69 +158,99 @@ describe('the build refuses what it cannot draw faithfully', () => {
       /edge api → api loops to its own node/,
     ],
     [
+      'a flow self-loop whose sides would cut through its own box',
+      (s) => edit(s, 'data/diagrams/checkout.yaml', '{ from: queue, to: worker }', '{ from: queue, to: worker }\n  - { from: api, to: api, exit: right, enter: top, exit_at: -8, enter_at: 8 }'),
+      /edge api → api loops to its own node; draw it with exit and enter on the same side/,
+    ],
+    [
       'a label pinned to a segment the route does not have',
       (s) => edit(s, 'data/diagrams/checkout.yaml', '{ from: queue, to: worker }', '{ from: queue, to: worker, label: x, label_segment: 4 }'),
-      /edge queue → worker: label_segment 4, but the route has 1 segments/,
+      /diagram "checkout": edge queue → worker: label_segment 4, but the route has 1 segments/,
     ],
     [
       'a project icon that carries a script',
       (s) => writeFileSync(join(s, 'assets/icons/acme/widget.svg'), '<svg viewBox="0 0 8 8"><script>alert(1)</script></svg>'),
-      /project icons may hold shapes only/,
+      /project icons may hold only/,
     ],
     [
       'a project icon that carries a stylesheet',
       (s) => writeFileSync(join(s, 'assets/icons/acme/widget.svg'), '<svg viewBox="0 0 8 8"><style>body{display:none}</style><rect/></svg>'),
-      /contains <style>; project icons may hold shapes only/,
+      /<style>; project icons may hold only/,
     ],
     [
       'a project icon with an event handler',
       (s) => writeFileSync(join(s, 'assets/icons/acme/widget.svg'), '<svg viewBox="0 0 8 8"><rect onload="x()"/></svg>'),
-      /project icons may hold shapes only/,
+      /project icons may hold only/,
     ],
     [
       'a project icon with an event handler glued to the previous attribute',
       (s) => writeFileSync(join(s, 'assets/icons/acme/widget.svg'), '<svg viewBox="0 0 8 8"><rect width="2"onclick="x()"/></svg>'),
-      /project icons may hold shapes only/,
+      /project icons may hold only/,
     ],
     [
       'a project icon whose animation carries a slash-separated handler',
       (s) => writeFileSync(join(s, 'assets/icons/acme/widget.svg'), '<svg viewBox="0 0 8 8"><rect><animate/onbegin=x() attributeName="x"/></rect></svg>'),
-      /project icons may hold shapes only/,
+      /project icons may hold only/,
     ],
     [
       'a project icon with an HTML image inside',
       (s) => writeFileSync(join(s, 'assets/icons/acme/widget.svg'), '<svg viewBox="0 0 8 8"><img src="x"/></svg>'),
-      /contains <img>; project icons may hold shapes only/,
+      /<img>; project icons may hold only/,
     ],
     [
       'a project icon that links outside itself',
       (s) => writeFileSync(join(s, 'assets/icons/acme/widget.svg'), '<svg viewBox="0 0 8 8"><use href="https://example.org/x.svg#a"/></svg>'),
-      /only #ids inside the file/,
+      /<use>; project icons may hold only/,
     ],
     [
       'a project icon that closes the root early with </svg/>',
       (s) => writeFileSync(join(s, 'assets/icons/acme/widget.svg'), '<svg viewBox="0 0 8 8"><rect/></svg/><rect/></svg>'),
-      /nested or stray <svg>/,
+      /not well-formed XML|outside the <svg> root|misplaced <svg>/,
     ],
     [
       'a font token whose quotes nest',
       (s) => edit(s, 'hugo.yaml', 'radius: 6', `radius: 6\n      sans: "\\"a'b\\"'"`),
-      /tokens.sans: .* is not a font-family list/,
+      /tokens.sans: .* is not a font name/,
+    ],
+    [
+      'a project icon with a nested self-closing <svg/>',
+      (s) => writeFileSync(join(s, 'assets/icons/acme/widget.svg'), '<svg viewBox="0 0 8 8"><svg/><rect width="8" height="8"/></svg>'),
+      /a nested, repeated or misplaced <svg>/,
+    ],
+    [
+      'a project icon whose handler follows a slash',
+      (s) => writeFileSync(join(s, 'assets/icons/acme/widget.svg'), '<svg viewBox="0 0 8 8"><rect/onclick="alert(1)" width="8" height="8"/></svg>'),
+      /project icons may hold only/,
+    ],
+    [
+      'a project icon that paints from an outside URL',
+      (s) => writeFileSync(join(s, 'assets/icons/acme/widget.svg'), '<svg viewBox="0 0 8 8"><rect fill="url(https://example.org/x)"/></svg>'),
+      /fill=.*not a valid fill value/,
+    ],
+    [
+      'a project icon that is not well-formed',
+      (s) => writeFileSync(join(s, 'assets/icons/acme/widget.svg'), '<svg viewBox="0 0 8 8"><g><rect/></svg>'),
+      /not well-formed XML|never closed|closes nothing open/,
+    ],
+    [
+      'a dark selector outside the fixed set',
+      (s) => edit(s, 'hugo.yaml', 'dark_selector: media', "dark_selector: \"[data-x='a]\""),
+      /dark_selector: .* is not one of/,
     ],
     [
       'a font token that ends its declaration',
       (s) => edit(s, 'hugo.yaml', 'radius: 6', 'radius: 6\n      sans: "Inter; color: red"'),
-      /tokens.sans: .* is not a font-family list/,
+      /tokens.sans: .* is not a font name/,
     ],
     [
       'a project icon with content after its closing tag',
-      (s) => writeFileSync(join(s, 'assets/icons/acme/widget.svg'), '<svg viewBox="0 0 8 8"><rect/></svg>\n<!-- exported -->\n'),
-      /has content after its closing <\/svg>/,
+      (s) => writeFileSync(join(s, 'assets/icons/acme/widget.svg'), '<svg viewBox="0 0 8 8"><rect/></svg>\nexported by a tool\n'),
+      /not well-formed XML|outside a title or desc/,
     ],
     [
       'a font token with an unbalanced quote',
       (s) => edit(s, 'hugo.yaml', 'radius: 6', `radius: 6\n      sans: '"Inter'`),
-      /tokens.sans: .* is not a font-family list/,
+      /tokens.sans: .* is not a font name/,
     ],
     [
       'an unknown token',
@@ -239,6 +274,21 @@ describe('the build refuses what it cannot draw faithfully', () => {
 });
 
 describe('edges of the rules', () => {
+  test('a project icon is rebuilt from its parsed shapes, comments and prolog dropped', () => {
+    const result = build((s) =>
+      writeFileSync(
+        join(s, 'assets/icons/acme/widget.svg'),
+        '<?xml version="1.0"?>\n<!-- exported -->\n<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"><title>W &amp; x</title><rect   x=\'1\'  y="1"\n width="6" height="6" rx="1" /></svg>\n',
+      )
+    );
+    expect(result.log).not.toMatch(/ERROR/);
+    const icons = [...figures(result.html)[0].matchAll(/<g class="dg-icon dg-icon-stroke"[^>]*>(.*?)<\/g>/g)].map((m) => m[1]);
+    const icon = icons.find((body) => body.includes('<rect')) ?? '';
+    expect(icon).toContain('<rect x="1" y="1" width="6" height="6" rx="1"/>');
+    expect(icon).toContain('<title>W &amp; x</title>');
+    expect(icon).not.toContain('exported');
+  });
+
   // The figure's own padding and border take width from the column. A canvas just
   // inside the old column-only arithmetic must still fail once that is counted.
   test('the readability floor counts the figure frame, not just the column', () => {

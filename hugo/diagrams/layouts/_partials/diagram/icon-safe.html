@@ -1,33 +1,87 @@
-{{- /* Allowlist for a project icon's body, which is inlined into every page
-       that uses it. Returns "" when the body holds only shape elements with
-       quoted, known attributes; otherwise the offending piece. */ -}}
-{{- $body := . -}}
-{{- $elements := slice "g" "path" "rect" "circle" "ellipse" "line" "polyline" "polygon" "defs" "linearGradient" "radialGradient" "stop" "clipPath" "mask" "symbol" "use" "title" "desc" -}}
-{{- $attrs := slice "id" "class" "d" "x" "y" "x1" "y1" "x2" "y2" "cx" "cy" "r" "rx" "ry" "fx" "fy" "width" "height" "points" "pathLength" "transform" "fill" "fill-rule" "fill-opacity" "stroke" "stroke-width" "stroke-linecap" "stroke-linejoin" "stroke-miterlimit" "stroke-dasharray" "stroke-dashoffset" "stroke-opacity" "opacity" "clip-path" "clip-rule" "mask" "offset" "stop-color" "stop-opacity" "gradientUnits" "gradientTransform" "spreadMethod" "maskUnits" "clipPathUnits" "vector-effect" "viewBox" "href" "xlink:href" -}}
-{{- $bad := "" -}}
-{{- range findRE `<[^>]*>?` $body -}}
-  {{- if $bad }}{{ break }}{{ end -}}
-  {{- $m := findRESubmatch `^</?([A-Za-z][A-Za-z0-9]*)((?:\s+[A-Za-z][A-Za-z0-9:-]*\s*=\s*(?:"[^"<>]*"|'[^'<>]*'))*)\s*/?>$` . 1 -}}
-  {{- if not $m -}}
-    {{- $bad = . -}}
-  {{- else -}}
-    {{- $tag := index $m 0 -}}
-    {{- if not (in $elements (index $tag 1)) -}}
-      {{- $bad = printf "<%s>" (index $tag 1) -}}
-    {{- else -}}
-      {{- range findRESubmatch `([A-Za-z][A-Za-z0-9:-]*)\s*=\s*("[^"<>]*"|'[^'<>]*')` (index $tag 2) -}}
-        {{- $name := index . 1 }}{{ $val := index . 2 -}}
-        {{- if not (in $attrs $name) -}}
-          {{- $bad = printf "attribute %s" $name -}}
-        {{- else if and (in (slice "href" "xlink:href") $name) (not (findRE `^["']#` $val 1)) -}}
-          {{- $bad = printf "%s=%s (only #ids inside the file)" $name $val -}}
-        {{- else if and (findRE `(?i)url\s*\(` $val 1) (not (findRE `(?i)^["']url\(\s*#[^)]*\)["']$` $val 1)) -}}
-          {{- $bad = printf "%s=%s (only url(#id))" $name $val -}}
-        {{- end -}}
-      {{- end -}}
-    {{- end -}}
-  {{- end -}}
+{{- /* Parses a project icon and rebuilds it from the parsed tokens, so no byte
+       of the source reaches the page unexamined. Returns {view, body} or {err}.
+       The file must be well-formed XML with one <svg> root; inside it only
+       the elements and attributes below survive, each value checked against
+       a grammar for that attribute. Comments, the XML prolog and a doctype
+       are dropped; anything else outside the allowlist fails the build. */ -}}
+{{- $svg := . -}}
+{{- $num := `^-?(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eE][-+]?[0-9]+)?(?:%|px)?$` -}}
+{{- $colour := `^(?:none|currentColor|#[0-9a-fA-F]{3,8}|(?:rgb|rgba|hsl|hsla)\([0-9., %]+\)|url\(#[A-Za-z][A-Za-z0-9_.-]*\))$` -}}
+{{- $grammar := dict
+  "d" `^[MmLlHhVvCcSsQqTtAaZz0-9eE.,+ \t\r\n-]*$`
+  "points" `^[0-9eE.,+ \t\r\n-]*$`
+  "viewBox" `^[0-9eE.,+ -]*$`
+  "transform" `^(?:\s*(?:matrix|translate|scale|rotate|skewX|skewY)\([0-9eE.,+ -]*\)\s*,?)*\s*$`
+  "id" `^[A-Za-z][A-Za-z0-9_.-]*$`
+  "fill" $colour "stroke" $colour "stop-color" $colour
+  "clip-path" `^(?:none|url\(#[A-Za-z][A-Za-z0-9_.-]*\))$`
+  "stroke-linecap" `^(?:butt|round|square)$`
+  "stroke-linejoin" `^(?:miter|round|bevel)$`
+  "fill-rule" `^(?:nonzero|evenodd)$` "clip-rule" `^(?:nonzero|evenodd)$`
+  "gradientUnits" `^(?:userSpaceOnUse|objectBoundingBox)$`
+-}}
+{{- range slice "cx" "cy" "r" "rx" "ry" "x" "y" "x1" "y1" "x2" "y2" "width" "height" "stroke-width" "opacity" "fill-opacity" "stroke-opacity" "offset" -}}
+  {{- $grammar = merge $grammar (dict . $num) -}}
 {{- end -}}
-{{- $text := replaceRE `<[^>]*>` "" $body -}}
-{{- if and (not $bad) (findRE `\S` $text 1) }}{{ $bad = printf "text %q outside any tag" (index (findRE `\S+` $text 1) 0) }}{{ end -}}
-{{- return $bad -}}
+{{- $elements := slice "g" "path" "circle" "ellipse" "rect" "line" "polyline" "polygon" "defs" "linearGradient" "radialGradient" "stop" "clipPath" "title" "desc" -}}
+{{- $err := "" }}{{ $out := slice }}{{ $view := "" -}}
+{{- with try (transform.Unmarshal (dict "format" "xml") $svg) -}}
+  {{- with .Err }}{{ $err = printf "not well-formed XML (%s)" . }}{{ end -}}
+{{- end -}}
+{{- $src := $svg | replaceRE `(?s)<!--.*?-->` "" | replaceRE `(?s)^\s*<\?xml[^>]*\?>` "" | replaceRE `(?s)^\s*<!DOCTYPE[^>]*>` "" -}}
+{{- $stack := slice -}}
+{{- $root := 0 -}}
+{{- range findRE `<[^>]*>?|[^<]+` $src -}}
+  {{- if $err }}{{ break }}{{ end -}}
+  {{- $tok := . -}}
+  {{- if not (strings.HasPrefix $tok "<") -}}
+    {{- if findRE `\S` $tok 1 -}}
+      {{- $top := cond (gt (len $stack) 0) (index $stack (sub (len $stack) 1)) "" -}}
+      {{- if in (slice "title" "desc") $top }}{{ $out = $out | append (htmlEscape (htmlUnescape $tok)) }}{{ else }}{{ $err = printf "text %q outside a title or desc" (strings.Truncate 40 (strings.TrimSpace $tok)) }}{{ end -}}
+    {{- end -}}
+    {{- continue -}}
+  {{- end -}}
+  {{- $m := findRESubmatch `^<(/?)([A-Za-z][A-Za-z0-9]*)((?:\s+[A-Za-z][A-Za-z0-9:_-]*\s*=\s*(?:"[^"<>&]*"|'[^'<>&]*'))*)\s*(/?)>$` $tok 1 -}}
+  {{- if not $m }}{{ $err = printf "%q is not a plain tag" (strings.Truncate 40 $tok) }}{{ break }}{{ end -}}
+  {{- $m = index $m 0 -}}
+  {{- $closing := eq (index $m 1) "/" }}{{ $name := index $m 2 }}{{ $self := eq (index $m 4) "/" -}}
+  {{- if eq $name "svg" -}}
+    {{- if and (not $closing) (eq $root 0) (eq (len $stack) 0) -}}
+      {{- $root = 1 -}}
+      {{- with findRESubmatch `\sviewBox\s*=\s*["']([^"']*)["']` (index $m 3) 1 }}{{ $view = index (index . 0) 1 }}{{ end -}}
+      {{- if not (findRE (index $grammar "viewBox") $view 1) }}{{ $view = "" }}{{ end -}}
+    {{- else if and $closing (eq $root 1) (eq (len $stack) 0) -}}
+      {{- $root = 2 -}}
+    {{- else -}}
+      {{- $err = "a nested, repeated or misplaced <svg>" -}}
+    {{- end -}}
+    {{- continue -}}
+  {{- end -}}
+  {{- if ne $root 1 }}{{ $err = printf "<%s> outside the <svg> root" $name }}{{ break }}{{ end -}}
+  {{- if not (in $elements $name) }}{{ $err = printf "<%s>" $name }}{{ break }}{{ end -}}
+  {{- if $closing -}}
+    {{- if or (eq (len $stack) 0) (ne (index $stack (sub (len $stack) 1)) $name) }}{{ $err = printf "a </%s> that closes nothing open" $name }}{{ break }}{{ end -}}
+    {{- $stack = first (sub (len $stack) 1) $stack -}}
+    {{- $out = $out | append (printf "</%s>" $name) -}}
+    {{- continue -}}
+  {{- end -}}
+  {{- $attrs := slice -}}
+  {{- range findRESubmatch `([A-Za-z][A-Za-z0-9:_-]*)\s*=\s*(?:"([^"]*)"|'([^']*)')` (index $m 3) -}}
+    {{- $an := index . 1 }}{{ $av := printf "%s%s" (index . 2) (index . 3) -}}
+    {{- $g := index $grammar $an -}}
+    {{- if not $g }}{{ $err = printf "attribute %s" $an }}{{ break }}{{ end -}}
+    {{- if not (findRE $g $av 1) }}{{ $err = printf "%s=%q (not a valid %s value)" $an $av $an }}{{ break }}{{ end -}}
+    {{- $attrs = $attrs | append (printf ` %s="%s"` $an $av) -}}
+  {{- end -}}
+  {{- if $err }}{{ break }}{{ end -}}
+  {{- $out = $out | append (printf "<%s%s%s>" $name (delimit $attrs "") (cond $self "/" "")) -}}
+  {{- if not $self }}{{ $stack = $stack | append $name }}{{ end -}}
+{{- end -}}
+{{- if not $err -}}
+  {{- if ne $root 2 }}{{ $err = "no complete <svg> root" -}}
+  {{- else if gt (len $stack) 0 }}{{ $err = printf "<%s> never closed" (index $stack 0) -}}
+  {{- else if not $view }}{{ $err = "no valid viewBox on the root" }}{{ end -}}
+{{- end -}}
+{{- $result := dict "view" $view "body" (delimit $out "") -}}
+{{- if $err }}{{ $result = dict "err" $err }}{{ end -}}
+{{- return $result -}}

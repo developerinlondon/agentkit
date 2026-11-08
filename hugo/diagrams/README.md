@@ -30,10 +30,11 @@ sequence, built-in and project icons, and project tokens. Build it with
 
    The first figure rendered publishes `/architecture.json`; no output format is needed.
 
-   Pin a release with `hugo mod get github.com/developerinlondon/agentkit/hugo/diagrams@vX.Y.Z`;
-   module tags are `hugo/diagrams/vX.Y.Z`, cut with each agentkit release from the first
-   release that contains this module. Repository tags such as `v0.9.3` predate it. To work without network access, copy this directory
-   to `themes/diagrams/` and import `path: diagrams` instead.
+   Pin a version with `hugo mod get github.com/developerinlondon/agentkit/hugo/diagrams@<ref>`.
+   Module tags are `hugo/diagrams/vX.Y.Z`, cut alongside each agentkit release from the first
+   release that contains this module; until one exists, pin a commit sha. Repository tags such
+   as `v0.9.3` belong to agentkit itself and do not contain the module. To work without network
+   access, copy this directory to `themes/diagrams/` and import `path: diagrams` instead.
 2. Load the stylesheet, tokens and script on pages that use a diagram. With Hextra, create
    `layouts/_partials/custom/head-end.html` containing:
 
@@ -64,12 +65,12 @@ params:
   diagrams:
     content_width: 625 # px a figure gets in the text column (default 625)
     min_inline_px: 8 # smallest label allowed inline at that width (default 8)
-    dark_selector: .dark # or "@media (prefers-color-scheme: dark)"
+    dark_selector: .dark # one of .dark, html.dark, [data-theme=dark], media
     icons: # project icon packs: icon: "@acme/widget"
       acme: { path: icons/acme, mode: stroke } # files in assets/icons/acme/*.svg
     tokens: # project brand; defaults are the house theme
-      sans: '"Inter", system-ui, sans-serif'
-      mono: ui-monospace, monospace
+      sans: [Inter, system-ui, sans-serif] # names only; the module quotes them
+      mono: [JetBrains Mono, ui-monospace, monospace]
       radius: 3 # node corner radius, px
       group_radius: 5
       icon_stroke: 1.4 # px, for stroke icons
@@ -80,8 +81,9 @@ params:
 Colour tokens, each with a light and a dark value: `surface`, `sunk`, `ink`, `muted`,
 `line`, `accent`, `accent_soft`, `gate`, `gate_soft`, `deny`, `allow`. Keep one accent: it
 marks the system the figure is about and the data path through it. An unknown key, or a
-value that is not a colour, a number, or a font list of comma-separated names (each bare or
-wholly quoted), fails the build.
+value outside its grammar, fails the build: colours are `#hex`, `rgb()`, `rgba()`, `hsl()` or
+`hsla()`; numbers are px; fonts are a list of names (letters, digits, spaces, hyphens) that the
+module quotes itself.
 
 **Readability.** Inline, a figure shrinks to what its frame leaves of the column (the
 column less 46.8 px of padding and border), so its smallest label (11 px monospace) shows at
@@ -206,12 +208,12 @@ colour is a CSS custom property (`--dg-*`), set from the tokens above.
 
 ## Icons
 
-| Pack           | Licence                         | Notes                                                                                                                                                                                                                                                                                                                                     |
-| -------------- | ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `heroicons`    | MIT, `LICENSES/heroicons.txt`   | outline glyphs for generic parts (user, server, database, mail…), drawn in the theme ink and stroke                                                                                                                                                                                                                                       |
-| `simple-icons` | CC0-1.0, `LICENSES/CC0-1.0.txt` | single-colour brand marks, drawn in the theme ink                                                                                                                                                                                                                                                                                         |
-| `logos`        | CC0-1.0, `LICENSES/CC0-1.0.txt` | full-colour brand artwork, never recoloured                                                                                                                                                                                                                                                                                               |
-| `@<pack>`      | the project's own               | `assets/<path>/<name>.svg`, one `<svg>` root holding shapes only: an allowlist of shape, gradient, clip and mask elements with quoted presentation attributes, `href` only to `#ids` in the file, no text or comments. Anything else fails the build; `mode: stroke` or `mono` normalises to the theme, `color` (default) leaves it alone |
+| Pack           | Licence                         | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| -------------- | ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `heroicons`    | MIT, `LICENSES/heroicons.txt`   | outline glyphs for generic parts (user, server, database, mail…), drawn in the theme ink and stroke                                                                                                                                                                                                                                                                                                                                                                                       |
+| `simple-icons` | CC0-1.0, `LICENSES/CC0-1.0.txt` | single-colour brand marks, drawn in the theme ink                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `logos`        | CC0-1.0, `LICENSES/CC0-1.0.txt` | full-colour brand artwork, never recoloured                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `@<pack>`      | the project's own               | `assets/<path>/<name>.svg`, well-formed XML with one `<svg>` root, which the module parses and rebuilds from an allowlist: g, path, circle, ellipse, rect, line, polyline, polygon, defs, gradients, stop, clipPath, title and desc, with geometry and presentation attributes each checked against its own grammar and `url(#id)` the only URL. Comments are dropped; anything else fails the build. `mode: stroke` or `mono` normalises to the theme, `color` (default) leaves it alone |
 
 `simple-icons` and `logos` are generated from the agentkit `diagram` skill's vendored CC0
 packs (`bun scripts/sync-hugo-diagram-icons.ts` in the agentkit repo), so a Hugo figure and a D2 render draw

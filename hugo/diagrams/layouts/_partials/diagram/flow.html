@@ -51,7 +51,7 @@
 {{- end -}}
 {{- $edges := slice -}}
 {{- range $spec.edges -}}
-  {{- $rt := partial "diagram/route.html" (dict "a" (index $boxes .from) "b" (index $boxes .to) "e" . "dir" $dir "cw" $cw "rh" $rh) -}}
+  {{- $rt := partial "diagram/route.html" (dict "a" (index $boxes .from) "b" (index $boxes .to) "e" . "dir" $dir "cw" $cw "rh" $rh "name" $.name) -}}
   {{- $edges = $edges | append (dict "e" . "rt" $rt) -}}
 {{- end -}}
 {{- /* Canvas: the union of everything drawn. */ -}}

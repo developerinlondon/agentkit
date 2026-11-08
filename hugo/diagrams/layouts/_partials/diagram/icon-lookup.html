@@ -16,27 +16,13 @@
     {{- $mode := cond (reflect.IsMap $cfg) ($cfg.mode | default "color") "color" -}}
     {{- $file := printf "%s/%s.svg" (strings.TrimSuffix "/" $dir) (index $parts 1) -}}
     {{- with resources.Get $file -}}
-      {{- $svg := .Content -}}
-      {{- $view := "" -}}
-      {{- with findRESubmatch `viewBox="([^"]+)"` $svg 1 }}{{ $view = index (index . 0) 1 }}{{ end -}}
-      {{- /* The body is inlined into every page that uses the icon, so it may
-             carry drawing only: one root, nothing after it, nothing active. */ -}}
-      {{- $inner := replaceRE `(?s)^.*?<svg[^>]*>` "" $svg 1 -}}
-      {{- $closed := findRE `(?s)</svg>\s*$` $inner 1 -}}
-      {{- $body := replaceRE `(?s)</svg>\s*$` "" $inner -}}
-      {{- $unsafe := partial "diagram/icon-safe.html" $body -}}
-      {{- if not $view -}}
-        {{- $out = dict "err" (printf "icon %q: %s has no viewBox" $ref $file) -}}
-      {{- else if not $closed -}}
-        {{- $out = dict "err" (printf "icon %q: %s has content after its closing </svg>" $ref $file) -}}
-      {{- else if findRE `(?i)</?svg` $body 1 -}}
-        {{- $out = dict "err" (printf "icon %q: %s contains a nested or stray <svg>, which Hugo's minifier cannot keep" $ref $file) -}}
-      {{- else if $unsafe -}}
-        {{- $out = dict "err" (printf "icon %q: %s contains %s; project icons may hold shapes only (g, path, rect, circle, ellipse, line, polyline, polygon, gradients, clip paths, masks, use) with presentation attributes" $ref $file $unsafe) -}}
-      {{- else if not (in (slice "stroke" "mono" "color") $mode) -}}
+      {{- $parsed := partialCached "diagram/icon-safe.html" .Content $file -}}
+      {{- if not (in (slice "stroke" "mono" "color") $mode) -}}
         {{- $out = dict "err" (printf "icon pack %q: mode %q is not stroke, mono or color" (index $parts 0) $mode) -}}
+      {{- else if $parsed.err -}}
+        {{- $out = dict "err" (printf "icon %q: %s: %s; project icons may hold only g, path, circle, ellipse, rect, line, polyline, polygon, defs, gradients, stop, clipPath, title and desc, with geometry and presentation attributes" $ref $file $parsed.err) -}}
       {{- else -}}
-        {{- $out = dict "view" $view "mode" $mode "body" $body -}}
+        {{- $out = dict "view" $parsed.view "mode" $mode "body" $parsed.body -}}
       {{- end -}}
     {{- else -}}
       {{- $out = dict "err" (printf "icon %q: assets/%s does not exist" $ref $file) -}}

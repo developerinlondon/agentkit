@@ -5,7 +5,9 @@ top and ships with the next tag.
 
 Releasing: bump the PATCH version by default. A minor or major tier requires
 the owner's explicit agreement for that specific release, recorded in the
-release PR — "publish this" authorizes a release, never the tier.
+release PR — "publish this" authorizes a release, never the tier. Each release
+also tags `hugo/diagrams/v<same version>` on the release commit, so Hugo sites can
+pin the diagrams module.
 
 ## [Unreleased]
 
@@ -22,9 +24,10 @@ release PR — "publish this" authorizes a release, never the tier.
   project's own packs as `@pack/name`. Project design tokens (colours, fonts, radii, light and
   dark) restyle every figure; full-colour vendor logos are never recoloured. The `diagram` skill now
   routes Hugo docs figures to the module and never to Mermaid, and the `documentation` skill no
-  longer tells agents to write Mermaid fences on Hugo docs sites. Project icons are checked
-  against an allowlist of shape elements and presentation attributes, with `href` only to ids in
-  the file; anything else, including content after the root, fails the build. Requires Hugo 0.164 or later. CI installs a pinned Hugo for the module's tests.
+  longer tells agents to write Mermaid fences on Hugo docs sites. A project icon must be
+  well-formed XML; the module parses it and rebuilds it from an allowlist of shape elements and
+  attributes, each value checked against its own grammar, so no raw icon text reaches a page.
+  Design tokens are checked against per-field grammars and font names are quoted by the module. Requires Hugo 0.164 or later. CI installs a pinned Hugo for the module's tests.
 
 ## v0.9.3 — 2026-09-21
 

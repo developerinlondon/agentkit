@@ -39,7 +39,8 @@
     {{- if not (isset $ids .from) }}{{ errorf "diagram %q: edge from %q: no such node or group" $name .from }}{{ end -}}
     {{- if not (isset $ids .to) }}{{ errorf "diagram %q: edge to %q: no such node or group" $name .to }}{{ end -}}
     {{- with .style }}{{ if not (in (slice "sync" "async" "data" "gate" "deny" "allow") .) }}{{ errorf "diagram %q: edge style %q is not sync, async, data, gate, deny or allow" $name . }}{{ end }}{{ end -}}
-    {{- if and (eq .from .to) (not (and .exit .enter)) }}{{ errorf "diagram %q: edge %s → %s loops to its own node; give it exit and enter sides to draw the loop" $name .from .to }}{{ end -}}
+    {{- /* Only a same-side U route with two different points leaves the box. */ -}}
+    {{- if and (eq .from .to) (or (not .exit) (ne .exit .enter) (eq (float (.exit_at | default 0)) (float (.enter_at | default 0)))) }}{{ errorf "diagram %q: edge %s → %s loops to its own node; draw it with exit and enter on the same side and different exit_at and enter_at" $name .from .to }}{{ end -}}
     {{- if and (isset . "label_segment") (lt (int .label_segment) 1) }}{{ errorf "diagram %q: edge %s → %s: label_segment counts from 1" $name .from .to }}{{ end -}}
     {{- with .route }}{{ if ne . "straight" }}{{ errorf "diagram %q: edge route %q: only straight is accepted" $name . }}{{ end }}{{ end -}}
     {{- with .arrow }}{{ if not (in (slice "end" "both" "none") .) }}{{ errorf "diagram %q: edge arrow %q is not end, both or none" $name . }}{{ end }}{{ end -}}
