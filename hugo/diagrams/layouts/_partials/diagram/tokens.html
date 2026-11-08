@@ -6,7 +6,7 @@
 {{- $colours := dict "surface" "surface" "sunk" "sunk" "ink" "ink" "muted" "muted" "line" "line" "accent" "accent" "accent_soft" "accent-soft" "gate" "gate" "gate_soft" "gate-soft" "deny" "deny" "allow" "allow" -}}
 {{- $numbers := dict "radius" "radius" "group_radius" "group-radius" "icon_stroke" "icon-stroke" -}}
 {{- $fonts := dict "sans" "sans" "mono" "mono" -}}
-{{- $generic := slice "serif" "sans-serif" "monospace" "system-ui" "ui-serif" "ui-sans-serif" "ui-monospace" "ui-rounded" "cursive" "fantasy" "math" "emoji" -}}
+{{- $generic := slice "serif" "sans-serif" "monospace" "system-ui" "ui-serif" "ui-sans-serif" "ui-monospace" "ui-rounded" "cursive" "fantasy" "math" "emoji" "-apple-system" "BlinkMacSystemFont" -}}
 {{- $colourRE := `^(#[0-9a-fA-F]{3}|#[0-9a-fA-F]{4}|#[0-9a-fA-F]{6}|#[0-9a-fA-F]{8}|(rgb|rgba|hsl|hsla)\(\s*[0-9.]+(deg|%)?\s*[, ]\s*[0-9.]+%?\s*[, ]\s*[0-9.]+%?\s*([,/]\s*[0-9.]+%?\s*)?\))$` -}}
 {{- $darkVals := dict "surface" "#181924" "sunk" "#13141c" "ink" "#e8e8f0" "muted" "#9698a8" "line" "#2c2d3a" "accent" "#5bd2e0" "accent_soft" "#14313a" "gate" "#e3ac5a" "gate_soft" "#2e2517" "deny" "#ee8078" "allow" "#74c795" -}}
 {{- $root := slice -}}
@@ -26,7 +26,7 @@
     {{- $list := slice -}}
     {{- range $names -}}
       {{- $n := strings.TrimSpace (string .) -}}
-      {{- if not (findRE `^[A-Za-z0-9][A-Za-z0-9 -]*$` $n 1) }}{{ errorf "params.diagrams.tokens.%s: %q is not a font name (letters, digits, spaces and hyphens; the module adds the quotes)" $k $n }}{{ end -}}
+      {{- if not (findRE `^-?[\p{L}\p{N}][\p{L}\p{N} -]*$` $n 1) }}{{ errorf "params.diagrams.tokens.%s: %q is not a font name (letters in any script, digits, spaces and hyphens; the module adds the quotes)" $k $n }}{{ end -}}
       {{- $list = $list | append (cond (in $generic $n) $n (printf `"%s"` $n)) -}}
     {{- end -}}
     {{- $root = $root | append (printf "--dg-%s:%s" (index $fonts $k) (delimit $list ",")) -}}
@@ -35,8 +35,8 @@
   {{- end -}}
 {{- end -}}
 {{- $dark := slice }}{{ range $k, $v := $darkVals }}{{ $dark = $dark | append (printf "--dg-%s:%s" (index $colours $k) $v) }}{{ end -}}
-{{- $selectors := dict ".dark" ".dark{%s}" "html.dark" "html.dark{%s}" "[data-theme=dark]" "[data-theme=dark]{%s}" "media" "@media (prefers-color-scheme:dark){:root{%s}}" -}}
+{{- $selectors := dict ".dark" ".dark{%s}" "html.dark" "html.dark{%s}" "[data-theme=dark]" "[data-theme=dark]{%s}" "[data-bs-theme=dark]" "[data-bs-theme=dark]{%s}" "media" "@media (prefers-color-scheme:dark){:root{%s}}" -}}
 {{- $sel := site.Params.diagrams.dark_selector | default ".dark" -}}
 {{- $rule := index $selectors $sel -}}
-{{- if not $rule }}{{ errorf "params.diagrams.dark_selector: %q is not one of .dark, html.dark, [data-theme=dark], media" $sel }}{{ end -}}
+{{- if not $rule }}{{ errorf "params.diagrams.dark_selector: %q is not one of .dark, html.dark, [data-theme=dark], [data-bs-theme=dark], media" $sel }}{{ end -}}
 <style>{{ with $root }}:root{ {{- delimit . ";" | safeCSS -}} }{{ end }}{{ printf $rule (delimit $dark ";") | safeCSS }}</style>

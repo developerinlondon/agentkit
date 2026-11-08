@@ -27,7 +27,11 @@ pin the diagrams module.
   longer tells agents to write Mermaid fences on Hugo docs sites. A project icon must be
   well-formed XML; the module parses it and rebuilds it from an allowlist of shape elements and
   attributes, each value checked against its own grammar, so no raw icon text reaches a page.
-  Design tokens are checked against per-field grammars and font names are quoted by the module. Requires Hugo 0.164 or later. CI installs a pinned Hugo for the module's tests.
+  Common exports build as they are: a byte-order mark, comments and editor data are dropped, a
+  `style` attribute becomes presentation attributes, and the root's presentation attributes carry
+  over; the README's "Preparing icons" gives an svgo config for the rest. Design tokens are checked
+  against per-field grammars and font names are quoted by the module. Requires Hugo 0.164 or later. CI installs a pinned Hugo for the module's tests.
+  ```
 
 ## v0.9.3 — 2026-09-21
 

@@ -1,56 +1,101 @@
 {{- /* Parses a project icon and rebuilds it from the parsed tokens, so no byte
        of the source reaches the page unexamined. Returns {view, body} or {err}.
-       The file must be well-formed XML with one <svg> root; inside it only
-       the elements and attributes below survive, each value checked against
-       a grammar for that attribute. Comments, the XML prolog and a doctype
-       are dropped; anything else outside the allowlist fails the build. */ -}}
-{{- $svg := .svg -}}
+       The file must be well-formed XML with one <svg> root. Inside it only the
+       elements below survive, with attributes checked against a grammar each;
+       style declarations become the same attributes through the same grammars.
+       Editor data (namespaced elements and attributes, metadata, data-*) is
+       dropped; anything else outside the allowlist fails the build. Ids and
+       url(#id) carry the placeholder prefix .prefix for the caller to replace. */ -}}
 {{- $prefix := .prefix -}}
 {{- $num := `^-?(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eE][-+]?[0-9]+)?(?:%|px)?$` -}}
-{{- $colour := `^(?:none|currentColor|#[0-9a-fA-F]{3,8}|(?:rgb|rgba|hsl|hsla)\([0-9., %]+\)|url\(#[A-Za-z][A-Za-z0-9_.-]*\))$` -}}
+{{- $named := `aliceblue|antiquewhite|aqua|aquamarine|azure|beige|bisque|black|blanchedalmond|blue|blueviolet|brown|burlywood|cadetblue|chartreuse|chocolate|coral|cornflowerblue|cornsilk|crimson|cyan|darkblue|darkcyan|darkgoldenrod|darkgray|darkgreen|darkgrey|darkkhaki|darkmagenta|darkolivegreen|darkorange|darkorchid|darkred|darksalmon|darkseagreen|darkslateblue|darkslategray|darkslategrey|darkturquoise|darkviolet|deeppink|deepskyblue|dimgray|dimgrey|dodgerblue|firebrick|floralwhite|forestgreen|fuchsia|gainsboro|ghostwhite|gold|goldenrod|gray|green|greenyellow|grey|honeydew|hotpink|indianred|indigo|ivory|khaki|lavender|lavenderblush|lawngreen|lemonchiffon|lightblue|lightcoral|lightcyan|lightgoldenrodyellow|lightgray|lightgreen|lightgrey|lightpink|lightsalmon|lightseagreen|lightskyblue|lightslategray|lightslategrey|lightsteelblue|lightyellow|lime|limegreen|linen|magenta|maroon|mediumaquamarine|mediumblue|mediumorchid|mediumpurple|mediumseagreen|mediumslateblue|mediumspringgreen|mediumturquoise|mediumvioletred|midnightblue|mintcream|mistyrose|moccasin|navajowhite|navy|oldlace|olive|olivedrab|orange|orangered|orchid|palegoldenrod|palegreen|paleturquoise|palevioletred|papayawhip|peachpuff|peru|pink|plum|powderblue|purple|rebeccapurple|red|rosybrown|royalblue|saddlebrown|salmon|sandybrown|seagreen|seashell|sienna|silver|skyblue|slateblue|slategray|slategrey|snow|springgreen|steelblue|tan|teal|thistle|tomato|transparent|turquoise|violet|wheat|white|whitesmoke|yellow|yellowgreen` -}}
+{{- $colour := printf `^(?i:none|currentColor|#[0-9a-f]{3,8}|(?:rgb|rgba|hsl|hsla)\([0-9., %%/]+\)|%s)$|^url\(#[A-Za-z][A-Za-z0-9_.-]*\)$` $named -}}
+{{- $localURL := `^(?:none|url\(#[A-Za-z][A-Za-z0-9_.-]*\))$` -}}
 {{- $grammar := dict
   "d" `^[MmLlHhVvCcSsQqTtAaZz0-9eE.,+ \t\r\n-]*$`
   "points" `^[0-9eE.,+ \t\r\n-]*$`
-  "viewBox" `^[0-9eE.,+ -]*$`
   "transform" `^(?:\s*(?:matrix|translate|scale|rotate|skewX|skewY)\([0-9eE.,+ -]*\)\s*,?)*\s*$`
+  "gradientTransform" `^(?:\s*(?:matrix|translate|scale|rotate|skewX|skewY)\([0-9eE.,+ -]*\)\s*,?)*\s*$`
   "id" `^[A-Za-z][A-Za-z0-9_.-]*$`
   "fill" $colour "stroke" $colour "stop-color" $colour
-  "clip-path" `^(?:none|url\(#[A-Za-z][A-Za-z0-9_.-]*\))$`
+  "clip-path" $localURL "mask" $localURL
+  "stroke-dasharray" `^(?:none|[0-9., ]+(?:px)?)$`
   "stroke-linecap" `^(?:butt|round|square)$`
-  "stroke-linejoin" `^(?:miter|round|bevel)$`
+  "stroke-linejoin" `^(?:miter|miter-clip|round|bevel|arcs)$`
   "fill-rule" `^(?:nonzero|evenodd)$` "clip-rule" `^(?:nonzero|evenodd)$`
   "gradientUnits" `^(?:userSpaceOnUse|objectBoundingBox)$`
+  "maskUnits" `^(?:userSpaceOnUse|objectBoundingBox)$`
+  "maskContentUnits" `^(?:userSpaceOnUse|objectBoundingBox)$`
+  "clipPathUnits" `^(?:userSpaceOnUse|objectBoundingBox)$`
+  "spreadMethod" `^(?:pad|reflect|repeat)$`
+  "mask-type" `^(?:alpha|luminance)$`
 -}}
-{{- range slice "cx" "cy" "r" "rx" "ry" "x" "y" "x1" "y1" "x2" "y2" "width" "height" "stroke-width" "opacity" "fill-opacity" "stroke-opacity" "offset" -}}
+{{- range slice "cx" "cy" "r" "rx" "ry" "fx" "fy" "x" "y" "x1" "y1" "x2" "y2" "width" "height" "stroke-width" "stroke-miterlimit" "stroke-dashoffset" "opacity" "fill-opacity" "stroke-opacity" "stop-opacity" "offset" -}}
   {{- $grammar = merge $grammar (dict . $num) -}}
 {{- end -}}
-{{- $elements := slice "g" "path" "circle" "ellipse" "rect" "line" "polyline" "polygon" "defs" "linearGradient" "radialGradient" "stop" "clipPath" "title" "desc" -}}
-{{- $err := "" }}{{ $out := slice }}{{ $view := "" -}}
+{{- /* What a root <svg> may pass on to the icon, and what a style declaration may set. */ -}}
+{{- $inherited := slice "fill" "stroke" "stroke-width" "stroke-linecap" "stroke-linejoin" "stroke-miterlimit" "stroke-dasharray" "stroke-dashoffset" "fill-rule" "clip-rule" "opacity" "fill-opacity" "stroke-opacity" -}}
+{{- $styleable := $inherited | append (slice "stop-color" "stop-opacity" "clip-path" "mask" "mask-type") -}}
+{{- $elements := slice "g" "path" "circle" "ellipse" "rect" "line" "polyline" "polygon" "defs" "linearGradient" "radialGradient" "stop" "clipPath" "mask" "title" "desc" -}}
+{{- $dropped := slice "metadata" -}}
+{{- $err := "" }}{{ $out := slice }}{{ $view := "" }}{{ $rootAttrs := slice -}}
+{{- $svg := strings.TrimPrefix "﻿" .svg -}}
 {{- with try (transform.Unmarshal (dict "format" "xml") $svg) -}}
   {{- with .Err }}{{ $err = printf "not well-formed XML (%s)" . }}{{ end -}}
 {{- end -}}
 {{- $src := $svg | replaceRE `(?s)<!--.*?-->` "" | replaceRE `(?s)^\s*<\?xml[^>]*\?>` "" | replaceRE `(?s)^\s*<!DOCTYPE[^>]*>` "" -}}
-{{- $stack := slice -}}
-{{- $root := 0 -}}
+{{- $stack := slice }}{{ $skip := 0 }}{{ $root := 0 -}}
 {{- range findRE `<[^>]*>?|[^<]+` $src -}}
   {{- if $err }}{{ break }}{{ end -}}
   {{- $tok := . -}}
   {{- if not (strings.HasPrefix $tok "<") -}}
-    {{- if findRE `\S` $tok 1 -}}
+    {{- if and (eq $skip 0) (findRE `\S` $tok 1) -}}
       {{- $top := cond (gt (len $stack) 0) (index $stack (sub (len $stack) 1)) "" -}}
       {{- if in (slice "title" "desc") $top }}{{ $out = $out | append (htmlEscape (htmlUnescape $tok)) }}{{ else }}{{ $err = printf "text %q outside a title or desc" (strings.Truncate 40 (strings.TrimSpace $tok)) }}{{ end -}}
     {{- end -}}
     {{- continue -}}
   {{- end -}}
-  {{- $m := findRESubmatch `^<(/?)([A-Za-z][A-Za-z0-9]*)((?:\s+[A-Za-z][A-Za-z0-9:_-]*\s*=\s*(?:"[^"<>&]*"|'[^'<>&]*'))*)\s*(/?)>$` $tok 1 -}}
+  {{- $m := findRESubmatch `^<(/?)([A-Za-z][A-Za-z0-9._-]*(?::[A-Za-z][A-Za-z0-9._-]*)?)((?:\s+[A-Za-z_][A-Za-z0-9:._-]*\s*=\s*(?:"[^"<>&]*"|'[^'<>&]*'))*)\s*(/?)>$` $tok 1 -}}
   {{- if not $m }}{{ $err = printf "%q is not a plain tag" (strings.Truncate 40 $tok) }}{{ break }}{{ end -}}
   {{- $m = index $m 0 -}}
   {{- $closing := eq (index $m 1) "/" }}{{ $name := index $m 2 }}{{ $self := eq (index $m 4) "/" -}}
+  {{- /* Editor data is dropped with everything inside it. */ -}}
+  {{- if or (gt $skip 0) (in $name ":") (in $dropped $name) -}}
+    {{- if $closing }}{{ $skip = sub $skip 1 }}{{ else if not $self }}{{ $skip = add $skip 1 }}{{ end -}}
+    {{- continue -}}
+  {{- end -}}
+  {{- /* Attributes: namespaced, xmlns and data-* are editor data; style becomes attributes. */ -}}
+  {{- $raw := dict }}{{ $order := slice -}}
+  {{- range findRESubmatch `([A-Za-z_][A-Za-z0-9:._-]*)\s*=\s*(?:"([^"]*)"|'([^']*)')` (index $m 3) -}}
+    {{- $an := index . 1 }}{{ $av := printf "%s%s" (index . 2) (index . 3) -}}
+    {{- if or (in $an ":") (eq $an "xmlns") (strings.HasPrefix $an "data-") }}{{ continue }}{{ end -}}
+    {{- if eq $an "style" -}}
+      {{- range split $av ";" -}}
+        {{- $kv := split . ":" -}}
+        {{- if ne (len $kv) 2 }}{{ continue }}{{ end -}}
+        {{- $p := strings.TrimSpace (index $kv 0) }}{{ $v := strings.TrimSpace (index $kv 1) -}}
+        {{- /* A declaration the grammar refuses is dropped, never emitted. */ -}}
+        {{- if and (in $styleable $p) (findRE (index $grammar $p) $v 1) -}}
+          {{- if not (isset $raw $p) }}{{ $order = $order | append $p }}{{ end -}}
+          {{- $raw = merge $raw (dict $p $v "_style_" true) -}}
+        {{- end -}}
+      {{- end -}}
+      {{- continue -}}
+    {{- end -}}
+    {{- if and (isset $raw $an) (isset $raw "_style_") }}{{ continue }}{{ end -}}
+    {{- if not (isset $raw $an) }}{{ $order = $order | append $an }}{{ end -}}
+    {{- $raw = merge $raw (dict $an $av) -}}
+  {{- end -}}
   {{- if eq $name "svg" -}}
     {{- if and (not $closing) (eq $root 0) (eq (len $stack) 0) -}}
       {{- $root = 1 -}}
-      {{- with findRESubmatch `\sviewBox\s*=\s*["']([^"']*)["']` (index $m 3) 1 }}{{ $view = index (index . 0) 1 }}{{ end -}}
-      {{- if not (findRE (index $grammar "viewBox") $view 1) }}{{ $view = "" }}{{ end -}}
+      {{- $view = index $raw "viewBox" | default "" -}}
+      {{- if not (findRE `^[0-9eE.,+ -]+$` $view 1) }}{{ $view = "" }}{{ end -}}
+      {{- range $order -}}
+        {{- $v := index $raw . -}}
+        {{- if and (in $inherited .) (findRE (index $grammar .) $v 1) }}{{ $rootAttrs = $rootAttrs | append (printf ` %s="%s"` . (replaceRE `url\(#` (printf "url(#%s" $prefix) $v)) }}{{ end -}}
+      {{- end -}}
+      {{- if $self }}{{ $root = 2 }}{{ end -}}
     {{- else if and $closing (eq $root 1) (eq (len $stack) 0) -}}
       {{- $root = 2 -}}
     {{- else -}}
@@ -65,14 +110,14 @@
   {{- $top := cond (gt (len $stack) 0) (index $stack (sub (len $stack) 1)) "" -}}
   {{- if and (in (slice "title" "desc") $top) (not (and $closing (eq $name $top))) }}{{ $err = printf "<%s> inside <%s>, which may hold text only" $name $top }}{{ break }}{{ end -}}
   {{- if $closing -}}
-    {{- if or (eq (len $stack) 0) (ne (index $stack (sub (len $stack) 1)) $name) }}{{ $err = printf "a </%s> that closes nothing open" $name }}{{ break }}{{ end -}}
+    {{- if or (eq (len $stack) 0) (ne $top $name) }}{{ $err = printf "a </%s> that closes nothing open" $name }}{{ break }}{{ end -}}
     {{- $stack = first (sub (len $stack) 1) $stack -}}
     {{- $out = $out | append (printf "</%s>" $name) -}}
     {{- continue -}}
   {{- end -}}
   {{- $attrs := slice -}}
-  {{- range findRESubmatch `([A-Za-z][A-Za-z0-9:_-]*)\s*=\s*(?:"([^"]*)"|'([^']*)')` (index $m 3) -}}
-    {{- $an := index . 1 }}{{ $av := printf "%s%s" (index . 2) (index . 3) -}}
+  {{- range $order -}}
+    {{- $an := . }}{{ $av := index $raw . -}}
     {{- $g := index $grammar $an -}}
     {{- if not $g }}{{ $err = printf "attribute %s" $an }}{{ break }}{{ end -}}
     {{- if not (findRE $g $av 1) }}{{ $err = printf "%s=%q (not a valid %s value)" $an $av $an }}{{ break }}{{ end -}}
@@ -90,6 +135,8 @@
   {{- else if gt (len $stack) 0 }}{{ $err = printf "<%s> never closed" (index $stack 0) -}}
   {{- else if not $view }}{{ $err = "no valid viewBox on the root" }}{{ end -}}
 {{- end -}}
-{{- $result := dict "view" $view "body" (delimit $out "") -}}
+{{- $body := delimit $out "" -}}
+{{- with $rootAttrs }}{{ $body = printf "<g%s>%s</g>" (delimit . "") $body }}{{ end -}}
+{{- $result := dict "view" $view "body" $body -}}
 {{- if $err }}{{ $result = dict "err" $err }}{{ end -}}
 {{- return $result -}}

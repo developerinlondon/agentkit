@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from 'bun:test';
-import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { chromePath, launchBrowser, rethrowLaunchFailure } from '../../publish-page/browser-launch.ts';
@@ -89,6 +89,16 @@ describe('the example site builds', () => {
     for (const d of json.diagrams) expect(d.pages).toEqual(['https://example.org/']);
   });
 
+  test('font names may use any script and the system-font keywords stay bare', () => {
+    const result = build((s) => edit(s, 'hugo.yaml', 'radius: 6', 'radius: 6\n      sans: [Söhne, -apple-system, system-ui]'));
+    expect(result.html).toContain('--dg-sans:"Söhne",-apple-system,system-ui');
+  });
+
+  test('a Bootstrap-style dark attribute is an accepted dark selector', () => {
+    const result = build((s) => edit(s, 'hugo.yaml', 'dark_selector: media', 'dark_selector: "[data-bs-theme=dark]"'));
+    expect(result.html).toMatch(/\[data-bs-theme=dark\]\{--dg-/);
+  });
+
   test('font names are quoted by the module, generic families left bare', () => {
     const result = build((s) => edit(s, 'hugo.yaml', 'radius: 6', 'radius: 6\n      sans: [Inter Display, system-ui]'));
     expect(result.html).toContain('--dg-sans:"Inter Display",system-ui');
@@ -161,6 +171,21 @@ describe('the build refuses what it cannot draw faithfully', () => {
       'a flow self-loop whose sides would cut through its own box',
       (s) => edit(s, 'data/diagrams/checkout.yaml', '{ from: queue, to: worker }', '{ from: queue, to: worker }\n  - { from: api, to: api, exit: right, enter: top, exit_at: -8, enter_at: 8 }'),
       /edge api → api loops to its own node; draw it with exit and enter on the same side/,
+    ],
+    [
+      'a self-loop whose two points nearly coincide',
+      (s) => edit(s, 'data/diagrams/checkout.yaml', '{ from: queue, to: worker }', '{ from: queue, to: worker }\n  - { from: api, to: api, exit: right, enter: right, exit_at: 0, enter_at: 0.5 }'),
+      /a loop needs exit_at and enter_at at least 12px apart/,
+    ],
+    [
+      'a self-loop that leaves from off its node',
+      (s) => edit(s, 'data/diagrams/checkout.yaml', '{ from: queue, to: worker }', '{ from: queue, to: worker }\n  - { from: api, to: api, exit: right, enter: right, exit_at: -100, enter_at: 0 }'),
+      /both within its right side/,
+    ],
+    [
+      'a self-loop that returns to a point off its node',
+      (s) => edit(s, 'data/diagrams/checkout.yaml', '{ from: queue, to: worker }', '{ from: queue, to: worker }\n  - { from: api, to: api, exit: right, enter: right, exit_at: 0, enter_at: 100 }'),
+      /both within its right side/,
     ],
     [
       'a label pinned to a segment the route does not have',
@@ -322,8 +347,8 @@ describe('edges of the rules', () => {
     const result = build((s) => writeFileSync(join(s, 'assets/icons/acme/widget.svg'), gradient('g')));
     expect(result.log).not.toMatch(/ERROR/);
     const checkout = figures(result.html)[0];
-    expect(checkout).toContain('<linearGradient id="dg1-checkout-worker-0-g">');
-    expect(checkout).toContain('fill="url(#dg1-checkout-worker-0-g)"');
+    expect(checkout).toContain('<linearGradient id="dg1-checkout-n4-0-g">');
+    expect(checkout).toContain('fill="url(#dg1-checkout-n4-0-g)"');
     expect(checkout).not.toMatch(/id="g"/);
   });
 
@@ -344,7 +369,7 @@ describe('edges of the rules', () => {
     expect(result.log).not.toMatch(/ERROR/);
     const all = ids(result.html);
     expect(new Set(all).size).toBe(all.length);
-    for (const node of ['browser', 'queue', 'worker']) {
+    for (const node of ['n0', 'n3', 'n4']) {
       const id = `dg1-checkout-${node}-0-a`;
       expect(all).toContain(id);
       expect(result.html).toContain(`fill="url(#${id})"`);
@@ -437,6 +462,60 @@ describe('the module keeps its own numbers in step', () => {
   });
 });
 
+// Real exports from design tools, as a reviewer collected them. Each must build
+// to clean markup; the three that need a tool pass first must say how.
+const ICONS = join(import.meta.dir, 'fixtures', 'icons');
+// Where an export carried its paint in style or on the root, the rebuilt icon must still paint.
+const PAINTED: Record<string, RegExp[]> = {
+  'inkscape.svg': [/fill="none"/, /stroke="#000(000)?"/, /stroke-width="2"/],
+  'inkscape-plain.svg': [/fill="none"/, /stroke="#000(000)?"/],
+  'figma-mask.svg': [/mask-type="alpha"/],
+  'lucide.svg': [/^<g fill="none" stroke="currentColor" stroke-width="2"/],
+};
+const REFUSED: Record<string, RegExp> = {
+  'illustrator.svg': /<style>/,
+  'title-class.svg': /attribute class/,
+  'use.svg': /<use>/,
+};
+
+describe('icons exported by design tools', () => {
+  for (const file of readdirSync(ICONS).filter((f) => f.endsWith('.svg')).sort()) {
+    test(file, () => {
+      const result = build((s) => cpSync(join(ICONS, file), join(s, 'assets/icons/acme/widget.svg')));
+      if (REFUSED[file]) {
+        expect(result.ok).toBe(false);
+        expect(result.log).toMatch(REFUSED[file]);
+        expect(result.log).toContain('Preparing icons');
+        return;
+      }
+      expect(result.log).not.toMatch(/ERROR|WARN/);
+      const icon = figures(result.html)[0].match(/data-id="?worker"?[\s\S]*?<g class="dg-icon[^>]*>([\s\S]*?)<\/g><text/)?.[1] ?? '';
+      expect(icon).toMatch(/<(path|circle|rect)/);
+      // Nothing an editor wrote reaches the page.
+      expect(icon).not.toMatch(/style=|class=|sodipodi|inkscape|xmlns|\ufeff/);
+      for (const paint of PAINTED[file] ?? []) expect(icon).toMatch(paint);
+    });
+  }
+
+  test('icons from packs whose names used to collide keep separate ids', () => {
+    const result = build((s) => {
+      for (const [dir, name] of [['ab', 'c'], ['a', 'b-c'], ['up', 'Icon'], ['up', 'icon']]) {
+        mkdirSync(join(s, 'assets/icons', dir), { recursive: true });
+        writeFileSync(join(s, 'assets/icons', dir, `${name}.svg`), readFileSync(join(ICONS, 'gradient.svg'), 'utf8'));
+      }
+      edit(s, 'hugo.yaml', '    icons:\n', '    icons:\n      a-b: {path: icons/ab}\n      a: {path: icons/a}\n      up: {path: icons/up}\n');
+      edit(s, 'data/diagrams/checkout.yaml', 'icon: user', 'icon: "@a-b/c"');
+      edit(s, 'data/diagrams/checkout.yaml', 'icon: inbox', 'icon: "@a/b-c"');
+      edit(s, 'data/diagrams/checkout.yaml', 'icon: logos/cloudflare-icon', 'icon: "@up/Icon"');
+      edit(s, 'data/diagrams/checkout.yaml', 'icon: logos/postgresql', 'icon: "@up/icon"');
+    });
+    expect(result.log).not.toMatch(/ERROR/);
+    const all = [...result.html.matchAll(/\sid="?([^"\s>]+)/g)].map((m) => m[1]);
+    expect(all.filter((id) => id.endsWith('-0-g'))).toHaveLength(4);
+    expect(new Set(all).size).toBe(all.length);
+  });
+});
+
 const chrome = chromePath();
 if (!chrome) {
   console.error(
@@ -445,8 +524,8 @@ if (!chrome) {
   );
 }
 
-async function page(run: (session: Session) => Promise<void>) {
-  const root = join(good.site, 'public');
+async function page(run: (session: Session) => Promise<void>, site: Build = good) {
+  const root = join(site.site, 'public');
   const server = Bun.serve({
     port: 0,
     fetch(req) {
@@ -473,6 +552,34 @@ async function page(run: (session: Session) => Promise<void>) {
     server.stop(true);
   }
 }
+
+describe.if(chrome !== null)('root presentation attributes in colour mode', () => {
+  for (const [file, expected] of [
+    ['lucide.svg', { fill: 'none', strokeIsInk: true }],
+    ['figma-ring.svg', { fill: 'none', stroke: 'rgb(17, 24, 39)' }],
+  ] as const) {
+    test(`${file} draws with the root's fill and stroke`, async () => {
+      const site = build((s) => {
+        cpSync(join(ICONS, file), join(s, 'assets/icons/acme/widget.svg'));
+        edit(s, 'hugo.yaml', 'mode: stroke', 'mode: color');
+      });
+      expect(site.ok).toBe(true);
+      await page(async (s) => {
+        const style = JSON.parse(
+          (await evaluate(
+            s,
+            `(() => { const el = document.querySelector('.dg-node[data-id="worker"] .dg-icon :is(path, circle)');
+              const cs = getComputedStyle(el); const ink = getComputedStyle(document.querySelector('.dg-svg')).color;
+              return JSON.stringify({ fill: cs.fill, stroke: cs.stroke, ink }); })()`,
+          )) as string,
+        );
+        expect(style.fill).toBe(expected.fill);
+        if ('stroke' in expected) expect(style.stroke).toBe(expected.stroke);
+        if ('strokeIsInk' in expected) expect(style.stroke).toBe(style.ink);
+      }, site).catch((e: unknown) => rethrowLaunchFailure(e, `the ${file} render assertions`));
+    }, 120_000);
+  }
+});
 
 describe.if(chrome !== null)('the enlarged view in a real browser', () => {
   test('opens at 1:1, keeps the page figure intact, closes back to its button', async () => {

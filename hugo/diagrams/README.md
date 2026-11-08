@@ -42,7 +42,8 @@ sequence, built-in and project icons, and project tokens. Build it with
    {{- partial "diagram/head.html" . -}}
    ```
 
-   Any other theme: call the same partial inside `<head>`.
+   Any other theme: call the same partial inside `<head>`, and set `dark_selector` to how
+   the theme marks dark mode (or `media` to follow the operating system).
 3. Optional: point agents at `/architecture.json` from `llms.txt`. With Hextra, add `llms` to
    the home page's outputs (`outputs: {home: [html, rss, llms]}`), copy the theme's
    `layouts/llms.txt` into the site, and add `{{ partial "diagram/llms.html" . }}` above its
@@ -54,8 +55,7 @@ sequence, built-in and project icons, and project tokens. Build it with
 The module ships `_markup/render-codeblock-mermaid.html`, which fails the build on any
 `` ```mermaid `` block, so Mermaid cannot come back by accident.
 
-Requires Hugo 0.164 or later (`hugo.Data` arrived in 0.156; the module is built and tested on
-0.164 and 0.165). The standard edition is enough; nothing needs Hugo extended. The check
+Requires Hugo 0.164 or later; the module is built and tested on 0.164 and 0.165. The standard edition is enough; nothing needs Hugo extended. The check
 script needs `node` for its JSON checks.
 
 ## Site settings
@@ -65,11 +65,11 @@ params:
   diagrams:
     content_width: 625 # px a figure gets in the text column (default 625)
     min_inline_px: 8 # smallest label allowed inline at that width (default 8)
-    dark_selector: .dark # one of .dark, html.dark, [data-theme=dark], media
+    dark_selector: .dark # .dark, html.dark, [data-theme=dark], [data-bs-theme=dark] or media
     icons: # project icon packs: icon: "@acme/widget"
       acme: { path: icons/acme, mode: stroke } # files in assets/icons/acme/*.svg
     tokens: # project brand; defaults are the house theme
-      sans: [Inter, system-ui, sans-serif] # names only; the module quotes them
+      sans: [Inter, -apple-system, system-ui, sans-serif] # names only; the module quotes them
       mono: [JetBrains Mono, ui-monospace, monospace]
       radius: 3 # node corner radius, px
       group_radius: 5
@@ -82,7 +82,7 @@ Colour tokens, each with a light and a dark value: `surface`, `sunk`, `ink`, `mu
 `line`, `accent`, `accent_soft`, `gate`, `gate_soft`, `deny`, `allow`. Keep one accent: it
 marks the system the figure is about and the data path through it. An unknown key, or a
 value outside its grammar, fails the build: colours are `#hex`, `rgb()`, `rgba()`, `hsl()` or
-`hsla()`; numbers are px; fonts are a list of names (letters, digits, spaces, hyphens) that the
+`hsla()`; numbers are px; fonts are a list of names (letters in any script, digits, spaces, hyphens) that the
 module quotes itself.
 
 **Readability.** Inline, a figure shrinks to what its frame leaves of the column (the
@@ -208,13 +208,40 @@ colour is a CSS custom property (`--dg-*`), set from the tokens above.
 
 ## Icons
 
-| Pack           | Licence                         | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| -------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `heroicons`    | MIT, `LICENSES/heroicons.txt`   | outline glyphs for generic parts (user, server, database, mail…), drawn in the theme ink and stroke                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| `simple-icons` | CC0-1.0, `LICENSES/CC0-1.0.txt` | single-colour brand marks, drawn in the theme ink                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| `logos`        | CC0-1.0, `LICENSES/CC0-1.0.txt` | full-colour brand artwork, never recoloured                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| `@<pack>`      | the project's own               | `assets/<path>/<name>.svg`, well-formed XML with one `<svg>` root, which the module parses and rebuilds from an allowlist: g, path, circle, ellipse, rect, line, polyline, polygon, defs, gradients, stop, clipPath, title and desc, with geometry and presentation attributes each checked against its own grammar and `url(#id)` the only URL; `title` and `desc` hold text only, `class` is not accepted, and ids are prefixed per icon. Comments are dropped; anything else fails the build. `mode: stroke` or `mono` normalises to the theme, `color` (default) leaves it alone |
+| Pack           | Licence                         | Notes                                                                                                                                                                                                         |
+| -------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `heroicons`    | MIT, `LICENSES/heroicons.txt`   | outline glyphs for generic parts (user, server, database, mail…), drawn in the theme ink and stroke                                                                                                           |
+| `simple-icons` | CC0-1.0, `LICENSES/CC0-1.0.txt` | single-colour brand marks, drawn in the theme ink                                                                                                                                                             |
+| `logos`        | CC0-1.0, `LICENSES/CC0-1.0.txt` | full-colour brand artwork, never recoloured                                                                                                                                                                   |
+| `@<pack>`      | the project's own               | `assets/<path>/<name>.svg`, well-formed XML with one `<svg>` root, parsed and rebuilt (see Preparing icons). `mode: stroke` or `mono` normalises to the theme, `color` (default) keeps the icon's own colours |
 
 `simple-icons` and `logos` are generated from the agentkit `diagram` skill's vendored CC0
 packs (`bun scripts/sync-hugo-diagram-icons.ts` in the agentkit repo), so a Hugo figure and a D2 render draw
 the same marks. An icon name two packs share must be written `pack/name`.
+
+## Preparing icons
+
+A project icon is parsed and rebuilt, never copied. What survives: `g`, `path`, `circle`,
+`ellipse`, `rect`, `line`, `polyline`, `polygon`, `defs`, `linearGradient`, `radialGradient`,
+`stop`, `clipPath`, `mask`, `title` and `desc` (text only), with geometry and presentation
+attributes, each value checked against its own grammar; `url(#id)` is the only URL. The
+module does the harmless clean-up itself:
+
+- a leading byte-order mark, the XML prolog, a doctype and comments are dropped;
+- editor data is dropped: namespaced elements and attributes (`sodipodi:`, `inkscape:`,
+  `figma:`, …), `xmlns`, `data-*` and `<metadata>`;
+- a `style` attribute becomes the equivalent presentation attributes, through the same
+  grammars; anything else in it is dropped;
+- the root `<svg>`'s presentation attributes (`fill="none"`, `stroke="currentColor"`, …)
+  carry over to the icon.
+
+Figma, Lucide, Tabler and Inkscape exports build as they are. A `<style>` element, a
+`class` attribute or `<use>` fails the build. Run the first two through svgo with the
+module's config:
+
+```sh
+npx svgo@4.0.2 --config path/to/diagrams/svgo.config.mjs -i exported.svg -o assets/icons/<pack>/<name>.svg
+```
+
+svgo cannot inline `<use>`: unlink clones in the editor before exporting (Inkscape: Edit ›
+Clone › Unlink Clone; Illustrator: Object › Expand).

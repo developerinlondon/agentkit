@@ -20,7 +20,7 @@
       {{- if not (in (slice "stroke" "mono" "color") $mode) -}}
         {{- $out = dict "err" (printf "icon pack %q: mode %q is not stroke, mono or color" (index $parts 0) $mode) -}}
       {{- else if $parsed.err -}}
-        {{- $out = dict "err" (printf "icon %q: %s: %s; project icons may hold only g, path, circle, ellipse, rect, line, polyline, polygon, defs, gradients, stop, clipPath, title and desc, with geometry and presentation attributes" $ref $file $parsed.err) -}}
+        {{- $out = dict "err" (printf "icon %q: %s: %s; project icons may hold only g, path, circle, ellipse, rect, line, polyline, polygon, defs, gradients, stop, clipPath, mask, title and desc, with geometry and presentation attributes (see \"Preparing icons\" in the diagrams module README for an svgo config that converts most exports)" $ref $file $parsed.err) -}}
       {{- else -}}
         {{- $out = dict "view" $parsed.view "mode" $mode "body" $parsed.body -}}
       {{- end -}}
