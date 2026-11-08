@@ -240,8 +240,14 @@ Figma, Lucide, Tabler and Inkscape exports build as they are. A `<style>` elemen
 module's config:
 
 ```sh
-npx svgo@4.0.2 --config path/to/diagrams/svgo.config.mjs -i exported.svg -o assets/icons/<pack>/<name>.svg
+curl -fsSLO https://raw.githubusercontent.com/developerinlondon/agentkit/v<version>/hugo/diagrams/svgo.config.mjs
+npx svgo@4.0.2 --config svgo.config.mjs -i exported.svg -o assets/icons/<pack>/<name>.svg
 ```
+
+`<version>` is the agentkit release the site pins (`hugo/diagrams/v<version>` and `v<version>` tag
+the same commit). After `hugo mod vendor` the file is also at
+`_vendor/github.com/developerinlondon/agentkit/hugo/diagrams/svgo.config.mjs`, and a site that
+copied the module has it at `themes/diagrams/svgo.config.mjs`.
 
 svgo cannot inline `<use>`: unlink clones in the editor before exporting (Inkscape: Edit ›
 Clone › Unlink Clone; Illustrator: Object › Expand).
