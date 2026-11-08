@@ -295,7 +295,7 @@ check_slice() {
 	rm -f "$output"
 	case "$verdict" in
 	0) ok "slice '$SLICE': $TEST_VERDICT_PASS pass / $TEST_VERDICT_FAIL fail" ;;
-	1) bad "slice '$SLICE': $TEST_VERDICT_PASS pass / $TEST_VERDICT_FAIL fail" ;;
+	1) bad "slice '$SLICE': $TEST_VERDICT_PASS pass / $TEST_VERDICT_FAIL fail / $TEST_VERDICT_ERRORS load errors" ;;
 	*) bad "slice '$SLICE' printed no pass/fail marker — nothing ran, so there is no verdict" ;;
 	esac
 	return 0
