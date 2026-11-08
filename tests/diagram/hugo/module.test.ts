@@ -248,6 +248,16 @@ describe('the build refuses what it cannot draw faithfully', () => {
       /<path> inside <desc>, which may hold text only/,
     ],
     [
+      'a project icon with a path inside its title',
+      (s) => writeFileSync(join(s, 'assets/icons/acme/widget.svg'), '<svg viewBox="0 0 8 8"><title><path d="M0 0h4"/></title></svg>'),
+      /<path> inside <title>, which may hold text only/,
+    ],
+    [
+      'a project icon with a group inside its desc',
+      (s) => writeFileSync(join(s, 'assets/icons/acme/widget.svg'), '<svg viewBox="0 0 8 8"><desc><g/></desc></svg>'),
+      /<g> inside <desc>, which may hold text only/,
+    ],
+    [
       'a project icon whose paint hides url( behind an entity',
       (s) => writeFileSync(join(s, 'assets/icons/acme/widget.svg'), '<svg viewBox="0 0 8 8"><rect width="8" height="8" fill="u&#114;l(http://example.org/x.svg#g)"/></svg>'),
       /project icons may hold only/,
@@ -304,18 +314,41 @@ describe('the build refuses what it cannot draw faithfully', () => {
 });
 
 describe('edges of the rules', () => {
-  test('a project icon\'s ids are prefixed and its url(#id) references follow them', () => {
-    const result = build((s) =>
-      writeFileSync(
-        join(s, 'assets/icons/acme/widget.svg'),
-        '<svg viewBox="0 0 8 8"><defs><linearGradient id="g"><stop offset="0" stop-color="#000"/></linearGradient></defs><rect width="8" height="8" fill="url(#g)"/></svg>',
-      )
-    );
+  const gradient = (id: string) =>
+    `<svg viewBox="0 0 8 8"><defs><linearGradient id="${id}"><stop offset="0" stop-color="#000"/></linearGradient></defs><rect width="8" height="8" fill="url(#${id})"/></svg>`;
+  const ids = (html: string) => [...html.matchAll(/\sid="?([^"\s>]+)/g)].map((m) => m[1]);
+
+  test('icon ids are prefixed per drawn instance and url(#id) follows', () => {
+    const result = build((s) => writeFileSync(join(s, 'assets/icons/acme/widget.svg'), gradient('g')));
     expect(result.log).not.toMatch(/ERROR/);
     const checkout = figures(result.html)[0];
-    expect(checkout).toContain('<linearGradient id="dgi-acme-widget-g">');
-    expect(checkout).toContain('fill="url(#dgi-acme-widget-g)"');
+    expect(checkout).toContain('<linearGradient id="dg1-checkout-worker-0-g">');
+    expect(checkout).toContain('fill="url(#dg1-checkout-worker-0-g)"');
     expect(checkout).not.toMatch(/id="g"/);
+  });
+
+  test('an icon id equal to a module marker id cannot capture the marker', () => {
+    const result = build((s) => writeFileSync(join(s, 'assets/icons/acme/widget.svg'), gradient('dg2-refund-m-ink')));
+    const all = ids(result.html);
+    expect(all.filter((id) => id === 'dg2-refund-m-ink')).toHaveLength(1);
+    expect(new Set(all).size).toBe(all.length);
+  });
+
+  test('two icons that both use id "a", and one icon drawn twice, keep their ids apart', () => {
+    const result = build((s) => {
+      writeFileSync(join(s, 'assets/icons/acme/widget.svg'), gradient('a'));
+      writeFileSync(join(s, 'assets/icons/acme/gadget.svg'), gradient('a'));
+      edit(s, 'data/diagrams/checkout.yaml', 'icon: inbox', 'icon: "@acme/gadget"');
+      edit(s, 'data/diagrams/checkout.yaml', 'icon: user', 'icon: "@acme/widget"');
+    });
+    expect(result.log).not.toMatch(/ERROR/);
+    const all = ids(result.html);
+    expect(new Set(all).size).toBe(all.length);
+    for (const node of ['browser', 'queue', 'worker']) {
+      const id = `dg1-checkout-${node}-0-a`;
+      expect(all).toContain(id);
+      expect(result.html).toContain(`fill="url(#${id})"`);
+    }
   });
 
   test('a project icon is rebuilt from its parsed shapes, comments and prolog dropped', () => {

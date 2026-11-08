@@ -99,7 +99,7 @@
   {{- partial "diagram/edge.html" (dict "e" .e "rt" .rt "uid" $uid "cw" $cw "rh" $rh) -}}
 {{- end -}}
 {{- range $nodes -}}
-  {{- partial "diagram/node.html" (dict "n" .n "b" .b) -}}
+  {{- partial "diagram/node.html" (dict "n" .n "b" .b "uid" $uid) -}}
 {{- end -}}
 {{- range $notes -}}
   {{- $cls := index (dict "muted" "dg-ts" "caps" "dg-ts" "accent" "dg-ta" "gate" "dg-tg" "deny" "dg-td" "allow" "dg-tl" "ink" "dg-t" "bold" "dg-tb") .style -}}

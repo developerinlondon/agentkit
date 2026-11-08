@@ -13,5 +13,8 @@
   {{- $k := div $size (math.Max $vw $vh) -}}
   {{- $x := add (add $x0 (mul (float $i) (add $size $gap))) (div (sub $size (mul $vw $k)) 2.0) -}}
   {{- $y := add $.y (div (sub $size (mul $vh $k)) 2.0) -}}
-  <g class="dg-icon dg-icon-{{ $ic.mode }}" transform="translate({{ partial $f (sub $x (mul $vx $k)) }} {{ partial $f (sub $y (mul $vy $k)) }}) scale({{ printf "%.4f" $k }})" aria-hidden="true">{{ $ic.body | safeHTML }}</g>
+  {{- /* Project icon ids carry a placeholder; each drawn instance gets its own
+         prefix so icons collide neither with module ids nor with each other. */ -}}
+  {{- $body := replace $ic.body "__DGI__" (printf "%s-%d-" $.prefix $i) -}}
+  <g class="dg-icon dg-icon-{{ $ic.mode }}" transform="translate({{ partial $f (sub $x (mul $vx $k)) }} {{ partial $f (sub $y (mul $vy $k)) }}) scale({{ printf "%.4f" $k }})" aria-hidden="true">{{ $body | safeHTML }}</g>
 {{- end -}}

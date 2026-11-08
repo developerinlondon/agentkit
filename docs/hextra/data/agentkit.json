@@ -395,13 +395,13 @@
       "name": "diagram",
       "kit": "core",
       "explicit": false,
-      "description": "Craft high-quality hand-drawn-style diagrams (Excalidraw JSON rendered to self-contained SVG). Use AUTOMATICALLY when the user asks to visualize, draw, diagram, or sketch anything — system architectures, workflows, protocols, timelines, comparisons, mental models — or when a task needs a visual that outclasses mermaid/box kits. Renders headlessly at generation time; output embeds anywhere HTML or markdown does."
+      "description": "Craft high-quality diagrams — hand-drawn Excalidraw sketches, D2 technical figures, or, for Hugo docs sites, YAML specs rendered at build time by the agentkit hugo/diagrams module. Use AUTOMATICALLY when the user asks to visualize, draw, diagram, or sketch anything — system architectures, workflows, protocols, timelines, comparisons, mental models — or when a task needs a visual that outclasses mermaid/box kits. Never writes Mermaid for docs figures. Renders headlessly at generation time; output embeds anywhere HTML or markdown does."
     },
     {
       "name": "documentation",
       "kit": "core",
       "explicit": false,
-      "description": "Documentation standards: surface-aware diagrams (Mermaid where markdown renders, ASCII for terminals and diffs), structured plan format, compact tables for comparisons. Use when writing docs, plans, READMEs, or architecture documents in any project."
+      "description": "Documentation standards: surface-aware diagrams (build-time specs on Hugo docs sites, Mermaid where other markdown renders, ASCII for terminals and diffs), structured plan format, compact tables for comparisons. Use when writing docs, plans, READMEs, or architecture documents in any project."
     },
     {
       "name": "github-issue-lifecycle",

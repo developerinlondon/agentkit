@@ -11,7 +11,7 @@
 {{- end -}}
 {{- $y := sub $b.cy (div $b.content 2.0) -}}
 {{- with $b.icons -}}
-  {{- partial "diagram/icon.html" (dict "icon" . "cx" $b.cx "y" $y) -}}
+  {{- partial "diagram/icon.html" (dict "icon" . "cx" $b.cx "y" $y "prefix" (printf "%s-%s" $.uid (anchorize $n.id))) -}}
   {{- $y = add $y 23 -}}
 {{- end -}}
 {{- with $b.lt -}}

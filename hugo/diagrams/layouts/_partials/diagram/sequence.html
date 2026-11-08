@@ -113,6 +113,6 @@
   {{- end -}}
 {{- end -}}
 {{- range $actors -}}
-  {{- partial "diagram/node.html" (dict "n" .n "b" .b) -}}
+  {{- partial "diagram/node.html" (dict "n" .n "b" .b "uid" $uid) -}}
 {{- end -}}
 </svg>
