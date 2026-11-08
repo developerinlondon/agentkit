@@ -96,9 +96,10 @@
     {{- end -}}
     {{- if eq $an "style" -}}
       {{- range split $av ";" -}}
-        {{- $kv := split . ":" -}}
-        {{- if ne (len $kv) 2 }}{{ continue }}{{ end -}}
-        {{- $p := strings.TrimSpace (index $kv 0) }}{{ $v := strings.TrimSpace (index $kv 1) -}}
+        {{- /* Split on the first colon only: a value may hold one, and must then face its grammar. */ -}}
+        {{- $kv := findRESubmatch `^([^:]*):(.*)$` . 1 -}}
+        {{- if not $kv }}{{ continue }}{{ end -}}
+        {{- $p := strings.TrimSpace (index (index $kv 0) 1) }}{{ $v := strings.TrimSpace (index (index $kv 0) 2) -}}
         {{- /* Properties the module draws are held to their attribute grammar;
                the rest of a style (fonts, editor state) is dropped. */ -}}
         {{- if not (in $styleable $p) }}{{ continue }}{{ end -}}

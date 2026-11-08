@@ -8,6 +8,7 @@
   {{- if eq $a.shape "pill" -}}
     {{- if in (slice "left" "right") $exit }}{{ errorf "diagram %q: edge %s → %s: a pill's rounded %s side cannot hold a loop; use top or bottom" .name $e.from $e.to $exit }}{{ end -}}
     {{- $half = sub $half (div $a.h 2.0) -}}
+    {{- if le $half 2.0 }}{{ errorf "diagram %q: edge %s → %s: this pill's %s side is all curve, with no straight run to hold a loop" .name $e.from $e.to $exit }}{{ end -}}
   {{- end -}}
   {{- $p := float ($e.exit_at | default 0) }}{{ $q := float ($e.enter_at | default 0) -}}
   {{- if or (lt (math.Abs (sub $p $q)) 12) (gt (math.Abs $p) (sub $half 2)) (gt (math.Abs $q) (sub $half 2)) -}}

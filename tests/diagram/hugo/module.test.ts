@@ -331,6 +331,24 @@ describe('the build refuses what it cannot draw faithfully', () => {
       /a gradient href #later that names no gradient defined before it/,
     ],
     [
+      'a style value that hides a second colon',
+      (s) => writeFileSync(join(s, 'assets/icons/acme/widget.svg'), '<svg viewBox="0 0 8 8"><rect width="8" height="8" style="fill:url(http://example.org/x.svg#g)"/></svg>'),
+      /style fill:url\(http:\/\/example.org\/x.svg#g\) \(not a valid fill value\)/,
+    ],
+    [
+      'a gradient that links to an id the icon never defines',
+      (s) => writeFileSync(join(s, 'assets/icons/acme/widget.svg'), '<svg viewBox="0 0 8 8"><linearGradient id="g" href="#missing"/><rect width="8" height="8" fill="url(#g)"/></svg>'),
+      /a gradient href #missing that names no gradient defined before it/,
+    ],
+    [
+      'a loop on a pill whose top is all curve',
+      (s) => {
+        edit(s, 'data/diagrams/checkout.yaml', '{ id: queue, label: Queue,', '{ id: queue, label: Queue, shape: pill, w: 50, h: 70,');
+        edit(s, 'data/diagrams/checkout.yaml', '{ from: queue, to: worker }', '{ from: queue, to: worker }\n  - { from: queue, to: queue, exit: top, enter: top, exit_at: -8, enter_at: 8 }');
+      },
+      /this pill's top side is all curve, with no straight run to hold a loop/,
+    ],
+    [
       'a font token that ends its declaration',
       (s) => edit(s, 'hugo.yaml', 'radius: 6', 'radius: 6\n      sans: "Inter; color: red"'),
       /tokens.sans: .* is not a font name/,
