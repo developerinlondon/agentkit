@@ -33,12 +33,14 @@
   {{- range $s.groups -}}
     {{- $gid := .id }}{{ $has := false -}}
     {{- range $s.nodes }}{{ if eq .group $gid }}{{ $has = true }}{{ end }}{{ end -}}
-    {{- if and (not $has) (not (and .col .row .w .h)) }}{{ errorf "diagram %q: group %q has no members and no explicit col/row/w/h" $name $gid }}{{ end -}}
+    {{- if and (not $has) (not (and (isset . "col") (isset . "row") (isset . "w") (isset . "h"))) }}{{ errorf "diagram %q: group %q has no members and no explicit col/row/w/h" $name $gid }}{{ end -}}
   {{- end -}}
   {{- range $s.edges -}}
     {{- if not (isset $ids .from) }}{{ errorf "diagram %q: edge from %q: no such node or group" $name .from }}{{ end -}}
     {{- if not (isset $ids .to) }}{{ errorf "diagram %q: edge to %q: no such node or group" $name .to }}{{ end -}}
     {{- with .style }}{{ if not (in (slice "sync" "async" "data" "gate" "deny" "allow") .) }}{{ errorf "diagram %q: edge style %q is not sync, async, data, gate, deny or allow" $name . }}{{ end }}{{ end -}}
+    {{- if and (eq .from .to) (not (and .exit .enter)) }}{{ errorf "diagram %q: edge %s → %s loops to its own node; give it exit and enter sides to draw the loop" $name .from .to }}{{ end -}}
+    {{- if and (isset . "label_segment") (lt (int .label_segment) 1) }}{{ errorf "diagram %q: edge %s → %s: label_segment counts from 1" $name .from .to }}{{ end -}}
     {{- with .route }}{{ if ne . "straight" }}{{ errorf "diagram %q: edge route %q: only straight is accepted" $name . }}{{ end }}{{ end -}}
     {{- with .arrow }}{{ if not (in (slice "end" "both" "none") .) }}{{ errorf "diagram %q: edge arrow %q is not end, both or none" $name . }}{{ end }}{{ end -}}
     {{- range slice .exit .enter }}{{ with . }}{{ if not (in (slice "left" "right" "top" "bottom") .) }}{{ errorf "diagram %q: edge side %q is not left, right, top or bottom" $name . }}{{ end }}{{ end }}{{ end -}}

@@ -40,10 +40,11 @@
     {{- if eq .group $gr.id }}{{ $x = math.Min $x .bx }}{{ $y = math.Min $y .by }}{{ $r = math.Max $r .br }}{{ $bt = math.Max $bt .bb }}{{ end -}}
   {{- end -}}
   {{- $x = sub $x $pad }}{{ $y = sub $y $top }}{{ $r = add $r $pad }}{{ $bt = add $bt $pad -}}
-  {{- with $gr.col }}{{ $x = mul (float .) $cw }}{{ end -}}
-  {{- with $gr.row }}{{ $y = mul (float .) $rh }}{{ end -}}
-  {{- with $gr.w }}{{ $r = add $x (float .) }}{{ end -}}
-  {{- with $gr.h }}{{ $bt = add $y (float .) }}{{ end -}}
+  {{- /* isset, not with: an explicit col or row of 0 is a position. */ -}}
+  {{- if isset $gr "col" }}{{ $x = mul (float $gr.col) $cw }}{{ end -}}
+  {{- if isset $gr "row" }}{{ $y = mul (float $gr.row) $rh }}{{ end -}}
+  {{- if isset $gr "w" }}{{ $r = add $x (float $gr.w) }}{{ end -}}
+  {{- if isset $gr "h" }}{{ $bt = add $y (float $gr.h) }}{{ end -}}
   {{- $b := dict "id" $gr.id "x" $x "y" $y "w" (sub $r $x) "h" (sub $bt $y) "r" $r "b" $bt "cx" (div (add $x $r) 2.0) "cy" (div (add $y $bt) 2.0) "shape" "rect" -}}
   {{- $boxes = merge $boxes (dict $gr.id $b) -}}
   {{- $groups = $groups | append (dict "g" $gr "b" $b) -}}

@@ -110,6 +110,7 @@
   {{- end -}}
 {{- end -}}
 {{- $seg := int ($e.label_segment | default $best) -}}
+{{- if ge $seg (len $pts) }}{{ errorf "edge %s → %s: label_segment %d, but the route has %d segments" $e.from $e.to $seg (sub (len $pts) 1) }}{{ end -}}
 {{- $p1 := index $pts (sub $seg 1) }}{{ $p2 := index $pts $seg -}}
 {{- $orient := cond (eq $p1.y $p2.y) "h" "v" -}}
 {{- $seglen := add (math.Abs (sub $p2.x $p1.x)) (math.Abs (sub $p2.y $p1.y)) -}}

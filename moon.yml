@@ -99,6 +99,8 @@ fileGroups:
     - "skills/publish-page/themes/deck.html"
     - "skills/publish-page/themes/doc.html"
     - "tests/diagram/**/*"
+    - "tests/publish-page/browser-launch.ts"
+    - "tests/publish-page/devtools.ts"
 
   hookInputs:
     - ".claude-plugin/**/*"

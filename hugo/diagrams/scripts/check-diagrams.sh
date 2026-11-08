@@ -61,7 +61,10 @@ if [ -n "$unused" ]; then
   echo "FAIL: specs no page uses: $unused"
   fail=1
 fi
-grep -q 'architecture.json' "$out/llms.txt" || { echo "FAIL: llms.txt does not point at architecture.json"; fail=1; }
+if [ -f "$out/llms.txt" ] && ! grep -q 'architecture.json' "$out/llms.txt"; then
+  echo "FAIL: llms.txt is published but does not point at architecture.json"
+  fail=1
+fi
 
 [ "$fail" -eq 0 ] && echo "ok: $specs diagrams, no mermaid"
 exit "$fail"

@@ -12,7 +12,10 @@ description: >-
 
 Pick the diagram format by where the document is primarily read:
 
-- Rendered markdown (READMEs, docs sites, GitLab/GitHub issues and MRs, chat UIs with Mermaid
+- Hugo docs sites: never a `mermaid` fence. Write the figure as a YAML spec for the
+  `hugo/diagrams` module (the `diagram` skill's `references/hugo-module.md`); the site's build
+  draws it and fails on a mermaid block.
+- Other rendered markdown (READMEs, GitLab/GitHub issues and MRs, chat UIs with Mermaid
   support): use `mermaid` code fences (`flowchart LR`/`TD`, `sequenceDiagram`) -- they render as
   real diagrams. Keep them compact (<= ~10 nodes) and label the edges.
 - Plain text (plans and notes read in editors, terminals, git diffs, any monospace surface): use

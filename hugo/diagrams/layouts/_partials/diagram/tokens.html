@@ -1,6 +1,6 @@
 {{- /* House theme dark values plus params.diagrams.tokens, as CSS custom
-       properties. Unknown keys and values that could escape a declaration
-       fail the build rather than vanish. */ -}}
+       properties. Unknown keys, and values that could leave their declaration
+       or open a string, fail the build rather than vanish. */ -}}
 {{- $t := site.Params.diagrams.tokens | default dict -}}
 {{- $colours := dict "surface" "surface" "sunk" "sunk" "ink" "ink" "muted" "muted" "line" "line" "accent" "accent" "accent_soft" "accent-soft" "gate" "gate" "gate_soft" "gate-soft" "deny" "deny" "allow" "allow" -}}
 {{- $global := dict "sans" "sans" "mono" "mono" "radius" "radius" "group_radius" "group-radius" "icon_stroke" "icon-stroke" -}}
@@ -21,8 +21,8 @@
     {{- if in (slice "radius" "group_radius" "icon_stroke") $k -}}
       {{- if not (findRE `^[0-9]+(\.[0-9]+)?$` $val 1) }}{{ errorf "params.diagrams.tokens.%s: %q is not a number of px" $k $v }}{{ end -}}
       {{- $val = printf "%spx" $val -}}
-    {{- else if not (findRE `^[A-Za-z0-9 ,"'_-]+$` $val 1) -}}
-      {{- errorf "params.diagrams.tokens.%s: %q is not a font-family list" $k $v -}}
+    {{- else if or (not (findRE `^[A-Za-z0-9 ,"'_-]+$` $val 1)) (ne (mod (len (findRE `"` $val)) 2) 0) (ne (mod (len (findRE `'` $val)) 2) 0) -}}
+      {{- errorf "params.diagrams.tokens.%s: %q is not a font-family list (unbalanced quotes would swallow the next rule)" $k $v -}}
     {{- end -}}
     {{- $root = $root | append (printf "--dg-%s:%s" $var $val) -}}
   {{- end -}}

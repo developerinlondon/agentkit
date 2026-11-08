@@ -6,7 +6,7 @@
 {{- $count := add ($page.Store.Get "diagramCount" | default 0) 1 -}}
 {{- $page.Store.Set "diagramCount" $count -}}
 {{- $uid := printf "dg%d-%s" $count (anchorize $name) -}}
-<figure class="dg" id="diagram-{{ anchorize $name }}" data-diagram="{{ $name }}"><div class="dg-scroll">
+<figure class="dg" id="diagram-{{ anchorize $name }}{{ $seen := $page.Store.Get (printf "diagramSeen-%s" $name) | default 0 }}{{ with $seen }}-{{ add . 1 }}{{ end }}{{ $page.Store.Set (printf "diagramSeen-%s" $name) (add $seen 1) }}" data-diagram="{{ $name }}"><div class="dg-scroll">
 {{- if eq ($spec.kind | default "flow") "sequence" -}}
 {{- partial "diagram/sequence.html" (dict "spec" $spec "uid" $uid "name" $name) -}}
 {{- else -}}

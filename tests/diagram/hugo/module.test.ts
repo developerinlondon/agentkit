@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, test } from 'bun:test';
 import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { chromePath, launchBrowser, rethrowLaunchFailure } from '../../publish-page/browser-launch.ts';
 import { attach, evaluate, type Session } from '../../publish-page/devtools.ts';
 
@@ -135,7 +135,7 @@ describe('the build refuses what it cannot draw faithfully', () => {
     [
       'a project icon that nests an <svg>',
       (s) => writeFileSync(join(s, 'assets/icons/acme/widget.svg'), '<svg viewBox="0 0 8 8"><svg><rect/></svg></svg>'),
-      /contains a nested <svg>/,
+      /contains a nested or stray <svg>/,
     ],
     [
       'a mermaid code block',
@@ -146,6 +146,41 @@ describe('the build refuses what it cannot draw faithfully', () => {
       'labels too small for the configured column',
       (s) => edit(s, 'hugo.yaml', 'content_width: 640', 'content_width: 300'),
       /smallest label shows at [0-9.]+px in a 300px column \(floor 8px\)/,
+    ],
+    [
+      'a flow edge that loops to its own node without sides',
+      (s) => edit(s, 'data/diagrams/checkout.yaml', '{ from: queue, to: worker }', '{ from: queue, to: worker }\n  - { from: api, to: api }'),
+      /edge api → api loops to its own node/,
+    ],
+    [
+      'a label pinned to a segment the route does not have',
+      (s) => edit(s, 'data/diagrams/checkout.yaml', '{ from: queue, to: worker }', '{ from: queue, to: worker, label: x, label_segment: 4 }'),
+      /edge queue → worker: label_segment 4, but the route has 1 segments/,
+    ],
+    [
+      'a project icon that carries a script',
+      (s) => writeFileSync(join(s, 'assets/icons/acme/widget.svg'), '<svg viewBox="0 0 8 8"><script>alert(1)</script></svg>'),
+      /project icons may hold shapes only/,
+    ],
+    [
+      'a project icon that carries a stylesheet',
+      (s) => writeFileSync(join(s, 'assets/icons/acme/widget.svg'), '<svg viewBox="0 0 8 8"><style>body{display:none}</style><rect/></svg>'),
+      /contains "<style>"/,
+    ],
+    [
+      'a project icon with an event handler',
+      (s) => writeFileSync(join(s, 'assets/icons/acme/widget.svg'), '<svg viewBox="0 0 8 8"><rect onload="x()"/></svg>'),
+      /project icons may hold shapes only/,
+    ],
+    [
+      'a project icon with content after its closing tag',
+      (s) => writeFileSync(join(s, 'assets/icons/acme/widget.svg'), '<svg viewBox="0 0 8 8"><rect/></svg>\n<!-- exported -->\n'),
+      /has content after its closing <\/svg>/,
+    ],
+    [
+      'a font token with an unbalanced quote',
+      (s) => edit(s, 'hugo.yaml', 'radius: 6', `radius: 6\n      sans: '"Inter'`),
+      /tokens.sans: .* is not a font-family list/,
     ],
     [
       'an unknown token',
@@ -168,7 +203,60 @@ describe('the build refuses what it cannot draw faithfully', () => {
   }
 });
 
+describe('edges of the rules', () => {
+  // The figure's own padding and border take width from the column. A canvas just
+  // inside the old column-only arithmetic must still fail once that is counted.
+  test('the readability floor counts the figure frame, not just the column', () => {
+    const width = Number(figures(good.html)[0].match(/--dg-w:([0-9.]+)px/)?.[1]);
+    expect(width).toBeGreaterThan(0);
+    const column = Math.round((width * 8) / 11) + 20;
+    expect((11 * column) / width).toBeGreaterThan(8);
+    const result = build((s) => edit(s, 'hugo.yaml', 'content_width: 640', `content_width: ${column}`));
+    expect(result.ok).toBe(false);
+    expect(result.log).toMatch(/diagram "checkout": smallest label shows at/);
+  });
+
+  test('a group with explicit geometry at column 0 builds', () => {
+    const result = build((s) =>
+      edit(s, 'data/diagrams/checkout.yaml', '- { id: cluster, label: Cluster }', '- { id: cluster, label: Cluster }\n  - { id: zone, label: Zone, col: 0, row: 0, w: 60, h: 30 }')
+    );
+    expect(result.log).not.toMatch(/ERROR/);
+    expect(result.ok).toBe(true);
+  });
+
+  test('a page is attributed however the shortcode is spaced', () => {
+    const result = build((s) => edit(s, 'content/_index.md', '{{< diagram "refund" >}}', '{{<   diagram   "refund"   >}}'));
+    const json = JSON.parse(readFileSync(join(result.site, 'public', 'architecture.json'), 'utf8'));
+    expect(json.diagrams.find((d: { name: string }) => d.name === 'refund').pages).toEqual(['https://example.org/']);
+  });
+
+  test('the same diagram twice on a page gets two figure ids', () => {
+    const result = build((s) => edit(s, 'content/_index.md', '{{< diagram "refund" >}}', '{{< diagram "refund" >}}\n\n{{< diagram "refund" >}}'));
+    const ids = [...result.html.matchAll(/<figure class="?dg"? id="?([^" >]+)/g)].map((m) => m[1]);
+    expect(ids).toEqual(['diagram-checkout', 'diagram-refund', 'diagram-refund-2']);
+  });
+
+  test('the shipped check script passes a site that publishes no llms.txt', () => {
+    const run = Bun.spawnSync(['sh', join(MODULE_PARENT, 'diagrams', 'scripts', 'check-diagrams.sh'), good.site], {
+      stdout: 'pipe',
+      stderr: 'pipe',
+      env: { ...process.env, PATH: `${dirname(HUGO as string)}:${process.env.PATH}` },
+    });
+    expect(`${run.stdout}${run.stderr}`).toContain('ok: 2 diagrams, no mermaid');
+    expect(run.exitCode).toBe(0);
+  });
+});
+
 describe('the module keeps its own numbers in step', () => {
+  test('the readability frame matches the figure padding and border in the stylesheet', () => {
+    const css = readFileSync(join(MODULE_PARENT, 'diagrams', 'assets', 'css', 'diagram.css'), 'utf8');
+    const check = readFileSync(join(MODULE_PARENT, 'diagrams', 'layouts', '_partials', 'diagram', 'readable.html'), 'utf8');
+    const figure = css.match(/figure\.dg \{([^}]*)\}/)?.[1] ?? '';
+    const side = Number(figure.match(/padding: [0-9.]+rem ([0-9.]+)rem/)?.[1]);
+    const border = Number(figure.match(/border: (\d+)px/)?.[1]);
+    expect(Number(check.match(/\$chrome := ([0-9.]+)/)?.[1])).toBeCloseTo(2 * side * 16 + 2 * border, 5);
+  });
+
   test('the readability floor reads the same label size the stylesheet sets', () => {
     const css = readFileSync(join(MODULE_PARENT, 'diagrams', 'assets', 'css', 'diagram.css'), 'utf8');
     const check = readFileSync(join(MODULE_PARENT, 'diagrams', 'layouts', '_partials', 'diagram', 'readable.html'), 'utf8');

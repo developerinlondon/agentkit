@@ -30,8 +30,9 @@ sequence, built-in and project icons, and project tokens. Build it with
 
    The first figure rendered publishes `/architecture.json`; no output format is needed.
 
-   Pin a release with `hugo mod get github.com/developerinlondon/agentkit/hugo/diagrams@vX.Y.Z`
-   (tags are `hugo/diagrams/vX.Y.Z`). To work without network access, copy this directory
+   Pin a release with `hugo mod get github.com/developerinlondon/agentkit/hugo/diagrams@vX.Y.Z`;
+   module tags are `hugo/diagrams/vX.Y.Z`, cut with each agentkit release from the first
+   release that contains this module. Repository tags such as `v0.9.3` predate it. To work without network access, copy this directory
    to `themes/diagrams/` and import `path: diagrams` instead.
 2. Load the stylesheet, tokens and script on pages that use a diagram. With Hextra, create
    `layouts/_partials/custom/head-end.html` containing:
@@ -41,8 +42,10 @@ sequence, built-in and project icons, and project tokens. Build it with
    ```
 
    Any other theme: call the same partial inside `<head>`.
-3. Optional: add `{{ partial "diagram/llms.html" . }}` to the site's `llms.txt` template so
-   agents find `/architecture.json`.
+3. Optional: point agents at `/architecture.json` from `llms.txt`. With Hextra, add `llms` to
+   the home page's outputs (`outputs: {home: [html, rss, llms]}`), copy the theme's
+   `layouts/llms.txt` into the site, and add `{{ partial "diagram/llms.html" . }}` above its
+   closing `---` line. When a site publishes `llms.txt`, the check script requires the link.
 4. Copy `scripts/check-diagrams.sh` into the site and run it in CI. It builds the site and
    fails on Mermaid, invalid or unused specs, layout warnings and nested `<svg>`.
 5. Write `data/diagrams/<name>.yaml` and place it in a page with `{{< diagram "<name>" >}}`.
@@ -50,8 +53,9 @@ sequence, built-in and project icons, and project tokens. Build it with
 The module ships `_markup/render-codeblock-mermaid.html`, which fails the build on any
 `` ```mermaid `` block, so Mermaid cannot come back by accident.
 
-Requires Hugo 0.146 or later (new template layout, `hugo.Data`, `js.Build`). The standard
-edition is enough; nothing needs Hugo extended.
+Requires Hugo 0.164 or later (`hugo.Data` arrived in 0.156; the module is built and tested on
+0.164 and 0.165). The standard edition is enough; nothing needs Hugo extended. The check
+script needs `node` for its JSON checks.
 
 ## Site settings
 
@@ -78,8 +82,9 @@ Colour tokens, each with a light and a dark value: `surface`, `sunk`, `ink`, `mu
 marks the system the figure is about and the data path through it. An unknown key, or a
 value that is not a colour, number or font list, fails the build.
 
-**Readability.** Inline, a figure shrinks to the column, so its smallest label (11 px
-monospace) shows at `11 × content_width / canvas width`. The build fails when that falls
+**Readability.** Inline, a figure shrinks to what its frame leaves of the column (the
+column less 46.8 px of padding and border), so its smallest label (11 px monospace) shows at
+`11 × (content_width − 46.8) / canvas width`. The build fails when that falls
 below `min_inline_px`, and the message names the widest canvas allowed. Every figure has an
 **Enlarge** control (and tap-to-enlarge on the canvas) that opens it at 1:1 in a
 full-viewport dialog: pinch or scroll to pan, Esc, the Close button or a click outside to
@@ -200,12 +205,12 @@ colour is a CSS custom property (`--dg-*`), set from the tokens above.
 
 ## Icons
 
-| Pack           | Licence                         | Notes                                                                                                           |
-| -------------- | ------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| `heroicons`    | MIT, `LICENSES/heroicons.txt`   | outline glyphs for generic parts (user, server, database, mail…), drawn in the theme ink and stroke             |
-| `simple-icons` | CC0-1.0, `LICENSES/CC0-1.0.txt` | single-colour brand marks, drawn in the theme ink                                                               |
-| `logos`        | CC0-1.0, `LICENSES/CC0-1.0.txt` | full-colour brand artwork, never recoloured                                                                     |
-| `@<pack>`      | the project's own               | `assets/<path>/<name>.svg`; `mode: stroke` or `mono` normalises to the theme, `color` (default) leaves it alone |
+| Pack           | Licence                         | Notes                                                                                                                                                                                                                                 |
+| -------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `heroicons`    | MIT, `LICENSES/heroicons.txt`   | outline glyphs for generic parts (user, server, database, mail…), drawn in the theme ink and stroke                                                                                                                                   |
+| `simple-icons` | CC0-1.0, `LICENSES/CC0-1.0.txt` | single-colour brand marks, drawn in the theme ink                                                                                                                                                                                     |
+| `logos`        | CC0-1.0, `LICENSES/CC0-1.0.txt` | full-colour brand artwork, never recoloured                                                                                                                                                                                           |
+| `@<pack>`      | the project's own               | `assets/<path>/<name>.svg`, one `<svg>` root holding shapes only (script, style, foreignObject, images, links and event handlers fail the build); `mode: stroke` or `mono` normalises to the theme, `color` (default) leaves it alone |
 
 `simple-icons` and `logos` are generated from the agentkit `diagram` skill's vendored CC0
 packs (`bun scripts/sync-hugo-diagram-icons.ts` in the agentkit repo), so a Hugo figure and a D2 render draw

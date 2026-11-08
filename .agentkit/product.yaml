@@ -155,6 +155,24 @@ surfaces:
       Speaks JSON-RPC on stdin/stdout; `tools/list` returns ten read-only git,
       helm and tofu tools and nothing that mutates infrastructure.
 
+  - name: hugo-diagrams
+    kind: library
+    # A Hugo module imported by docs sites, not installed by install.sh. Its own
+    # example site is the reference consumer.
+    build: scripts/product-command compile -- hugo --minify -s hugo/diagrams/exampleSite -d "$(mktemp -d)"
+    verify: >-
+      scripts/product-command browser -- bun test tests/diagram/hugo/module.test.ts
+    expect: |
+      The example site builds with no errors or warnings: two figures, each one
+      inline SVG with title, desc and a text version; /architecture.json lists
+      both specs and the page using them; project tokens and the @acme/widget
+      project icon render. The test refuses dangling edges, duplicate ids,
+      unknown or ambiguous icons, unsafe or malformed project icons, Mermaid
+      blocks, figures under the readability floor and bad tokens, and opens the
+      enlarged view at 1:1 in a real browser, returning focus on close. A site
+      following hugo/diagrams/README.md imports the module as
+      github.com/developerinlondon/agentkit/hugo/diagrams.
+
 requires:
   hardware: []
   credentials: []
@@ -163,7 +181,8 @@ requires:
       must be installed to exercise the `opencode-plugin` surface. The exact
       test-suite commands need bun. On Linux, `scripts/product-command` also
       requires the installed `agentkit-run` entry point and fails closed if it
-      is absent.
+      is absent. The `hugo-diagrams` surface needs Hugo >= 0.164 on PATH, and
+      Chrome or Chromium (or AGENTKIT_CHROMIUM) for its two browser cases.
     - >-
       Resource bounding and delegation blocking are opt-in: the
       resource-police and delegation-police config sections default to
