@@ -18,8 +18,9 @@ test_verdict() {
 	pass="$(grep -Eo '^[[:space:]]*[0-9]+ pass' "$output" | tail -1 | grep -Eo '[0-9]+' || true)"
 	fail="$(grep -Eo '^[[:space:]]*[0-9]+ fail' "$output" | tail -1 | grep -Eo '[0-9]+' || true)"
 	# A file that throws while bun collects it drops its tests from both counts
-	# and is reported only here; bun exits non-zero on it.
-	errors="$(grep -Eo '^[[:space:]]*[0-9]+ errors?[[:space:]]*$' "$output" | tail -1 | grep -Eo '[0-9]+' || true)"
+	# and is reported only on the summary line after the fail count; bun exits
+	# non-zero on it. Any other "N errors" line is something a test printed.
+	errors="$(awk '/^[[:space:]]*[0-9]+ fail/ { after = NR; n = "" } NR == after + 1 && /^[[:space:]]*[0-9]+ errors?[[:space:]]*$/ { n = $1 } END { print n }' "$output")"
 
 	if [[ -z "$pass" || -z "$fail" ]]; then
 		TEST_VERDICT_PASS=0

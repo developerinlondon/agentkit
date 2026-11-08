@@ -482,6 +482,24 @@ describe('test slice routing', () => {
     expect(result.status).toBe(1);
   });
 
+  test('--slice fails the gate when a slice file throws while bun collects it', () => {
+    sliceRepo();
+    write(
+      'tests/build/mutate.test.ts',
+      [
+        "import { describe, expect, test } from 'bun:test';",
+        "describe('never collected', () => { throw new Error('load'); });",
+        "test('still runs', () => expect(1).toBe(1));",
+        '',
+      ].join('\n'),
+    );
+
+    const result = preflight(['moon.yml'], ['--slice', 'review']);
+
+    expect(result.stdout).toContain('0 fail / 1 load errors');
+    expect(result.status).toBe(1);
+  });
+
   test('--slice reports a run that printed no marker as a fault, not a pass', () => {
     sliceRepo();
 

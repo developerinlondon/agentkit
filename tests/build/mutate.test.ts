@@ -91,6 +91,16 @@ describe('verdicts', () => {
     expect(result.status).toBe(0);
   });
 
+  test('a test that prints an errors line is not a load error', () => {
+    const result = mutate(
+      ['--replace', 'LIMIT = 10', '--with', 'LIMIT = 99'],
+      "printf ' 3 errors\\n 3 pass\\n 0 fail\\n 4 expect() calls\\n 2 errors\\n'",
+    );
+
+    expect(result.stderr).toContain('SURVIVED');
+    expect(result.status).toBe(1);
+  });
+
   test('a pattern that never matched is a harness fault, not a survival', () => {
     const result = mutate(['--replace', 'NOT_PRESENT', '--with', 'x'], suite('LIMIT = 99'));
 
