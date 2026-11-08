@@ -101,6 +101,22 @@ describe('verdicts', () => {
     expect(result.status).toBe(1);
   });
 
+  // A runner that drives several files prints a summary per file.
+  for (const [name, earlier] of [
+    ['load error', ' 1 pass\\n 0 fail\\n 1 error'],
+    ['failure', ' 1 pass\\n 2 fail'],
+  ]) {
+    test(`a clean later summary does not hide an earlier file's ${name}`, () => {
+      const result = mutate(
+        ['--replace', 'LIMIT = 10', '--with', 'LIMIT = 99'],
+        `printf '${earlier}\\n 3 pass\\n 0 fail\\n'`,
+      );
+
+      expect(result.stderr).toContain('CAUGHT — 4 pass');
+      expect(result.status).toBe(0);
+    });
+  }
+
   test('a pattern that never matched is a harness fault, not a survival', () => {
     const result = mutate(['--replace', 'NOT_PRESENT', '--with', 'x'], suite('LIMIT = 99'));
 

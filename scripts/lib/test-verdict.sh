@@ -13,14 +13,21 @@ TEST_VERDICT_ERRORS=0
 # Returns 0 green, 1 red, 3 nothing ran.
 test_verdict() {
 	local output="$1"
-	local pass fail errors
+	local counts pass fail errors
 
-	pass="$(grep -Eo '^[[:space:]]*[0-9]+ pass' "$output" | tail -1 | grep -Eo '[0-9]+' || true)"
-	fail="$(grep -Eo '^[[:space:]]*[0-9]+ fail' "$output" | tail -1 | grep -Eo '[0-9]+' || true)"
+	# A runner that drives several files prints one summary per file, and a
+	# clean later summary must not hide an earlier failure, so every summary is
+	# summed. A summary is a fail count with the nearest pass count before it.
 	# A file that throws while bun collects it drops its tests from both counts
-	# and is reported only on the summary line after the fail count; bun exits
-	# non-zero on it. Any other "N errors" line is something a test printed.
-	errors="$(awk '/^[[:space:]]*[0-9]+ fail/ { after = NR; n = "" } NR == after + 1 && /^[[:space:]]*[0-9]+ errors?[[:space:]]*$/ { n = $1 } END { print n }' "$output")"
+	# and shows only as "N errors" on the line after the fail count; any other
+	# "N errors" line is something a test printed.
+	counts="$(awk '
+		/^[[:space:]]*[0-9]+ pass/ { last_pass = $1; have_pass = 1 }
+		/^[[:space:]]*[0-9]+ fail/ && have_pass { p += last_pass; f += $1; blocks++; have_pass = 0; after = NR }
+		after && NR == after + 1 && /^[[:space:]]*[0-9]+ errors?[[:space:]]*$/ { e += $1 }
+		END { if (blocks) print p + 0, f + 0, e + 0 }
+	' "$output")"
+	read -r pass fail errors <<<"$counts"
 
 	if [[ -z "$pass" || -z "$fail" ]]; then
 		TEST_VERDICT_PASS=0
@@ -31,8 +38,8 @@ test_verdict() {
 
 	TEST_VERDICT_PASS="$pass"
 	TEST_VERDICT_FAIL="$fail"
-	TEST_VERDICT_ERRORS="${errors:-0}"
-	if [[ "$fail" -gt 0 || "$TEST_VERDICT_ERRORS" -gt 0 ]]; then
+	TEST_VERDICT_ERRORS="$errors"
+	if [[ "$fail" -gt 0 || "$errors" -gt 0 ]]; then
 		return 1
 	fi
 	return 0
