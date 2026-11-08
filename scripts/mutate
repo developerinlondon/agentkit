@@ -180,7 +180,7 @@ case "$VERDICT" in
 	exit 1
 	;;
 1)
-	printf 'mutate: CAUGHT — %s pass / %s fail\n' "$TEST_VERDICT_PASS" "$TEST_VERDICT_FAIL" >&2
+	printf 'mutate: CAUGHT — %s pass / %s fail / %s load errors\n' "$TEST_VERDICT_PASS" "$TEST_VERDICT_FAIL" "$TEST_VERDICT_ERRORS" >&2
 	exit 0
 	;;
 *)

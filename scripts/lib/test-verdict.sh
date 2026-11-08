@@ -8,24 +8,30 @@
 
 TEST_VERDICT_PASS=0
 TEST_VERDICT_FAIL=0
+TEST_VERDICT_ERRORS=0
 
 # Returns 0 green, 1 red, 3 nothing ran.
 test_verdict() {
 	local output="$1"
-	local pass fail
+	local pass fail errors
 
 	pass="$(grep -Eo '^[[:space:]]*[0-9]+ pass' "$output" | tail -1 | grep -Eo '[0-9]+' || true)"
 	fail="$(grep -Eo '^[[:space:]]*[0-9]+ fail' "$output" | tail -1 | grep -Eo '[0-9]+' || true)"
+	# A file that throws while bun collects it drops its tests from both counts
+	# and is reported only here; bun exits non-zero on it.
+	errors="$(grep -Eo '^[[:space:]]*[0-9]+ errors?[[:space:]]*$' "$output" | tail -1 | grep -Eo '[0-9]+' || true)"
 
 	if [[ -z "$pass" || -z "$fail" ]]; then
 		TEST_VERDICT_PASS=0
 		TEST_VERDICT_FAIL=0
+		TEST_VERDICT_ERRORS=0
 		return 3
 	fi
 
 	TEST_VERDICT_PASS="$pass"
 	TEST_VERDICT_FAIL="$fail"
-	if [[ "$fail" -gt 0 ]]; then
+	TEST_VERDICT_ERRORS="${errors:-0}"
+	if [[ "$fail" -gt 0 || "$TEST_VERDICT_ERRORS" -gt 0 ]]; then
 		return 1
 	fi
 	return 0

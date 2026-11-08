@@ -65,6 +65,32 @@ describe('verdicts', () => {
     expect(result.status).toBe(3);
   });
 
+  // bun drops the tests of a file that throws while it is collected, prints
+  // "N errors" and exits 1, while the pass and fail lines read green.
+  test('a mutation that makes a test file throw at load is CAUGHT', () => {
+    writeFileSync(
+      join(root, 'load.test.ts'),
+      [
+        "import { describe, expect, test } from 'bun:test';",
+        "import { LIMIT } from './source.ts';",
+        "describe('needs LIMIT', () => {",
+        "  if (LIMIT !== 10) throw new Error('LIMIT moved');",
+        "  test('inside', () => expect(LIMIT).toBe(10));",
+        '});',
+        "test('outside', () => expect(1).toBe(1));",
+        '',
+      ].join('\n'),
+    );
+    const bun = `'${process.execPath}' test --no-install ./load.test.ts`;
+
+    const result = mutate(['--replace', 'LIMIT = 10', '--with', 'LIMIT = 99'], bun);
+
+    expect(result.stdout).toMatch(/^\s*1 errors?\s*$/m);
+    expect(result.stderr).toContain('CAUGHT');
+    expect(result.stderr).toContain('1 pass / 0 fail / 1 load errors');
+    expect(result.status).toBe(0);
+  });
+
   test('a pattern that never matched is a harness fault, not a survival', () => {
     const result = mutate(['--replace', 'NOT_PRESENT', '--with', 'x'], suite('LIMIT = 99'));
 
