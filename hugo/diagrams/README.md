@@ -80,7 +80,8 @@ params:
 Colour tokens, each with a light and a dark value: `surface`, `sunk`, `ink`, `muted`,
 `line`, `accent`, `accent_soft`, `gate`, `gate_soft`, `deny`, `allow`. Keep one accent: it
 marks the system the figure is about and the data path through it. An unknown key, or a
-value that is not a colour, number or font list, fails the build.
+value that is not a colour, a number, or a font list of comma-separated names (each bare or
+wholly quoted), fails the build.
 
 **Readability.** Inline, a figure shrinks to what its frame leaves of the column (the
 column less 46.8 px of padding and border), so its smallest label (11 px monospace) shows at
@@ -205,12 +206,12 @@ colour is a CSS custom property (`--dg-*`), set from the tokens above.
 
 ## Icons
 
-| Pack           | Licence                         | Notes                                                                                                                                                                                                                                 |
-| -------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `heroicons`    | MIT, `LICENSES/heroicons.txt`   | outline glyphs for generic parts (user, server, database, mail…), drawn in the theme ink and stroke                                                                                                                                   |
-| `simple-icons` | CC0-1.0, `LICENSES/CC0-1.0.txt` | single-colour brand marks, drawn in the theme ink                                                                                                                                                                                     |
-| `logos`        | CC0-1.0, `LICENSES/CC0-1.0.txt` | full-colour brand artwork, never recoloured                                                                                                                                                                                           |
-| `@<pack>`      | the project's own               | `assets/<path>/<name>.svg`, one `<svg>` root holding shapes only (script, style, foreignObject, images, links and event handlers fail the build); `mode: stroke` or `mono` normalises to the theme, `color` (default) leaves it alone |
+| Pack           | Licence                         | Notes                                                                                                                                                                                                                                                                                                                                     |
+| -------------- | ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `heroicons`    | MIT, `LICENSES/heroicons.txt`   | outline glyphs for generic parts (user, server, database, mail…), drawn in the theme ink and stroke                                                                                                                                                                                                                                       |
+| `simple-icons` | CC0-1.0, `LICENSES/CC0-1.0.txt` | single-colour brand marks, drawn in the theme ink                                                                                                                                                                                                                                                                                         |
+| `logos`        | CC0-1.0, `LICENSES/CC0-1.0.txt` | full-colour brand artwork, never recoloured                                                                                                                                                                                                                                                                                               |
+| `@<pack>`      | the project's own               | `assets/<path>/<name>.svg`, one `<svg>` root holding shapes only: an allowlist of shape, gradient, clip and mask elements with quoted presentation attributes, `href` only to `#ids` in the file, no text or comments. Anything else fails the build; `mode: stroke` or `mono` normalises to the theme, `color` (default) leaves it alone |
 
 `simple-icons` and `logos` are generated from the agentkit `diagram` skill's vendored CC0
 packs (`bun scripts/sync-hugo-diagram-icons.ts` in the agentkit repo), so a Hugo figure and a D2 render draw

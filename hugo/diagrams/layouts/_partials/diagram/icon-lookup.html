@@ -24,15 +24,15 @@
       {{- $inner := replaceRE `(?s)^.*?<svg[^>]*>` "" $svg 1 -}}
       {{- $closed := findRE `(?s)</svg>\s*$` $inner 1 -}}
       {{- $body := replaceRE `(?s)</svg>\s*$` "" $inner -}}
-      {{- $active := findRE `(?i)<(script|style|foreignObject|iframe|image|a)[\s>/]|\son[a-z]+\s*=|javascript:|(xlink:)?href\s*=\s*["']?[^"'#]` $body 1 -}}
+      {{- $unsafe := partial "diagram/icon-safe.html" $body -}}
       {{- if not $view -}}
         {{- $out = dict "err" (printf "icon %q: %s has no viewBox" $ref $file) -}}
       {{- else if not $closed -}}
         {{- $out = dict "err" (printf "icon %q: %s has content after its closing </svg>" $ref $file) -}}
-      {{- else if findRE `(?i)</?svg[\s>]` $body 1 -}}
+      {{- else if findRE `(?i)</?svg` $body 1 -}}
         {{- $out = dict "err" (printf "icon %q: %s contains a nested or stray <svg>, which Hugo's minifier cannot keep" $ref $file) -}}
-      {{- else if $active -}}
-        {{- $out = dict "err" (printf "icon %q: %s contains %q; project icons may hold shapes only (no script, style, foreignObject, image, links or event handlers)" $ref $file (index $active 0)) -}}
+      {{- else if $unsafe -}}
+        {{- $out = dict "err" (printf "icon %q: %s contains %s; project icons may hold shapes only (g, path, rect, circle, ellipse, line, polyline, polygon, gradients, clip paths, masks, use) with presentation attributes" $ref $file $unsafe) -}}
       {{- else if not (in (slice "stroke" "mono" "color") $mode) -}}
         {{- $out = dict "err" (printf "icon pack %q: mode %q is not stroke, mono or color" (index $parts 0) $mode) -}}
       {{- else -}}

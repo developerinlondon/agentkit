@@ -165,12 +165,47 @@ describe('the build refuses what it cannot draw faithfully', () => {
     [
       'a project icon that carries a stylesheet',
       (s) => writeFileSync(join(s, 'assets/icons/acme/widget.svg'), '<svg viewBox="0 0 8 8"><style>body{display:none}</style><rect/></svg>'),
-      /contains "<style>"/,
+      /contains <style>; project icons may hold shapes only/,
     ],
     [
       'a project icon with an event handler',
       (s) => writeFileSync(join(s, 'assets/icons/acme/widget.svg'), '<svg viewBox="0 0 8 8"><rect onload="x()"/></svg>'),
       /project icons may hold shapes only/,
+    ],
+    [
+      'a project icon with an event handler glued to the previous attribute',
+      (s) => writeFileSync(join(s, 'assets/icons/acme/widget.svg'), '<svg viewBox="0 0 8 8"><rect width="2"onclick="x()"/></svg>'),
+      /project icons may hold shapes only/,
+    ],
+    [
+      'a project icon whose animation carries a slash-separated handler',
+      (s) => writeFileSync(join(s, 'assets/icons/acme/widget.svg'), '<svg viewBox="0 0 8 8"><rect><animate/onbegin=x() attributeName="x"/></rect></svg>'),
+      /project icons may hold shapes only/,
+    ],
+    [
+      'a project icon with an HTML image inside',
+      (s) => writeFileSync(join(s, 'assets/icons/acme/widget.svg'), '<svg viewBox="0 0 8 8"><img src="x"/></svg>'),
+      /contains <img>; project icons may hold shapes only/,
+    ],
+    [
+      'a project icon that links outside itself',
+      (s) => writeFileSync(join(s, 'assets/icons/acme/widget.svg'), '<svg viewBox="0 0 8 8"><use href="https://example.org/x.svg#a"/></svg>'),
+      /only #ids inside the file/,
+    ],
+    [
+      'a project icon that closes the root early with </svg/>',
+      (s) => writeFileSync(join(s, 'assets/icons/acme/widget.svg'), '<svg viewBox="0 0 8 8"><rect/></svg/><rect/></svg>'),
+      /nested or stray <svg>/,
+    ],
+    [
+      'a font token whose quotes nest',
+      (s) => edit(s, 'hugo.yaml', 'radius: 6', `radius: 6\n      sans: "\\"a'b\\"'"`),
+      /tokens.sans: .* is not a font-family list/,
+    ],
+    [
+      'a font token that ends its declaration',
+      (s) => edit(s, 'hugo.yaml', 'radius: 6', 'radius: 6\n      sans: "Inter; color: red"'),
+      /tokens.sans: .* is not a font-family list/,
     ],
     [
       'a project icon with content after its closing tag',

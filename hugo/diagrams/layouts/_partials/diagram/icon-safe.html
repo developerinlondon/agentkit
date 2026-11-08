@@ -1,0 +1,33 @@
+{{- /* Allowlist for a project icon's body, which is inlined into every page
+       that uses it. Returns "" when the body holds only shape elements with
+       quoted, known attributes; otherwise the offending piece. */ -}}
+{{- $body := . -}}
+{{- $elements := slice "g" "path" "rect" "circle" "ellipse" "line" "polyline" "polygon" "defs" "linearGradient" "radialGradient" "stop" "clipPath" "mask" "symbol" "use" "title" "desc" -}}
+{{- $attrs := slice "id" "class" "d" "x" "y" "x1" "y1" "x2" "y2" "cx" "cy" "r" "rx" "ry" "fx" "fy" "width" "height" "points" "pathLength" "transform" "fill" "fill-rule" "fill-opacity" "stroke" "stroke-width" "stroke-linecap" "stroke-linejoin" "stroke-miterlimit" "stroke-dasharray" "stroke-dashoffset" "stroke-opacity" "opacity" "clip-path" "clip-rule" "mask" "offset" "stop-color" "stop-opacity" "gradientUnits" "gradientTransform" "spreadMethod" "maskUnits" "clipPathUnits" "vector-effect" "viewBox" "href" "xlink:href" -}}
+{{- $bad := "" -}}
+{{- range findRE `<[^>]*>?` $body -}}
+  {{- if $bad }}{{ break }}{{ end -}}
+  {{- $m := findRESubmatch `^</?([A-Za-z][A-Za-z0-9]*)((?:\s+[A-Za-z][A-Za-z0-9:-]*\s*=\s*(?:"[^"<>]*"|'[^'<>]*'))*)\s*/?>$` . 1 -}}
+  {{- if not $m -}}
+    {{- $bad = . -}}
+  {{- else -}}
+    {{- $tag := index $m 0 -}}
+    {{- if not (in $elements (index $tag 1)) -}}
+      {{- $bad = printf "<%s>" (index $tag 1) -}}
+    {{- else -}}
+      {{- range findRESubmatch `([A-Za-z][A-Za-z0-9:-]*)\s*=\s*("[^"<>]*"|'[^'<>]*')` (index $tag 2) -}}
+        {{- $name := index . 1 }}{{ $val := index . 2 -}}
+        {{- if not (in $attrs $name) -}}
+          {{- $bad = printf "attribute %s" $name -}}
+        {{- else if and (in (slice "href" "xlink:href") $name) (not (findRE `^["']#` $val 1)) -}}
+          {{- $bad = printf "%s=%s (only #ids inside the file)" $name $val -}}
+        {{- else if and (findRE `(?i)url\s*\(` $val 1) (not (findRE `(?i)^["']url\(\s*#[^)]*\)["']$` $val 1)) -}}
+          {{- $bad = printf "%s=%s (only url(#id))" $name $val -}}
+        {{- end -}}
+      {{- end -}}
+    {{- end -}}
+  {{- end -}}
+{{- end -}}
+{{- $text := replaceRE `<[^>]*>` "" $body -}}
+{{- if and (not $bad) (findRE `\S` $text 1) }}{{ $bad = printf "text %q outside any tag" (index (findRE `\S+` $text 1) 0) }}{{ end -}}
+{{- return $bad -}}

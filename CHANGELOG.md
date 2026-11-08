@@ -22,9 +22,9 @@ release PR — "publish this" authorizes a release, never the tier.
   project's own packs as `@pack/name`. Project design tokens (colours, fonts, radii, light and
   dark) restyle every figure; full-colour vendor logos are never recoloured. The `diagram` skill now
   routes Hugo docs figures to the module and never to Mermaid, and the `documentation` skill no
-  longer tells agents to write Mermaid fences on Hugo docs sites. Project icons may hold shapes
-  only: script, style, foreignObject, images, links, event handlers and content after the root
-  fail the build. Requires Hugo 0.164 or later. CI installs a pinned Hugo for the module's tests.
+  longer tells agents to write Mermaid fences on Hugo docs sites. Project icons are checked
+  against an allowlist of shape elements and presentation attributes, with `href` only to ids in
+  the file; anything else, including content after the root, fails the build. Requires Hugo 0.164 or later. CI installs a pinned Hugo for the module's tests.
 
 ## v0.9.3 — 2026-09-21
 

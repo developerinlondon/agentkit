@@ -21,15 +21,15 @@
     {{- if in (slice "radius" "group_radius" "icon_stroke") $k -}}
       {{- if not (findRE `^[0-9]+(\.[0-9]+)?$` $val 1) }}{{ errorf "params.diagrams.tokens.%s: %q is not a number of px" $k $v }}{{ end -}}
       {{- $val = printf "%spx" $val -}}
-    {{- else if or (not (findRE `^[A-Za-z0-9 ,"'_-]+$` $val 1)) (ne (mod (len (findRE `"` $val)) 2) 0) (ne (mod (len (findRE `'` $val)) 2) 0) -}}
-      {{- errorf "params.diagrams.tokens.%s: %q is not a font-family list (unbalanced quotes would swallow the next rule)" $k $v -}}
+    {{- else if not (findRE `^\s*(?:[A-Za-z0-9_-]+(?: [A-Za-z0-9_-]+)*|"[A-Za-z0-9 _-]*"|'[A-Za-z0-9 _-]*')(?:\s*,\s*(?:[A-Za-z0-9_-]+(?: [A-Za-z0-9_-]+)*|"[A-Za-z0-9 _-]*"|'[A-Za-z0-9 _-]*'))*\s*$` $val 1) -}}
+      {{- errorf "params.diagrams.tokens.%s: %q is not a font-family list (comma-separated names, each bare or wholly quoted)" $k $v -}}
     {{- end -}}
     {{- $root = $root | append (printf "--dg-%s:%s" $var $val) -}}
   {{- end -}}
 {{- end -}}
 {{- $dark := slice }}{{ range $k, $v := $darkVals }}{{ $dark = $dark | append (printf "--dg-%s:%s" (index $colours $k) $v) }}{{ end -}}
 {{- $sel := site.Params.diagrams.dark_selector | default ".dark" -}}
-{{- if not (findRE `^(@media \(prefers-color-scheme: ?dark\)|[.#:\[\]a-zA-Z0-9_="' -]+)$` $sel 1) }}{{ errorf "params.diagrams.dark_selector: %q is neither a selector nor @media (prefers-color-scheme: dark)" $sel }}{{ end -}}
+{{- if not (findRE `^(@media \(prefers-color-scheme: ?dark\)|[.#:\[\]a-zA-Z0-9_= -]+)$` $sel 1) }}{{ errorf "params.diagrams.dark_selector: %q is neither a selector nor @media (prefers-color-scheme: dark)" $sel }}{{ end -}}
 <style>{{ with $root }}:root{ {{- delimit . ";" | safeCSS -}} }{{ end }}
 {{- if strings.HasPrefix $sel "@media" }}{{ $sel | safeCSS }}{:root{ {{- delimit $dark ";" | safeCSS -}} }}{{ else }}{{ $sel | safeCSS }}{ {{- delimit $dark ";" | safeCSS -}} }{{ end -}}
 </style>
