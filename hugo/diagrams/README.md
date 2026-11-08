@@ -229,9 +229,12 @@ module does the harmless clean-up itself:
 
 - a leading byte-order mark, the XML prolog, a doctype and comments are dropped;
 - editor data is dropped: namespaced elements and attributes (`sodipodi:`, `inkscape:`,
-  `figma:`, …), `xmlns`, `data-*` and `<metadata>`;
-- a `style` attribute becomes the equivalent presentation attributes, through the same
-  grammars; anything else in it is dropped;
+  `figma:`, …), `xmlns`, `data-*` and `<metadata>`; an `svg:` prefix is read as plain SVG;
+- a gradient may inherit its stops through `href` or `xlink:href` to a `#id` in the same file;
+  a link anywhere else fails;
+- a `style` attribute becomes the equivalent presentation attributes; a declaration for a
+  property the module draws must pass that attribute's grammar or the build fails, and other
+  properties (fonts, editor state) are dropped;
 - the root `<svg>`'s presentation attributes (`fill="none"`, `stroke="currentColor"`, …)
   carry over to the icon.
 

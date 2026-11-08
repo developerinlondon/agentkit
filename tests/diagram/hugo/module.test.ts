@@ -225,7 +225,7 @@ describe('the build refuses what it cannot draw faithfully', () => {
     [
       'a project icon that links outside itself',
       (s) => writeFileSync(join(s, 'assets/icons/acme/widget.svg'), '<svg viewBox="0 0 8 8"><use href="https://example.org/x.svg#a"/></svg>'),
-      /<use>; project icons may hold only/,
+      /href on <use> \(only a gradient may link/,
     ],
     [
       'a project icon that closes the root early with </svg/>',
@@ -301,6 +301,29 @@ describe('the build refuses what it cannot draw faithfully', () => {
       'a project icon that borrows a page class',
       (s) => writeFileSync(join(s, 'assets/icons/acme/widget.svg'), '<svg viewBox="0 0 8 8"><rect class="dg-node" width="8" height="8"/></svg>'),
       /attribute class; project icons may hold only/,
+    ],
+    [
+      'a style declaration whose value the grammar refuses',
+      (s) => writeFileSync(join(s, 'assets/icons/acme/widget.svg'), '<svg viewBox="0 0 8 8"><rect width="8" height="8" style="fill:var(--brand);stroke:#000"/></svg>'),
+      /style fill:var\(--brand\) \(not a valid fill value\)/,
+    ],
+    [
+      'a link from anything but a gradient',
+      (s) => writeFileSync(join(s, 'assets/icons/acme/widget.svg'), '<svg viewBox="0 0 8 8"><defs><rect id="a"/></defs><path href="#a" d="M0 0h8"/></svg>'),
+      /href on <path> \(only a gradient may link/,
+    ],
+    [
+      'a gradient that links outside its file',
+      (s) => writeFileSync(join(s, 'assets/icons/acme/widget.svg'), '<svg viewBox="0 0 8 8"><linearGradient id="g" href="https://example.org/x.svg#s"/><rect width="8" height="8" fill="url(#g)"/></svg>'),
+      /href=.*not a valid href value/,
+    ],
+    [
+      'a loop on the rounded side of a pill',
+      (s) => {
+        edit(s, 'data/diagrams/checkout.yaml', '{ id: queue, label: Queue,', '{ id: queue, label: Queue, shape: pill,');
+        edit(s, 'data/diagrams/checkout.yaml', '{ from: queue, to: worker }', '{ from: queue, to: worker }\n  - { from: queue, to: queue, exit: right, enter: right, exit_at: -8, enter_at: 8 }');
+      },
+      /a pill's rounded right side cannot hold a loop; use top or bottom/,
     ],
     [
       'a font token that ends its declaration',
@@ -471,6 +494,8 @@ const PAINTED: Record<string, RegExp[]> = {
   'inkscape-plain.svg': [/fill="none"/, /stroke="#000(000)?"/],
   'figma-mask.svg': [/mask-type="alpha"/],
   'lucide.svg': [/^<g fill="none" stroke="currentColor" stroke-width="2"/],
+  'inkscape-gradient.svg': [/<linearGradient href="#dg1-checkout-n4-0-s" id="dg1-checkout-n4-0-g"|<linearGradient id="dg1-checkout-n4-0-g"[^>]*href="#dg1-checkout-n4-0-s"/, /stop-color="(red|#f00(00)?)"/],
+  'svg-prefixed.svg': [/<rect width="8" height="8" fill="(red|#f00)"/],
 };
 const REFUSED: Record<string, RegExp> = {
   'illustrator.svg': /<style>/,
@@ -552,6 +577,25 @@ async function page(run: (session: Session) => Promise<void>, site: Build = good
     server.stop(true);
   }
 }
+
+describe.if(chrome !== null)('a gradient that inherits its stops', () => {
+  test('resolves its href to the stops in a real browser', async () => {
+    const site = build((s) => {
+      cpSync(join(ICONS, 'inkscape-gradient.svg'), join(s, 'assets/icons/acme/widget.svg'));
+      edit(s, 'hugo.yaml', 'mode: stroke', 'mode: color');
+    });
+    expect(site.ok).toBe(true);
+    await page(async (s) => {
+      const stops = await evaluate(
+        s,
+        `(() => { const g = document.getElementById('dg1-checkout-n4-0-g');
+          const base = document.querySelector(g.href.baseVal);
+          return base ? [...base.querySelectorAll('stop')].map((x) => getComputedStyle(x).stopColor).join('|') : 'unresolved'; })()`,
+      );
+      expect(stops).toBe('rgb(255, 0, 0)|rgb(0, 0, 255)');
+    }, site).catch((e: unknown) => rethrowLaunchFailure(e, 'the linked gradient assertions'));
+  }, 120_000);
+});
 
 describe.if(chrome !== null)('root presentation attributes in colour mode', () => {
   for (const [file, expected] of [

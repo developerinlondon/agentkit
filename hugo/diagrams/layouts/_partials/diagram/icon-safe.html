@@ -28,6 +28,7 @@
   "maskContentUnits" `^(?:userSpaceOnUse|objectBoundingBox)$`
   "clipPathUnits" `^(?:userSpaceOnUse|objectBoundingBox)$`
   "spreadMethod" `^(?:pad|reflect|repeat)$`
+  "href" `^#[A-Za-z][A-Za-z0-9_.-]*$`
   "mask-type" `^(?:alpha|luminance)$`
 -}}
 {{- range slice "cx" "cy" "r" "rx" "ry" "fx" "fy" "x" "y" "x1" "y1" "x2" "y2" "width" "height" "stroke-width" "stroke-miterlimit" "stroke-dashoffset" "opacity" "fill-opacity" "stroke-opacity" "stop-opacity" "offset" -}}
@@ -59,7 +60,9 @@
   {{- if not $m }}{{ $err = printf "%q is not a plain tag" (strings.Truncate 40 $tok) }}{{ break }}{{ end -}}
   {{- $m = index $m 0 -}}
   {{- $closing := eq (index $m 1) "/" }}{{ $name := index $m 2 }}{{ $self := eq (index $m 4) "/" -}}
-  {{- /* Editor data is dropped with everything inside it. */ -}}
+  {{- /* svg: is the drawing namespace written out; any other prefix is editor
+         data, dropped with everything inside it. */ -}}
+  {{- $name = strings.TrimPrefix "svg:" $name -}}
   {{- if or (gt $skip 0) (in $name ":") (in $dropped $name) -}}
     {{- if $closing }}{{ $skip = sub $skip 1 }}{{ else if not $self }}{{ $skip = add $skip 1 }}{{ end -}}
     {{- continue -}}
@@ -68,24 +71,33 @@
   {{- $raw := dict }}{{ $order := slice -}}
   {{- range findRESubmatch `([A-Za-z_][A-Za-z0-9:._-]*)\s*=\s*(?:"([^"]*)"|'([^']*)')` (index $m 3) -}}
     {{- $an := index . 1 }}{{ $av := printf "%s%s" (index . 2) (index . 3) -}}
-    {{- if or (in $an ":") (eq $an "xmlns") (strings.HasPrefix $an "data-") }}{{ continue }}{{ end -}}
+    {{- /* A gradient inherits stops through href; that one link is drawing data. */ -}}
+    {{- if in (slice "href" "xlink:href") $an -}}
+      {{- if not (in (slice "linearGradient" "radialGradient") $name) }}{{ $err = printf "%s on <%s> (only a gradient may link, to a #id in the same file)" $an $name }}{{ break }}{{ end -}}
+      {{- $an = "href" -}}
+    {{- else if or (in $an ":") (eq $an "xmlns") (strings.HasPrefix $an "data-") -}}
+      {{- continue -}}
+    {{- end -}}
     {{- if eq $an "style" -}}
       {{- range split $av ";" -}}
         {{- $kv := split . ":" -}}
         {{- if ne (len $kv) 2 }}{{ continue }}{{ end -}}
         {{- $p := strings.TrimSpace (index $kv 0) }}{{ $v := strings.TrimSpace (index $kv 1) -}}
-        {{- /* A declaration the grammar refuses is dropped, never emitted. */ -}}
-        {{- if and (in $styleable $p) (findRE (index $grammar $p) $v 1) -}}
-          {{- if not (isset $raw $p) }}{{ $order = $order | append $p }}{{ end -}}
-          {{- $raw = merge $raw (dict $p $v "_style_" true) -}}
-        {{- end -}}
+        {{- /* Properties the module draws are held to their attribute grammar;
+               the rest of a style (fonts, editor state) is dropped. */ -}}
+        {{- if not (in $styleable $p) }}{{ continue }}{{ end -}}
+        {{- if not (findRE (index $grammar $p) $v 1) }}{{ $err = printf "style %s:%s (not a valid %s value)" $p $v $p }}{{ break }}{{ end -}}
+        {{- if not (isset $raw $p) }}{{ $order = $order | append $p }}{{ end -}}
+        {{- $raw = merge $raw (dict $p $v "_style_" true) -}}
       {{- end -}}
+      {{- if $err }}{{ break }}{{ end -}}
       {{- continue -}}
     {{- end -}}
     {{- if and (isset $raw $an) (isset $raw "_style_") }}{{ continue }}{{ end -}}
     {{- if not (isset $raw $an) }}{{ $order = $order | append $an }}{{ end -}}
     {{- $raw = merge $raw (dict $an $av) -}}
   {{- end -}}
+  {{- if $err }}{{ break }}{{ end -}}
   {{- if eq $name "svg" -}}
     {{- if and (not $closing) (eq $root 0) (eq (len $stack) 0) -}}
       {{- $root = 1 -}}
@@ -124,6 +136,7 @@
     {{- /* Ids are prefixed so an icon cannot shadow page anchors or another icon. */ -}}
     {{- if eq $an "id" }}{{ $av = printf "%s%s" $prefix $av }}{{ end -}}
     {{- $av = replaceRE `url\(#` (printf "url(#%s" $prefix) $av -}}
+    {{- if eq $an "href" }}{{ $av = printf "#%s%s" $prefix (strings.TrimPrefix "#" $av) }}{{ end -}}
     {{- $attrs = $attrs | append (printf ` %s="%s"` $an $av) -}}
   {{- end -}}
   {{- if $err }}{{ break }}{{ end -}}

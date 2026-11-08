@@ -3,6 +3,12 @@
 {{- $exit := $e.exit | default "" -}}{{- $enter := $e.enter | default "" -}}
 {{- if eq $e.from $e.to -}}
   {{- $half := div (cond (in (slice "left" "right") $exit) $a.h $a.w) 2.0 -}}
+  {{- /* A pill's ends are round: its left and right sides have no straight
+         run to hang a loop on, and its top and bottom lose a radius each end. */ -}}
+  {{- if eq $a.shape "pill" -}}
+    {{- if in (slice "left" "right") $exit }}{{ errorf "diagram %q: edge %s → %s: a pill's rounded %s side cannot hold a loop; use top or bottom" .name $e.from $e.to $exit }}{{ end -}}
+    {{- $half = sub $half (div $a.h 2.0) -}}
+  {{- end -}}
   {{- $p := float ($e.exit_at | default 0) }}{{ $q := float ($e.enter_at | default 0) -}}
   {{- if or (lt (math.Abs (sub $p $q)) 12) (gt (math.Abs $p) (sub $half 2)) (gt (math.Abs $q) (sub $half 2)) -}}
     {{- errorf "diagram %q: edge %s → %s: a loop needs exit_at and enter_at at least 12px apart and both within its %s side (±%.0fpx)" .name $e.from $e.to $exit (sub $half 2) -}}
