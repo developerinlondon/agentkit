@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { chromePath, launchBrowser, rethrowLaunchFailure } from '../../publish-page/browser-launch.ts';
 import { attach, evaluate, type Session } from '../../publish-page/devtools.ts';
+import { placeholderIds } from '../../../scripts/lib/hugo-icon-ids.ts';
 
 // The Hugo diagrams module is the docs path for figures: specs are data, the
 // build is the renderer, and the build is also the validator. These cases
@@ -153,8 +154,18 @@ describe('the build refuses what it cannot draw faithfully', () => {
       /icon "@acme\/widget".*no valid viewBox/,
     ],
     [
-      'a project icon whose viewBox number is out of range',
+      'a project icon whose viewBox exponent is out of range',
       (s) => writeFileSync(join(s, 'assets/icons/acme/widget.svg'), '<svg viewBox="0 0 1e400 8"><rect width="8" height="8"/></svg>'),
+      /icon "@acme\/widget".*no valid viewBox/,
+    ],
+    [
+      'a project icon whose viewBox width has hundreds of digits',
+      (s) => writeFileSync(join(s, 'assets/icons/acme/widget.svg'), `<svg viewBox="0 0 ${'9'.repeat(400)} 8"><rect width="8" height="8"/></svg>`),
+      /icon "@acme\/widget".*no valid viewBox/,
+    ],
+    [
+      'a project icon whose viewBox is so wide the icon would draw invisibly',
+      (s) => writeFileSync(join(s, 'assets/icons/acme/widget.svg'), '<svg viewBox="0 0 9e9 8"><rect width="8" height="8"/></svg>'),
       /icon "@acme\/widget".*no valid viewBox/,
     ],
     [
@@ -512,6 +523,18 @@ describe('edges of the rules', () => {
     expect(checkout).toMatch(/<title>API: &lt;img src=x onerror=alert\(1\)&gt; &amp; done<\/title>/);
   });
 
+  // Entity text in a label is shown as written, not decoded: the title escapes '&' too.
+  test('entity text in a node or group title stays literal', () => {
+    const result = build((s) => {
+      edit(s, 'data/diagrams/checkout.yaml', 'label: Browser,', 'label: "R&amp;D",');
+      edit(s, 'data/diagrams/checkout.yaml', '{ id: cluster, label: Cluster }', '{ id: cluster, label: "R&amp;D", description: "a &lt; b" }');
+    });
+    expect(result.log).not.toMatch(/ERROR/);
+    const checkout = figures(result.html)[0];
+    expect(checkout).toMatch(/data-id="?browser"?[^>]*><title>R&amp;amp;D<\/title>/);
+    expect(checkout).toMatch(/data-id="?cluster"?[^>]*><title>R&amp;amp;D: a &amp;lt; b<\/title>/);
+  });
+
   test('a viewBox written with commas or extra spaces draws exactly like the plain one', () => {
     const icon = (view: string) => `<svg viewBox="${view}"><rect width="8" height="8"/></svg>`;
     const transform = (view: string) => {
@@ -583,6 +606,36 @@ describe('edges of the rules', () => {
     });
     expect(`${run.stdout}${run.stderr}`).toContain('ok: 2 diagrams, no mermaid');
     expect(run.exitCode).toBe(0);
+  });
+});
+
+describe('logo ids get the per-instance placeholder', () => {
+  test('every way of writing a reference is rewritten with its id', () => {
+    const body = [
+      '<linearGradient id="g"/><linearGradient id="gb"/>',
+      '<path fill="url(#g)"/>',
+      "<path fill=\"url('#g')\"/>",
+      '<path style="fill:url(&quot;#g&quot;)"/>',
+      '<path fill="url( #gb )"/>',
+      '<use href="#g"/>',
+      "<use xlink:href='#gb'/>",
+    ].join('');
+    const out = placeholderIds(body);
+    expect(out).toContain('id="__DGI__g"');
+    expect(out).toContain('id="__DGI__gb"');
+    expect(out).toContain('url(#__DGI__g)');
+    expect(out).toContain("url('#__DGI__g')");
+    expect(out).toContain('url(&quot;#__DGI__g&quot;)');
+    expect(out).toContain('url(#__DGI__gb)');
+    expect(out).toContain('href="#__DGI__g"');
+    expect(out).toContain("href='#__DGI__gb'");
+    expect(out).not.toMatch(/#(?!__DGI__)g/);
+  });
+
+  test('a reference to an id the icon never defines fails instead of dangling', () => {
+    expect(() => placeholderIds('<path fill="url(#missing)"/>')).toThrow(/url\(#missing/);
+    expect(() => placeholderIds('<path fill="url( &quot;#missing&quot; )"/>')).toThrow(/missing/);
+    expect(() => placeholderIds("<use href='#missing'/>")).toThrow(/missing/);
   });
 });
 

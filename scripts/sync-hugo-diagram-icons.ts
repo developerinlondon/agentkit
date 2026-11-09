@@ -6,6 +6,7 @@
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { assetsDir, monochromeFills } from "../skills/diagram/scripts/icons.ts";
+import { placeholderIds } from "./lib/hugo-icon-ids.ts";
 
 const outDir = join(import.meta.dir, "..", "hugo", "diagrams", "data", "diagram_icons");
 const PACKS = ["logos", "simple-icons"];
@@ -14,23 +15,6 @@ interface HugoIcon {
   view: string;
   mode: "mono" | "color";
   body: string;
-}
-
-// Iconify ids repeat across logos and a logo can be drawn twice on one page, so every id
-// carries the placeholder the module replaces with a per-drawn-icon prefix.
-function placeholderIds(body: string): string {
-  const ids = [...body.matchAll(/\sid="([^"]+)"/g)].map((m) => m[1]);
-  let out = body;
-  for (const id of ids) {
-    const esc = id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    out = out
-      .replace(new RegExp(`(\\sid=")${esc}"`, "g"), `$1__DGI__${id}"`)
-      .replace(new RegExp(`url\\((['"]?)#${esc}\\1\\)`, "g"), `url($1#__DGI__${id}$1)`)
-      .replace(new RegExp(`(href=(['"]))#${esc}\\2`, "g"), `$1#__DGI__${id}$2`);
-  }
-  const loose = out.match(/url\(['"]?#(?!__DGI__)[^)'"]+|href=['"]#(?!__DGI__)[^'"]+/);
-  if (loose) throw new Error(`reference ${loose[0]} has no id in the same icon, or one the rewrite missed`);
-  return out;
 }
 
 function pack(set: string): Record<string, HugoIcon> {

@@ -119,13 +119,15 @@
     {{- if and (not $closing) (eq $root 0) (eq (len $stack) 0) -}}
       {{- $root = 1 -}}
       {{- $view = index $raw "viewBox" | default "" -}}
-      {{- /* Four plain numbers, comma or whitespace separated, with a positive width and
-             height; the renderer reads the canonical space-separated form. */ -}}
+      {{- /* Four plain numbers, comma or whitespace separated, with a width and height
+             between 0.001 and 100000 (real icons stay under 1000); the renderer reads the
+             canonical space-separated form. */ -}}
       {{- $vparts := split (trim (replaceRE `[\s,]+` " " $view) " ") " " -}}
-      {{- $plain := `^-?(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eE][-+]?[0-9]{1,2})?$` -}}
+      {{- $plain := `^-?(?:[0-9]{1,9}(?:\.[0-9]{0,9})?|\.[0-9]{1,9})(?:[eE][-+]?[0-9])?$` -}}
       {{- $okv := eq (len $vparts) 4 -}}
       {{- if $okv }}{{ range $vparts }}{{ if not (findRE $plain . 1) }}{{ $okv = false }}{{ end }}{{ end }}{{ end -}}
-      {{- if and $okv (gt (float (index $vparts 2)) 0.0) (gt (float (index $vparts 3)) 0.0) }}{{ $view = delimit $vparts " " }}{{ else }}{{ $view = "" }}{{ end -}}
+      {{- if $okv }}{{ range slice (index $vparts 2) (index $vparts 3) }}{{ $d := float . }}{{ if or (lt $d 0.001) (gt $d 100000.0) }}{{ $okv = false }}{{ end }}{{ end }}{{ end -}}
+      {{- if $okv }}{{ $view = delimit $vparts " " }}{{ else }}{{ $view = "" }}{{ end -}}
       {{- range $order -}}
         {{- $v := index $raw . -}}
         {{- if and (in $inherited .) (findRE (index $grammar .) $v 1) }}{{ $rootAttrs = $rootAttrs | append (printf ` %s="%s"` . (replaceRE `url\(#` (printf "url(#%s" $prefix) $v)) }}{{ end -}}
