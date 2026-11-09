@@ -99,6 +99,10 @@ describe('a slice run passes only when bun reports its tests', () => {
     expect(sliceVerdict(1, 'Ran 3 tests across 1 file.').code).toBe(1);
   });
 
+  test('a run ended by a signal fails even when a summary was printed', () => {
+    expect(sliceVerdict(null, 'Ran 3 tests across 1 file.')).toMatchObject({ code: 1, reason: expect.stringMatching(/signal/) });
+  });
+
   test('a zero exit with no summary, or a summary of no tests, fails', () => {
     expect(sliceVerdict(0, 'some output\n')).toMatchObject({ code: 1, reason: expect.stringMatching(/no test summary/) });
     expect(sliceVerdict(0, 'Ran 0 tests across 1 file.')).toMatchObject({ code: 1, reason: expect.stringMatching(/ran no tests/) });

@@ -337,7 +337,8 @@ function failForCoverage(errors: readonly string[]): never {
 // A zero exit proves nothing on its own: a test file that calls process.exit(0) while
 // loading ends bun early, green, with its tests unrun. Only bun's closing summary,
 // naming at least one test, makes a zero exit a pass.
-export function sliceVerdict(exitCode: number, output: string): { code: number; reason?: string } {
+export function sliceVerdict(exitCode: number | null, output: string): { code: number; reason?: string } {
+  if (exitCode === null) return { code: 1, reason: 'bun was killed by a signal' };
   if (exitCode !== 0) return { code: exitCode };
   const ran = output.match(/Ran (\d+) tests? across \d+ files?/);
   if (!ran) return { code: 1, reason: 'bun printed no test summary: the run ended before its tests reported' };
