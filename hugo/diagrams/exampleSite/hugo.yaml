@@ -1,0 +1,23 @@
+baseURL: https://example.org/
+title: Diagrams example
+themesDir: ../..
+module:
+  imports:
+    - path: diagrams
+disableKinds: [taxonomy, term, RSS, sitemap, robotsTXT]
+params:
+  diagrams:
+    content_width: 640
+    dark_selector: media
+    icons:
+      acme:
+        path: icons/acme
+        mode: stroke
+    tokens:
+      radius: 6
+      light:
+        accent: "#5b3cc4"
+        accent_soft: "#ece7fb"
+      dark:
+        accent: "#b6a4ff"
+        accent_soft: "#2a2350"

@@ -88,12 +88,17 @@
       "version": "1.2.92",
       "monochromeFill": "#71717a",
       "icons": [
+        "anthropic",
         "argo",
+        "claude",
         "clickhouse",
         "digitalocean",
+        "github",
+        "gitlab",
         "istio",
         "keycloak",
         "opentelemetry",
+        "postgresql",
         "traefikproxy"
       ]
     }

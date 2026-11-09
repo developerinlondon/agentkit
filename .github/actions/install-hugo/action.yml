@@ -1,0 +1,67 @@
+name: Install pinned Hugo
+description: Installs the pinned standard Hugo release, verified against a recorded sha256, and puts it on PATH.
+
+inputs:
+  version:
+    description: Release version without the leading v. The checksums below are for this version only.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Download, verify and install Hugo v${{ inputs.version }}
+      shell: bash
+      env:
+        HUGO_VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+
+        if [ "${HUGO_VERSION}" != "0.165.0" ]; then
+          echo "no pinned Hugo checksums recorded for ${HUGO_VERSION}" >&2
+          exit 1
+        fi
+
+        bin="${RUNNER_TEMP}/hugo-bin"
+        mkdir -p "${bin}"
+        case "${RUNNER_OS}-${RUNNER_ARCH}" in
+          Linux-X64)
+            asset="hugo_${HUGO_VERSION}_linux-amd64.tar.gz"
+            sha='5c3a37a5450b3e386e5b75a87a790fea2d04a796d75e171216c80ef48a32b432'
+            ;;
+          macOS-ARM64|macOS-X64)
+            asset="hugo_${HUGO_VERSION}_darwin-universal.pkg"
+            sha='10ea75335975a13d0e73ac298402179335c55fa4e99d1687452d9cfa70b30d16'
+            ;;
+          *)
+            echo "no pinned Hugo checksum recorded for ${RUNNER_OS}-${RUNNER_ARCH}" >&2
+            exit 1
+            ;;
+        esac
+
+        curl -fsSL --retry 5 --retry-all-errors -o "${RUNNER_TEMP}/${asset}" \
+          "https://github.com/gohugoio/hugo/releases/download/v${HUGO_VERSION}/${asset}"
+        echo "${sha}  ${RUNNER_TEMP}/${asset}" | shasum -a 256 -c -
+
+        if [ "${RUNNER_OS}" = "Linux" ]; then
+          tar xzf "${RUNNER_TEMP}/${asset}" -C "${bin}" hugo
+        else
+          expanded="${RUNNER_TEMP}/hugo-pkg"
+          pkgutil --expand-full "${RUNNER_TEMP}/${asset}" "${expanded}"
+          found="$(find "${expanded}" -type f -name hugo -perm -u+x | head -n 1)"
+          if [ -z "${found}" ]; then
+            echo "no hugo binary inside ${asset}" >&2
+            exit 1
+          fi
+          install -m 0755 "${found}" "${bin}/hugo"
+        fi
+
+        reported="$("${bin}/hugo" version)"
+        case "${reported}" in
+          "hugo v${HUGO_VERSION}"*) ;;
+          *)
+            echo "installed hugo reports '${reported}', expected v${HUGO_VERSION}" >&2
+            exit 1
+            ;;
+        esac
+
+        echo "${bin}" >> "${GITHUB_PATH}"

@@ -122,6 +122,12 @@ jobs:
         with:
           version: 0.8.2
 
+      # The Hugo diagrams module is tested by building its example site.
+      - name: Install the pinned Hugo
+        uses: ./.github/actions/install-hugo
+        with:
+          version: 0.165.0
+
       - name: Install the pinned dprint formatter
         uses: ./.github/actions/install-dprint
         with:
@@ -216,6 +222,12 @@ jobs:
         uses: ./.github/actions/install-d2
         with:
           version: 0.8.2
+
+      - name: Install the pinned Hugo
+        if: steps.reuse.outputs.tested != 'true'
+        uses: ./.github/actions/install-hugo
+        with:
+          version: 0.165.0
 
       - name: Install the pinned dprint formatter
         if: steps.reuse.outputs.tested != 'true'

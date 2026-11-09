@@ -1,0 +1,30 @@
+title: Checkout
+description: >-
+  A browser calls the API through the edge. The API writes orders to Postgres and puts slow work on
+  a queue, which a worker drains; the widget service is the shop's own component.
+caption: The API stays stateless; everything durable is in Postgres or on the queue.
+grid: { col: 150, row: 90 }
+groups:
+  - { id: cluster, label: Cluster }
+nodes:
+  - { id: browser, label: Browser, icon: user, col: 0.6, row: 1 }
+  - { id: edge, label: Edge, icon: logos/cloudflare-icon, col: 1.65, row: 1 }
+  - {
+      id: api,
+      label: API,
+      sublabel: stateless,
+      kind: accent,
+      group: cluster,
+      col: 2.85,
+      row: 1,
+      description: Validates the order and returns at once.,
+    }
+  - { id: queue, label: Queue, icon: inbox, group: cluster, col: 2.85, row: 2.3 }
+  - { id: worker, label: Worker, icon: "@acme/widget", group: cluster, col: 2.85, row: 3.6 }
+  - { id: db, label: Postgres, icon: logos/postgresql, kind: fill, col: 4.35, row: 1 }
+edges:
+  - { from: browser, to: edge }
+  - { from: edge, to: api }
+  - { from: api, to: db, style: data, label: writes }
+  - { from: api, to: queue, style: async, label: slow work }
+  - { from: queue, to: worker }

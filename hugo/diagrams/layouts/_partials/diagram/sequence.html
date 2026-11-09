@@ -1,0 +1,118 @@
+{{- $spec := .spec -}}{{- $uid := .uid -}}{{- $f := "diagram/fmt.html" -}}
+{{- $dw := float (($spec.defaults | default dict).w | default 130) -}}
+{{- /* Flatten alt blocks into rows so layout is one pass. */ -}}
+{{- $rows := slice -}}
+{{- range $spec.messages -}}
+  {{- if .alt -}}
+    {{- range $i, $br := .alt -}}
+      {{- $rows = $rows | append (dict "t" (cond (eq $i 0) "alt" "else") "label" $br.label) -}}
+      {{- range $br.messages }}{{ $rows = $rows | append (dict "t" (cond (isset . "note") "note" "msg") "m" .) }}{{ end -}}
+    {{- end -}}
+    {{- $rows = $rows | append (dict "t" "end") -}}
+  {{- else -}}
+    {{- $rows = $rows | append (dict "t" (cond (isset . "note") "note" "msg") "m" .) -}}
+  {{- end -}}
+{{- end -}}
+{{- /* Spacing: wide enough for every actor box and every label over its span. */ -}}
+{{- $idx := dict -}}
+{{- range $i, $a := $spec.actors }}{{ $idx = merge $idx (dict $a.id $i) }}{{ end -}}
+{{- $gap := float ($spec.gap | default 0) -}}
+{{- if not $spec.gap -}}
+  {{- range $spec.actors -}}
+    {{- $b := partial "diagram/box.html" (dict "n" (merge . (dict "col" 0 "row" 0)) "cw" 1.0 "rh" 1.0 "dw" $dw) -}}
+    {{- $gap = math.Max $gap (add $b.w 36) -}}
+  {{- end -}}
+  {{- range $rows -}}
+    {{- if eq .t "msg" -}}
+      {{- $span := math.Max 1 (math.Abs (sub (index $idx .m.from) (index $idx .m.to))) -}}
+      {{- $w := partial "diagram/textw.html" (dict "s" .m.label "size" 11 "mono" true) -}}
+      {{- $gap = math.Max $gap (add (div $w $span) 36) -}}
+    {{- end -}}
+  {{- end -}}
+{{- end -}}
+{{- $actors := slice -}}{{- $abot := 0.0 -}}
+{{- range $i, $a := $spec.actors -}}
+  {{- $b := partial "diagram/box.html" (dict "n" (merge $a (dict "col" (add (float $i) 0.5) "row" 0)) "cw" $gap "rh" 1.0 "dw" $dw) -}}
+  {{- $actors = $actors | append (dict "n" $a "b" $b) -}}
+  {{- $abot = math.Max $abot $b.b -}}
+{{- end -}}
+{{- $atop := 0.0 }}{{ range $actors }}{{ $atop = math.Min $atop .b.y }}{{ end -}}
+{{- $cx := dict }}{{ range $actors }}{{ $cx = merge $cx (dict .n.id .b.cx) }}{{ end -}}
+{{- $y := add $abot 22 -}}
+{{- $placed := slice -}}
+{{- $frames := slice }}{{ $open := dict -}}
+{{- range $rows -}}
+  {{- if eq .t "msg" -}}
+    {{- $n := float (len (partial "diagram/lines.html" .m.label)) -}}
+    {{- $y = add $y (add 6 (mul 14 $n)) -}}
+    {{- $placed = $placed | append (dict "t" "msg" "m" .m "y" $y) -}}
+    {{- $y = add $y 16 -}}
+  {{- else if eq .t "note" -}}
+    {{- $lines := partial "diagram/lines.html" .m.note -}}
+    {{- $h := add 12 (mul 14 (float (len $lines))) -}}
+    {{- $y = add $y 4 -}}
+    {{- $over := partial "diagram/lines.html" .m.over -}}
+    {{- $l := 1e9 }}{{ $r := -1e9 }}{{ range $over }}{{ $l = math.Min $l (index $cx .) }}{{ $r = math.Max $r (index $cx .) }}{{ end -}}
+    {{- $w := math.Max (add (sub $r $l) 120) (add (partial "diagram/textw.html" (dict "s" $lines "size" 11 "mono" true)) 24) -}}
+    {{- $placed = $placed | append (dict "t" "note" "m" .m "y" $y "h" $h "lines" $lines "w" $w "mx" (div (add $l $r) 2.0)) -}}
+    {{- $y = add $y (add $h 12) -}}
+  {{- else if eq .t "alt" -}}
+    {{- $y = add $y 6 -}}
+    {{- $placed = $placed | append (dict "t" "alt" "label" .label "y" $y) -}}
+    {{- $y = add $y 14 -}}
+  {{- else if eq .t "else" -}}
+    {{- $y = add $y 8 -}}
+    {{- $placed = $placed | append (dict "t" "else" "label" .label "y" $y) -}}
+    {{- $y = add $y 14 -}}
+  {{- else -}}
+    {{- $y = add $y 10 -}}
+    {{- $placed = $placed | append (dict "t" "end" "y" $y) -}}
+    {{- $y = add $y 6 -}}
+  {{- end -}}
+{{- end -}}
+{{- $bottom := add $y 10 -}}
+{{- $minX := 1e9 }}{{ $maxX := -1e9 -}}
+{{- range $actors }}{{ $minX = math.Min $minX .b.x }}{{ $maxX = math.Max $maxX .b.r }}{{ end -}}
+{{- range $placed }}{{ if eq .t "note" }}{{ $minX = math.Min $minX (sub .mx (div .w 2.0)) }}{{ $maxX = math.Max $maxX (add .mx (div .w 2.0)) }}{{ end }}{{ end -}}
+{{- $minX = sub $minX 3 }}{{ $maxX = add $maxX 3 -}}
+{{- $vw := sub $maxX $minX }}{{ $vh := add (sub $bottom $atop) 6 -}}
+{{- partial "diagram/readable.html" (dict "name" $.name "w" $vw) -}}
+<svg class="dg-svg dg-seq" viewBox="{{ partial $f $minX }} {{ partial $f (sub $atop 3) }} {{ partial $f $vw }} {{ partial $f $vh }}" style="--dg-w:{{ partial $f $vw }}px" role="img" aria-labelledby="{{ $uid }}-t {{ $uid }}-d"><title id="{{ $uid }}-t">{{ $spec.title }}</title><desc id="{{ $uid }}-d">{{ $spec.description }}</desc>
+{{- partial "diagram/markers.html" $uid -}}
+{{- /* Alt frames span the whole sequence width; the tab names the branch. */ -}}
+{{- $fx := add $minX 4 }}{{ $fr := sub $maxX 4 -}}
+{{- $ftop := 0.0 -}}
+{{- range $placed -}}
+  {{- if eq .t "alt" -}}
+    {{- $ftop = .y -}}
+    {{- $w := add (partial "diagram/textw.html" (dict "s" (printf "if %s" .label) "size" 11 "mono" true)) 14 -}}
+    <path class="dg-frame-tab" d="M {{ partial $f $fx }} {{ partial $f .y }} h {{ partial $f $w }} v 12 l -6 6 h {{ partial $f (sub 6 $w) }} Z"/><text class="dg-tg" x="{{ partial $f (add $fx 6) }}" y="{{ partial $f (add .y 13) }}">if {{ .label }}</text>
+  {{- else if eq .t "else" -}}
+    <line class="dg-frame dg-dash" x1="{{ partial $f $fx }}" y1="{{ partial $f .y }}" x2="{{ partial $f $fr }}" y2="{{ partial $f .y }}"/><text class="dg-tg" x="{{ partial $f (add $fx 6) }}" y="{{ partial $f (add .y 13) }}">else, {{ .label }}</text>
+  {{- else if eq .t "end" -}}
+    <rect class="dg-frame" x="{{ partial $f $fx }}" y="{{ partial $f $ftop }}" width="{{ partial $f (sub $fr $fx) }}" height="{{ partial $f (sub .y $ftop) }}" rx="3"/>
+  {{- end -}}
+{{- end -}}
+{{- range $actors -}}
+  <line class="dg-lifeline dg-dash" x1="{{ partial $f .b.cx }}" y1="{{ partial $f .b.b }}" x2="{{ partial $f .b.cx }}" y2="{{ partial $f $bottom }}"/>
+{{- end -}}
+{{- range $placed -}}
+  {{- if eq .t "msg" -}}
+    {{- $x1 := index $cx .m.from }}{{ $x2 := index $cx .m.to -}}
+    {{- $dirn := cond (gt $x2 $x1) 1.0 -1.0 -}}
+    {{- $style := .m.style | default "sync" -}}
+    {{- $edge := dict "from" .m.from "to" .m.to "label" .m.label "style" (cond (eq $style "reply") "async" $style) "label_side" "above" -}}
+    {{- $rt := dict "pts" (slice (dict "x" $x1 "y" .y) (dict "x" (sub $x2 (mul 5 $dirn)) "y" .y)) "lx" (div (add $x1 $x2) 2.0) "ly" .y "orient" "h" -}}
+    {{- partial "diagram/edge.html" (dict "e" $edge "rt" $rt "uid" $uid "cw" 1.0 "rh" 1.0) -}}
+  {{- else if eq .t "note" -}}
+    {{- $w := .w }}{{ $mx := .mx -}}
+    {{- $nb := . -}}
+    <g class="dg-note"><rect class="dg-shape" x="{{ partial $f (sub $mx (div $w 2.0)) }}" y="{{ partial $f .y }}" width="{{ partial $f $w }}" height="{{ partial $f .h }}" rx="3"/>
+    {{- range $i, $t := .lines }}<text class="dg-tg dg-mid" x="{{ partial $f $mx }}" y="{{ partial $f (add $nb.y (add 16 (mul 14 (float $i)))) }}">{{ $t }}</text>{{ end -}}
+    </g>
+  {{- end -}}
+{{- end -}}
+{{- range $i, $ac := $actors -}}
+  {{- partial "diagram/node.html" (dict "n" $ac.n "b" $ac.b "uid" $uid "idx" $i) -}}
+{{- end -}}
+</svg>

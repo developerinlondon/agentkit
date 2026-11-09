@@ -1,0 +1,28 @@
+{{- $n := .n }}{{ $b := .b }}{{ $f := "diagram/fmt.html" -}}
+{{- $kind := $n.kind | default "box" -}}
+{{- $sub := index (dict "accent" "dg-ta" "gate" "dg-tg" "deny" "dg-td" "allow" "dg-tl") $kind | default "dg-ts" -}}
+<g class="dg-node dg-k-{{ $kind }}{{ if eq $b.shape "pill" }} dg-pill{{ end }}{{ if $n.dashed }} dg-dashed{{ end }}" data-id="{{ $n.id }}"{{ with $n.description }} data-desc="{{ . }}"{{ end }}>
+{{- if eq $b.shape "diamond" -}}
+<path class="dg-shape" d="M {{ partial $f $b.cx }} {{ partial $f $b.y }} L {{ partial $f $b.r }} {{ partial $f $b.cy }} L {{ partial $f $b.cx }} {{ partial $f $b.b }} L {{ partial $f $b.x }} {{ partial $f $b.cy }} Z"/>
+{{- else if eq $b.shape "pill" -}}
+<rect class="dg-shape" x="{{ partial $f $b.x }}" y="{{ partial $f $b.y }}" width="{{ partial $f $b.w }}" height="{{ partial $f $b.h }}" rx="{{ partial $f (div $b.h 2.0) }}"/>
+{{- else if ne $b.shape "none" -}}
+<rect class="dg-shape" x="{{ partial $f $b.x }}" y="{{ partial $f $b.y }}" width="{{ partial $f $b.w }}" height="{{ partial $f $b.h }}" rx="3"/>
+{{- end -}}
+{{- $y := sub $b.cy (div $b.content 2.0) -}}
+{{- with $b.icons -}}
+  {{- partial "diagram/icon.html" (dict "icon" . "cx" $b.cx "y" $y "prefix" (printf "%s-n%d" $.uid $.idx)) -}}
+  {{- $y = add $y 23 -}}
+{{- end -}}
+{{- with $b.lt -}}
+  {{- range $i, $l := . }}<text class="{{ if $b.bold }}dg-tb{{ else }}dg-t{{ end }} dg-mid" x="{{ partial $f $b.cx }}" y="{{ partial $f (add $y (add 12 (mul 16 $i))) }}">{{ $l }}</text>{{ end -}}
+  {{- $y = add $y (add 5 (mul 16 (len .))) -}}
+{{- end -}}
+{{- with $b.lb -}}
+  {{- range $i, $l := . }}<text class="dg-t dg-mid" x="{{ partial $f $b.cx }}" y="{{ partial $f (add $y (add 13 (mul 18 $i))) }}">{{ $l }}</text>{{ end -}}
+  {{- $y = add $y (add 5 (mul 18 (len .))) -}}
+{{- end -}}
+{{- with $b.ls -}}
+  {{- range $i, $l := . }}<text class="{{ $sub }} dg-mid" x="{{ partial $f $b.cx }}" y="{{ partial $f (add $y (add 11 (mul 15 $i))) }}">{{ $l }}</text>{{ end -}}
+{{- end -}}
+</g>

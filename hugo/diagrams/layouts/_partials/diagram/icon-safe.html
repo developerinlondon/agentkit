@@ -1,0 +1,210 @@
+{{- /* Parses a project icon and rebuilds it from the parsed tokens, so no byte
+       of the source reaches the page unexamined. Returns {view, body} or {err}.
+       The file must be well-formed XML with one <svg> root. Inside it only the
+       elements below survive, with attributes checked against a grammar each;
+       style declarations become the same attributes through the same grammars.
+       Editor data (namespaced elements and attributes, metadata, data-*) is
+       dropped; anything else outside the allowlist fails the build. Ids and
+       url(#id) carry the placeholder prefix .prefix for the caller to replace. */ -}}
+{{- $prefix := .prefix -}}
+{{- $num := `^-?(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eE][-+]?[0-9]+)?(?:%|px)?$` -}}
+{{- $named := `aliceblue|antiquewhite|aqua|aquamarine|azure|beige|bisque|black|blanchedalmond|blue|blueviolet|brown|burlywood|cadetblue|chartreuse|chocolate|coral|cornflowerblue|cornsilk|crimson|cyan|darkblue|darkcyan|darkgoldenrod|darkgray|darkgreen|darkgrey|darkkhaki|darkmagenta|darkolivegreen|darkorange|darkorchid|darkred|darksalmon|darkseagreen|darkslateblue|darkslategray|darkslategrey|darkturquoise|darkviolet|deeppink|deepskyblue|dimgray|dimgrey|dodgerblue|firebrick|floralwhite|forestgreen|fuchsia|gainsboro|ghostwhite|gold|goldenrod|gray|green|greenyellow|grey|honeydew|hotpink|indianred|indigo|ivory|khaki|lavender|lavenderblush|lawngreen|lemonchiffon|lightblue|lightcoral|lightcyan|lightgoldenrodyellow|lightgray|lightgreen|lightgrey|lightpink|lightsalmon|lightseagreen|lightskyblue|lightslategray|lightslategrey|lightsteelblue|lightyellow|lime|limegreen|linen|magenta|maroon|mediumaquamarine|mediumblue|mediumorchid|mediumpurple|mediumseagreen|mediumslateblue|mediumspringgreen|mediumturquoise|mediumvioletred|midnightblue|mintcream|mistyrose|moccasin|navajowhite|navy|oldlace|olive|olivedrab|orange|orangered|orchid|palegoldenrod|palegreen|paleturquoise|palevioletred|papayawhip|peachpuff|peru|pink|plum|powderblue|purple|rebeccapurple|red|rosybrown|royalblue|saddlebrown|salmon|sandybrown|seagreen|seashell|sienna|silver|skyblue|slateblue|slategray|slategrey|snow|springgreen|steelblue|tan|teal|thistle|tomato|transparent|turquoise|violet|wheat|white|whitesmoke|yellow|yellowgreen` -}}
+{{- $colour := printf `^(?i:none|currentColor|#[0-9a-f]{3,8}|(?:rgb|rgba|hsl|hsla)\([0-9., %%/]+\)|%s)$|^url\(#[A-Za-z][A-Za-z0-9_.-]*\)$` $named -}}
+{{- $localURL := `^(?:none|url\(#[A-Za-z][A-Za-z0-9_.-]*\))$` -}}
+{{- $grammar := dict
+  "d" `^[MmLlHhVvCcSsQqTtAaZz0-9eE.,+ \t\r\n-]*$`
+  "points" `^[0-9eE.,+ \t\r\n-]*$`
+  "transform" `^(?:\s*(?:matrix|translate|scale|rotate|skewX|skewY)\([0-9eE.,+ -]*\)\s*,?)*\s*$`
+  "gradientTransform" `^(?:\s*(?:matrix|translate|scale|rotate|skewX|skewY)\([0-9eE.,+ -]*\)\s*,?)*\s*$`
+  "id" `^[A-Za-z][A-Za-z0-9_.-]*$`
+  "fill" $colour "stroke" $colour "stop-color" $colour
+  "clip-path" $localURL "mask" $localURL
+  "stroke-dasharray" `^(?:none|[0-9., ]+(?:px)?)$`
+  "stroke-linecap" `^(?:butt|round|square)$`
+  "stroke-linejoin" `^(?:miter|miter-clip|round|bevel|arcs)$`
+  "fill-rule" `^(?:nonzero|evenodd)$` "clip-rule" `^(?:nonzero|evenodd)$`
+  "gradientUnits" `^(?:userSpaceOnUse|objectBoundingBox)$`
+  "maskUnits" `^(?:userSpaceOnUse|objectBoundingBox)$`
+  "maskContentUnits" `^(?:userSpaceOnUse|objectBoundingBox)$`
+  "clipPathUnits" `^(?:userSpaceOnUse|objectBoundingBox)$`
+  "spreadMethod" `^(?:pad|reflect|repeat)$`
+  "href" `^#[A-Za-z][A-Za-z0-9_.-]*$`
+  "mask-type" `^(?:alpha|luminance)$`
+-}}
+{{- range slice "cx" "cy" "r" "rx" "ry" "fx" "fy" "x" "y" "x1" "y1" "x2" "y2" "width" "height" "stroke-width" "stroke-miterlimit" "stroke-dashoffset" "opacity" "fill-opacity" "stroke-opacity" "stop-opacity" "offset" -}}
+  {{- $grammar = merge $grammar (dict . $num) -}}
+{{- end -}}
+{{- /* What a root <svg> may pass on to the icon, and what a style declaration may set. */ -}}
+{{- $inherited := slice "fill" "stroke" "stroke-width" "stroke-linecap" "stroke-linejoin" "stroke-miterlimit" "stroke-dasharray" "stroke-dashoffset" "fill-rule" "clip-rule" "opacity" "fill-opacity" "stroke-opacity" -}}
+{{- $styleable := $inherited | append (slice "stop-color" "stop-opacity" "clip-path" "mask" "mask-type") -}}
+{{- $elements := slice "g" "path" "circle" "ellipse" "rect" "line" "polyline" "polygon" "defs" "linearGradient" "radialGradient" "stop" "clipPath" "mask" "title" "desc" -}}
+{{- $dropped := slice "metadata" -}}
+{{- $err := "" }}{{ $out := slice }}{{ $view := "" }}{{ $rootAttrs := slice -}}
+{{- $svg := strings.TrimPrefix "﻿" .svg -}}
+{{- with try (transform.Unmarshal (dict "format" "xml") $svg) -}}
+  {{- with .Err }}{{ $err = printf "not well-formed XML (%s)" . }}{{ end -}}
+{{- end -}}
+{{- $src := $svg | replaceRE `(?s)<!--.*?-->` "" | replaceRE `(?s)^\s*<\?xml[^>]*\?>` "" | replaceRE `(?s)^\s*<!DOCTYPE[^>]*>` "" -}}
+{{- /* Prefixes are resolved by the namespace they are bound to, not by spelling. */ -}}
+{{- $svgNS := slice }}{{ $xlinkNS := slice -}}
+{{- range findRESubmatch `xmlns:([A-Za-z_][A-Za-z0-9._-]*)\s*=\s*["']([^"']*)["']` $src -1 -}}
+  {{- if eq (index . 2) "http://www.w3.org/2000/svg" }}{{ $svgNS = $svgNS | append (index . 1) }}{{ end -}}
+  {{- if eq (index . 2) "http://www.w3.org/1999/xlink" }}{{ $xlinkNS = $xlinkNS | append (index . 1) }}{{ end -}}
+{{- end -}}
+{{- $stack := slice }}{{ $skip := 0 }}{{ $root := 0 -}}
+{{- /* Gradients seen so far, by source id: type, inheritable attributes, stops. */ -}}
+{{- $grads := dict }}{{ $cap := dict -}}
+{{- range findRE `<[^>]*>?|[^<]+` $src -}}
+  {{- if $err }}{{ break }}{{ end -}}
+  {{- $tok := . -}}
+  {{- if not (strings.HasPrefix $tok "<") -}}
+    {{- if and (eq $skip 0) (findRE `\S` $tok 1) -}}
+      {{- $top := cond (gt (len $stack) 0) (index $stack (sub (len $stack) 1)) "" -}}
+      {{- if in (slice "title" "desc") $top }}{{ $out = $out | append (htmlEscape (htmlUnescape $tok)) }}{{ else }}{{ $err = printf "text %q outside a title or desc" (strings.Truncate 40 (strings.TrimSpace $tok)) }}{{ end -}}
+    {{- end -}}
+    {{- continue -}}
+  {{- end -}}
+  {{- $m := findRESubmatch `^<(/?)([A-Za-z][A-Za-z0-9._-]*(?::[A-Za-z][A-Za-z0-9._-]*)?)((?:\s+[A-Za-z_][A-Za-z0-9:._-]*\s*=\s*(?:"[^"<>&]*"|'[^'<>&]*'))*)\s*(/?)>$` $tok 1 -}}
+  {{- if not $m }}{{ $err = printf "%q is not a plain tag" (strings.Truncate 40 $tok) }}{{ break }}{{ end -}}
+  {{- $m = index $m 0 -}}
+  {{- $closing := eq (index $m 1) "/" }}{{ $name := index $m 2 }}{{ $self := eq (index $m 4) "/" -}}
+  {{- /* A prefix bound to the SVG namespace is plain SVG; any other prefix is
+         editor data, dropped with everything inside it. */ -}}
+  {{- $foreign := false -}}
+  {{- with findRESubmatch `^([^:]+):(.+)$` $name 1 -}}
+    {{- if in $svgNS (index (index . 0) 1) }}{{ $name = index (index . 0) 2 }}{{ else }}{{ $foreign = true }}{{ end -}}
+  {{- end -}}
+  {{- if or (gt $skip 0) $foreign (in $dropped $name) -}}
+    {{- if $closing }}{{ $skip = sub $skip 1 }}{{ else if not $self }}{{ $skip = add $skip 1 }}{{ end -}}
+    {{- continue -}}
+  {{- end -}}
+  {{- /* Attributes: namespaced, xmlns and data-* are editor data; style becomes attributes. */ -}}
+  {{- $raw := dict }}{{ $order := slice -}}
+  {{- range findRESubmatch `([A-Za-z_][A-Za-z0-9:._-]*)\s*=\s*(?:"([^"]*)"|'([^']*)')` (index $m 3) -}}
+    {{- $an := index . 1 }}{{ $av := printf "%s%s" (index . 2) (index . 3) -}}
+    {{- if eq $an "xlink:href" }}{{ $an = "href" }}{{ end -}}
+    {{- with findRESubmatch `^([^:]+):(.+)$` $an 1 -}}
+      {{- $pre := index (index . 0) 1 }}{{ $local := index (index . 0) 2 -}}
+      {{- if in $svgNS $pre }}{{ $an = $local }}{{ else if and (in $xlinkNS $pre) (eq $local "href") }}{{ $an = "href" }}{{ end -}}
+    {{- end -}}
+    {{- /* A gradient inherits stops through href; that one link is drawing data. */ -}}
+    {{- if eq $an "href" -}}
+      {{- if not (in (slice "linearGradient" "radialGradient") $name) }}{{ $err = printf "%s on <%s> (only a gradient may link, to a #id in the same file)" $an $name }}{{ break }}{{ end -}}
+      {{- $an = "href" -}}
+    {{- else if or (in $an ":") (eq $an "xmlns") (strings.HasPrefix $an "data-") -}}
+      {{- continue -}}
+    {{- end -}}
+    {{- if eq $an "style" -}}
+      {{- range split $av ";" -}}
+        {{- /* Split on the first colon only: a value may hold one, and must then face its grammar. */ -}}
+        {{- $kv := findRESubmatch `^([^:]*):(.*)$` . 1 -}}
+        {{- if not $kv }}{{ continue }}{{ end -}}
+        {{- $p := strings.TrimSpace (index (index $kv 0) 1) }}{{ $v := strings.TrimSpace (index (index $kv 0) 2) -}}
+        {{- /* Properties the module draws are held to their attribute grammar;
+               the rest of a style (fonts, editor state) is dropped. */ -}}
+        {{- if not (in $styleable $p) }}{{ continue }}{{ end -}}
+        {{- if not (findRE (index $grammar $p) $v 1) }}{{ $err = printf "style %s:%s (not a valid %s value)" $p $v $p }}{{ break }}{{ end -}}
+        {{- if not (isset $raw $p) }}{{ $order = $order | append $p }}{{ end -}}
+        {{- $raw = merge $raw (dict $p $v "_style_" true) -}}
+      {{- end -}}
+      {{- if $err }}{{ break }}{{ end -}}
+      {{- continue -}}
+    {{- end -}}
+    {{- if and (isset $raw $an) (isset $raw "_style_") }}{{ continue }}{{ end -}}
+    {{- if not (isset $raw $an) }}{{ $order = $order | append $an }}{{ end -}}
+    {{- $raw = merge $raw (dict $an $av) -}}
+  {{- end -}}
+  {{- if $err }}{{ break }}{{ end -}}
+  {{- if eq $name "svg" -}}
+    {{- if and (not $closing) (eq $root 0) (eq (len $stack) 0) -}}
+      {{- $root = 1 -}}
+      {{- $view = index $raw "viewBox" | default "" -}}
+      {{- if not (findRE `^[0-9eE.,+ -]+$` $view 1) }}{{ $view = "" }}{{ end -}}
+      {{- range $order -}}
+        {{- $v := index $raw . -}}
+        {{- if and (in $inherited .) (findRE (index $grammar .) $v 1) }}{{ $rootAttrs = $rootAttrs | append (printf ` %s="%s"` . (replaceRE `url\(#` (printf "url(#%s" $prefix) $v)) }}{{ end -}}
+      {{- end -}}
+      {{- if $self }}{{ $root = 2 }}{{ end -}}
+    {{- else if and $closing (eq $root 1) (eq (len $stack) 0) -}}
+      {{- $root = 2 -}}
+    {{- else -}}
+      {{- $err = "a nested, repeated or misplaced <svg>" -}}
+    {{- end -}}
+    {{- continue -}}
+  {{- end -}}
+  {{- if ne $root 1 }}{{ $err = printf "<%s> outside the <svg> root" $name }}{{ break }}{{ end -}}
+  {{- if not (in $elements $name) }}{{ $err = printf "<%s>" $name }}{{ break }}{{ end -}}
+  {{- /* The HTML parser reads title and desc content as HTML, so a child
+         element there would swallow the rest of the page. Text only. */ -}}
+  {{- $top := cond (gt (len $stack) 0) (index $stack (sub (len $stack) 1)) "" -}}
+  {{- if and (in (slice "title" "desc") $top) (not (and $closing (eq $name $top))) }}{{ $err = printf "<%s> inside <%s>, which may hold text only" $name $top }}{{ break }}{{ end -}}
+  {{- if $closing -}}
+    {{- if or (eq (len $stack) 0) (ne $top $name) }}{{ $err = printf "a </%s> that closes nothing open" $name }}{{ break }}{{ end -}}
+    {{- $stack = first (sub (len $stack) 1) $stack -}}
+    {{- if and $cap.active (eq $name "stop") }}{{ $cap = merge $cap (dict "stops" ($cap.stops | append "</stop>")) }}{{ end -}}
+    {{- if and $cap.active (eq $name $cap.type) -}}
+      {{- $stops := delimit $cap.stops "" -}}
+      {{- if not $stops }}{{ $stops = $cap.inherit }}{{ $out = $out | append $stops }}{{ end -}}
+      {{- with $cap.id }}{{ $grads = merge $grads (dict . (dict "type" $cap.type "attrs" $cap.attrs "stops" $stops)) }}{{ end -}}
+      {{- $cap = dict -}}
+    {{- end -}}
+    {{- $out = $out | append (printf "</%s>" $name) -}}
+    {{- continue -}}
+  {{- end -}}
+  {{- $isGrad := in (slice "linearGradient" "radialGradient") $name -}}
+  {{- $valid := dict }}{{ $names := slice -}}
+  {{- range $order -}}
+    {{- $an := . }}{{ $av := index $raw . -}}
+    {{- $g := index $grammar $an -}}
+    {{- if not $g }}{{ $err = printf "attribute %s" $an }}{{ break }}{{ end -}}
+    {{- if not (findRE $g $av 1) }}{{ $err = printf "%s=%q (not a valid %s value)" $an $av $an }}{{ break }}{{ end -}}
+    {{- $valid = merge $valid (dict $an $av) }}{{ $names = $names | append $an -}}
+  {{- end -}}
+  {{- if $err }}{{ break }}{{ end -}}
+  {{- /* A gradient's href is resolved here: the gradient it names, defined
+         earlier in the file, lends its stops and the attributes this one
+         leaves unset. Nothing links at render time. */ -}}
+  {{- $inherit := "" -}}
+  {{- with index $valid "href" -}}
+    {{- $ref := index $grads (strings.TrimPrefix "#" .) -}}
+    {{- if not $ref }}{{ $err = printf "a gradient href %s that names no gradient defined before it" . }}{{ break }}{{ end -}}
+    {{- range $k, $v := $ref.attrs -}}
+      {{- if and (not (isset $valid $k)) (or (in (slice "gradientUnits" "gradientTransform" "spreadMethod") $k) (eq $ref.type $name)) -}}
+        {{- $valid = merge $valid (dict $k $v) }}{{ $names = $names | append $k -}}
+      {{- end -}}
+    {{- end -}}
+    {{- $inherit = $ref.stops -}}
+  {{- end -}}
+  {{- if $err }}{{ break }}{{ end -}}
+  {{- $attrs := slice }}{{ $kept := dict -}}
+  {{- range $names -}}
+    {{- $an := . }}{{ $av := index $valid . -}}
+    {{- if eq $an "href" }}{{ continue }}{{ end -}}
+    {{- if ne $an "id" }}{{ $kept = merge $kept (dict $an $av) }}{{ end -}}
+    {{- /* Ids are prefixed so an icon cannot shadow page anchors or another icon. */ -}}
+    {{- if eq $an "id" }}{{ $av = printf "%s%s" $prefix $av }}{{ end -}}
+    {{- $av = replaceRE `url\(#` (printf "url(#%s" $prefix) $av -}}
+    {{- $attrs = $attrs | append (printf ` %s="%s"` $an $av) -}}
+  {{- end -}}
+  {{- $tag := printf "<%s%s%s>" $name (delimit $attrs "") (cond $self "/" "") -}}
+  {{- if and $isGrad $self -}}
+    {{- $tag = printf "<%s%s>%s</%s>" $name (delimit $attrs "") $inherit $name -}}
+    {{- with index $valid "id" }}{{ $grads = merge $grads (dict . (dict "type" $name "attrs" $kept "stops" $inherit)) }}{{ end -}}
+  {{- else if $isGrad -}}
+    {{- $cap = dict "active" true "id" (index $valid "id") "type" $name "attrs" $kept "stops" (slice) "inherit" $inherit -}}
+  {{- else if and $cap.active (eq $name "stop") -}}
+    {{- $cap = merge $cap (dict "stops" ($cap.stops | append $tag)) -}}
+  {{- end -}}
+  {{- $out = $out | append $tag -}}
+  {{- if not $self }}{{ $stack = $stack | append $name }}{{ end -}}
+{{- end -}}
+{{- if not $err -}}
+  {{- if ne $root 2 }}{{ $err = "no complete <svg> root" -}}
+  {{- else if gt (len $stack) 0 }}{{ $err = printf "<%s> never closed" (index $stack 0) -}}
+  {{- else if not $view }}{{ $err = "no valid viewBox on the root" }}{{ end -}}
+{{- end -}}
+{{- $body := delimit $out "" -}}
+{{- with $rootAttrs }}{{ $body = printf "<g%s>%s</g>" (delimit . "") $body }}{{ end -}}
+{{- $result := dict "view" $view "body" $body -}}
+{{- if $err }}{{ $result = dict "err" $err }}{{ end -}}
+{{- return $result -}}

@@ -1,0 +1,9 @@
+{{- $out := slice -}}
+{{- with . -}}
+  {{- if reflect.IsSlice . -}}
+    {{- range . }}{{ $out = $out | append (string .) }}{{ end -}}
+  {{- else -}}
+    {{- range split (string .) "\n" }}{{ $out = $out | append . }}{{ end -}}
+  {{- end -}}
+{{- end -}}
+{{- return $out -}}

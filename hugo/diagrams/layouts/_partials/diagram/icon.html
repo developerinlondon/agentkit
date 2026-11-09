@@ -1,0 +1,20 @@
+{{- /* A <g>, not a nested <svg>: Hugo's minifier reads an inner </svg> as the
+       end of the figure and strips the self-closing slashes that follow. */ -}}
+{{- $names := partial "diagram/lines.html" .icon -}}
+{{- $size := 18.0 -}}
+{{- $gap := 6.0 -}}
+{{- $n := float (len $names) -}}
+{{- $x0 := sub .cx (div (add (mul $size $n) (mul $gap (sub $n 1.0))) 2.0) -}}
+{{- $f := "diagram/fmt.html" -}}
+{{- range $i, $name := $names -}}
+  {{- $ic := partial "diagram/icon-lookup.html" $name -}}
+  {{- $vb := split $ic.view " " -}}
+  {{- $vx := float (index $vb 0) }}{{ $vy := float (index $vb 1) }}{{ $vw := float (index $vb 2) }}{{ $vh := float (index $vb 3) -}}
+  {{- $k := div $size (math.Max $vw $vh) -}}
+  {{- $x := add (add $x0 (mul (float $i) (add $size $gap))) (div (sub $size (mul $vw $k)) 2.0) -}}
+  {{- $y := add $.y (div (sub $size (mul $vh $k)) 2.0) -}}
+  {{- /* Project icon ids carry a placeholder; each drawn instance gets its own
+         prefix so icons collide neither with module ids nor with each other. */ -}}
+  {{- $body := replace $ic.body "__DGI__" (printf "%s-%d-" $.prefix $i) -}}
+  <g class="dg-icon dg-icon-{{ $ic.mode }}" transform="translate({{ partial $f (sub $x (mul $vx $k)) }} {{ partial $f (sub $y (mul $vy $k)) }}) scale({{ printf "%.4f" $k }})" aria-hidden="true">{{ $body | safeHTML }}</g>
+{{- end -}}

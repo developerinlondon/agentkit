@@ -90,6 +90,8 @@ fileGroups:
 
   diagramInputs:
     - "bun.lock"
+    - "hugo/diagrams/**/*"
+    - "scripts/sync-hugo-diagram-icons.ts"
     - "package.json"
     - "plugins-cc/agentkit/skills/diagram/**/*"
     - "skills/diagram/**/*"
@@ -97,6 +99,8 @@ fileGroups:
     - "skills/publish-page/themes/deck.html"
     - "skills/publish-page/themes/doc.html"
     - "tests/diagram/**/*"
+    - "tests/publish-page/browser-launch.ts"
+    - "tests/publish-page/devtools.ts"
 
   hookInputs:
     - ".claude-plugin/**/*"

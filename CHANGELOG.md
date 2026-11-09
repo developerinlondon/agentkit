@@ -5,9 +5,34 @@ top and ships with the next tag.
 
 Releasing: bump the PATCH version by default. A minor or major tier requires
 the owner's explicit agreement for that specific release, recorded in the
-release PR — "publish this" authorizes a release, never the tier.
+release PR — "publish this" authorizes a release, never the tier. Each release
+also tags `hugo/diagrams/v<same version>` on the release commit, so Hugo sites can
+pin the diagrams module.
 
 ## [Unreleased]
+
+- feat(diagram): **a Hugo module that draws docs figures from data at build time.** `hugo/diagrams/`
+  is its own Go module, imported as `github.com/developerinlondon/agentkit/hugo/diagrams` (tags
+  `hugo/diagrams/vX.Y.Z`). A figure is a YAML spec in a site's `data/diagrams/`, placed with
+  `{{< diagram "name" >}}`: flows on an explicit grid (groups, labelled orthogonal edges, notes)
+  and sequences (actors, messages, alt/else). The build renders inline SVG in the house style with
+  `<title>`/`<desc>`, a generated text version, and `/architecture.json` for agents; it fails on a
+  ```mermaid block, invalid specs, and a canvas whose smallest label would show below 8 px in the
+  text column. A small script highlights a node's connections on hover, tap or focus and opens any
+  figure at 1:1 in a full-viewport dialog. Icon layers: heroicons, plus the skill's CC0
+  simple-icons and logos packs (one source, `scripts/sync-hugo-diagram-icons.ts`), plus a
+  project's own packs as `@pack/name`. Project design tokens (colours, fonts, radii, light and
+  dark) restyle every figure; full-colour vendor logos are never recoloured. The `diagram` skill now
+  routes Hugo docs figures to the module and never to Mermaid, and the `documentation` skill no
+  longer tells agents to write Mermaid fences on Hugo docs sites. A project icon must be
+  well-formed XML; the module parses it and rebuilds it from an allowlist of shape elements and
+  attributes, each value checked against its own grammar, so no raw icon text reaches a page.
+  Common exports build as they are: a byte-order mark, comments and editor data are dropped, a
+  `style` attribute becomes presentation attributes, and the root's presentation attributes carry
+  over, chained gradients are resolved at build time, and prefixes bound to the SVG namespace
+  are read as SVG; the README's "Preparing icons" gives an svgo config for the rest. Design tokens are checked
+  against per-field grammars and font names are quoted by the module. Requires Hugo 0.164 or later. CI installs a pinned Hugo for the module's tests.
+  ```
 
 ## v0.9.3 — 2026-09-21
 

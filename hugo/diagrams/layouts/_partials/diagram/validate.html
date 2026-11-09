@@ -1,0 +1,73 @@
+{{- /* Fails the build on a spec that cannot render faithfully. */ -}}
+{{- $name := .name }}{{ $s := .spec -}}
+{{- $kind := $s.kind | default "flow" -}}
+{{- if not (in (slice "flow" "sequence") $kind) }}{{ errorf "diagram %q: kind %q is not flow or sequence" $name $kind }}{{ end -}}
+{{- if not $s.title }}{{ errorf "diagram %q: title is required" $name }}{{ end -}}
+{{- if not $s.description }}{{ errorf "diagram %q: description is required" $name }}{{ end -}}
+{{- $kinds := slice "box" "fill" "accent" "gate" "deny" "allow" "ghost" -}}
+{{- $ids := dict -}}
+{{- $checkNode := dict -}}
+{{- range $s.nodes | default $s.actors -}}
+  {{- if not .id }}{{ errorf "diagram %q: a node has no id" $name }}{{ end -}}
+  {{- if isset $ids .id }}{{ errorf "diagram %q: duplicate id %q" $name .id }}{{ end -}}
+  {{- $ids = merge $ids (dict .id true) -}}
+  {{- if and (not .label) (not .icon) }}{{ errorf "diagram %q: node %q has neither label nor icon" $name .id }}{{ end -}}
+  {{- with .kind }}{{ if not (in $kinds .) }}{{ errorf "diagram %q: node kind %q is not one of %v" $name . $kinds }}{{ end }}{{ end -}}
+  {{- with .shape }}{{ if not (in (slice "rect" "diamond" "pill" "none") .) }}{{ errorf "diagram %q: shape %q is not rect, diamond, pill or none" $name . }}{{ end }}{{ end -}}
+  {{- range partial "diagram/lines.html" .icon }}{{ with (partial "diagram/icon-lookup.html" .).err }}{{ errorf "diagram %q: %s" $name . }}{{ end }}{{ end -}}
+  {{- if eq $kind "flow" -}}
+    {{- if or (not (isset . "col")) (not (isset . "row")) }}{{ errorf "diagram %q: node %q needs col and row" $name .id }}{{ end -}}
+  {{- end -}}
+{{- end -}}
+{{- if eq $kind "flow" -}}
+  {{- if not $s.nodes }}{{ errorf "diagram %q: a flow needs nodes" $name }}{{ end -}}
+  {{- $groupIds := dict -}}
+  {{- range $s.groups -}}
+    {{- if isset $ids .id }}{{ errorf "diagram %q: duplicate id %q" $name .id }}{{ end -}}
+    {{- $ids = merge $ids (dict .id true) }}{{ $groupIds = merge $groupIds (dict .id true) -}}
+    {{- with .style }}{{ if not (in (slice "dashed" "solid" "tint" "gate") .) }}{{ errorf "diagram %q: group style %q is not dashed, solid, tint or gate" $name . }}{{ end }}{{ end -}}
+  {{- end -}}
+  {{- range $s.nodes -}}
+    {{- with .group }}{{ if not (isset $groupIds .) }}{{ errorf "diagram %q: node group %q is not a declared group" $name . }}{{ end }}{{ end -}}
+  {{- end -}}
+  {{- range $s.groups -}}
+    {{- $gid := .id }}{{ $has := false -}}
+    {{- range $s.nodes }}{{ if eq .group $gid }}{{ $has = true }}{{ end }}{{ end -}}
+    {{- if and (not $has) (not (and (isset . "col") (isset . "row") (isset . "w") (isset . "h"))) }}{{ errorf "diagram %q: group %q has no members and no explicit col/row/w/h" $name $gid }}{{ end -}}
+  {{- end -}}
+  {{- range $s.edges -}}
+    {{- if not (isset $ids .from) }}{{ errorf "diagram %q: edge from %q: no such node or group" $name .from }}{{ end -}}
+    {{- if not (isset $ids .to) }}{{ errorf "diagram %q: edge to %q: no such node or group" $name .to }}{{ end -}}
+    {{- with .style }}{{ if not (in (slice "sync" "async" "data" "gate" "deny" "allow") .) }}{{ errorf "diagram %q: edge style %q is not sync, async, data, gate, deny or allow" $name . }}{{ end }}{{ end -}}
+    {{- /* Only a same-side U route with two different points leaves the box. */ -}}
+    {{- if and (eq .from .to) (or (not .exit) (ne .exit .enter) (eq (float (.exit_at | default 0)) (float (.enter_at | default 0)))) }}{{ errorf "diagram %q: edge %s → %s loops to its own node; draw it with exit and enter on the same side and different exit_at and enter_at" $name .from .to }}{{ end -}}
+    {{- if and (isset . "label_segment") (lt (int .label_segment) 1) }}{{ errorf "diagram %q: edge %s → %s: label_segment counts from 1" $name .from .to }}{{ end -}}
+    {{- with .route }}{{ if ne . "straight" }}{{ errorf "diagram %q: edge route %q: only straight is accepted" $name . }}{{ end }}{{ end -}}
+    {{- with .arrow }}{{ if not (in (slice "end" "both" "none") .) }}{{ errorf "diagram %q: edge arrow %q is not end, both or none" $name . }}{{ end }}{{ end -}}
+    {{- range slice .exit .enter }}{{ with . }}{{ if not (in (slice "left" "right" "top" "bottom") .) }}{{ errorf "diagram %q: edge side %q is not left, right, top or bottom" $name . }}{{ end }}{{ end }}{{ end -}}
+  {{- end -}}
+  {{- /* Explicit widths are a promise the text fits; check it against an estimate. */ -}}
+  {{- range $s.nodes -}}
+    {{- if .w -}}
+      {{- $b := partial "diagram/box.html" (dict "n" . "cw" 1.0 "rh" 1.0 "dw" 0.0) -}}
+      {{- $room := cond (eq $b.shape "diamond") (mul $b.w 0.62) (sub $b.w 14) -}}
+      {{- if gt $b.tw $room }}{{ warnf "diagram %q: node %q text (about %.0fpx) overflows its width %v" $name .id $b.tw .w }}{{ end -}}
+    {{- end -}}
+  {{- end -}}
+{{- else -}}
+  {{- if not $s.actors }}{{ errorf "diagram %q: a sequence needs actors" $name }}{{ end -}}
+  {{- $steps := slice -}}
+  {{- range $s.messages -}}
+    {{- if .alt }}{{ range .alt }}{{ $steps = $steps | append .messages }}{{ end }}{{ else }}{{ $steps = $steps | append . }}{{ end -}}
+  {{- end -}}
+  {{- range $steps -}}
+    {{- if isset . "note" -}}
+      {{- range partial "diagram/lines.html" .over }}{{ if not (isset $ids .) }}{{ errorf "diagram %q: note over %q: no such actor" $name . }}{{ end }}{{ end -}}
+    {{- else -}}
+      {{- if not (isset $ids .from) }}{{ errorf "diagram %q: message from %q: no such actor" $name .from }}{{ end -}}
+      {{- if not (isset $ids .to) }}{{ errorf "diagram %q: message to %q: no such actor" $name .to }}{{ end -}}
+      {{- if eq .from .to }}{{ errorf "diagram %q: message %q goes from an actor to itself, which is not drawn" $name .label }}{{ end -}}
+      {{- with .style }}{{ if not (in (slice "sync" "reply" "data" "gate") .) }}{{ errorf "diagram %q: message style %q is not sync, reply, data or gate" $name . }}{{ end }}{{ end -}}
+    {{- end -}}
+  {{- end -}}
+{{- end -}}
