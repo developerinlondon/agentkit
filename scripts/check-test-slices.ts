@@ -1,6 +1,6 @@
 import { Glob, YAML } from 'bun';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { basename, join, relative } from 'node:path';
+import { basename, isAbsolute, join, relative } from 'node:path';
 
 export const TEST_SLICES = {
   diagram: [
@@ -146,13 +146,23 @@ export const TEST_SLICES = {
 export type TestSlice = keyof typeof TEST_SLICES;
 export const DEFAULT_TEST_TIMEOUT_MS = 60_000;
 
-export function sliceCommand(slice: TestSlice): string[] {
+// Bun reads a bare relative argument as a substring filter, so `tests/a.test.ts` also
+// runs `x-tests/a.test.ts`; a `./` prefix or an absolute path names one file exactly.
+export function bunTestCommand(files: readonly string[]): string[] {
   return [
     process.execPath,
     'test',
     `--timeout=${DEFAULT_TEST_TIMEOUT_MS}`,
-    ...TEST_SLICES[slice],
+    ...files.map((file) => (isAbsolute(file) ? file : `./${file}`)),
   ];
+}
+
+export function sliceCommand(slice: TestSlice): string[] {
+  return bunTestCommand(TEST_SLICES[slice]);
+}
+
+export function sliceRun(slice: TestSlice): { cmd: string[]; files: number } {
+  return { cmd: sliceCommand(slice), files: TEST_SLICES[slice].length };
 }
 
 const repoRoot = join(import.meta.dir, '..');
@@ -350,8 +360,10 @@ export function bunSummary(stderr: string): { tests: number; files: number } | n
 
 // A zero exit proves nothing on its own: a test file that calls process.exit(0) while
 // loading ends bun early, green, with its tests unrun. Only bun's closing summary,
-// naming at least one test, makes a zero exit a pass. Bun counts every file it was
-// given, so a summary covering fewer was echoed by test code in a run that died early.
+// naming at least one test, makes a zero exit a pass. Given exact paths, bun's summary
+// counts exactly the files it was given; any other count was echoed by test code in a run
+// that died early. A test that echoes a summary with the right count to stderr before
+// exiting still passes: from bun's output alone it is indistinguishable from bun's own.
 export function sliceVerdict(
   exitCode: number,
   signal: string | null,
@@ -399,9 +411,6 @@ export async function runChecked(
   return verdict.code;
 }
 
-async function runSlice(slice: TestSlice): Promise<never> {
-  process.exit(await runChecked(sliceCommand(slice), repoRoot, slice, TEST_SLICES[slice].length));
-}
 
 if (import.meta.main) {
   const requested = process.argv[2];
@@ -428,5 +437,6 @@ if (import.meta.main) {
     process.exit(2);
   }
 
-  await runSlice(requested as TestSlice);
+  const { cmd, files } = sliceRun(requested as TestSlice);
+  process.exit(await runChecked(cmd, repoRoot, requested, files));
 }

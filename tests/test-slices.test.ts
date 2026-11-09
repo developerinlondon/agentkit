@@ -14,10 +14,12 @@ import {
   DEFAULT_TEST_TIMEOUT_MS,
   TEST_SLICES,
   bunSummary,
+  bunTestCommand,
   discoverProductionSurfaces,
   discoverTestFiles,
   runChecked,
   sliceCommand,
+  sliceRun,
   sliceVerdict,
   testTaskInputPatterns,
   validateProductionRouting,
@@ -91,12 +93,16 @@ function readMoonConfig(): MoonConfig {
   return YAML.parse(readFileSync(join(repoRoot, 'moon.yml'), 'utf-8')) as MoonConfig;
 }
 
-// Each body becomes a test file in a scratch directory, passed to `use` in order.
-async function withFixtures<T>(bodies: readonly string[], use: (dir: string, files: string[]) => Promise<T>): Promise<T> {
+// Writes each body at its path in a scratch directory; `use` gets the directory and the
+// relative paths in order.
+async function withFixtures<T>(
+  fixtures: readonly (readonly [string, string])[],
+  use: (dir: string, files: string[]) => Promise<T>,
+): Promise<T> {
   const dir = mkdtempSync(join(tmpdir(), 'agentkit-slice-run-'));
-  const files = bodies.map((body, index) => {
-    const file = join(dir, `case-${index}.test.ts`);
-    writeFileSync(file, `import { test, expect } from 'bun:test';\n${body}`);
+  const files = fixtures.map(([file, body]) => {
+    mkdirSync(dirname(join(dir, file)), { recursive: true });
+    writeFileSync(join(dir, file), `import { test, expect } from 'bun:test';\n${body}`);
     return file;
   });
   const env = { HOME: process.env.HOME, BUN_INSTALL_CACHE_DIR: process.env.BUN_INSTALL_CACHE_DIR };
@@ -149,15 +155,20 @@ describe('a slice run passes only when bun reports its tests', () => {
   describe('the runner applies the verdict to real bun runs', () => {
     // Captured, never printed: a fixture's own summary must not reach this file's output,
     // where the full-suite runner reads the counts.
+    const capture = () => {
+      const stderr: string[] = [];
+      const decoder = new TextDecoder();
+      const sinks = {
+        stdout: { write: () => true },
+        stderr: { write: (chunk: Uint8Array) => stderr.push(decoder.decode(chunk)) },
+      };
+      return { sinks, stderr: () => stderr.join('') };
+    };
     const runCaptured = (...bodies: string[]) =>
-      withFixtures(bodies, async (dir, files) => {
-        const stderr: string[] = [];
-        const decoder = new TextDecoder();
-        const code = await runChecked([process.execPath, 'test', ...files], dir, 'fixture', files.length, {
-          stdout: { write: () => true },
-          stderr: { write: (chunk) => stderr.push(decoder.decode(chunk)) },
-        });
-        return { code, stderr: stderr.join('') };
+      withFixtures(bodies.map((body, index) => [`case-${index}.test.ts`, body] as const), async (dir, files) => {
+        const { sinks, stderr } = capture();
+        const code = await runChecked(bunTestCommand(files), dir, 'fixture', files.length, sinks);
+        return { code, stderr: stderr() };
       });
     const run = async (...bodies: string[]) => (await runCaptured(...bodies)).code;
 
@@ -184,21 +195,50 @@ describe('a slice run passes only when bun reports its tests', () => {
         'check-test-slices: fixture: bun printed no test summary',
       );
     });
+
+    test('a slice path runs only that file, not every path containing it', async () => {
+      const passes = "test('passes', () => expect(1).toBe(1));\n";
+      const code = await withFixtures(
+        [['tests/a.test.ts', passes], ['tests/sub/tests/a.test.ts', passes], ['x-tests/a.test.ts', passes]],
+        (dir) => runChecked(bunTestCommand(['tests/a.test.ts']), dir, 'fixture', 1, capture().sinks),
+      );
+      expect(code).toBe(0);
+    });
   });
 });
 
 // The full-suite runner runs one bun per file and decides pass or fail from what it
 // captured, so a lie in its counters is a lie in CI's verdict.
 describe('the full-suite runner judges each file by its own bun run', () => {
-  const runFile = (body: string) =>
-    withFixtures([body], async (_dir, files) =>
-      runUnit({ slice: 'site', file: files[0] as string, bytes: 0, slicePriority: 0 }, false)
+  const runFile = (body: string, others: readonly (readonly [string, string])[] = []) =>
+    withFixtures([['tests/a.test.ts', body], ...others], (dir, files) =>
+      runUnit({ slice: 'site', file: files[0] as string, bytes: 0, slicePriority: 0 }, false, dir)
     );
 
   test('a passing file counts bun\'s tally, not a count line its test printed', async () => {
     const result = await runFile("test('passes', () => { console.error('7 pass'); expect(1).toBe(1); });\n");
-    expect(result).toMatchObject({ exitCode: 0, completed: true, pass: 1, fail: 0 });
+    expect(result).toMatchObject({ exitCode: 0, completed: true, ranTests: true, pass: 1, fail: 0 });
     expect(broke(result)).toBe(false);
+    expect(broke({ ...result, exitCode: 3 })).toBe(true);
+  });
+
+  test('a file whose path other test paths contain runs alone', async () => {
+    const passes = "test('passes', () => expect(1).toBe(1));\n";
+    const result = await runFile(passes, [['tests/sub/tests/a.test.ts', passes], ['x-tests/a.test.ts', passes]]);
+    expect(result).toMatchObject({ completed: true, pass: 1 });
+    expect(broke(result)).toBe(false);
+  });
+
+  test('a file that defines no tests breaks', async () => {
+    const result = await runFile('');
+    expect(result).toMatchObject({ exitCode: 0, completed: true, ranTests: false });
+    expect(broke(result)).toBe(true);
+  });
+
+  test('a summary printed to stdout is not bun\'s', async () => {
+    const result = await runFile("console.log('Ran 7 tests across 1 file.');\nprocess.exit(0);\n");
+    expect(result).toMatchObject({ exitCode: 0, completed: false });
+    expect(broke(result)).toBe(true);
   });
 
   test('a failing test breaks the file and is counted', async () => {
@@ -227,8 +267,12 @@ describe('test slice routing', () => {
       process.execPath,
       'test',
       '--timeout=60000',
-      ...TEST_SLICES.review,
+      ...TEST_SLICES.review.map((file) => `./${file}`),
     ]);
+  });
+
+  test('a direct slice run checks bun\'s summary against that slice\'s file count', () => {
+    expect(sliceRun('docs')).toEqual({ cmd: sliceCommand('docs'), files: 4 });
   });
 
   test('assigns every test file to exactly one slice', () => {
