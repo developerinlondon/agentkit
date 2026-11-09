@@ -653,6 +653,12 @@ describe('logo ids get the per-instance placeholder', () => {
     expect(() => placeholderIds('<path fill="url(&apos;#missing&apos;)"/>')).toThrow(/missing/);
     expect(() => placeholderIds('<use href=" #missing"/>')).toThrow(/missing/);
   });
+
+  // Unlisted quoting is caught by what it leaves behind, not by naming every form.
+  test('a reference in a form the rewrite does not know still fails', () => {
+    expect(() => placeholderIds('<linearGradient id="g"/><path fill="url(&#39;#g&#39;)"/>')).toThrow(/#g kept its bare id/);
+    expect(() => placeholderIds('<linearGradient id="g"/><path fill="url(&#34;#g&#34;)"/>')).toThrow(/#g kept its bare id/);
+  });
 });
 
 describe('the module keeps its own numbers in step', () => {

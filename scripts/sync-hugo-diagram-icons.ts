@@ -38,6 +38,11 @@ export function placeholderIds(body: string): string {
   }
   const loose = out.match(new RegExp(`url\\(\\s*${QUOTE}#(?!${PLACEHOLDER})[^)'"&\\s]+|href=['"]\\s*#(?!${PLACEHOLDER})[^'"]+`));
   if (loose) throw new Error(`reference ${loose[0]} has no id in the same icon, or one the rewrite missed`);
+  // Whatever the quoting, no id of this icon may still be referenced without the placeholder.
+  for (const id of ids) {
+    const left = out.match(new RegExp(`#(?!${PLACEHOLDER})${escape(id)}(?![\\w.:-])`));
+    if (left) throw new Error(`reference ${left[0]} kept its bare id; the rewrite missed its form`);
+  }
   return out;
 }
 
@@ -77,5 +82,6 @@ if (import.meta.main) {
       console.log(`hugo-icons: wrote ${path}`);
     }
   }
-  process.exit(stale ? 1 : 0);
+  // exitCode, not exit(): an importer (the tests) must never be ended by this script.
+  process.exitCode = stale ? 1 : 0;
 }
