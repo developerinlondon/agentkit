@@ -11,6 +11,17 @@ pin the diagrams module.
 
 ## [Unreleased]
 
+- fix(ci): **a test slice passes only when its tests ran.** `scripts/check-test-slices.ts`
+  forwarded bun's exit code, so a test file that called `process.exit(0)` while loading ended
+  the run green with its tests unrun. The runner now streams bun's output as before and fails
+  a zero exit unless bun's closing summary, read from stderr only, reports at least one test;
+  a run ended by a signal fails too. The full-suite runner (`scripts/run-test-slices.ts`) applies
+  the same rule per file, so a file that defines no tests now fails there too, and it reads the
+  last count line, so a count printed by a test no longer stands in for bun's tally. Both pass
+  bun `./`-prefixed paths, which it matches exactly instead of as substring filters, and refuse
+  a summary whose "across M files" differs from the files they gave it. One case stays open: a
+  test that writes a summary with the right file count to stderr and then exits still passes,
+  because bun's output offers nothing to tell that line from bun's own.
 - fix(diagram): **every box and group in a Hugo figure has its own tooltip.** Nodes and groups
   carry a `<title>` (label, plus `description` when set), so hovering one no longer shows the
   figure's title;
