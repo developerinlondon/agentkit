@@ -148,6 +148,16 @@ describe('the build refuses what it cannot draw faithfully', () => {
       /icon "@acme\/widget".*no valid viewBox/,
     ],
     [
+      'a project icon whose viewBox has five numbers',
+      (s) => writeFileSync(join(s, 'assets/icons/acme/widget.svg'), '<svg viewBox="0 0 8 8 8"><rect width="8" height="8"/></svg>'),
+      /icon "@acme\/widget".*no valid viewBox/,
+    ],
+    [
+      'a project icon whose viewBox number is out of range',
+      (s) => writeFileSync(join(s, 'assets/icons/acme/widget.svg'), '<svg viewBox="0 0 1e400 8"><rect width="8" height="8"/></svg>'),
+      /icon "@acme\/widget".*no valid viewBox/,
+    ],
+    [
       'a project icon whose viewBox has no width',
       (s) => writeFileSync(join(s, 'assets/icons/acme/widget.svg'), '<svg viewBox="0 0 0 8"><rect width="8" height="8"/></svg>'),
       /icon "@acme\/widget".*no valid viewBox/,
@@ -486,6 +496,22 @@ describe('edges of the rules', () => {
     expect(checkout).toMatch(/data-id="?api"?[^>]*><title>API: Validates the order and returns at once.<\/title>/);
   });
 
+  test('groups carry their own tooltip too', () => {
+    expect(figures(good.html)[0]).toMatch(/data-id="?cluster"?[^>]*><title>Cluster<\/title>/);
+  });
+
+  test('a label or description is text inside its title, never markup', () => {
+    const result = build((s) => {
+      edit(s, 'data/diagrams/checkout.yaml', 'label: Browser,', 'label: "</title><script>alert(1)</script>",');
+      edit(s, 'data/diagrams/checkout.yaml', 'description: Validates the order and returns at once.,', 'description: "<img src=x onerror=alert(1)> & done",');
+    });
+    expect(result.log).not.toMatch(/ERROR/);
+    const checkout = figures(result.html)[0];
+    expect(checkout).not.toMatch(/<script|<img/i);
+    expect(checkout).toMatch(/<title>&lt;\/title&gt;&lt;script&gt;/);
+    expect(checkout).toMatch(/<title>API: &lt;img src=x onerror=alert\(1\)&gt; &amp; done<\/title>/);
+  });
+
   test('a viewBox written with commas or extra spaces draws exactly like the plain one', () => {
     const icon = (view: string) => `<svg viewBox="${view}"><rect width="8" height="8"/></svg>`;
     const transform = (view: string) => {
@@ -523,6 +549,18 @@ describe('edges of the rules', () => {
     expect(result.log).not.toMatch(/ERROR/);
     const json = JSON.parse(readFileSync(join(result.site, 'public', 'architecture.json'), 'utf8'));
     expect(json.diagrams.find((d: { name: string }) => d.name === 'refund').pages).toEqual(['https://example.org/']);
+  });
+
+  test('a bare name does not attribute a spec whose name it starts with', () => {
+    const result = build((s) => {
+      writeFileSync(join(s, 'data/diagrams/refund-v2.yaml'), readFileSync(join(s, 'data/diagrams/refund.yaml'), 'utf8'));
+      edit(s, 'content/_index.md', '{{< diagram "refund" >}}', '{{< diagram refund-v2 >}}');
+    });
+    expect(result.log).not.toMatch(/ERROR/);
+    const json = JSON.parse(readFileSync(join(result.site, 'public', 'architecture.json'), 'utf8'));
+    const pages = (name: string) => json.diagrams.find((d: { name: string }) => d.name === name).pages;
+    expect(pages('refund-v2')).toEqual(['https://example.org/']);
+    expect(pages('refund')).toEqual([]);
   });
 
   test('a page is attributed however the shortcode is spaced', () => {
@@ -757,6 +795,8 @@ describe.if(chrome !== null)('the enlarged view in a real browser', () => {
             dangling: [...copy.querySelectorAll('*')].flatMap((e) => [...e.attributes])
               .flatMap((a) => [...a.value.matchAll(/url\(#([^)]+)\)/g)].map((m) => m[1]))
               .filter((id) => !copy.querySelector('[id="' + id + '"]')),
+            colours: [...copy.querySelectorAll('[fill^="#"], [stop-color^="#"]')]
+              .map((e) => e.getAttribute('fill') ?? e.getAttribute('stop-color')),
             describedTitle: !!document.querySelector('figure.dg .dg-node[data-id="api"] > title'),
             plainTitle: document.querySelector('figure.dg .dg-node[data-id="browser"] > title')?.textContent,
             pageFigures: document.querySelectorAll('figure.dg .dg-svg').length,
@@ -770,6 +810,9 @@ describe.if(chrome !== null)('the enlarged view in a real browser', () => {
       expect(o.ids).toBe(true);
       expect(o.marker).toMatch(/-z\)$/);
       expect(o.dangling).toEqual([]);
+      // Hex colours look like references; the rewrite must leave them alone.
+      expect(o.colours.length).toBeGreaterThan(0);
+      for (const c of o.colours) expect(c).toMatch(/^#[0-9a-fA-F]{3,8}$/);
       // A node with a description shows the script's tip, so its native title is gone; one
       // without keeps its name as the tooltip.
       expect(o.describedTitle).toBe(false);

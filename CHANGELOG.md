@@ -11,11 +11,12 @@ pin the diagrams module.
 
 ## [Unreleased]
 
-- fix(diagram): **every box in a Hugo figure has its own tooltip.** Nodes carry a `<title>`
-  (label, plus `description` when set), so hovering a box no longer shows the figure's title;
+- fix(diagram): **every box and group in a Hugo figure has its own tooltip.** Nodes and groups
+  carry a `<title>` (label, plus `description` when set), so hovering one no longer shows the
+  figure's title;
   where a description exists the script shows its own tip and drops the native one. A viewBox
-  may use commas or extra spaces, and one without four numbers or with zero width or height is
-  refused instead of crashing or mis-centring the icon. An unknown icon reports one error. Logo
+  may use commas or extra spaces, and one without four numbers, with a number out of range, or
+  with zero width or height is refused instead of crashing or mis-centring the icon. An unknown icon reports one error. Logo
   ids are prefixed per drawn icon, so a page never repeats an id, and the enlarged copy rewrites
   every `url(#…)` reference along with the ids. A bare `{{< diagram name >}}` counts as using
   the spec in `/architecture.json`.

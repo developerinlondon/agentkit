@@ -25,9 +25,11 @@ function placeholderIds(body: string): string {
     const esc = id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     out = out
       .replace(new RegExp(`(\\sid=")${esc}"`, "g"), `$1__DGI__${id}"`)
-      .replace(new RegExp(`url\\(#${esc}\\)`, "g"), `url(#__DGI__${id})`)
-      .replace(new RegExp(`(href=")#${esc}"`, "g"), `$1#__DGI__${id}"`);
+      .replace(new RegExp(`url\\((['"]?)#${esc}\\1\\)`, "g"), `url($1#__DGI__${id}$1)`)
+      .replace(new RegExp(`(href=(['"]))#${esc}\\2`, "g"), `$1#__DGI__${id}$2`);
   }
+  const loose = out.match(/url\(['"]?#(?!__DGI__)[^)'"]+|href=['"]#(?!__DGI__)[^'"]+/);
+  if (loose) throw new Error(`reference ${loose[0]} has no id in the same icon, or one the rewrite missed`);
   return out;
 }
 

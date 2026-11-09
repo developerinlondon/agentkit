@@ -82,7 +82,7 @@
 {{- partial "diagram/markers.html" $uid -}}
 {{- range $groups -}}
   {{- $b := .b }}{{ $gr := .g -}}
-  <g class="dg-group dg-g-{{ $gr.style | default "dashed" }}{{ if $gr.faint }} dg-faint-group{{ end }}" data-id="{{ $gr.id }}"{{ with $gr.description }} data-desc="{{ . }}"{{ end }}><rect class="dg-shape" x="{{ partial $f $b.x }}" y="{{ partial $f $b.y }}" width="{{ partial $f $b.w }}" height="{{ partial $f $b.h }}" rx="5"/>
+  <g class="dg-group dg-g-{{ $gr.style | default "dashed" }}{{ if $gr.faint }} dg-faint-group{{ end }}" data-id="{{ $gr.id }}"{{ with $gr.description }} data-desc="{{ . }}"{{ end }}><title>{{ $gr.label | default $gr.id }}{{ with $gr.description }}: {{ . }}{{ end }}</title><rect class="dg-shape" x="{{ partial $f $b.x }}" y="{{ partial $f $b.y }}" width="{{ partial $f $b.w }}" height="{{ partial $f $b.h }}" rx="5"/>
   {{- with $gr.label -}}
     {{- if eq $gr.label_align "middle" -}}
       <text class="{{ if eq $gr.style "gate" }}dg-tg{{ else }}dg-ts{{ end }} dg-mid" x="{{ partial $f $b.cx }}" y="{{ partial $f (add $b.y 20) }}">{{ cond (eq $gr.style "gate") . (upper .) }}</text>

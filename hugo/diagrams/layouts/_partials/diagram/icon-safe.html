@@ -122,7 +122,7 @@
       {{- /* Four plain numbers, comma or whitespace separated, with a positive width and
              height; the renderer reads the canonical space-separated form. */ -}}
       {{- $vparts := split (trim (replaceRE `[\s,]+` " " $view) " ") " " -}}
-      {{- $plain := `^-?(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eE][-+]?[0-9]+)?$` -}}
+      {{- $plain := `^-?(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eE][-+]?[0-9]{1,2})?$` -}}
       {{- $okv := eq (len $vparts) 4 -}}
       {{- if $okv }}{{ range $vparts }}{{ if not (findRE $plain . 1) }}{{ $okv = false }}{{ end }}{{ end }}{{ end -}}
       {{- if and $okv (gt (float (index $vparts 2)) 0.0) (gt (float (index $vparts 3)) 0.0) }}{{ $view = delimit $vparts " " }}{{ else }}{{ $view = "" }}{{ end -}}
