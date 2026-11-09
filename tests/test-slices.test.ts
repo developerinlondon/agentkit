@@ -18,6 +18,7 @@ import {
   discoverProductionSurfaces,
   discoverTestFiles,
   runChecked,
+  runSlice,
   sliceCommand,
   sliceRun,
   sliceVerdict,
@@ -273,6 +274,17 @@ describe('test slice routing', () => {
 
   test('a direct slice run checks bun\'s summary against that slice\'s file count', () => {
     expect(sliceRun('docs')).toEqual({ cmd: sliceCommand('docs'), files: 4 });
+  });
+
+  test('the slice CLI hands the runner that slice\'s file count', async () => {
+    const calls: unknown[][] = [];
+    const code = await runSlice('docs', async (...args) => {
+      calls.push(args);
+      return 7;
+    });
+    expect(code).toBe(7);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].slice(0, 4)).toEqual([sliceCommand('docs'), join(import.meta.dir, '..'), 'docs', 4]);
   });
 
   test('assigns every test file to exactly one slice', () => {

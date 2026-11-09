@@ -411,6 +411,10 @@ export async function runChecked(
   return verdict.code;
 }
 
+export function runSlice(slice: TestSlice, run = runChecked): Promise<number> {
+  const { cmd, files } = sliceRun(slice);
+  return run(cmd, repoRoot, slice, files);
+}
 
 if (import.meta.main) {
   const requested = process.argv[2];
@@ -437,6 +441,5 @@ if (import.meta.main) {
     process.exit(2);
   }
 
-  const { cmd, files } = sliceRun(requested as TestSlice);
-  process.exit(await runChecked(cmd, repoRoot, requested, files));
+  process.exit(await runSlice(requested as TestSlice));
 }
