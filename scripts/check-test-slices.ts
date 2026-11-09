@@ -334,40 +334,64 @@ function failForCoverage(errors: readonly string[]): never {
   process.exit(1);
 }
 
+// A colored summary defeats anchored matching, and FORCE_COLOR reaches the children
+// through the inherited environment.
+export function plainOutput(output: string): string {
+  return output.replaceAll(/\u001b\[[0-9;]*m/g, '');
+}
+
+// Bun's completion line, read from stderr only: test code writes to stdout and could
+// print a summary-shaped line of its own. The last one is bun's, printed when the run ends.
+export function testsRan(stderr: string): number | null {
+  const lines = [...plainOutput(stderr).matchAll(/^Ran (\d+) tests? across \d+ files?\./gm)];
+  return lines.length > 0 ? Number(lines[lines.length - 1][1]) : null;
+}
+
 // A zero exit proves nothing on its own: a test file that calls process.exit(0) while
 // loading ends bun early, green, with its tests unrun. Only bun's closing summary,
 // naming at least one test, makes a zero exit a pass.
-export function sliceVerdict(exitCode: number | null, output: string): { code: number; reason?: string } {
-  if (exitCode === null) return { code: 1, reason: 'bun was killed by a signal' };
+export function sliceVerdict(
+  exitCode: number,
+  signal: string | null,
+  stderr: string,
+): { code: number; reason?: string } {
+  if (signal !== null) return { code: 1, reason: `bun was ended by ${signal}` };
   if (exitCode !== 0) return { code: exitCode };
-  const ran = output.match(/Ran (\d+) tests? across \d+ files?/);
-  if (!ran) return { code: 1, reason: 'bun printed no test summary: the run ended before its tests reported' };
-  if (Number(ran[1]) === 0) return { code: 1, reason: 'the slice ran no tests' };
+  const ran = testsRan(stderr);
+  if (ran === null) return { code: 1, reason: 'bun printed no test summary: the run ended before its tests reported' };
+  if (ran === 0) return { code: 1, reason: 'the slice ran no tests' };
   return { code: 0 };
 }
 
 const SUMMARY_TAIL = 64 * 1024;
 
-async function runSlice(slice: TestSlice): Promise<never> {
-  const proc = Bun.spawn({
-    cmd: sliceCommand(slice),
-    cwd: repoRoot,
-    env: process.env,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  });
-  let tail = '';
-  const relay = async (stream: ReadableStream<Uint8Array>, sink: NodeJS.WriteStream) => {
+type Sink = { write(chunk: Uint8Array): unknown };
+
+// Runs a bun test command, streaming its output to the sinks (the terminal by default),
+// and returns the exit code the slice should report.
+export async function runChecked(
+  cmd: string[],
+  cwd: string,
+  label: string,
+  sinks: { stdout: Sink; stderr: Sink } = { stdout: process.stdout, stderr: process.stderr },
+): Promise<number> {
+  const proc = Bun.spawn({ cmd, cwd, env: process.env, stdout: 'pipe', stderr: 'pipe' });
+  let stderrTail = '';
+  const relay = async (stream: ReadableStream<Uint8Array>, sink: Sink, keep: boolean) => {
     const decoder = new TextDecoder();
     for await (const chunk of stream) {
       sink.write(chunk);
-      tail = (tail + decoder.decode(chunk, { stream: true })).slice(-SUMMARY_TAIL);
+      if (keep) stderrTail = (stderrTail + decoder.decode(chunk, { stream: true })).slice(-SUMMARY_TAIL);
     }
   };
-  await Promise.all([relay(proc.stdout, process.stdout), relay(proc.stderr, process.stderr)]);
-  const verdict = sliceVerdict(await proc.exited, tail);
-  if (verdict.reason) console.error(`check-test-slices: ${slice}: ${verdict.reason}`);
-  process.exit(verdict.code);
+  await Promise.all([relay(proc.stdout, sinks.stdout, false), relay(proc.stderr, sinks.stderr, true)]);
+  const verdict = sliceVerdict(await proc.exited, proc.signalCode, stderrTail);
+  if (verdict.reason) console.error(`check-test-slices: ${label}: ${verdict.reason}`);
+  return verdict.code;
+}
+
+async function runSlice(slice: TestSlice): Promise<never> {
+  process.exit(await runChecked(sliceCommand(slice), repoRoot, slice));
 }
 
 if (import.meta.main) {

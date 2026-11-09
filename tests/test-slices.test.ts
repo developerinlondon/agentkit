@@ -15,8 +15,10 @@ import {
   TEST_SLICES,
   discoverProductionSurfaces,
   discoverTestFiles,
+  runChecked,
   sliceCommand,
   sliceVerdict,
+  testsRan,
   testTaskInputPatterns,
   validateProductionRouting,
   validateTestSlices,
@@ -91,41 +93,68 @@ function readMoonConfig(): MoonConfig {
 // A slice counts as passed only when its tests ran; an exit code alone can be green with
 // every test unrun.
 describe('a slice run passes only when bun reports its tests', () => {
+  const summary = 'bun test v1\n 3 pass\n 0 fail\nRan 3 tests across 1 file. [10.00ms]\n';
+
   test('a zero exit with a summary naming tests passes', () => {
-    expect(sliceVerdict(0, ' 3 pass\n 0 fail\nRan 3 tests across 1 file. [10.00ms]\n').code).toBe(0);
+    expect(sliceVerdict(0, null, summary).code).toBe(0);
   });
 
   test('a failing run keeps its own exit code', () => {
-    expect(sliceVerdict(1, 'Ran 3 tests across 1 file.').code).toBe(1);
+    expect(sliceVerdict(1, null, summary).code).toBe(1);
   });
 
-  test('a run ended by a signal fails even when a summary was printed', () => {
-    expect(sliceVerdict(null, 'Ran 3 tests across 1 file.')).toMatchObject({ code: 1, reason: expect.stringMatching(/signal/) });
+  test('a run ended by a signal fails even with a summary', () => {
+    expect(sliceVerdict(0, 'SIGTERM', summary)).toMatchObject({ code: 1, reason: expect.stringMatching(/SIGTERM/) });
   });
 
   test('a zero exit with no summary, or a summary of no tests, fails', () => {
-    expect(sliceVerdict(0, 'some output\n')).toMatchObject({ code: 1, reason: expect.stringMatching(/no test summary/) });
-    expect(sliceVerdict(0, 'Ran 0 tests across 1 file.')).toMatchObject({ code: 1, reason: expect.stringMatching(/ran no tests/) });
+    expect(sliceVerdict(0, null, 'some output\n')).toMatchObject({ code: 1, reason: expect.stringMatching(/no test summary/) });
+    expect(sliceVerdict(0, null, 'Ran 0 tests across 1 file.\n')).toMatchObject({ code: 1, reason: expect.stringMatching(/ran no tests/) });
   });
 
-  test('a test file that exits 0 while loading is caught, though bun itself exits 0', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'agentkit-slice-exit-'));
-    try {
-      const file = join(dir, 'early-exit.test.ts');
-      writeFileSync(file, "import { test, expect } from 'bun:test';\nprocess.exit(0);\ntest('never runs', () => expect(1).toBe(2));\n");
-      const run = Bun.spawnSync({
-        cmd: [process.execPath, 'test', file],
-        cwd: dir,
-        env: { ...process.env, HOME: dir, BUN_INSTALL_CACHE_DIR: join(dir, '.bun-cache') },
-        stdout: 'pipe',
-        stderr: 'pipe',
-      });
-      const output = `${run.stdout.toString()}${run.stderr.toString()}`;
-      expect(run.exitCode).toBe(0);
-      expect(sliceVerdict(run.exitCode, output).code).toBe(1);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
+  test('the summary is the last line that starts with it, colour stripped', () => {
+    expect(testsRan('noise Ran 9 tests across 1 file.\n')).toBeNull();
+    expect(testsRan('Ran 9 tests across 1 file.\nRan 2 tests across 1 file.\n')).toBe(2);
+    expect(testsRan('\u001b[1mRan 1 test across 1 file.\u001b[0m\n')).toBe(1);
+  });
+
+  describe('the runner applies the verdict to real bun runs', () => {
+    const fixture = (body: string) => {
+      const dir = mkdtempSync(join(tmpdir(), 'agentkit-slice-run-'));
+      writeFileSync(join(dir, 'case.test.ts'), `import { test, expect } from 'bun:test';\n${body}`);
+      return dir;
+    };
+    const run = async (body: string) => {
+      const dir = fixture(body);
+      const env = { HOME: process.env.HOME, BUN_INSTALL_CACHE_DIR: process.env.BUN_INSTALL_CACHE_DIR };
+      process.env.HOME = dir;
+      process.env.BUN_INSTALL_CACHE_DIR = join(dir, '.bun-cache');
+      try {
+        // Silent sinks: a fixture's own summary must not reach this file's output, where
+        // the full-suite runner reads the counts.
+        const silent = { write: () => true };
+        return await runChecked([process.execPath, 'test', join(dir, 'case.test.ts')], dir, 'fixture', {
+          stdout: silent,
+          stderr: silent,
+        });
+      } finally {
+        process.env.HOME = env.HOME;
+        process.env.BUN_INSTALL_CACHE_DIR = env.BUN_INSTALL_CACHE_DIR;
+        rmSync(dir, { recursive: true, force: true });
+      }
+    };
+
+    test('a run whose tests pass exits 0', async () => {
+      expect(await run("test('passes', () => expect(1).toBe(1));\n")).toBe(0);
+    });
+
+    test('a file that exits 0 while loading fails the slice, though bun itself exits 0', async () => {
+      expect(await run("process.exit(0);\ntest('never runs', () => expect(1).toBe(2));\n")).toBe(1);
+    });
+
+    test('a summary printed by test code before an early exit does not pass the slice', async () => {
+      expect(await run("console.log('Ran 7 tests across 1 file.');\nprocess.exit(0);\n")).toBe(1);
+    });
   });
 });
 

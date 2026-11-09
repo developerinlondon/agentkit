@@ -6,6 +6,8 @@ import {
   TEST_SLICES,
   type TestSlice,
   discoverTestFiles,
+  plainOutput,
+  testsRan,
   validateTestSlices,
 } from './check-test-slices';
 
@@ -128,15 +130,10 @@ export async function schedule<T>(
   await Promise.all(Array.from({ length: Math.max(1, lanes) }, () => lane()));
 }
 
-// A colored summary defeats the anchored counters, and FORCE_COLOR reaches the
-// children through the inherited environment.
-function plain(output: string): string {
-  return output.replaceAll(/\u001b\[[0-9;]*m/g, '');
-}
-
+// The last count line is bun's own tally; earlier ones can come from test output.
 function count(summary: string, label: string): number {
-  const match = new RegExp(`^\\s*(\\d+) ${label}$`, 'm').exec(summary);
-  return match ? Number(match[1]) : 0;
+  const lines = [...summary.matchAll(new RegExp(`^\\s*(\\d+) ${label}$`, 'gm'))];
+  return lines.length > 0 ? Number(lines[lines.length - 1][1]) : 0;
 }
 
 async function runUnit(unit: Unit, stream: boolean): Promise<UnitResult> {
@@ -160,7 +157,7 @@ async function runUnit(unit: Unit, stream: boolean): Promise<UnitResult> {
   // version banner on stdout, so folding the two together would let a test that
   // prints "0 fail" — or a whole fake summary — outrank the real one and pass
   // the died-mid-run check on output the child never produced.
-  const summary = plain(stderr);
+  const summary = plainOutput(stderr);
 
   return {
     unit,
@@ -173,7 +170,7 @@ async function runUnit(unit: Unit, stream: boolean): Promise<UnitResult> {
     todo: count(summary, 'todo'),
     // Bun prints this only once the file is done, so its absence is the one
     // signal separating a finished child from one that was killed mid-run.
-    completed: stream || /^Ran \d+ tests? across \d+ files?\./m.test(summary),
+    completed: stream || testsRan(summary) !== null,
     seconds: (Bun.nanoseconds() - started) / 1e9,
   };
 }
