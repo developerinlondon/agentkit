@@ -55,7 +55,7 @@ sequence, built-in and project icons, and project tokens. Build it with
 The module ships `_markup/render-codeblock-mermaid.html`, which fails the build on any
 `` ```mermaid `` block, so Mermaid cannot come back by accident.
 
-Requires Hugo 0.164 or later; the module is built and tested on 0.164 and 0.165. The standard edition is enough; nothing needs Hugo extended. The check
+Requires Hugo 0.164 or later; CI tests the module on 0.165. The standard edition is enough; nothing needs Hugo extended. The check
 script needs `node` for its JSON checks.
 
 ## Site settings
@@ -191,8 +191,9 @@ The build fails on: a missing spec, missing `title`/`description`, duplicate ids
 message naming an unknown node, an icon no pack has (or one two packs share, unqualified), a
 missing or nested-`<svg>` project icon, an unknown kind, shape, style, side or route, a node
 without `col`/`row`, a figure whose smallest label would show below `min_inline_px`, a bad
-token, and any `` ```mermaid `` block. Every spec is validated, including specs no page uses,
-because `/architecture.json` reads them all.
+token, and any `` ```mermaid `` block. Once any page renders a figure, every spec is validated,
+including specs no page uses, because `/architecture.json` reads them all; the readability floor
+applies to the figures that render.
 
 It warns when a node with an explicit `w` is probably too narrow for its text, and when an
 edge label is longer than the segment it sits on. Both are estimates (monospace at 0.61 em,
