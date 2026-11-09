@@ -5,9 +5,9 @@ import {
   DEFAULT_TEST_TIMEOUT_MS,
   TEST_SLICES,
   type TestSlice,
+  bunSummary,
   discoverTestFiles,
   plainOutput,
-  testsRan,
   validateTestSlices,
 } from './check-test-slices';
 
@@ -30,7 +30,7 @@ export const soloFiles = new Set([
 // bun caps a test declaring no timeout at 5s; several that shell out to an
 // external binary sit close enough that contention pushes them over. A test
 // wanting a real bound declares one, and that still wins.
-interface Unit {
+export interface Unit {
   slice: TestSlice;
   file: string;
   bytes: number;
@@ -136,7 +136,7 @@ function count(summary: string, label: string): number {
   return lines.length > 0 ? Number(lines[lines.length - 1][1]) : 0;
 }
 
-async function runUnit(unit: Unit, stream: boolean): Promise<UnitResult> {
+export async function runUnit(unit: Unit, stream: boolean): Promise<UnitResult> {
   const started = Bun.nanoseconds();
   const child = Bun.spawn({
     cmd: [process.execPath, 'test', `--timeout=${DEFAULT_TEST_TIMEOUT_MS}`, unit.file],
@@ -169,13 +169,14 @@ async function runUnit(unit: Unit, stream: boolean): Promise<UnitResult> {
     skip: count(summary, 'skip'),
     todo: count(summary, 'todo'),
     // Bun prints this only once the file is done, so its absence is the one
-    // signal separating a finished child from one that was killed mid-run.
-    completed: stream || testsRan(summary) !== null,
+    // signal separating a finished child from one that was killed mid-run. A
+    // summary over any other file count was echoed by the test, not bun's.
+    completed: stream || bunSummary(summary)?.files === 1,
     seconds: (Bun.nanoseconds() - started) / 1e9,
   };
 }
 
-function broke(result: UnitResult): boolean {
+export function broke(result: UnitResult): boolean {
   return (
     result.exitCode !== 0 || result.signal !== null || !result.completed || result.fail > 0
   );

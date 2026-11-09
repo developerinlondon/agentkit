@@ -342,24 +342,30 @@ export function plainOutput(output: string): string {
 
 // Bun's completion line, read from stderr only: test code writes to stdout and could
 // print a summary-shaped line of its own. The last one is bun's, printed when the run ends.
-export function testsRan(stderr: string): number | null {
-  const lines = [...plainOutput(stderr).matchAll(/^Ran (\d+) tests? across \d+ files?\./gm)];
-  return lines.length > 0 ? Number(lines[lines.length - 1][1]) : null;
+export function bunSummary(stderr: string): { tests: number; files: number } | null {
+  const lines = [...plainOutput(stderr).matchAll(/^Ran (\d+) tests? across (\d+) files?\./gm)];
+  const last = lines.at(-1);
+  return last ? { tests: Number(last[1]), files: Number(last[2]) } : null;
 }
 
 // A zero exit proves nothing on its own: a test file that calls process.exit(0) while
 // loading ends bun early, green, with its tests unrun. Only bun's closing summary,
-// naming at least one test, makes a zero exit a pass.
+// naming at least one test, makes a zero exit a pass. Bun counts every file it was
+// given, so a summary covering fewer was echoed by test code in a run that died early.
 export function sliceVerdict(
   exitCode: number,
   signal: string | null,
   stderr: string,
+  files: number,
 ): { code: number; reason?: string } {
   if (signal !== null) return { code: 1, reason: `bun was ended by ${signal}` };
   if (exitCode !== 0) return { code: exitCode };
-  const ran = testsRan(stderr);
-  if (ran === null) return { code: 1, reason: 'bun printed no test summary: the run ended before its tests reported' };
-  if (ran === 0) return { code: 1, reason: 'the slice ran no tests' };
+  const summary = bunSummary(stderr);
+  if (summary === null) return { code: 1, reason: 'bun printed no test summary: the run ended before its tests reported' };
+  if (summary.files !== files) {
+    return { code: 1, reason: `bun's summary covers ${summary.files} files, the slice has ${files}` };
+  }
+  if (summary.tests === 0) return { code: 1, reason: 'the slice ran no tests' };
   return { code: 0 };
 }
 
@@ -373,6 +379,7 @@ export async function runChecked(
   cmd: string[],
   cwd: string,
   label: string,
+  files: number,
   sinks: { stdout: Sink; stderr: Sink } = { stdout: process.stdout, stderr: process.stderr },
 ): Promise<number> {
   const proc = Bun.spawn({ cmd, cwd, env: process.env, stdout: 'pipe', stderr: 'pipe' });
@@ -385,13 +392,15 @@ export async function runChecked(
     }
   };
   await Promise.all([relay(proc.stdout, sinks.stdout, false), relay(proc.stderr, sinks.stderr, true)]);
-  const verdict = sliceVerdict(await proc.exited, proc.signalCode, stderrTail);
-  if (verdict.reason) console.error(`check-test-slices: ${label}: ${verdict.reason}`);
+  const verdict = sliceVerdict(await proc.exited, proc.signalCode, stderrTail, files);
+  if (verdict.reason) {
+    sinks.stderr.write(new TextEncoder().encode(`check-test-slices: ${label}: ${verdict.reason}\n`));
+  }
   return verdict.code;
 }
 
 async function runSlice(slice: TestSlice): Promise<never> {
-  process.exit(await runChecked(sliceCommand(slice), repoRoot, slice));
+  process.exit(await runChecked(sliceCommand(slice), repoRoot, slice, TEST_SLICES[slice].length));
 }
 
 if (import.meta.main) {

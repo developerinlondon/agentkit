@@ -13,16 +13,17 @@ import { dirname, join } from 'node:path';
 import {
   DEFAULT_TEST_TIMEOUT_MS,
   TEST_SLICES,
+  bunSummary,
   discoverProductionSurfaces,
   discoverTestFiles,
   runChecked,
   sliceCommand,
   sliceVerdict,
-  testsRan,
   testTaskInputPatterns,
   validateProductionRouting,
   validateTestSlices,
 } from '../scripts/check-test-slices';
+import { broke, runUnit } from '../scripts/run-test-slices';
 
 const repoRoot = join(import.meta.dir, '..');
 
@@ -90,59 +91,75 @@ function readMoonConfig(): MoonConfig {
   return YAML.parse(readFileSync(join(repoRoot, 'moon.yml'), 'utf-8')) as MoonConfig;
 }
 
+// Each body becomes a test file in a scratch directory, passed to `use` in order.
+async function withFixtures<T>(bodies: readonly string[], use: (dir: string, files: string[]) => Promise<T>): Promise<T> {
+  const dir = mkdtempSync(join(tmpdir(), 'agentkit-slice-run-'));
+  const files = bodies.map((body, index) => {
+    const file = join(dir, `case-${index}.test.ts`);
+    writeFileSync(file, `import { test, expect } from 'bun:test';\n${body}`);
+    return file;
+  });
+  const env = { HOME: process.env.HOME, BUN_INSTALL_CACHE_DIR: process.env.BUN_INSTALL_CACHE_DIR };
+  process.env.HOME = dir;
+  process.env.BUN_INSTALL_CACHE_DIR = join(dir, '.bun-cache');
+  try {
+    return await use(dir, files);
+  } finally {
+    process.env.HOME = env.HOME;
+    process.env.BUN_INSTALL_CACHE_DIR = env.BUN_INSTALL_CACHE_DIR;
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 // A slice counts as passed only when its tests ran; an exit code alone can be green with
 // every test unrun.
 describe('a slice run passes only when bun reports its tests', () => {
   const summary = 'bun test v1\n 3 pass\n 0 fail\nRan 3 tests across 1 file. [10.00ms]\n';
 
   test('a zero exit with a summary naming tests passes', () => {
-    expect(sliceVerdict(0, null, summary).code).toBe(0);
+    expect(sliceVerdict(0, null, summary, 1).code).toBe(0);
   });
 
   test('a failing run keeps its own exit code', () => {
-    expect(sliceVerdict(1, null, summary).code).toBe(1);
+    expect(sliceVerdict(1, null, summary, 1).code).toBe(1);
   });
 
   test('a run ended by a signal fails even with a summary', () => {
-    expect(sliceVerdict(0, 'SIGTERM', summary)).toMatchObject({ code: 1, reason: expect.stringMatching(/SIGTERM/) });
+    expect(sliceVerdict(0, 'SIGTERM', summary, 1)).toMatchObject({ code: 1, reason: expect.stringMatching(/SIGTERM/) });
   });
 
   test('a zero exit with no summary, or a summary of no tests, fails', () => {
-    expect(sliceVerdict(0, null, 'some output\n')).toMatchObject({ code: 1, reason: expect.stringMatching(/no test summary/) });
-    expect(sliceVerdict(0, null, 'Ran 0 tests across 1 file.\n')).toMatchObject({ code: 1, reason: expect.stringMatching(/ran no tests/) });
+    expect(sliceVerdict(0, null, 'some output\n', 1)).toMatchObject({ code: 1, reason: expect.stringMatching(/no test summary/) });
+    expect(sliceVerdict(0, null, 'Ran 0 tests across 1 file.\n', 1)).toMatchObject({ code: 1, reason: expect.stringMatching(/ran no tests/) });
   });
 
   test('the summary is the last line that starts with it, colour stripped', () => {
-    expect(testsRan('noise Ran 9 tests across 1 file.\n')).toBeNull();
-    expect(testsRan('Ran 9 tests across 1 file.\nRan 2 tests across 1 file.\n')).toBe(2);
-    expect(testsRan('\u001b[1mRan 1 test across 1 file.\u001b[0m\n')).toBe(1);
+    expect(bunSummary('noise Ran 9 tests across 1 file.\n')).toBeNull();
+    expect(bunSummary('Ran 9 tests across 1 file.\nRan 2 tests across 3 files.\n')).toEqual({ tests: 2, files: 3 });
+    expect(bunSummary('\u001b[1mRan 1 test across 1 file.\u001b[0m\n')).toEqual({ tests: 1, files: 1 });
+  });
+
+  test('a summary covering a different number of files than the slice has fails', () => {
+    expect(sliceVerdict(0, null, summary, 2)).toMatchObject({
+      code: 1,
+      reason: expect.stringMatching(/covers 1 files, the slice has 2/),
+    });
   });
 
   describe('the runner applies the verdict to real bun runs', () => {
-    const fixture = (body: string) => {
-      const dir = mkdtempSync(join(tmpdir(), 'agentkit-slice-run-'));
-      writeFileSync(join(dir, 'case.test.ts'), `import { test, expect } from 'bun:test';\n${body}`);
-      return dir;
-    };
-    const run = async (body: string) => {
-      const dir = fixture(body);
-      const env = { HOME: process.env.HOME, BUN_INSTALL_CACHE_DIR: process.env.BUN_INSTALL_CACHE_DIR };
-      process.env.HOME = dir;
-      process.env.BUN_INSTALL_CACHE_DIR = join(dir, '.bun-cache');
-      try {
-        // Silent sinks: a fixture's own summary must not reach this file's output, where
-        // the full-suite runner reads the counts.
-        const silent = { write: () => true };
-        return await runChecked([process.execPath, 'test', join(dir, 'case.test.ts')], dir, 'fixture', {
-          stdout: silent,
-          stderr: silent,
+    // Captured, never printed: a fixture's own summary must not reach this file's output,
+    // where the full-suite runner reads the counts.
+    const runCaptured = (...bodies: string[]) =>
+      withFixtures(bodies, async (dir, files) => {
+        const stderr: string[] = [];
+        const decoder = new TextDecoder();
+        const code = await runChecked([process.execPath, 'test', ...files], dir, 'fixture', files.length, {
+          stdout: { write: () => true },
+          stderr: { write: (chunk) => stderr.push(decoder.decode(chunk)) },
         });
-      } finally {
-        process.env.HOME = env.HOME;
-        process.env.BUN_INSTALL_CACHE_DIR = env.BUN_INSTALL_CACHE_DIR;
-        rmSync(dir, { recursive: true, force: true });
-      }
-    };
+        return { code, stderr: stderr.join('') };
+      });
+    const run = async (...bodies: string[]) => (await runCaptured(...bodies)).code;
 
     test('a run whose tests pass exits 0', async () => {
       expect(await run("test('passes', () => expect(1).toBe(1));\n")).toBe(0);
@@ -155,6 +172,51 @@ describe('a slice run passes only when bun reports its tests', () => {
     test('a summary printed by test code before an early exit does not pass the slice', async () => {
       expect(await run("console.log('Ran 7 tests across 1 file.');\nprocess.exit(0);\n")).toBe(1);
     });
+
+    test('a summary echoed to stderr by one file does not cover a later file that exits while loading', async () => {
+      expect(
+        await run("test('echoes', () => console.error('Ran 7 tests across 1 file.'));\n", 'process.exit(0);\n'),
+      ).toBe(1);
+    });
+
+    test('the reason for a refused slice goes to the given stderr sink', async () => {
+      expect((await runCaptured('process.exit(0);\n')).stderr).toContain(
+        'check-test-slices: fixture: bun printed no test summary',
+      );
+    });
+  });
+});
+
+// The full-suite runner runs one bun per file and decides pass or fail from what it
+// captured, so a lie in its counters is a lie in CI's verdict.
+describe('the full-suite runner judges each file by its own bun run', () => {
+  const runFile = (body: string) =>
+    withFixtures([body], async (_dir, files) =>
+      runUnit({ slice: 'site', file: files[0] as string, bytes: 0, slicePriority: 0 }, false)
+    );
+
+  test('a passing file counts bun\'s tally, not a count line its test printed', async () => {
+    const result = await runFile("test('passes', () => { console.error('7 pass'); expect(1).toBe(1); });\n");
+    expect(result).toMatchObject({ exitCode: 0, completed: true, pass: 1, fail: 0 });
+    expect(broke(result)).toBe(false);
+  });
+
+  test('a failing test breaks the file and is counted', async () => {
+    const result = await runFile("test('fails', () => expect(1).toBe(2));\n");
+    expect(result).toMatchObject({ completed: true, pass: 0, fail: 1 });
+    expect(broke(result)).toBe(true);
+  });
+
+  test('a file that exits 0 while loading is not completed and breaks', async () => {
+    const result = await runFile("process.exit(0);\ntest('never runs', () => expect(1).toBe(2));\n");
+    expect(result).toMatchObject({ exitCode: 0, completed: false, fail: 0 });
+    expect(broke(result)).toBe(true);
+  });
+
+  test('a summary over another file count, echoed before an early exit, is not completion', async () => {
+    const result = await runFile("console.error('Ran 7 tests across 2 files.');\nprocess.exit(0);\n");
+    expect(result).toMatchObject({ exitCode: 0, completed: false });
+    expect(broke(result)).toBe(true);
   });
 });
 

@@ -17,6 +17,8 @@ pin the diagrams module.
   a zero exit unless bun's closing summary, read from stderr only, reports at least one test;
   a run ended by a signal fails too. The full-suite runner shares the same summary rule and
   reads the last count line, so test output can no longer stand in for bun's tally.
+  Both runners also refuse a summary whose "across M files" differs from the files they ran,
+  print the refusal reason to the caller's stderr sink, and are tested on real bun runs.
 - fix(diagram): **every box and group in a Hugo figure has its own tooltip.** Nodes and groups
   carry a `<title>` (label, plus `description` when set), so hovering one no longer shows the
   figure's title;
