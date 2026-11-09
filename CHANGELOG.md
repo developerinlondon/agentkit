@@ -11,6 +11,10 @@ pin the diagrams module.
 
 ## [Unreleased]
 
+- fix(ci): **a test slice passes only when its tests ran.** `scripts/check-test-slices.ts`
+  forwarded bun's exit code, so a test file that called `process.exit(0)` while loading ended
+  the run green with its tests unrun. The runner now streams bun's output as before and fails
+  a zero exit unless bun's closing summary reports at least one test.
 - fix(diagram): **every box and group in a Hugo figure has its own tooltip.** Nodes and groups
   carry a `<title>` (label, plus `description` when set), so hovering one no longer shows the
   figure's title;

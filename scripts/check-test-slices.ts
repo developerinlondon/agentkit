@@ -334,15 +334,39 @@ function failForCoverage(errors: readonly string[]): never {
   process.exit(1);
 }
 
-function runSlice(slice: TestSlice): never {
-  const result = Bun.spawnSync({
+// A zero exit proves nothing on its own: a test file that calls process.exit(0) while
+// loading ends bun early, green, with its tests unrun. Only bun's closing summary,
+// naming at least one test, makes a zero exit a pass.
+export function sliceVerdict(exitCode: number, output: string): { code: number; reason?: string } {
+  if (exitCode !== 0) return { code: exitCode };
+  const ran = output.match(/Ran (\d+) tests? across \d+ files?/);
+  if (!ran) return { code: 1, reason: 'bun printed no test summary: the run ended before its tests reported' };
+  if (Number(ran[1]) === 0) return { code: 1, reason: 'the slice ran no tests' };
+  return { code: 0 };
+}
+
+const SUMMARY_TAIL = 64 * 1024;
+
+async function runSlice(slice: TestSlice): Promise<never> {
+  const proc = Bun.spawn({
     cmd: sliceCommand(slice),
     cwd: repoRoot,
     env: process.env,
-    stdout: 'inherit',
-    stderr: 'inherit',
+    stdout: 'pipe',
+    stderr: 'pipe',
   });
-  process.exit(result.exitCode);
+  let tail = '';
+  const relay = async (stream: ReadableStream<Uint8Array>, sink: NodeJS.WriteStream) => {
+    const decoder = new TextDecoder();
+    for await (const chunk of stream) {
+      sink.write(chunk);
+      tail = (tail + decoder.decode(chunk, { stream: true })).slice(-SUMMARY_TAIL);
+    }
+  };
+  await Promise.all([relay(proc.stdout, process.stdout), relay(proc.stderr, process.stderr)]);
+  const verdict = sliceVerdict(await proc.exited, tail);
+  if (verdict.reason) console.error(`check-test-slices: ${slice}: ${verdict.reason}`);
+  process.exit(verdict.code);
 }
 
 if (import.meta.main) {
@@ -370,5 +394,5 @@ if (import.meta.main) {
     process.exit(2);
   }
 
-  runSlice(requested as TestSlice);
+  await runSlice(requested as TestSlice);
 }

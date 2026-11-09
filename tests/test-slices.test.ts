@@ -16,6 +16,7 @@ import {
   discoverProductionSurfaces,
   discoverTestFiles,
   sliceCommand,
+  sliceVerdict,
   testTaskInputPatterns,
   validateProductionRouting,
   validateTestSlices,
@@ -86,6 +87,43 @@ type MoonConfig = {
 function readMoonConfig(): MoonConfig {
   return YAML.parse(readFileSync(join(repoRoot, 'moon.yml'), 'utf-8')) as MoonConfig;
 }
+
+// A slice counts as passed only when its tests ran; an exit code alone can be green with
+// every test unrun.
+describe('a slice run passes only when bun reports its tests', () => {
+  test('a zero exit with a summary naming tests passes', () => {
+    expect(sliceVerdict(0, ' 3 pass\n 0 fail\nRan 3 tests across 1 file. [10.00ms]\n').code).toBe(0);
+  });
+
+  test('a failing run keeps its own exit code', () => {
+    expect(sliceVerdict(1, 'Ran 3 tests across 1 file.').code).toBe(1);
+  });
+
+  test('a zero exit with no summary, or a summary of no tests, fails', () => {
+    expect(sliceVerdict(0, 'some output\n')).toMatchObject({ code: 1, reason: expect.stringMatching(/no test summary/) });
+    expect(sliceVerdict(0, 'Ran 0 tests across 1 file.')).toMatchObject({ code: 1, reason: expect.stringMatching(/ran no tests/) });
+  });
+
+  test('a test file that exits 0 while loading is caught, though bun itself exits 0', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'agentkit-slice-exit-'));
+    try {
+      const file = join(dir, 'early-exit.test.ts');
+      writeFileSync(file, "import { test, expect } from 'bun:test';\nprocess.exit(0);\ntest('never runs', () => expect(1).toBe(2));\n");
+      const run = Bun.spawnSync({
+        cmd: [process.execPath, 'test', file],
+        cwd: dir,
+        env: { ...process.env, HOME: dir, BUN_INSTALL_CACHE_DIR: join(dir, '.bun-cache') },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      });
+      const output = `${run.stdout.toString()}${run.stderr.toString()}`;
+      expect(run.exitCode).toBe(0);
+      expect(sliceVerdict(run.exitCode, output).code).toBe(1);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
 
 describe('test slice routing', () => {
   test('direct slice runs use the same bounded default as the authoritative runner', () => {
