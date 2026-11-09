@@ -50,6 +50,8 @@ function highlight(svg, host) {
   };
 
   for (const el of parts) {
+    // The custom tip replaces the native one; two tooltips would stack.
+    if (el.dataset.desc) el.querySelector(":scope > title")?.remove();
     if (el.classList.contains("dg-node")) {
       el.setAttribute("tabindex", "0");
       el.addEventListener("focus", () => show(el));
@@ -67,19 +69,24 @@ function highlight(svg, host) {
   return clear;
 }
 
-// Ids are rewritten so the copy's markers and title do not collide with the
-// figure still on the page.
+// Ids are rewritten, with every url(#…) and #… reference to them, so the copy's markers,
+// gradients and title do not collide with the figure still on the page.
 function cloneForZoom(svg) {
   const copy = svg.cloneNode(true);
   copy.classList.remove("dg-live", "is-focusing");
   for (const el of copy.querySelectorAll(".is-hot")) el.classList.remove("is-hot");
   for (const el of copy.querySelectorAll("[tabindex]")) el.removeAttribute("tabindex");
-  for (const el of copy.querySelectorAll("[id]")) el.id += "-z";
-  for (const el of copy.querySelectorAll("[marker-end], [marker-start]")) {
-    for (const a of ["marker-end", "marker-start"]) {
-      const v = el.getAttribute(a);
-      if (v) el.setAttribute(a, v.replace(/\)$/, "-z)"));
-    }
+  const renamed = new Set();
+  for (const el of copy.querySelectorAll("[id]")) {
+    renamed.add(el.id);
+    el.id += "-z";
+  }
+  const relink = (v) =>
+    v
+      .replace(/url\(#([^)]+)\)/g, (m, id) => (renamed.has(id) ? `url(#${id}-z)` : m))
+      .replace(/^#(.+)$/, (m, id) => (renamed.has(id) ? `#${id}-z` : m));
+  for (const el of copy.querySelectorAll("*")) {
+    for (const a of [...el.attributes]) if (a.value.includes("#")) el.setAttribute(a.name, relink(a.value));
   }
   const labelled = copy.getAttribute("aria-labelledby");
   if (labelled) copy.setAttribute("aria-labelledby", labelled.replace(/(\S+)/g, "$1-z"));

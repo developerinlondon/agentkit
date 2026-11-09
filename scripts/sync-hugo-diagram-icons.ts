@@ -16,6 +16,21 @@ interface HugoIcon {
   body: string;
 }
 
+// Iconify ids repeat across logos and a logo can be drawn twice on one page, so every id
+// carries the placeholder the module replaces with a per-drawn-icon prefix.
+function placeholderIds(body: string): string {
+  const ids = [...body.matchAll(/\sid="([^"]+)"/g)].map((m) => m[1]);
+  let out = body;
+  for (const id of ids) {
+    const esc = id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    out = out
+      .replace(new RegExp(`(\\sid=")${esc}"`, "g"), `$1__DGI__${id}"`)
+      .replace(new RegExp(`url\\(#${esc}\\)`, "g"), `url(#__DGI__${id})`)
+      .replace(new RegExp(`(href=")#${esc}"`, "g"), `$1#__DGI__${id}"`);
+  }
+  return out;
+}
+
 function pack(set: string): Record<string, HugoIcon> {
   const mono = monochromeFills();
   const selection = JSON.parse(readFileSync(join(assetsDir, "icon-selection.json"), "utf8"));
@@ -29,7 +44,7 @@ function pack(set: string): Record<string, HugoIcon> {
     if (/<svg[\s>]/.test(body)) throw new Error(`${set}/${file}: nested <svg> breaks Hugo's minifier`);
     // Monochrome marks follow the page ink; full-colour brand artwork is never recoloured.
     const inked = isMono ? mono.reduce((b, fill) => b.split(`"${fill}"`).join('"currentColor"'), body) : body;
-    icons[file.slice(0, -4)] = { view, mode: isMono ? "mono" : "color", body: inked };
+    icons[file.slice(0, -4)] = { view, mode: isMono ? "mono" : "color", body: placeholderIds(inked) };
   }
   return icons;
 }

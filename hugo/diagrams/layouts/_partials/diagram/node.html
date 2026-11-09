@@ -2,6 +2,8 @@
 {{- $kind := $n.kind | default "box" -}}
 {{- $sub := index (dict "accent" "dg-ta" "gate" "dg-tg" "deny" "dg-td" "allow" "dg-tl") $kind | default "dg-ts" -}}
 <g class="dg-node dg-k-{{ $kind }}{{ if eq $b.shape "pill" }} dg-pill{{ end }}{{ if $n.dashed }} dg-dashed{{ end }}" data-id="{{ $n.id }}"{{ with $n.description }} data-desc="{{ . }}"{{ end }}>
+{{- $name := delimit (partial "diagram/lines.html" ($n.label | default $n.id)) " " -}}
+<title>{{ $name }}{{ with $n.description }}: {{ . }}{{ end }}</title>
 {{- if eq $b.shape "diamond" -}}
 <path class="dg-shape" d="M {{ partial $f $b.cx }} {{ partial $f $b.y }} L {{ partial $f $b.r }} {{ partial $f $b.cy }} L {{ partial $f $b.cx }} {{ partial $f $b.b }} L {{ partial $f $b.x }} {{ partial $f $b.cy }} Z"/>
 {{- else if eq $b.shape "pill" -}}

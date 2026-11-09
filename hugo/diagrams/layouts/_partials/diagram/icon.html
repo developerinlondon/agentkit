@@ -8,6 +8,8 @@
 {{- $f := "diagram/fmt.html" -}}
 {{- range $i, $name := $names -}}
   {{- $ic := partial "diagram/icon-lookup.html" $name -}}
+  {{- /* validate.html already failed the build with the lookup's error. */ -}}
+  {{- if $ic.err }}{{ continue }}{{ end -}}
   {{- $vb := split $ic.view " " -}}
   {{- $vx := float (index $vb 0) }}{{ $vy := float (index $vb 1) }}{{ $vw := float (index $vb 2) }}{{ $vh := float (index $vb 3) -}}
   {{- $k := div $size (math.Max $vw $vh) -}}

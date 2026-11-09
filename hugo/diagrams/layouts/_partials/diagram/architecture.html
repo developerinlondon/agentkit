@@ -5,7 +5,8 @@
 {{- range $name, $spec := hugo.Data.diagrams -}}
   {{- partial "diagram/validate.html" (dict "name" $name "spec" $spec) -}}
   {{- $pages := slice -}}
-  {{- $needle := printf `\{\{[<%%]-?\s*diagram\s+["'%s]%s["'%s]\s*-?[>%%]\}\}` "`" (replaceRE `[.*+?^$(){}|\[\]\\]` `\$0` $name) "`" -}}
+  {{- $q := replaceRE `[.*+?^$(){}|\[\]\\]` `\$0` $name -}}
+  {{- $needle := printf `\{\{[<%%]-?\s*diagram\s+(?:"%s"|'%s'|%s%s%s|%s)\s*-?[>%%]\}\}` $q $q "`" $q "`" $q -}}
   {{- range site.Pages }}{{ if findRE $needle .RawContent 1 }}{{ $pages = $pages | append .Permalink }}{{ end }}{{ end -}}
   {{- $out = $out | append (merge $spec (dict "name" $name "pages" $pages)) -}}
 {{- end -}}

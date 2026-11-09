@@ -18,7 +18,7 @@ const scratch = mkdtempSync(join(tmpdir(), 'agentkit-hugo-diagrams-'));
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 
 if (!HUGO) {
-  throw new Error('tests/diagram/hugo/module.test.ts needs Hugo >= 0.146 on PATH (or HUGO_BIN); CI installs it');
+  throw new Error('tests/diagram/hugo/module.test.ts needs Hugo >= 0.164 on PATH (or HUGO_BIN); CI installs it');
 }
 
 interface Build {
@@ -141,6 +141,16 @@ describe('the build refuses what it cannot draw faithfully', () => {
       'an icon name two packs share',
       (s) => edit(s, 'data/diagrams/checkout.yaml', 'icon: logos/postgresql', 'icon: postgresql'),
       /icon "postgresql" is in simple-icons and logos; write pack\/name/,
+    ],
+    [
+      'a project icon whose viewBox has three numbers',
+      (s) => writeFileSync(join(s, 'assets/icons/acme/widget.svg'), '<svg viewBox="0 0 8"><rect width="8" height="8"/></svg>'),
+      /icon "@acme\/widget".*no valid viewBox/,
+    ],
+    [
+      'a project icon whose viewBox has no width',
+      (s) => writeFileSync(join(s, 'assets/icons/acme/widget.svg'), '<svg viewBox="0 0 0 8"><rect width="8" height="8"/></svg>'),
+      /icon "@acme\/widget".*no valid viewBox/,
     ],
     [
       'a project icon file that is missing',
@@ -467,6 +477,54 @@ describe('edges of the rules', () => {
     expect(result.ok).toBe(true);
   });
 
+  // Browsers show an element's nearest <title> as its tooltip; without one per node, every box
+  // showed the figure's title.
+  test('each node carries its own tooltip: its label, and its description when set', () => {
+    const checkout = figures(good.html)[0];
+    expect(checkout.match(/<title[^>]*>[^<]*<\/title>/)?.[0]).toMatch(/>Checkout</);
+    expect(checkout).toMatch(/data-id="?browser"?[^>]*><title>Browser<\/title>/);
+    expect(checkout).toMatch(/data-id="?api"?[^>]*><title>API: Validates the order and returns at once.<\/title>/);
+  });
+
+  test('a viewBox written with commas or extra spaces draws exactly like the plain one', () => {
+    const icon = (view: string) => `<svg viewBox="${view}"><rect width="8" height="8"/></svg>`;
+    const transform = (view: string) => {
+      const result = build((s) => writeFileSync(join(s, 'assets/icons/acme/widget.svg'), icon(view)));
+      expect(result.log).not.toMatch(/ERROR/);
+      return figures(result.html)[0].match(/data-id="?worker"?[\s\S]*?<g class="?dg-icon[^>]*transform="?([^">]+)/)?.[1];
+    };
+    const plain = transform('0 0 8 8');
+    expect(plain).toBeTruthy();
+    expect(transform('0,0,8,8')).toBe(plain);
+    expect(transform(' 0  0 8   8 ')).toBe(plain);
+  });
+
+  test('an unknown icon fails with its own error and nothing after it', () => {
+    const result = build((s) => edit(s, 'data/diagrams/checkout.yaml', 'icon: inbox', 'icon: no-such-icon'));
+    expect(result.ok).toBe(false);
+    expect(result.log.match(/no-such-icon/g)?.length).toBe(1);
+    expect(result.log).not.toMatch(/divide/);
+  });
+
+  test('a logo with internal ids drawn twice on a page repeats no id', () => {
+    const result = build((s) => {
+      edit(s, 'data/diagrams/checkout.yaml', 'icon: logos/cloudflare-icon', 'icon: logos/aws-ec2');
+      edit(s, 'data/diagrams/checkout.yaml', 'icon: logos/postgresql', 'icon: logos/aws-ec2');
+    });
+    expect(result.log).not.toMatch(/ERROR/);
+    const all = ids(result.html);
+    expect(new Set(all).size).toBe(all.length);
+    for (const [, ref] of result.html.matchAll(/url\(#([^)]+)\)/g)) expect(all).toContain(ref);
+    expect(result.html).not.toContain('__DGI__');
+  });
+
+  test('a bare diagram name attributes the page like a quoted one', () => {
+    const result = build((s) => edit(s, 'content/_index.md', '{{< diagram "refund" >}}', '{{< diagram refund >}}'));
+    expect(result.log).not.toMatch(/ERROR/);
+    const json = JSON.parse(readFileSync(join(result.site, 'public', 'architecture.json'), 'utf8'));
+    expect(json.diagrams.find((d: { name: string }) => d.name === 'refund').pages).toEqual(['https://example.org/']);
+  });
+
   test('a page is attributed however the shortcode is spaced', () => {
     const result = build((s) => edit(s, 'content/_index.md', '{{< diagram "refund" >}}', '{{<   diagram   "refund"   >}}'));
     const json = JSON.parse(readFileSync(join(result.site, 'public', 'architecture.json'), 'utf8'));
@@ -696,6 +754,11 @@ describe.if(chrome !== null)('the enlarged view in a real browser', () => {
             native: copy.viewBox.baseVal.width,
             ids: [...copy.querySelectorAll('[id]')].every((e) => e.id.endsWith('-z')),
             marker: copy.querySelector('[marker-end]').getAttribute('marker-end'),
+            dangling: [...copy.querySelectorAll('*')].flatMap((e) => [...e.attributes])
+              .flatMap((a) => [...a.value.matchAll(/url\(#([^)]+)\)/g)].map((m) => m[1]))
+              .filter((id) => !copy.querySelector('[id="' + id + '"]')),
+            describedTitle: !!document.querySelector('figure.dg .dg-node[data-id="api"] > title'),
+            plainTitle: document.querySelector('figure.dg .dg-node[data-id="browser"] > title')?.textContent,
             pageFigures: document.querySelectorAll('figure.dg .dg-svg').length,
             focus: document.activeElement.className,
           });
@@ -706,6 +769,11 @@ describe.if(chrome !== null)('the enlarged view in a real browser', () => {
       expect(Math.abs(o.width - o.native)).toBeLessThan(1);
       expect(o.ids).toBe(true);
       expect(o.marker).toMatch(/-z\)$/);
+      expect(o.dangling).toEqual([]);
+      // A node with a description shows the script's tip, so its native title is gone; one
+      // without keeps its name as the tooltip.
+      expect(o.describedTitle).toBe(false);
+      expect(o.plainTitle).toBe('Browser');
       expect(o.pageFigures).toBe(2);
       expect(o.focus).toBe('dg-zoom-close');
       await evaluate(s, `document.querySelector('.dg-zoom-close').click()`);
