@@ -15,6 +15,17 @@ function makeInput(command: string) {
   };
 }
 
+// The shell hook judges the repository it runs in, so a commit test run from
+// this checkout passes on a feature branch and is refused on main, where CI's
+// push and scheduled runs check out. Commit tests get a repository of their own.
+function featureBranchRepo() {
+  const repo = mkdtempSync(join(tmpdir(), 'agentkit-gp-feat-'));
+  spawnSync('git', ['init', '-q', '-b', 'feat/test', repo]);
+  const head = spawnSync('git', ['-C', repo, 'symbolic-ref', '--short', 'HEAD'], { encoding: 'utf-8' });
+  if (head.stdout.trim() !== 'feat/test') throw new Error(`featureBranchRepo: ${repo} is not on feat/test`);
+  return repo;
+}
+
 function readCodexGitPolicy() {
   return readFileSync(join(import.meta.dir, '..', 'policies/codex/git-police.rules'), 'utf-8');
 }
@@ -265,11 +276,16 @@ describe("git-police blocks attribution in the shell hook itself", () => {
   // An empty config home, as below: a developer whose own agentkit config
   // allow-lists this repository would otherwise exit before any rule runs.
   const emptyConfig = mkdtempSync(join(tmpdir(), "agentkit-noconfig-"));
-  afterAll(() => rmSync(emptyConfig, { recursive: true, force: true }));
+  const repo = featureBranchRepo();
+  afterAll(() => {
+    rmSync(emptyConfig, { recursive: true, force: true });
+    rmSync(repo, { recursive: true, force: true });
+  });
   const run = (command: string) =>
     spawnSync("bash", [join(repoRoot, "hooks", "claude", "git-police.sh")], {
       input: JSON.stringify({ tool_name: "Bash", tool_input: { command }, session_id: "t" }),
       encoding: "utf-8",
+      cwd: repo,
       env: { ...process.env, XDG_CONFIG_HOME: emptyConfig },
     });
 
@@ -300,9 +316,11 @@ describe("git-police cannot be walked around", () => {
   // exit 128, and the harness read a non-zero exit as a non-blocking error.
   const emptyConfig = mkdtempSync(join(tmpdir(), "agentkit-noconfig-"));
   const scratch = mkdtempSync(join(tmpdir(), "agentkit-gp-"));
+  const featRepo = featureBranchRepo();
   afterAll(() => {
     rmSync(emptyConfig, { recursive: true, force: true });
     rmSync(scratch, { recursive: true, force: true });
+    rmSync(featRepo, { recursive: true, force: true });
   });
   const TRAILER = "Co-Authored-By: Claude <noreply@anthropic.com>";
   const hook = join(repoRoot, "hooks", "claude", "git-police.sh");
@@ -310,7 +328,7 @@ describe("git-police cannot be walked around", () => {
     const r = spawnSync("bash", [hook], {
       input: JSON.stringify({ tool_name: "Bash", tool_input: { command }, session_id: "t" }),
       encoding: "utf-8",
-      cwd: opts.cwd ?? repoRoot,
+      cwd: opts.cwd ?? featRepo,
       env: { ...process.env, XDG_CONFIG_HOME: emptyConfig, ...opts.env },
     });
     return { denied: /"permissionDecision":\s*"deny"/.test(`${r.stdout ?? ""}`), out: `${r.stdout ?? ""}`, status: r.status };
@@ -477,7 +495,7 @@ describe("git-police cannot be walked around", () => {
     const r = spawnSync("bash", [hook], {
       input: JSON.stringify({ tool_name: "Bash", tool_input: { command: `git commit -m "x\n\n${TRAILER}"` } }),
       encoding: "utf-8",
-      cwd: repoRoot,
+      cwd: featRepo,
       env,
     });
     expect(r.status).toBe(0);
@@ -486,7 +504,7 @@ describe("git-police cannot be walked around", () => {
     const bare = spawnSync("bash", [hook], {
       input: JSON.stringify({ tool_name: "Bash", tool_input: { command: `git commit -m "x\n\n${TRAILER}"` } }),
       encoding: "utf-8",
-      cwd: repoRoot,
+      cwd: featRepo,
       env,
     });
     expect(bare.stdout).toMatch(/"permissionDecision":\s*"deny"/);

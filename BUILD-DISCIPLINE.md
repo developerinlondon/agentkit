@@ -127,7 +127,9 @@ result marker. A caller reading `$?` sees success.
 
 **Seen as.** Reviewers on this repository judge suites by the printed
 `N pass / N fail` line for exactly this reason, and record the number rather than
-the exit status. A run reporting no marker is not a pass.
+the exit status. A run reporting no marker is not a pass. Nor is a run whose
+summary carries `N errors` after the fail count: a test file that throws while
+bun collects it loses its tests from both counts, prints `0 fail`, and exits 1.
 
 **Caught by.** `scripts/lib/test-verdict.sh`, shared by `preflight --slice` and by
 `mutate`: absence of a marker is its own verdict, reported as a harness fault,

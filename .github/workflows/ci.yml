@@ -99,6 +99,11 @@ jobs:
           fetch-depth: 0
           filter: blob:none
 
+      # A pull request is checked out on a detached merge ref while main's runs
+      # are on the branch main, and the git hooks under test judge the branch.
+      - name: Test on a branch named main, as main's runs do
+        run: git checkout -q -B main && git branch -q --set-upstream-to=origin/main && echo "testing on $(git symbolic-ref --short HEAD), tracking $(git rev-parse --abbrev-ref '@{upstream}')"
+
       - name: Install pinned Moon and Bun toolchains
         uses: moonrepo/setup-toolchain@261c62cb5b0f580c7be7c8cd0f023a2e96756095 # v0.6.4
         env:
@@ -192,6 +197,10 @@ jobs:
         with:
           fetch-depth: 0
           filter: blob:none
+
+      - name: Test on a branch named main, as main's runs do
+        if: steps.reuse.outputs.tested != 'true'
+        run: git checkout -q -B main && git branch -q --set-upstream-to=origin/main && echo "testing on $(git symbolic-ref --short HEAD), tracking $(git rev-parse --abbrev-ref '@{upstream}')"
 
       - name: Install pinned Moon and Bun toolchains
         if: steps.reuse.outputs.tested != 'true'
