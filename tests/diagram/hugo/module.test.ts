@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { chromePath, launchBrowser, rethrowLaunchFailure } from '../../publish-page/browser-launch.ts';
 import { attach, evaluate, type Session } from '../../publish-page/devtools.ts';
-import { placeholderIds } from '../../../scripts/lib/hugo-icon-ids.ts';
+import { placeholderIds } from '../../../scripts/sync-hugo-diagram-icons.ts';
 
 // The Hugo diagrams module is the docs path for figures: specs are data, the
 // build is the renderer, and the build is also the validator. These cases
@@ -166,6 +166,11 @@ describe('the build refuses what it cannot draw faithfully', () => {
     [
       'a project icon whose viewBox is so wide the icon would draw invisibly',
       (s) => writeFileSync(join(s, 'assets/icons/acme/widget.svg'), '<svg viewBox="0 0 9e9 8"><rect width="8" height="8"/></svg>'),
+      /icon "@acme\/widget".*no valid viewBox/,
+    ],
+    [
+      'a project icon whose viewBox origin is far off the canvas',
+      (s) => writeFileSync(join(s, 'assets/icons/acme/widget.svg'), '<svg viewBox="-999999999e9 0 8 8"><rect width="8" height="8"/></svg>'),
       /icon "@acme\/widget".*no valid viewBox/,
     ],
     [
@@ -611,31 +616,42 @@ describe('edges of the rules', () => {
 
 describe('logo ids get the per-instance placeholder', () => {
   test('every way of writing a reference is rewritten with its id', () => {
-    const body = [
-      '<linearGradient id="g"/><linearGradient id="gb"/>',
-      '<path fill="url(#g)"/>',
-      "<path fill=\"url('#g')\"/>",
-      '<path style="fill:url(&quot;#g&quot;)"/>',
-      '<path fill="url( #gb )"/>',
-      '<use href="#g"/>',
-      "<use xlink:href='#gb'/>",
-    ].join('');
-    const out = placeholderIds(body);
-    expect(out).toContain('id="__DGI__g"');
-    expect(out).toContain('id="__DGI__gb"');
-    expect(out).toContain('url(#__DGI__g)');
-    expect(out).toContain("url('#__DGI__g')");
-    expect(out).toContain('url(&quot;#__DGI__g&quot;)');
-    expect(out).toContain('url(#__DGI__gb)');
-    expect(out).toContain('href="#__DGI__g"');
-    expect(out).toContain("href='#__DGI__gb'");
-    expect(out).not.toMatch(/#(?!__DGI__)g/);
+    const out = placeholderIds(
+      [
+        '<linearGradient id="g"/><linearGradient id="gb"/>',
+        '<path fill="url(#g)"/>',
+        "<path fill=\"url('#g')\"/>",
+        '<path style="fill:url(&quot;#g&quot;)"/>',
+        '<path fill="url(&apos;#gb&apos;)"/>',
+        '<path fill="url( #gb )"/>',
+        '<use href="#g"/>',
+        '<use href=" #gb"/>',
+        "<use xlink:href='#gb'/>",
+      ].join(''),
+    );
+    for (const expected of [
+      'id="__DGI__g"',
+      'id="__DGI__gb"',
+      'url(#__DGI__g)',
+      "url('#__DGI__g')",
+      'url(&quot;#__DGI__g&quot;)',
+      'url(&apos;#__DGI__gb&apos;)',
+      'url(#__DGI__gb)',
+      'href="#__DGI__g"',
+      'href="#__DGI__gb"',
+      "href='#__DGI__gb'",
+    ]) {
+      expect(out).toContain(expected);
+    }
+    expect(out).not.toMatch(/#(?!__DGI__)gb?\b/);
   });
 
   test('a reference to an id the icon never defines fails instead of dangling', () => {
     expect(() => placeholderIds('<path fill="url(#missing)"/>')).toThrow(/url\(#missing/);
     expect(() => placeholderIds('<path fill="url( &quot;#missing&quot; )"/>')).toThrow(/missing/);
     expect(() => placeholderIds("<use href='#missing'/>")).toThrow(/missing/);
+    expect(() => placeholderIds('<path fill="url(&apos;#missing&apos;)"/>')).toThrow(/missing/);
+    expect(() => placeholderIds('<use href=" #missing"/>')).toThrow(/missing/);
   });
 });
 
@@ -873,8 +889,10 @@ describe.if(chrome !== null)('the enlarged view in a real browser', () => {
       expect(o.pageFigures).toBe(2);
       expect(o.focus).toBe('dg-zoom-close');
       await evaluate(s, `document.querySelector('.dg-zoom-close').click()`);
-      // A dialog's close event is queued, so the state is read after it has run.
-      await Bun.sleep(200);
+      // A dialog's close event is queued; wait for it rather than for a fixed time.
+      for (let t = 0; t < 50 && (await evaluate(s, `!!document.querySelector('dialog.dg-zoom')`)); t++) {
+        await Bun.sleep(50);
+      }
       const closed = await evaluate(
         s,
         `JSON.stringify({ gone: !document.querySelector('dialog.dg-zoom'), focus: document.activeElement.className })`,
