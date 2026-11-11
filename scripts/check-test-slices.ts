@@ -121,6 +121,7 @@ export const TEST_SLICES = {
   ],
   session: ['tests/session/agent-session.test.ts', 'tests/session/install-session-slice.test.ts'],
   taste: [
+    'tests/taste/judgment-lane.test.ts',
     'tests/taste/judgment.test.ts',
     'tests/taste/key-path.test.ts',
     'tests/taste/kinds.test.ts',

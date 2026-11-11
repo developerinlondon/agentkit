@@ -16,7 +16,7 @@ export interface NoulRequest {
 
 export type NoulAnswer =
   | { ok: true; noul: number; model: string }
-  | { ok: false; reason: string };
+  | { ok: false; reason: string; timedOut?: true };
 
 // The answer comes back under the key its question was asked under. Read by
 // that key rather than by position: a future call asking several questions gets
@@ -70,7 +70,9 @@ export async function askNoul(ask: NoulRequest): Promise<NoulAnswer> {
     if (noul === undefined) return { ok: false, reason: 'it returned an unusable answer' };
     return { ok: true, noul, model: modelOf(payload) };
   } catch (error) {
-    if (controller.signal.aborted) return { ok: false, reason: `timeout after ${timeoutMs}ms` };
+    if (controller.signal.aborted) {
+      return { ok: false, reason: `timeout after ${timeoutMs}ms`, timedOut: true };
+    }
     return { ok: false, reason: (error as Error).message };
   } finally {
     clearTimeout(deadline);

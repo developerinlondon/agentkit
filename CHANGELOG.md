@@ -11,6 +11,22 @@ pin the diagrams module.
 
 ## [Unreleased]
 
+- fix(taste): **a judgment with almost no budget left says the budget ran out, not that git
+  failed.** The shared 5000ms judgment budget granted whatever was left, so a judgment that
+  started with a few milliseconds remaining ran `git diff` under that deadline and was reported
+  as `git could not be run … — no output`. Below 1000ms left, the budget now grants nothing and
+  the judgment reports the budget-spent notice without starting git or the provider. A git or
+  provider step that times out because the budget clamped it below its own cap reports the
+  budget as spent too; a timeout at the step's own cap, or a provider error, still names git or
+  the provider. A timeout counts as the budget's only when the budget cut the step's deadline
+  by at least 100ms; within that, it is timer jitter and the step's own timeout. On the
+  merge-request occasion, a git call that gives no answer while finding the target branch is
+  reported as itself, budget or git, instead of as `no default branch to compare against`, and
+  is not followed by further git calls that would blame the budget for it. The notice no
+  longer claims an earlier taste used the time, since one taste can spend it alone. Allow and
+  deny are unchanged: an unchecked judgment still allows with an UNCHECKED notice. The
+  command-lane judgment tests moved to `tests/taste/judgment-lane.test.ts`, with shared helpers
+  in `tests/taste/judgment-fixtures.ts`.
 - fix(editor-police): **the gate answers inside its timeout on a stock Mac, and refuses when it
   cannot parse.** A hook that runs past its 10-second timeout lets the command through, and on
   macOS's bash 3.2 and awk 20200816 the gate could. The 1500-statement limit only fired after
