@@ -604,10 +604,16 @@ describe('edges of the rules', () => {
   });
 
   test('the shipped check script passes a site that publishes no llms.txt', () => {
+    // The script runs node from a temp site outside the repo, where a version
+    // manager's shim finds no pin and may fail or pick another node. Hand it the
+    // binary that resolves here, under the repo's pin.
+    const node = Bun.spawnSync(['node', '-p', 'process.execPath'], { cwd: ROOT, stdout: 'pipe', stderr: 'pipe' });
+    if (node.exitCode !== 0) throw new Error(`node does not resolve in the repo: ${node.stderr}`);
+    const nodeDir = dirname(`${node.stdout}`.trim());
     const run = Bun.spawnSync(['sh', join(MODULE_PARENT, 'diagrams', 'scripts', 'check-diagrams.sh'), good.site], {
       stdout: 'pipe',
       stderr: 'pipe',
-      env: { ...process.env, PATH: `${dirname(HUGO as string)}:${process.env.PATH}` },
+      env: { ...process.env, PATH: `${dirname(HUGO as string)}:${nodeDir}:${process.env.PATH}` },
     });
     expect(`${run.stdout}${run.stderr}`).toContain('ok: 2 diagrams, no mermaid');
     expect(run.exitCode).toBe(0);

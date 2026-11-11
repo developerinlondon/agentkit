@@ -11,6 +11,15 @@ pin the diagrams module.
 
 ## [Unreleased]
 
+- fix(tests): **the full suite passes on a Mac with no system Node.js.** The Hugo check-script
+  test ran `node` from a temp site outside the repo. Under proto, the shim there finds no pin
+  and falls back to whatever `node` is next on PATH: the hosted macOS image ships one, so the
+  test passed there on an unpinned Node, and a machine without one failed with
+  `proto::detect::failed`. The test now resolves `node` inside the repo and hands the script
+  that binary. The figure-fit tests compared sizes the browser derives from a ratio (345.6px,
+  299.67px) exactly after rounding, and one browser laid 345.6 out a pixel low; they now allow
+  a pixel either side, while the column width stays exact, so a height cap that shrank the
+  wide figure still fails.
 - fix(ci): **a test slice passes only when its tests ran.** `scripts/check-test-slices.ts`
   forwarded bun's exit code, so a test file that called `process.exit(0)` while loading ended
   the run green with its tests unrun. The runner now streams bun's output as before and fails
