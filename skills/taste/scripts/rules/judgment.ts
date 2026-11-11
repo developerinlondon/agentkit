@@ -3,13 +3,18 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { unquote } from '../override.ts';
 import { runBounded } from '../run.ts';
-import { type Budget, BUDGET_SPENT, JUDGMENT_CALL_MS, judgmentBudget } from './budget.ts';
+import {
+  type Budget,
+  BUDGET_SPENT,
+  JUDGMENT_CALL_MS,
+  judgmentBudget,
+  shortenedByBudget,
+} from './budget.ts';
 import type { KindOutcome, KindRequest, RuleKind } from './kinds.ts';
 import { carriesSubstitution } from './pattern.ts';
 import { askNoul, type NoulAnswer } from './providers/typesafe.ts';
 import {
   type Hit,
-  MAX_WRAPPER_DEPTH,
   directoryOf,
   unreadableQuoting,
   walk,
@@ -29,7 +34,7 @@ export const MAX_QUESTION_LENGTH = 500;
 export const MAX_DIFF_LENGTH = 12000;
 export const MAX_MESSAGE_LENGTH = 2000;
 export const DEFAULT_THRESHOLD = 0.75;
-const GIT_TIMEOUT_MS = 3000;
+export const GIT_TIMEOUT_MS = 3000;
 const DIFF_CUT = '\n[diff truncated]';
 const MESSAGE_CUT = '\n[message truncated]';
 
@@ -170,20 +175,25 @@ function firstLine(text: string): string {
   return text.split('\n').find((line) => line.trim() !== '')?.trim() ?? 'no output';
 }
 
-type Output = { text: string } | { unchecked: string };
+// unanswered: git never gave an answer at all (not started, killed, or out of
+// budget), as against an answer that was a failing exit.
+type Output = { text: string } | { unchecked: string; unanswered?: true };
 
 async function gitOutput(args: string[], request: KindRequest, dir: string): Promise<Output> {
   const budget = budgetOf(request);
   const allowed = budget.grant(GIT_TIMEOUT_MS);
-  if (allowed <= 0) return { unchecked: BUDGET_SPENT };
+  if (allowed <= 0) return { unchecked: BUDGET_SPENT, unanswered: true };
 
   const env = { ...request.env, LC_ALL: 'C', LANGUAGE: 'C', LANG: 'C' };
   const started = Date.now();
   const run = await runBounded(['git', '-C', dir, ...args], request.cwd, env, allowed);
   budget.spend(Date.now() - started);
-  if (run.timedOut && allowed < GIT_TIMEOUT_MS) return { unchecked: BUDGET_SPENT };
+  if (run.timedOut && shortenedByBudget(allowed, GIT_TIMEOUT_MS)) {
+    return { unchecked: BUDGET_SPENT, unanswered: true };
+  }
   if (run.code === null || run.timedOut) {
-    return { unchecked: `git could not be run in ${dir} — ${firstLine(run.err)}` };
+    const why = firstLine(run.err);
+    return { unchecked: `git could not be run in ${dir} — ${why}`, unanswered: true };
   }
   if (!run.ok) {
     return { unchecked: `git could not read the change in ${dir} — ${firstLine(run.err)}` };
@@ -197,16 +207,18 @@ function cut(text: string, cap: number, note: string): string {
 
 // Best effort, and deliberately so: a merge request is judged on what it adds
 // to the branch it targets, and a repository that cannot name that branch is
-// UNCHECKED rather than judged on the wrong range. A budget that ran out is
-// passed on as itself: it says nothing about whether the branch exists.
+// UNCHECKED rather than judged on the wrong range. A git that gave no answer is
+// passed on as itself: it says nothing about whether the branch exists, and
+// asking again would only spend what is left and blame the budget for it.
 async function targetBranch(request: KindRequest): Promise<Output | undefined> {
   const head = ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'];
   const named = await gitOutput(head, request, request.cwd);
+  if ('unanswered' in named) return named;
   if ('text' in named && named.text !== '') return named;
   for (const candidate of ['origin/main', 'origin/master', 'main', 'master']) {
     const verify = ['rev-parse', '--verify', '--quiet', candidate];
     const seen = await gitOutput(verify, request, request.cwd);
-    if ('unchecked' in seen && seen.unchecked === BUDGET_SPENT) return seen;
+    if ('unanswered' in seen) return seen;
     if ('text' in seen && seen.text !== '') return { text: candidate };
   }
   return undefined;
@@ -273,7 +285,9 @@ async function ask(
     instructions: { policy: request.body ?? '', question },
   });
   budget.spend(Date.now() - started);
-  if (!answer.ok && answer.timedOut === true && timeoutMs < cap) return { spent: true };
+  if (!answer.ok && answer.timedOut === true && shortenedByBudget(timeoutMs, cap)) {
+    return { spent: true };
+  }
   return answer;
 }
 

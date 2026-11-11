@@ -4,12 +4,15 @@ import { join } from 'node:path';
 import { evaluateCommand } from '../../skills/taste/scripts/police.ts';
 import {
   type Budget,
+  BUDGET_SLACK_MS,
   BUDGET_SPENT,
   JUDGMENT_BUDGET_MS,
   JUDGMENT_CALL_MS,
   JUDGMENT_FLOOR_MS,
   judgmentBudget,
+  shortenedByBudget,
 } from '../../skills/taste/scripts/rules/budget.ts';
+import { GIT_TIMEOUT_MS } from '../../skills/taste/scripts/rules/judgment.ts';
 import {
   cleanUp,
   evaluate,
@@ -249,6 +252,89 @@ describe('a budget too short to finish a step is reported as spent', () => {
     });
 
     expect(outcome).toEqual({ verdict: 'unchecked', detail: BUDGET_SPENT });
+  }, 10000);
+});
+
+// Grants the same amount however much has been spent, so a step's deadline is
+// exact even after a real git call has taken its few milliseconds.
+function fixedBudget(ms: number): Budget {
+  return { grant: (maxMs: number) => Math.min(maxMs, ms), spend: () => {} };
+}
+
+describe('a timeout is the budget\'s only when the budget clearly shortened the step', () => {
+  test('the line sits at the slack, on both sides', () => {
+    expect(shortenedByBudget(GIT_TIMEOUT_MS - BUDGET_SLACK_MS, GIT_TIMEOUT_MS)).toBe(true);
+    expect(shortenedByBudget(GIT_TIMEOUT_MS - BUDGET_SLACK_MS + 1, GIT_TIMEOUT_MS)).toBe(false);
+  });
+
+  test('git shortened by less than the slack is still git timing out', async () => {
+    const outcome = await evaluate({}, {
+      env: { PATH: `${stallingGit()}:${process.env.PATH}` },
+      budget: budgetLeaving(GIT_TIMEOUT_MS - BUDGET_SLACK_MS + 1),
+    });
+
+    expect(outcome.verdict).toBe('unchecked');
+    expect(outcome.verdict === 'unchecked' ? outcome.detail : '').toContain('git could not be run');
+  }, 10000);
+
+  test('git shortened by the slack or more is the budget running out', async () => {
+    const outcome = await evaluate({}, {
+      env: { PATH: `${stallingGit()}:${process.env.PATH}` },
+      budget: budgetLeaving(GIT_TIMEOUT_MS - BUDGET_SLACK_MS),
+    });
+
+    expect(outcome).toEqual({ verdict: 'unchecked', detail: BUDGET_SPENT });
+  }, 10000);
+
+  test('a provider shortened by less than the slack is still the provider timing out', async () => {
+    const stub = provider({ hang: true });
+    const outcome = await evaluate({}, {
+      url: stub.url,
+      env: { TYPESAFE_TIMEOUT_MS: '500' },
+      budget: fixedBudget(500 - BUDGET_SLACK_MS + 1),
+    });
+
+    expect(outcome.verdict).toBe('unchecked');
+    expect(outcome.verdict === 'unchecked' ? outcome.detail : '').toContain(
+      `timeout after ${500 - BUDGET_SLACK_MS + 1}ms`,
+    );
+  }, 10000);
+
+  test('a provider shortened by the slack or more is the budget running out', async () => {
+    const stub = provider({ hang: true });
+    const outcome = await evaluate({}, {
+      url: stub.url,
+      env: { TYPESAFE_TIMEOUT_MS: '500' },
+      budget: fixedBudget(500 - BUDGET_SLACK_MS),
+    });
+
+    expect(outcome).toEqual({ verdict: 'unchecked', detail: BUDGET_SPENT });
+  }, 10000);
+
+  // The branch lookup is several git calls in a row. One that hit its own cap
+  // is git failing, and asking the next would only blame the budget for it.
+  test('a merge request whose git stalls at its own cap names git, not the budget', async () => {
+    const outcome = await evaluate({ on: 'merge-request' }, {
+      command: 'gh pr create --fill',
+      env: { PATH: `${stallingGit()}:${process.env.PATH}` },
+    });
+
+    expect(outcome.verdict).toBe('unchecked');
+    expect(outcome.verdict === 'unchecked' ? outcome.detail : '').toContain('git could not be run');
+  }, 10000);
+
+  test('a branch candidate that stalls at its own cap names git, not the budget', async () => {
+    const dir = scratch();
+    const script = '#!/bin/sh\nif [ "$3" = symbolic-ref ]; then exit 1; fi\nexec sleep 30\n';
+    writeFileSync(join(dir, 'git'), script);
+    chmodSync(join(dir, 'git'), 0o755);
+    const outcome = await evaluate({ on: 'merge-request' }, {
+      command: 'gh pr create --fill',
+      env: { PATH: `${dir}:${process.env.PATH}` },
+    });
+
+    expect(outcome.verdict).toBe('unchecked');
+    expect(outcome.verdict === 'unchecked' ? outcome.detail : '').toContain('git could not be run');
   }, 10000);
 });
 

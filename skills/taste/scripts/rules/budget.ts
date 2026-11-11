@@ -26,6 +26,14 @@ export function judgmentBudget(totalMs: number = JUDGMENT_BUDGET_MS): Budget {
   };
 }
 
+// A grant a few milliseconds under the cap is timer jitter, not the budget
+// cutting the step short; a timeout there is still the step's own.
+export const BUDGET_SLACK_MS = 100;
+
+export function shortenedByBudget(grantedMs: number, capMs: number): boolean {
+  return capMs - grantedMs >= BUDGET_SLACK_MS;
+}
+
 export const BUDGET_SPENT = `the ${JUDGMENT_BUDGET_MS}ms judgment budget for this command is `
   + 'spent — the judgments in this command used it, and one command may not hold the hook for '
   + 'longer';
