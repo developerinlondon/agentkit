@@ -16,9 +16,10 @@ pin the diagrams module.
   and falls back to whatever `node` is next on PATH: the hosted macOS image ships one, so the
   test passed there on an unpinned Node, and a machine without one failed with
   `proto::detect::failed`. The test now resolves `node` inside the repo and hands the script
-  that binary. The figure-fit tests compared sizes the browser derives from a ratio (345.6px,
-  299.67px) exactly after rounding, and one browser laid 345.6 out a pixel low; they now allow
-  a pixel either side, while the column width stays exact, so a height cap that shrank the
+  that binary alone, through a scratch directory, so no other tool on PATH moves. The figure-fit
+  tests compared sizes the browser derives from a ratio (345.6px, 299.67px) with the rounded
+  quotient, and one browser's box rounded to 345 instead of 346; they now accept either integer
+  next to the quotient, while the column width stays exact, so a height cap that shrank the
   wide figure still fails.
 - fix(ci): **a test slice passes only when its tests ran.** `scripts/check-test-slices.ts`
   forwarded bun's exit code, so a test file that called `process.exit(0)` while loading ended
