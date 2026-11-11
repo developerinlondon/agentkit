@@ -11,18 +11,23 @@ pin the diagrams module.
 
 ## [Unreleased]
 
-- fix(editor-police): **the gate answers inside its timeout on a stock Mac.** A hook that runs
-  past its 10-second timeout lets the command through, and on macOS's bash 3.2 and BSD awk the
-  gate could. The 1500-statement limit only fired after 1500 statements had been parsed, each
-  forking a subshell and, in bash 3.2, writing a temp file for a here-string; under load that
-  took 8.7 s for a command the limit should refuse at once. The BSD awk tokenizer also read the
-  command with `substr` and grew tokens one character at a time, both of which copy or measure
-  the whole string on every call: a 150 KB single word took 2.5 s and a 1 MB one more than
-  60 s. The hook now refuses a command over 262144 characters or 12000 statement separators
-  before tokenizing, splits segments without a fork or temp file, and tokenizes in one linear
-  pass, so a 262 KB word takes about a second on the slowest emulation. With no repo configured
-  it exits before any of this, so the budget never refuses a command in an unconfigured setup.
-  Timing tests now measure against half the timeout the harness is actually given.
+- fix(editor-police): **the gate answers inside its timeout on a stock Mac, and refuses when it
+  cannot parse.** A hook that runs past its 10-second timeout lets the command through, and on
+  macOS's bash 3.2 and awk 20200816 the gate could. The 1500-statement limit only fired after
+  1500 statements had been parsed, each forking a subshell and, in bash 3.2, writing a temp file
+  for a here-string; under load that took 8.7 s for a command the limit should refuse at once.
+  The awk tokenizer also read the command with `substr` and grew tokens one character at a
+  time, both of which measure or copy the whole string on every call in that awk: a 150 KB
+  single word took 2.5 s and a 1 MB one more than 60 s. The hook now refuses, before
+  tokenizing, a command over 262144 bytes or 12000 statement separators, and refuses past 100
+  nested `bash -c` or `eval` commands. It splits segments without a fork or temp file and
+  tokenizes in one linear pass: a 250 KB word takes 0.7 s on Apple's awk 20200816. Any command
+  that mentions `commit` and crosses a bound is refused wherever it runs, once a repo is
+  configured; with none configured the hook exits before any of this. Two ways a commit could
+  pass unjudged are closed: a 0x01-0x07 byte in the command, which the tokenizer uses as a
+  marker and which restarted its quote state, is now refused, and a tokenizer that dies
+  part-way now refuses instead of reading as allow. Timing tests measure against half the
+  timeout the harness is actually given.
 - fix(tests): **the full suite passes on a Mac with no system Node.js.** The Hugo check-script
   test ran `node` from a temp site outside the repo. Under proto, the shim there finds no pin.
   On hosted macOS a system `node` answered, so the test passed there on an unpinned Node; on a

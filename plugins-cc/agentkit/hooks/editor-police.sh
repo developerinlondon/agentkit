@@ -80,17 +80,26 @@ case "$(printf '%s' "$ENABLED" | tr '[:upper:]' '[:lower:]')" in false | no | of
 ((${#REPOS[@]})) || exit 0
 
 # The 10-second hook timeout is a pass, not a refusal, so a command too big to
-# judge in time is refused up front. macOS ships bash 3.2 and a BSD awk; the
-# bounds hold there under load with a wide margin.
+# judge in time is refused up front. The bounds are sized for macOS's bash 3.2
+# and awk 20200816, the slowest pair the hook runs on.
 MAX_BYTES=262144
 MAX_SEPARATORS=12000
 MAX_SEGMENTS=1500
-deny_budget() {
+MAX_NESTED=100
+deny_unchecked() {
 	agentkit_deny_json "EDITOR GATE UNCHECKED (editor-police)
-This command is larger than the gate can check inside its time budget ($1). Split it up, or write it to a script file and run that."
+$1"
 	exit 0
 }
-((${#COMMAND} <= MAX_BYTES)) || deny_budget "more than $MAX_BYTES characters"
+deny_budget() {
+	deny_unchecked "This command is larger than the gate can check inside its time budget ($1). Split it up, or write it to a script file and run that."
+}
+command_bytes() { local LC_ALL=C; BYTES=${#COMMAND}; }
+command_bytes
+((BYTES <= MAX_BYTES)) || deny_budget "more than $MAX_BYTES bytes"
+# The tokenizer's own record and field markers; bash treats them as ordinary
+# characters, so one inside the command would desynchronise the parse.
+[[ "$COMMAND" != *[$'\001\002\003\004\005\006\007']* ]] || deny_unchecked "This command contains a control character (0x01-0x07) the gate cannot parse. Remove it, or write the command to a script file and run that."
 
 # Which repo each commit targets is resolved from the command the way git-police
 # does it, not pattern-matched over the raw text. One linear awk pass splits the
@@ -176,7 +185,8 @@ tokenize() {
 		}
 		endtok()
 		flush(q != "" ? "\005" : "")
-	}'
+	}
+	END { printf "\007\002" }'
 }
 
 abs_path() {
@@ -311,10 +321,12 @@ nested_command() {
 }
 
 SEGMENTS=0
+NESTED_RUNS=0
 judge() {
-	local depth="$2" rec saved_cwd roots root
+	local depth="$2" rec saved_cwd roots root ended=0
 	while IFS= read -r -d $'\002' rec || [[ -n "$rec" ]]; do
 		[[ "$rec" == $'\006' ]] && deny_budget "more than $MAX_SEPARATORS statement separators"
+		if [[ "$rec" == $'\007' ]]; then ended=1; continue; fi
 		[[ -z "$rec" || "$rec" == $'\005'* ]] && continue
 		((++SEGMENTS <= MAX_SEGMENTS)) || deny_budget "more than $MAX_SEGMENTS shell statements"
 		# A here-string is a temp file per segment in bash 3.2; splitting is not.
@@ -332,6 +344,7 @@ judge() {
 			continue
 		fi
 		if ((depth < 3)) && nested_command; then
+			((++NESTED_RUNS <= MAX_NESTED)) || deny_budget "more than $MAX_NESTED nested shell commands"
 			saved_cwd="$CWD"
 			judge "$NESTED" $((depth + 1))
 			CWD="$saved_cwd"
@@ -357,6 +370,8 @@ Add exactly this to the git commit that targets $root:
 If someone else is editing now, first run: wiki-editor set <name> --session $SESSION"
 		exit 0
 	done < <(printf '%s' "$1" | tokenize)
+	# A tokenizer that died part-way has said nothing, and nothing reads as allow.
+	((ended)) || deny_unchecked "The gate's parser stopped before the end of this command, so it could not be checked. Check that awk works (LC_ALL=C awk), then retry."
 }
 
 judge "$COMMAND" 0

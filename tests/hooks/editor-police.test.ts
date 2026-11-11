@@ -373,7 +373,10 @@ describe('editor-police: which commands and repos it judges', () => {
     const cases: [string, string][] = [
       ['a;'.repeat(20000) + 'git commit -m x', 'more than 12000 statement separators'],
       ['x <<E '.repeat(13000) + '\ngit commit -m x', 'more than 12000 statement separators'],
-      [`git commit -m "${'a'.repeat(300000)}"`, 'more than 262144 characters'],
+      [`cat <<E\n${'l\n'.repeat(12001)}E\ngit commit -m x`, 'more than 12000 statement separators'],
+      [`git commit -m "${'a'.repeat(300000)}"`, 'more than 262144 bytes'],
+      [`git commit -m "${'\u{1F600}'.repeat(70000)}"`, 'more than 262144 bytes'],
+      ['eval;'.repeat(1499) + 'git commit -m x', 'more than 100 nested shell commands'],
     ];
     for (const [cmd, why] of cases) {
       const started = Date.now();
@@ -382,6 +385,41 @@ describe('editor-police: which commands and repos it judges', () => {
       expect(out, why).toContain('UNCHECKED');
       expect(out, why).toContain(why);
     }
+  });
+
+  test('the byte bound is exact: one byte over is refused, the bound itself is judged', () => {
+    tool('set', 'ana', '--session', SESSION);
+    const cwd = join(root, 'myorg', 'docs', 'wiki');
+    mkdirSync(cwd, { recursive: true });
+    const shell = (pad: number) => `git commit -m "${'a'.repeat(pad)}" --trailer="${TRAILER}"`;
+    const pad = 262144 - Buffer.byteLength(shell(0));
+    expect(runHook(shell(pad), { cwd })).toBe('');
+    expect(runHook(shell(pad + 1), { cwd })).toContain('more than 262144 bytes');
+  });
+
+  test('a control character the tokenizer uses as a marker is refused, not parsed around', () => {
+    tool('set', 'ana', '--session', SESSION);
+    const cwd = join(root, 'myorg', 'docs', 'wiki');
+    mkdirSync(cwd, { recursive: true });
+    for (const c of ['\x01', '\x02', '\x03', '\x05', '\x07']) {
+      const out = runHook(`echo '${c}'; git commit -m x`, { cwd });
+      expect(denied(out), JSON.stringify(c)).toBe(true);
+      expect(out, JSON.stringify(c)).toContain('control character');
+    }
+  });
+
+  test('a tokenizer that dies part-way refuses rather than allowing', () => {
+    tool('set', 'ana', '--session', SESSION);
+    const cwd = join(root, 'myorg', 'docs', 'wiki');
+    const bin = join(root, 'dead-awk');
+    mkdirSync(bin, { recursive: true });
+    writeFileSync(join(bin, 'awk'), '#!/bin/sh\ncat >/dev/null\nexit 2\n', { mode: 0o755 });
+    const out = runHook(`git commit -m x --trailer="${TRAILER}"`, {
+      cwd,
+      extra: { PATH: `${bin}:${process.env.PATH ?? ''}` },
+    });
+    expect(denied(out)).toBe(true);
+    expect(out).toContain('parser stopped');
   });
 
   test('a command just inside the size bound is judged inside the budget', () => {
