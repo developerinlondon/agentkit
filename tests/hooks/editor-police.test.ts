@@ -413,13 +413,15 @@ describe('editor-police: which commands and repos it judges', () => {
     const cwd = join(root, 'myorg', 'docs', 'wiki');
     const bin = join(root, 'dead-awk');
     mkdirSync(bin, { recursive: true });
-    writeFileSync(join(bin, 'awk'), '#!/bin/sh\ncat >/dev/null\nexit 2\n', { mode: 0o755 });
-    const out = runHook(`git commit -m x --trailer="${TRAILER}"`, {
-      cwd,
-      extra: { PATH: `${bin}:${process.env.PATH ?? ''}` },
-    });
-    expect(denied(out)).toBe(true);
-    expect(out).toContain('parser stopped');
+    for (const partial of ['', "printf 'echo\\003hi\\003\\002'\n"]) {
+      writeFileSync(join(bin, 'awk'), `#!/bin/sh\ncat >/dev/null\n${partial}exit 2\n`, { mode: 0o755 });
+      const out = runHook(`git commit -m x --trailer="${TRAILER}"`, {
+        cwd,
+        extra: { PATH: `${bin}:${process.env.PATH ?? ''}` },
+      });
+      expect(denied(out), partial).toBe(true);
+      expect(out, partial).toContain('parser stopped');
+    }
   });
 
   test('a command just inside the size bound is judged inside the budget', () => {
