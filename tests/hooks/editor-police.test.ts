@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -72,6 +72,27 @@ function tool(...args: string[]): { out: string; status: number | null } {
 }
 
 const denied = (out: string) => out.includes('"deny"');
+
+// A hook that outlives its timeout lets the command through, so every verdict
+// must land well inside the timeout the harness is actually given.
+function hookTimeoutMs(): number {
+  const found: number[] = [];
+  const walk = (v: unknown): void => {
+    if (Array.isArray(v)) return v.forEach(walk);
+    if (!v || typeof v !== 'object') return;
+    const o = v as Record<string, unknown>;
+    if (typeof o.command === 'string' && o.command.endsWith('/editor-police.sh') && typeof o.timeout === 'number') {
+      found.push(o.timeout);
+    }
+    Object.values(o).forEach(walk);
+  };
+  for (const file of ['hooks/claude/settings.json', 'plugins-cc/agentkit/hooks/hooks.json']) {
+    walk(JSON.parse(readFileSync(join(repoRoot, file), 'utf-8')));
+  }
+  expect(found.length).toBe(2);
+  return Math.min(...found) * 1000;
+}
+const BUDGET_MS = hookTimeoutMs() / 2;
 const WIKI_COMMIT = 'git -C /srv/myorg/docs/wiki commit -m "docs: update"';
 
 beforeAll(() => {
@@ -95,6 +116,13 @@ describe('editor-police: inert unless configured', () => {
   test('a config with no repos listed allows every commit', () => {
     writeConfig('editor-police:\n  enabled: true\n  repos: []\n');
     expect(runHook(WIKI_COMMIT)).toBe('');
+  });
+
+  test('without a listed repo, a command past every budget is allowed too', () => {
+    rmSync(join(configDir, 'agentkit'), { force: true, recursive: true });
+    expect(runHook('a;'.repeat(20000) + WIKI_COMMIT)).toBe('');
+    writeConfig('editor-police:\n  enabled: true\n  repos: []\n');
+    expect(runHook(`${WIKI_COMMIT} -m "${'a'.repeat(300000)}"`)).toBe('');
   });
 
   test('enabled: false allows a commit in a listed repo, however it is spelled', () => {
@@ -330,11 +358,89 @@ describe('editor-police: which commands and repos it judges', () => {
     mkdirSync(cwd, { recursive: true });
     const started = Date.now();
     const out = runHook('a;'.repeat(12000) + 'git commit -m x', { cwd });
-    expect(Date.now() - started).toBeLessThan(5000);
+    expect(Date.now() - started).toBeLessThan(BUDGET_MS);
     expect(denied(out)).toBe(true);
     expect(out).toContain('UNCHECKED');
+    expect(out).toContain('more than 1500 shell statements');
     expect(denied(runHook('a;'.repeat(1000) + 'git commit -m x', { cwd }))).toBe(true);
     expect(runHook('a;'.repeat(1000) + `git commit -m x --trailer="${TRAILER}"`, { cwd })).toBe('');
+  });
+
+  test('a command too large to tokenize in time is refused before tokenizing', () => {
+    tool('set', 'ana', '--session', SESSION);
+    const cwd = join(root, 'myorg', 'docs', 'wiki');
+    mkdirSync(cwd, { recursive: true });
+    const cases: [string, string][] = [
+      ['a;'.repeat(20000) + 'git commit -m x', 'more than 12000 statement separators'],
+      ['x <<E '.repeat(13000) + '\ngit commit -m x', 'more than 12000 statement separators'],
+      [`cat <<E\n${'l\n'.repeat(12001)}E\ngit commit -m x`, 'more than 12000 statement separators'],
+      [`git commit -m "${'a'.repeat(300000)}"`, 'more than 262144 bytes'],
+      [`git commit -m "${'\u{1F600}'.repeat(70000)}"`, 'more than 262144 bytes'],
+      ['eval;'.repeat(1499) + 'git commit -m x', 'more than 100 nested shell commands'],
+    ];
+    for (const [cmd, why] of cases) {
+      const started = Date.now();
+      const out = runHook(`${cmd} --trailer="${TRAILER}"`, { cwd });
+      expect(Date.now() - started, why).toBeLessThan(BUDGET_MS);
+      expect(out, why).toContain('UNCHECKED');
+      expect(out, why).toContain(why);
+    }
+  });
+
+  test('the byte bound is exact: one byte over is refused, the bound itself is judged', () => {
+    tool('set', 'ana', '--session', SESSION);
+    const cwd = join(root, 'myorg', 'docs', 'wiki');
+    mkdirSync(cwd, { recursive: true });
+    const shell = (pad: number) => `git commit -m "${'a'.repeat(pad)}" --trailer="${TRAILER}"`;
+    const pad = 262144 - Buffer.byteLength(shell(0));
+    expect(runHook(shell(pad), { cwd })).toBe('');
+    expect(runHook(shell(pad + 1), { cwd })).toContain('more than 262144 bytes');
+  });
+
+  test('a control character the tokenizer uses as a marker is refused, not parsed around', () => {
+    tool('set', 'ana', '--session', SESSION);
+    const cwd = join(root, 'myorg', 'docs', 'wiki');
+    mkdirSync(cwd, { recursive: true });
+    for (const c of ['\x01', '\x02', '\x03', '\x05', '\x07']) {
+      const out = runHook(`echo '${c}'; git commit -m x`, { cwd });
+      expect(denied(out), JSON.stringify(c)).toBe(true);
+      expect(out, JSON.stringify(c)).toContain('control character');
+    }
+  });
+
+  test('a tokenizer that dies part-way refuses rather than allowing', () => {
+    tool('set', 'ana', '--session', SESSION);
+    const cwd = join(root, 'myorg', 'docs', 'wiki');
+    const bin = join(root, 'dead-awk');
+    mkdirSync(bin, { recursive: true });
+    for (const partial of ['', "printf 'echo\\003hi\\003\\002'\n"]) {
+      writeFileSync(join(bin, 'awk'), `#!/bin/sh\ncat >/dev/null\n${partial}exit 2\n`, { mode: 0o755 });
+      const out = runHook(`git commit -m x --trailer="${TRAILER}"`, {
+        cwd,
+        extra: { PATH: `${bin}:${process.env.PATH ?? ''}` },
+      });
+      expect(denied(out), partial).toBe(true);
+      expect(out, partial).toContain('parser stopped');
+    }
+  });
+
+  test('a command just inside the size bound is judged inside the budget', () => {
+    tool('set', 'ana', '--session', SESSION);
+    const cwd = join(root, 'myorg', 'docs', 'wiki');
+    mkdirSync(cwd, { recursive: true });
+    const cmds = [
+      `git commit -m "${'a'.repeat(250000)}"`,
+      `git commit -m ${'\\a'.repeat(120000)}`,
+      `cat > page.md <<'EOF'\n${'line\n'.repeat(11000)}EOF\ngit commit -m x`,
+    ];
+    for (const cmd of cmds) {
+      let started = Date.now();
+      expect(denied(runHook(cmd, { cwd })), cmd.slice(0, 40)).toBe(true);
+      expect(Date.now() - started, cmd.slice(0, 40)).toBeLessThan(BUDGET_MS);
+      started = Date.now();
+      expect(runHook(`${cmd} --trailer="${TRAILER}"`, { cwd }), cmd.slice(0, 40)).toBe('');
+      expect(Date.now() - started, cmd.slice(0, 40)).toBeLessThan(BUDGET_MS);
+    }
   });
 
   test('a missing jq refuses with a reason instead of allowing quietly', () => {
