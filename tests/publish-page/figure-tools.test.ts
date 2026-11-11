@@ -402,6 +402,11 @@ function measured(template: 'doc' | 'deck'): Promise<Measured> {
 }
 
 const aspect = (box: Box) => box.w / box.h;
+// A size the browser derives from a ratio lands on its own sub-pixel grid, so
+// the rounded box can sit a pixel either side of the exact quotient.
+function near(actual: number, exact: number): boolean {
+  return Math.abs(actual - exact) < 1;
+}
 
 describe.if(chrome !== null)('a figure in a real browser', () => {
   for (const template of ['doc', 'deck'] as const) {
@@ -415,14 +420,16 @@ describe.if(chrome !== null)('a figure in a real browser', () => {
         expect({ template, where, distorted: Math.abs(aspect(fit.tall) - 717 / 1292) > 0.01 })
           .toEqual({ template, where, distorted: false });
       }
-      expect({ template, tall: wide.tall }).toEqual({ template, tall: { w: 300, h: 540 } });
+      expect({ template, h: wide.tall.h, w: wide.tall.w, wNear: near(wide.tall.w, 540 * 717 / 1292) })
+        .toEqual({ template, h: 540, w: wide.tall.w, wNear: true });
     }, CASE_TIMEOUT_MS);
 
     test(`${template}: a 2500x800 figure still fills the column`, async () => {
       // The height cap must not shrink a figure the width cap already fits: it
       // would be a fit-to-screen change that quietly undid the column fill.
       const { wide } = await measured(template);
-      expect({ template, ...wide.wide }).toEqual({ template, w: wide.column, h: Math.round(wide.column * 800 / 2500) });
+      expect({ template, ...wide.wide, hNear: near(wide.wide.h, wide.column * 800 / 2500) })
+        .toEqual({ template, w: wide.column, h: wide.wide.h, hNear: true });
     }, CASE_TIMEOUT_MS);
 
     test(`${template}: zooming in twice enlarges the figure without widening the page`, async () => {
