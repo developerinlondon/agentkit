@@ -404,8 +404,8 @@ function measured(template: 'doc' | 'deck'): Promise<Measured> {
 const aspect = (box: Box) => box.w / box.h;
 // A size the browser derives from a ratio lands on its own sub-pixel grid, so
 // the rounded box can sit a pixel either side of the exact quotient.
-function near(measured: number, exact: number): boolean {
-  return Math.abs(measured - exact) < 1;
+function near(actual: number, exact: number): boolean {
+  return Math.abs(actual - exact) < 1;
 }
 
 describe.if(chrome !== null)('a figure in a real browser', () => {

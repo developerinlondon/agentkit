@@ -616,7 +616,7 @@ describe('edges of the rules', () => {
     const run = Bun.spawnSync(['sh', join(MODULE_PARENT, 'diagrams', 'scripts', 'check-diagrams.sh'), good.site], {
       stdout: 'pipe',
       stderr: 'pipe',
-      env: { ...process.env, PATH: `${dirname(HUGO as string)}:${nodeDir}:${process.env.PATH}` },
+      env: { ...process.env, PATH: `${nodeDir}:${dirname(HUGO as string)}:${process.env.PATH}` },
     });
     expect(`${run.stdout}${run.stderr}`).toContain('ok: 2 diagrams, no mermaid');
     expect(run.exitCode).toBe(0);

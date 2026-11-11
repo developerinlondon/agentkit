@@ -12,10 +12,9 @@ pin the diagrams module.
 ## [Unreleased]
 
 - fix(tests): **the full suite passes on a Mac with no system Node.js.** The Hugo check-script
-  test ran `node` from a temp site outside the repo. Under proto, the shim there finds no pin
-  and falls back to whatever `node` is next on PATH: the hosted macOS image ships one, so the
-  test passed there on an unpinned Node, and a machine without one failed with
-  `proto::detect::failed`. The test now resolves `node` inside the repo and hands the script
+  test ran `node` from a temp site outside the repo. Under proto, the shim there finds no pin.
+  On hosted macOS a system `node` answered, so the test passed there on an unpinned Node; on a
+  machine without one the shim failed with `proto::detect::failed`. The test now resolves `node` inside the repo and hands the script
   that binary alone, through a scratch directory, so no other tool on PATH moves. The figure-fit
   tests compared sizes the browser derives from a ratio (345.6px, 299.67px) with the rounded
   quotient, and one browser's box rounded to 345 instead of 346; they now accept either integer
