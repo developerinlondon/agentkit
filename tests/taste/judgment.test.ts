@@ -1,154 +1,25 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { lintTasteDirectory, onKeyErrors, ruleFields } from '../../skills/taste/scripts/lint.ts';
 import { resolveTastes } from '../../skills/taste/scripts/resolve.ts';
-import { evaluateCommand } from '../../skills/taste/scripts/police.ts';
-import {
-  JUDGMENT_BUDGET_MS,
-  JUDGMENT_CALL_MS,
-} from '../../skills/taste/scripts/rules/budget.ts';
 import { JUDGMENT } from '../../skills/taste/scripts/rules/judgment.ts';
-import type { KindRequest, MatchOutcome } from '../../skills/taste/scripts/rules/kinds.ts';
+import type { KindRequest } from '../../skills/taste/scripts/rules/kinds.ts';
+import {
+  type Body,
+  cleanUp,
+  evaluate,
+  git,
+  POLICY,
+  provider,
+  QUESTION,
+  recordingGit,
+  refuseToMatch,
+  repo,
+  scratch,
+} from './judgment-fixtures.ts';
 
-// Nothing here may reach api.typesafe.ai. Port 9 is discard: a test that
-// forgets its stub fails on a refused connection rather than on the vendor.
-const NOWHERE = 'http://127.0.0.1:9';
-
-const POLICY = 'No stopgaps.\n\nWhy: a workaround left in place is the next outage.\n\n'
-  + 'How to apply: fix the cause, or say why the workaround is the fix.';
-const QUESTION = 'Does this change ship a workaround that leaves the real fix for later?';
-
-const sandboxes: string[] = [];
-const servers: { stop(force?: boolean): void }[] = [];
-
-afterEach(() => {
-  while (servers.length > 0) (servers.pop() as { stop(force?: boolean): void }).stop(true);
-  while (sandboxes.length > 0) rmSync(sandboxes.pop() as string, { recursive: true, force: true });
-});
-
-function scratch(): string {
-  const root = mkdtempSync(join(tmpdir(), 'agentkit-judgment-'));
-  sandboxes.push(root);
-  return root;
-}
-
-function git(dir: string, ...args: string[]): void {
-  const result = Bun.spawnSync({
-    cmd: ['git', ...args],
-    cwd: dir,
-    env: {
-      ...process.env,
-      GIT_AUTHOR_NAME: 'fixture',
-      GIT_AUTHOR_EMAIL: 'fixture@example.invalid',
-      GIT_COMMITTER_NAME: 'fixture',
-      GIT_COMMITTER_EMAIL: 'fixture@example.invalid',
-    },
-  });
-  if (result.exitCode !== 0) {
-    throw new Error(`git ${args.join(' ')} failed: ${result.stderr.toString()}`);
-  }
-}
-
-// A repository whose one staged change is the thing the judgment reads.
-function repo(options: { staged?: boolean; marker?: string } = {}): string {
-  const marker = options.marker ?? 'stopgap until the fix';
-  const dir = scratch();
-  git(dir, 'init', '-q', '-b', 'main');
-  writeFileSync(join(dir, 'retry.ts'), 'export const retries = 1;\n');
-  git(dir, 'add', '-A');
-  git(dir, 'commit', '-q', '-m', 'one');
-  if (options.staged === false) return dir;
-  writeFileSync(join(dir, 'retry.ts'), `export const retries = 1; // ${marker}\n`);
-  git(dir, 'add', '-A');
-  return dir;
-}
-
-interface Body {
-  model: string;
-  state: Record<string, string>;
-  questions: Record<string, { type: string; instructions: Record<string, string> }>;
-}
-
-interface Sent {
-  body: Body;
-  authorization: string | null;
-}
-
-interface Stub {
-  url: string;
-  sent: Sent[];
-}
-
-function provider(
-  options: { noul?: number; nouls?: number[]; status?: number; hang?: boolean } = {},
-): Stub {
-  const sent: Sent[] = [];
-  const server = Bun.serve({
-    hostname: '127.0.0.1',
-    port: 0,
-    async fetch(request: Request) {
-      sent.push({
-        body: await request.json() as Body,
-        authorization: request.headers.get('authorization'),
-      });
-      if (options.hang === true) return await new Promise<Response>(() => {});
-      if (options.status !== undefined) return new Response('refused', { status: options.status });
-      const answered = options.nouls?.[sent.length - 1] ?? options.noul ?? 0;
-      return Response.json({
-        model: 'jev-1.13.0',
-        answers: { q: { type: 'noul', noul: answered } },
-        usage: { input_tokens: 307, output_tokens: 20 },
-      });
-    },
-  });
-  servers.push(server);
-  return { url: `http://127.0.0.1:${server.port}`, sent };
-}
-
-// A git that answers nothing and writes down that it was asked. The verdict
-// alone cannot tell a check that never ran from one that ran and found nothing,
-// so whether git was reached at all is observed rather than inferred.
-function recordingGit(): { dir: string; asked: () => boolean } {
-  const dir = scratch();
-  const marker = join(dir, 'asked');
-  const path = join(dir, 'git');
-  writeFileSync(path, `#!/bin/sh\nprintf '%s\\n' "$@" >> ${JSON.stringify(marker)}\nexit 0\n`);
-  chmodSync(path, 0o755);
-  return { dir, asked: () => existsSync(marker) };
-}
-
-function refuseToMatch(): Promise<MatchOutcome> {
-  throw new Error('a judgment rule never compiles a pattern');
-}
-
-interface Options {
-  command?: string;
-  cwd?: string;
-  env?: Record<string, string | undefined>;
-  body?: string;
-  url?: string;
-}
-
-function evaluate(fields: Record<string, string>, options: Options = {}) {
-  const home = scratch();
-  const request: KindRequest = {
-    command: options.command ?? 'git commit -m "paper over the retry"',
-    cwd: options.cwd ?? repo(),
-    env: {
-      PATH: process.env.PATH,
-      HOME: home,
-      XDG_CONFIG_HOME: join(home, '.config'),
-      TYPESAFE_API_KEY: 'sk-test',
-      TYPESAFE_BASE_URL: options.url ?? NOWHERE,
-      ...options.env,
-    },
-    match: refuseToMatch as KindRequest['match'],
-    body: options.body ?? POLICY,
-  };
-  return JUDGMENT.evaluate({ question: QUESTION, ...fields }, request);
-}
+afterEach(cleanUp);
 
 describe('a judgment reaches the provider and its probability decides', () => {
   test('a noul at or above the threshold refuses, and says how sure it was', async () => {
@@ -861,7 +732,7 @@ describe('it never refuses on its own uncertainty', () => {
     const outcome = await evaluate({}, { url: stub.url, env: { TYPESAFE_TIMEOUT_MS: '300' } });
 
     expect(outcome.verdict).toBe('unchecked');
-    expect(outcome.verdict === 'unchecked' ? outcome.detail : '').toContain('timeout');
+    expect(outcome.verdict === 'unchecked' ? outcome.detail : '').toContain('timeout after 300ms');
     expect(Date.now() - started).toBeLessThan(9000);
   });
 });
@@ -1058,195 +929,5 @@ describe('the lint reads the judgment vocabulary', () => {
 
     expect(errors).toHaveLength(1);
     expect(errors[0]).toContain('unknown rule key: policy');
-  });
-});
-
-
-// A taste folder the lint accepts, so the whole hook lane runs over it rather
-// than the kind alone. Names decide the order tastes are evaluated in, which is
-// what lets a later taste prove it still enforces after an earlier one stalled.
-function blockingTaste(name: string, rule: Record<string, string>): string {
-  const lines = [
-    `name: ${name}`,
-    'scope: project',
-    'strength: require',
-    'enforce: block',
-    'provenance: 2026-09-21 · session correction',
-    'rule:',
-    ...Object.entries(rule).map(([key, value]) => `  ${key}: ${JSON.stringify(value)}`),
-  ];
-  return `---\n${lines.join('\n')}\n---\n\n${POLICY}\n`;
-}
-
-function project(tastes: Record<string, Record<string, string>>): string {
-  const dir = repo();
-  mkdirSync(join(dir, '.agentkit', 'tastes'), { recursive: true });
-  for (const [name, rule] of Object.entries(tastes)) {
-    writeFileSync(join(dir, '.agentkit', 'tastes', `${name}.md`), blockingTaste(name, rule));
-  }
-  return dir;
-}
-
-const JUDGE = (name: string) => ({
-  kind: 'judgment',
-  question: QUESTION,
-  remedy: `Fix the cause (${name}).`,
-  override: 'AGENTKIT_ALLOW_STOPGAP',
-});
-
-describe('one budget for every judgment in a command', () => {
-  // The hook runs the evaluator under a process cap and reads nothing when it
-  // is killed, so every blocking taste goes unenforced. The budget has to bound
-  // the whole run, not each call.
-  test('two stalled judgments still leave a command taste enforcing', async () => {
-    const stub = provider({ hang: true });
-    const cwd = project({
-      'aa-stalls': JUDGE('aa'),
-      'ab-stalls': JUDGE('ab'),
-      'zz-tag-tier': {
-        kind: 'command',
-        match: 'git commit',
-        remedy: 'Say what the commit does.',
-        override: 'AGENTKIT_TAG_TIER',
-      },
-    });
-    const started = Date.now();
-    const verdict = await evaluateCommand({
-      command: 'git commit -m "paper over it"',
-      cwd,
-      home: scratch(),
-      env: { PATH: process.env.PATH, TYPESAFE_API_KEY: 'sk-test', TYPESAFE_BASE_URL: stub.url },
-    });
-    const elapsed = Date.now() - started;
-
-    expect(verdict.decision).toBe('deny');
-    expect(verdict.reason).toContain('Say what the commit does.');
-    expect(verdict.notices.filter((notice) => notice.includes('UNCHECKED'))).toHaveLength(2);
-    expect(elapsed).toBeLessThan(JUDGMENT_BUDGET_MS + 2500);
-  }, 20000);
-
-  // The aggregate budget clamps every grant, so a per-call cap above it would
-  // change nothing and go unnoticed. One stalled taste pins it.
-  test('one stalled judgment gives up at the per-call cap, not at the budget', async () => {
-    const stub = provider({ hang: true });
-    const cwd = project({ 'aa-stalls': JUDGE('aa') });
-    const started = Date.now();
-    const verdict = await evaluateCommand({
-      command: 'git commit -m "paper over it"',
-      cwd,
-      home: scratch(),
-      env: { PATH: process.env.PATH, TYPESAFE_API_KEY: 'sk-test', TYPESAFE_BASE_URL: stub.url },
-    });
-    const elapsed = Date.now() - started;
-
-    expect(JUDGMENT_CALL_MS).toBeLessThan(JUDGMENT_BUDGET_MS);
-    expect(verdict.notices.join(' ')).toContain(`timeout after ${JUDGMENT_CALL_MS}ms`);
-    expect(elapsed).toBeLessThan(JUDGMENT_CALL_MS + 1200);
-  }, 20000);
-
-  test('a judgment reached after the budget is spent says so', async () => {
-    const stub = provider({ hang: true });
-    const cwd = project({
-      'aa-stalls': JUDGE('aa'),
-      'ab-stalls': JUDGE('ab'),
-      'ac-stalls': JUDGE('ac'),
-    });
-    const verdict = await evaluateCommand({
-      command: 'git commit -m "paper over it"',
-      cwd,
-      home: scratch(),
-      env: { PATH: process.env.PATH, TYPESAFE_API_KEY: 'sk-test', TYPESAFE_BASE_URL: stub.url },
-    });
-
-    expect(verdict.decision).toBe('allow');
-    expect(verdict.notices.join(' ')).toContain('judgment budget for this command is spent');
-    expect(stub.sent.length).toBeLessThan(3);
-  }, 20000);
-});
-
-describe('a deliberate override is read before the check it overrules', () => {
-  test('an override set on the command sends nothing to the provider', async () => {
-    const stub = provider({ noul: 0.99 });
-    const cwd = project({ 'aa-stalls': JUDGE('aa') });
-    const verdict = await evaluateCommand({
-      command: 'AGENTKIT_ALLOW_STOPGAP=1 git commit -m "paper over it"',
-      cwd,
-      home: scratch(),
-      env: { PATH: process.env.PATH, TYPESAFE_API_KEY: 'sk-test', TYPESAFE_BASE_URL: stub.url },
-    });
-
-    expect(verdict.decision).toBe('allow');
-    expect(verdict.notices.join(' ')).toContain('set deliberately');
-    expect(stub.sent).toHaveLength(0);
-  });
-
-  test('an override exported into the session does the same', async () => {
-    const stub = provider({ noul: 0.99 });
-    const cwd = project({ 'aa-stalls': JUDGE('aa') });
-    const verdict = await evaluateCommand({
-      command: 'git commit -m "paper over it"',
-      cwd,
-      home: scratch(),
-      env: {
-        PATH: process.env.PATH,
-        TYPESAFE_API_KEY: 'sk-test',
-        TYPESAFE_BASE_URL: stub.url,
-        AGENTKIT_ALLOW_STOPGAP: '1',
-      },
-    });
-
-    expect(verdict.decision).toBe('allow');
-    expect(stub.sent).toHaveLength(0);
-  });
-
-  // The short-circuit must not turn an exported override into a notice on
-  // every command the session runs.
-  test('an exported override says nothing about a command the rule never judges', async () => {
-    const stub = provider({ noul: 0.99 });
-    const cwd = project({ 'aa-stalls': JUDGE('aa') });
-    const verdict = await evaluateCommand({
-      command: 'git status --short',
-      cwd,
-      home: scratch(),
-      env: {
-        PATH: process.env.PATH,
-        TYPESAFE_API_KEY: 'sk-test',
-        TYPESAFE_BASE_URL: stub.url,
-        AGENTKIT_ALLOW_STOPGAP: '1',
-      },
-    });
-
-    expect(verdict.decision).toBe('allow');
-    expect(verdict.notices).toEqual([]);
-    expect(stub.sent).toHaveLength(0);
-  });
-
-  test('the refusal says which part of the command went unchecked', async () => {
-    const stub = provider({ noul: 0.9 });
-    const cwd = project({ 'aa-stalls': JUDGE('aa') });
-    const verdict = await evaluateCommand({
-      command: 'git commit -m "slop" && cd "$T" && git commit -m "later"',
-      cwd,
-      home: scratch(),
-      env: { PATH: process.env.PATH, TYPESAFE_API_KEY: 'sk-test', TYPESAFE_BASE_URL: stub.url },
-    });
-
-    expect(verdict.decision).toBe('deny');
-    expect(verdict.reason).toContain('changes directory');
-    expect(verdict.notices.join(' ')).toContain('changes directory');
-  });
-
-  test('an override that does not read as deliberate still pays for the check', async () => {
-    const stub = provider({ noul: 0.99 });
-    const cwd = project({ 'aa-stalls': JUDGE('aa') });
-    const verdict = await evaluateCommand({
-      command: 'AGENTKIT_ALLOW_STOPGAP=0 git commit -m "paper over it"',
-      cwd,
-      home: scratch(),
-      env: { PATH: process.env.PATH, TYPESAFE_API_KEY: 'sk-test', TYPESAFE_BASE_URL: stub.url },
-    });
-
-    expect(verdict.decision).toBe('deny');
-    expect(stub.sent).toHaveLength(1);
   });
 });

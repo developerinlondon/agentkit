@@ -181,6 +181,7 @@ async function gitOutput(args: string[], request: KindRequest, dir: string): Pro
   const started = Date.now();
   const run = await runBounded(['git', '-C', dir, ...args], request.cwd, env, allowed);
   budget.spend(Date.now() - started);
+  if (run.timedOut && allowed < GIT_TIMEOUT_MS) return { unchecked: BUDGET_SPENT };
   if (run.code === null || run.timedOut) {
     return { unchecked: `git could not be run in ${dir} — ${firstLine(run.err)}` };
   }
@@ -196,24 +197,28 @@ function cut(text: string, cap: number, note: string): string {
 
 // Best effort, and deliberately so: a merge request is judged on what it adds
 // to the branch it targets, and a repository that cannot name that branch is
-// UNCHECKED rather than judged on the wrong range.
-async function targetBranch(request: KindRequest): Promise<string | undefined> {
+// UNCHECKED rather than judged on the wrong range. A budget that ran out is
+// passed on as itself: it says nothing about whether the branch exists.
+async function targetBranch(request: KindRequest): Promise<Output | undefined> {
   const head = ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'];
   const named = await gitOutput(head, request, request.cwd);
-  if ('text' in named && named.text !== '') return named.text;
+  if ('text' in named && named.text !== '') return named;
   for (const candidate of ['origin/main', 'origin/master', 'main', 'master']) {
     const verify = ['rev-parse', '--verify', '--quiet', candidate];
     const seen = await gitOutput(verify, request, request.cwd);
-    if ('text' in seen && seen.text !== '') return candidate;
+    if ('unchecked' in seen && seen.unchecked === BUDGET_SPENT) return seen;
+    if ('text' in seen && seen.text !== '') return { text: candidate };
   }
   return undefined;
 }
 
 async function mergeRequestDiff(request: KindRequest): Promise<Output> {
-  const branch = await targetBranch(request);
-  if (branch === undefined) {
+  const target = await targetBranch(request);
+  if (target === undefined) {
     return { unchecked: `no default branch to compare against in ${request.cwd}` };
   }
+  if ('unchecked' in target) return target;
+  const branch = target.text;
   return await gitOutput(['diff', `${branch}...HEAD`], request, request.cwd);
 }
 
@@ -251,19 +256,24 @@ async function ask(
   question: string,
   apiKey: string,
   request: KindRequest,
-): Promise<NoulAnswer> {
+): Promise<NoulAnswer | { spent: true }> {
   const budget = budgetOf(request);
   const allowed = budget.grant(JUDGMENT_CALL_MS);
   const override = Number(request.env.TYPESAFE_TIMEOUT_MS);
+  const cap = Number.isFinite(override) && override > 0
+    ? Math.min(override, JUDGMENT_CALL_MS)
+    : JUDGMENT_CALL_MS;
+  const timeoutMs = Math.min(cap, allowed);
   const started = Date.now();
   const answer = await askNoul({
     apiKey,
     baseUrl: request.env.TYPESAFE_BASE_URL,
-    timeoutMs: Number.isFinite(override) && override > 0 ? Math.min(override, allowed) : allowed,
+    timeoutMs,
     state: { command: request.command, ...subject },
     instructions: { policy: request.body ?? '', question },
   });
   budget.spend(Date.now() - started);
+  if (!answer.ok && answer.timedOut === true && timeoutMs < cap) return { spent: true };
   return answer;
 }
 
@@ -423,6 +433,7 @@ export const JUDGMENT: RuleKind = {
         return { verdict: 'unchecked', detail: BUDGET_SPENT };
       }
       const answer = await ask(subject, question, apiKey, request);
+      if ('spent' in answer) return { verdict: 'unchecked', detail: BUDGET_SPENT };
       if (!answer.ok) {
         return {
           verdict: 'unchecked',
