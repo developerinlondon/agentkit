@@ -73,7 +73,7 @@ fail() { echo "build: $*" >&2; exit 1; }
 
 # Derived from the ref being built, never committed — a committed copy went
 # five releases stale while claiming to be current.
-KIT_VERSION="${AGENTKIT_SITE_VERSION:-$(git describe --tags --abbrev=0 2>/dev/null || true)}"
+KIT_VERSION="${AGENTKIT_SITE_VERSION:-$(git describe --tags --match 'v[0-9]*' --abbrev=0 2>/dev/null || true)}"
 [[ -n "$KIT_VERSION" ]] || fail "cannot resolve the kit version: set AGENTKIT_SITE_VERSION or fetch tags"
 case "$KIT_VERSION" in v[0-9]*) ;; *) fail "kit version does not look like a release tag: '$KIT_VERSION'" ;; esac
 

@@ -74,12 +74,17 @@ export function versionList(current: string, published: string[]): Version[] {
   ];
 }
 
+// A release commit also carries hugo/diagrams/vX.Y.Z; only vX.Y.Z names the docs.
+export function currentRelease(cwd?: string): string {
+  return new TextDecoder()
+    .decode(Bun.spawnSync(['git', 'describe', '--tags', '--match', 'v[0-9]*', '--abbrev=0'], { cwd }).stdout)
+    .trim();
+}
+
 if (import.meta.main) {
   const here = import.meta.dir;
   const dataDir = join(here, '..', 'data');
-  const current = new TextDecoder()
-    .decode(Bun.spawnSync(['git', 'describe', '--tags', '--abbrev=0']).stdout)
-    .trim();
+  const current = currentRelease();
   if (!current) {
     console.error('versions: no tag to name the current docs');
     process.exit(1);

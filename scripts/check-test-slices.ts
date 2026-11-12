@@ -26,6 +26,7 @@ export const TEST_SLICES = {
     'tests/docs/ci-go-cache.test.ts',
     'tests/docs/docs-tone.test.ts',
     'tests/docs/facts.test.ts',
+    'tests/docs/versions.test.ts',
   ],
   site: ['tests/site/links.test.ts'],
   hooks: [
@@ -62,6 +63,7 @@ export const TEST_SLICES = {
     'tests/install/manifest-readers.test.ts',
     'tests/install/nested-packages.test.ts',
     'tests/install/plugin-scripts.test.ts',
+    'tests/install/release-tag.test.ts',
     'tests/install/skill-kits.test.ts',
     'tests/install/uninstall.test.ts',
     'tests/install/update-notice.test.ts',

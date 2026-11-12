@@ -219,8 +219,9 @@ RETIRED_KIT_REPLACEMENT=adversarial-review
 # notice stays silent rather than comparing against a guess.
 write_version_stamp() {
 	local version
-	version=$(git -C "$REPO_DIR" describe --tags --exact-match HEAD 2>/dev/null) \
-		|| version=$(git -C "$REPO_DIR" describe --tags 2>/dev/null) \
+	# A release commit also carries hugo/diagrams/vX.Y.Z; only vX.Y.Z names agentkit.
+	version=$(git -C "$REPO_DIR" describe --tags --match 'v[0-9]*' --exact-match HEAD 2>/dev/null) \
+		|| version=$(git -C "$REPO_DIR" describe --tags --match 'v[0-9]*' 2>/dev/null) \
 		|| version=$(git -C "$REPO_DIR" rev-parse --short HEAD 2>/dev/null) \
 		|| { echo "[version] No git metadata in $REPO_DIR — not stamping." >&2; return 0; }
 	{
