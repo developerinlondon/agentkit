@@ -1,0 +1,22 @@
+{{- /* Where an edge label sits; returns its plate box and text anchor. */ -}}
+{{- $e := .e }}{{ $rt := .rt -}}
+{{- $lines := partial "diagram/lines.html" $e.label -}}
+{{- $w := partial "diagram/textw.html" (dict "s" $lines "size" 11 "mono" true) -}}
+{{- $n := float (len $lines) -}}
+{{- $lx := $rt.lx }}{{ $ly := $rt.ly -}}
+{{- $anchor := "middle" -}}
+{{- $side := $e.label_side | default (cond (eq $rt.orient "h") "above" "right") -}}
+{{- $top := 0.0 -}}
+{{- with $e.label_at -}}
+  {{- $lx = mul (float (index . 0)) $.cw }}{{ $ly = mul (float (index . 1)) $.rh -}}
+  {{- $top = sub $ly (mul 7.0 $n) -}}
+{{- else -}}
+  {{- if eq $side "above" }}{{ $top = sub $ly (add 5 (mul 14 $n)) -}}
+  {{- else if eq $side "below" }}{{ $top = add $ly 5 -}}
+  {{- else if eq $side "right" }}{{ $anchor = "start" }}{{ $lx = add $lx 8 }}{{ $top = sub $ly (mul 7 $n) -}}
+  {{- else if eq $side "left" }}{{ $anchor = "end" }}{{ $lx = sub $lx 8 }}{{ $top = sub $ly (mul 7 $n) -}}
+  {{- else }}{{ $top = sub $ly (mul 7 $n) }}{{ end -}}
+{{- end -}}
+{{- $lx = add $lx (float ($e.label_dx | default 0)) }}{{ $top = add $top (float ($e.label_dy | default 0)) -}}
+{{- $px := cond (eq $anchor "middle") (sub $lx (div $w 2.0)) (cond (eq $anchor "end") (sub $lx $w) $lx) -}}
+{{- return dict "lines" $lines "lx" $lx "top" $top "anchor" $anchor "x" (sub $px 3) "y" (sub $top 1) "w" (add $w 6) "h" (add (mul 14 $n) 2) -}}

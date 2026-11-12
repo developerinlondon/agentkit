@@ -1,0 +1,48 @@
+{{- /* Resolves an icon reference to {view, mode, body}, or {err}.
+       "name" searches the built-in packs, "pack/name" picks one, and
+       "@pack/name" reads assets/<params.diagrams.icons.pack>/name.svg. */ -}}
+{{- $ref := . -}}
+{{- $out := dict "err" (printf "icon %q is not in heroicons, simple-icons or logos" $ref) -}}
+{{- $builtin := hugo.Data.diagram_icons -}}
+{{- if strings.HasPrefix $ref "@" -}}
+  {{- $parts := split (strings.TrimPrefix "@" $ref) "/" -}}
+  {{- $cfg := index (site.Params.diagrams.icons | default dict) (index $parts 0) -}}
+  {{- if not $cfg -}}
+    {{- $out = dict "err" (printf "icon %q: no pack %q under params.diagrams.icons" $ref (index $parts 0)) -}}
+  {{- else if ne (len $parts) 2 -}}
+    {{- $out = dict "err" (printf "icon %q: project icons are written @pack/name" $ref) -}}
+  {{- else -}}
+    {{- $dir := cond (reflect.IsMap $cfg) $cfg.path $cfg -}}
+    {{- $mode := cond (reflect.IsMap $cfg) ($cfg.mode | default "color") "color" -}}
+    {{- $file := printf "%s/%s.svg" (strings.TrimSuffix "/" $dir) (index $parts 1) -}}
+    {{- with resources.Get $file -}}
+      {{- $parsed := partialCached "diagram/icon-safe.html" (dict "svg" .Content "prefix" "__DGI__") $file -}}
+      {{- if not (in (slice "stroke" "mono" "color") $mode) -}}
+        {{- $out = dict "err" (printf "icon pack %q: mode %q is not stroke, mono or color" (index $parts 0) $mode) -}}
+      {{- else if $parsed.err -}}
+        {{- $out = dict "err" (printf "icon %q: %s: %s; project icons may hold only g, path, circle, ellipse, rect, line, polyline, polygon, defs, gradients, stop, clipPath, mask, title and desc, with geometry and presentation attributes (see \"Preparing icons\" in the diagrams module README for an svgo config that converts most exports)" $ref $file $parsed.err) -}}
+      {{- else -}}
+        {{- $out = dict "view" $parsed.view "mode" $mode "body" $parsed.body -}}
+      {{- end -}}
+    {{- else -}}
+      {{- $out = dict "err" (printf "icon %q: assets/%s does not exist" $ref $file) -}}
+    {{- end -}}
+  {{- end -}}
+{{- else if in $ref "/" -}}
+  {{- $parts := split $ref "/" -}}
+  {{- with index ($builtin | default dict) (index $parts 0) -}}
+    {{- with index . (index $parts 1) }}{{ $out = . }}{{ end -}}
+  {{- end -}}
+{{- else -}}
+  {{- $hits := slice -}}
+  {{- range $pack := slice "heroicons" "simple-icons" "logos" -}}
+    {{- with index (index ($builtin | default dict) $pack | default dict) $ref }}{{ $hits = $hits | append (dict "pack" $pack "icon" .) }}{{ end -}}
+  {{- end -}}
+  {{- if eq (len $hits) 1 -}}
+    {{- $out = (index $hits 0).icon -}}
+  {{- else if gt (len $hits) 1 -}}
+    {{- $packs := slice }}{{ range $hits }}{{ $packs = $packs | append .pack }}{{ end -}}
+    {{- $out = dict "err" (printf "icon %q is in %s; write pack/name" $ref (delimit $packs " and ")) -}}
+  {{- end -}}
+{{- end -}}
+{{- return $out -}}

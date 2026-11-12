@@ -1,6 +1,6 @@
 ---
 name: diagram
-description: Craft high-quality hand-drawn-style diagrams (Excalidraw JSON rendered to self-contained SVG). Use AUTOMATICALLY when the user asks to visualize, draw, diagram, or sketch anything — system architectures, workflows, protocols, timelines, comparisons, mental models — or when a task needs a visual that outclasses mermaid/box kits. Renders headlessly at generation time; output embeds anywhere HTML or markdown does.
+description: Craft high-quality diagrams — hand-drawn Excalidraw sketches, D2 technical figures, or, for Hugo docs sites, YAML specs rendered at build time by the agentkit hugo/diagrams module. Use AUTOMATICALLY when the user asks to visualize, draw, diagram, or sketch anything — system architectures, workflows, protocols, timelines, comparisons, mental models — or when a task needs a visual that outclasses mermaid/box kits. Never writes Mermaid for docs figures. Renders headlessly at generation time; output embeds anywhere HTML or markdown does.
 ---
 
 # diagram
@@ -24,6 +24,16 @@ merely tidy. Write the classification line first:
 
 Generic boxes-and-arrows is what comes out when this step was skipped, and a
 figure that mixes two altitudes is misclassified rather than thorough.
+
+**Where the figure lives picks the output before the register does.** A figure
+for a Hugo docs site (the `docs/`, a `hugo.yaml`, a Hextra theme) is written as a
+YAML spec and rendered by the site's own build through the `hugo/diagrams` module
+in this repository: `data/diagrams/<name>.yaml`, placed with
+`{{< diagram "<name>" >}}`. The build draws it in the house style, validates it,
+adds the text version and `/architecture.json`, and fails on a ```mermaid
+block. Read `references/hugo-module.md` before writing the first spec. Never
+write Mermaid for a docs figure; it ships megabytes of runtime to every page and
+draws in its own look. Every other destination keeps the registers below.
 
 The type also picks the register. **ERD, C4 context, C4 container and
 deployment topology** route to the technical register below — and one narrowing

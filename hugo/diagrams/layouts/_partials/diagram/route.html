@@ -1,0 +1,131 @@
+{{- /* Orthogonal route between two boxes. Returns points and a label anchor. */ -}}
+{{- $a := .a -}}{{- $b := .b -}}{{- $e := .e -}}
+{{- $exit := $e.exit | default "" -}}{{- $enter := $e.enter | default "" -}}
+{{- if eq $e.from $e.to -}}
+  {{- $half := div (cond (in (slice "left" "right") $exit) $a.h $a.w) 2.0 -}}
+  {{- /* A pill's ends are round: its left and right sides have no straight
+         run to hang a loop on, and its top and bottom lose a radius each end. */ -}}
+  {{- if eq $a.shape "pill" -}}
+    {{- if in (slice "left" "right") $exit }}{{ errorf "diagram %q: edge %s → %s: a pill's rounded %s side cannot hold a loop; use top or bottom" .name $e.from $e.to $exit }}{{ end -}}
+    {{- $half = sub $half (div $a.h 2.0) -}}
+    {{- if le $half 2.0 }}{{ errorf "diagram %q: edge %s → %s: this pill's %s side is all curve, with no straight run to hold a loop" .name $e.from $e.to $exit }}{{ end -}}
+  {{- end -}}
+  {{- $p := float ($e.exit_at | default 0) }}{{ $q := float ($e.enter_at | default 0) -}}
+  {{- if or (lt (math.Abs (sub $p $q)) 12) (gt (math.Abs $p) (sub $half 2)) (gt (math.Abs $q) (sub $half 2)) -}}
+    {{- errorf "diagram %q: edge %s → %s: a loop needs exit_at and enter_at at least 12px apart and both within its %s side (±%.0fpx)" .name $e.from $e.to $exit (sub $half 2) -}}
+  {{- end -}}
+{{- end -}}
+{{- $pts := slice -}}
+{{- $straight := false -}}
+{{- if eq $e.route "straight" -}}
+  {{- $dx := sub $b.cx $a.cx }}{{ $dy := sub $b.cy $a.cy -}}
+  {{- $hz := gt (math.Abs $dx) (math.Abs $dy) -}}
+  {{- $ex := $exit | default (cond $hz (cond (gt $dx 0) "right" "left") (cond (gt $dy 0) "bottom" "top")) -}}
+  {{- $en := $enter | default (cond $hz (cond (gt $dx 0) "left" "right") (cond (gt $dy 0) "top" "bottom")) -}}
+  {{- $pts = slice (partial "diagram/anchor.html" (dict "b" $a "side" $ex "at" $e.exit_at)) (partial "diagram/anchor.html" (dict "b" $b "side" $en "at" $e.enter_at)) -}}
+  {{- $straight = true -}}
+{{- else if and (not $exit) (not $enter) (not $e.via) -}}
+  {{- $lo := add (math.Max $a.x $b.x) 10 -}}{{- $hi := sub (math.Min $a.r $b.r) 10 -}}
+  {{- /* Straight only when the centres nearly line up; otherwise an elbow reads as a fan. */ -}}
+  {{- $vert := and (or (ge $b.y $a.b) (le $b.b $a.y)) (le $lo $hi) (le (math.Abs (sub $a.cx $b.cx)) (mul 0.25 (math.Min $a.w $b.w))) -}}
+  {{- $olo := add (math.Max $a.y $b.y) 8 -}}{{- $ohi := sub (math.Min $a.b $b.b) 8 -}}
+  {{- $horz := and (or (ge $b.x $a.r) (le $b.r $a.x)) (le $olo $ohi) (le (math.Abs (sub $a.cy $b.cy)) (mul 0.25 (math.Min $a.h $b.h))) -}}
+  {{- if $vert -}}
+    {{- $x := div (add $lo $hi) 2.0 -}}
+    {{- if and (ge $a.cx $lo) (le $a.cx $hi) }}{{ $x = $a.cx }}{{ else if and (ge $b.cx $lo) (le $b.cx $hi) }}{{ $x = $b.cx }}{{ end -}}
+    {{- $ok := and (or (ne $a.shape "diamond") (eq $x $a.cx)) (or (ne $b.shape "diamond") (eq $x $b.cx)) -}}
+    {{- if $ok -}}
+      {{- $straight = true -}}
+      {{- if ge $b.y $a.b }}{{ $pts = slice (dict "x" $x "y" $a.b) (dict "x" $x "y" $b.y) }}{{ else }}{{ $pts = slice (dict "x" $x "y" $a.y) (dict "x" $x "y" $b.b) }}{{ end -}}
+    {{- end -}}
+  {{- else if $horz -}}
+    {{- $y := div (add $olo $ohi) 2.0 -}}
+    {{- if and (ge $a.cy $olo) (le $a.cy $ohi) }}{{ $y = $a.cy }}{{ else if and (ge $b.cy $olo) (le $b.cy $ohi) }}{{ $y = $b.cy }}{{ end -}}
+    {{- $ok := and (or (ne $a.shape "diamond") (eq $y $a.cy)) (or (ne $b.shape "diamond") (eq $y $b.cy)) -}}
+    {{- if $ok -}}
+      {{- $straight = true -}}
+      {{- if ge $b.x $a.r }}{{ $pts = slice (dict "x" $a.r "y" $y) (dict "x" $b.x "y" $y) }}{{ else }}{{ $pts = slice (dict "x" $a.x "y" $y) (dict "x" $b.r "y" $y) }}{{ end -}}
+    {{- end -}}
+  {{- end -}}
+{{- end -}}
+{{- if not $straight -}}
+  {{- $horizontalFirst := eq .dir "LR" -}}
+  {{- if not $exit -}}
+    {{- if $e.via -}}
+      {{- $v := index $e.via 0 -}}
+      {{- $vx := mul (float (index $v 0)) .cw -}}{{- $vy := mul (float (index $v 1)) .rh -}}
+      {{- if gt (math.Abs (sub $vx $a.cx)) (math.Abs (sub $vy $a.cy)) }}{{ $exit = cond (gt $vx $a.cx) "right" "left" }}{{ else }}{{ $exit = cond (gt $vy $a.cy) "bottom" "top" }}{{ end -}}
+    {{- else if $horizontalFirst }}{{ $exit = cond (ge $b.cx $a.cx) "right" "left" -}}
+    {{- else }}{{ $exit = cond (ge $b.cy $a.cy) "bottom" "top" }}{{ end -}}
+  {{- end -}}
+  {{- if not $enter -}}
+    {{- if $e.via -}}
+      {{- $v := index $e.via (sub (len $e.via) 1) -}}
+      {{- $vx := mul (float (index $v 0)) .cw -}}{{- $vy := mul (float (index $v 1)) .rh -}}
+      {{- if gt (math.Abs (sub $vx $b.cx)) (math.Abs (sub $vy $b.cy)) }}{{ $enter = cond (gt $vx $b.cx) "right" "left" }}{{ else }}{{ $enter = cond (gt $vy $b.cy) "bottom" "top" }}{{ end -}}
+    {{- else if in (slice "left" "right") $exit }}{{ $enter = cond (ge $b.cx $a.cx) "left" "right" -}}
+    {{- else }}{{ $enter = cond (ge $b.cy $a.cy) "top" "bottom" }}{{ end -}}
+  {{- end -}}
+  {{- $s := partial "diagram/anchor.html" (dict "b" $a "side" $exit "at" $e.exit_at) -}}
+  {{- $t := partial "diagram/anchor.html" (dict "b" $b "side" $enter "at" $e.enter_at) -}}
+  {{- $sx := $s.x }}{{ $sy := $s.y }}{{ $tx := $t.x }}{{ $ty := $t.y -}}
+  {{- $hasMid := isset $e "mid" }}{{ $mc := 0.0 }}{{ $mr := 0.0 -}}
+  {{- if $hasMid }}{{ $mc = mul (float $e.mid) .cw }}{{ $mr = mul (float $e.mid) .rh }}{{ end -}}
+  {{- $sh := in (slice "left" "right") $exit -}}{{- $th := in (slice "left" "right") $enter -}}
+  {{- if $e.via -}}
+    {{- $pts = slice $s -}}
+    {{- range $e.via }}{{ $pts = $pts | append (dict "x" (mul (float (index . 0)) $.cw) "y" (mul (float (index . 1)) $.rh)) }}{{ end -}}
+    {{- $pts = $pts | append $t -}}
+  {{- else if eq $exit $enter -}}
+    {{- $off := 26.0 -}}
+    {{- if eq $exit "right" }}{{ $m := cond $hasMid $mc (add (math.Max $sx $tx) $off) }}{{ $pts = slice $s (dict "x" $m "y" $sy) (dict "x" $m "y" $ty) $t -}}
+    {{- else if eq $exit "left" }}{{ $m := cond $hasMid $mc (sub (math.Min $sx $tx) $off) }}{{ $pts = slice $s (dict "x" $m "y" $sy) (dict "x" $m "y" $ty) $t -}}
+    {{- else if eq $exit "bottom" }}{{ $m := cond $hasMid $mr (add (math.Max $sy $ty) $off) }}{{ $pts = slice $s (dict "x" $sx "y" $m) (dict "x" $tx "y" $m) $t -}}
+    {{- else }}{{ $m := cond $hasMid $mr (sub (math.Min $sy $ty) $off) }}{{ $pts = slice $s (dict "x" $sx "y" $m) (dict "x" $tx "y" $m) $t }}{{ end -}}
+  {{- else if and $sh $th -}}
+    {{- if eq $sy $ty }}{{ $pts = slice $s $t -}}
+    {{- else }}{{ $m := cond $hasMid $mc (div (add $sx $tx) 2.0) }}{{ $pts = slice $s (dict "x" $m "y" $sy) (dict "x" $m "y" $ty) $t }}{{ end -}}
+  {{- else if and (not $sh) (not $th) -}}
+    {{- if eq $sx $tx }}{{ $pts = slice $s $t -}}
+    {{- else }}{{ $m := cond $hasMid $mr (div (add $sy $ty) 2.0) }}{{ $pts = slice $s (dict "x" $sx "y" $m) (dict "x" $tx "y" $m) $t }}{{ end -}}
+  {{- else if $sh -}}
+    {{- $pts = slice $s (dict "x" $tx "y" $sy) $t -}}
+  {{- else -}}
+    {{- $pts = slice $s (dict "x" $sx "y" $ty) $t -}}
+  {{- end -}}
+{{- end -}}
+{{- /* Pull the ends back so arrowheads stop short of the box. */ -}}
+{{- $gap := 5.0 -}}
+{{- $n := len $pts -}}
+{{- $arrow := $e.arrow | default "end" -}}
+{{- $out := slice -}}
+{{- range $i, $p := $pts -}}
+  {{- $q := $p -}}
+  {{- if and (eq $i (sub $n 1)) (ne $arrow "none") -}}
+    {{- $prev := index $pts (sub $i 1) -}}
+    {{- $dx := sub $p.x $prev.x }}{{ $dy := sub $p.y $prev.y -}}
+    {{- $len := math.Sqrt (add (mul $dx $dx) (mul $dy $dy)) -}}
+    {{- if gt $len $gap }}{{ $q = dict "x" (sub $p.x (div (mul $dx $gap) $len)) "y" (sub $p.y (div (mul $dy $gap) $len)) }}{{ end -}}
+  {{- else if and (eq $i 0) (eq $arrow "both") -}}
+    {{- $nx := index $pts 1 -}}
+    {{- $dx := sub $nx.x $p.x }}{{ $dy := sub $nx.y $p.y -}}
+    {{- $len := math.Sqrt (add (mul $dx $dx) (mul $dy $dy)) -}}
+    {{- if gt $len $gap }}{{ $q = dict "x" (add $p.x (div (mul $dx $gap) $len)) "y" (add $p.y (div (mul $dy $gap) $len)) }}{{ end -}}
+  {{- end -}}
+  {{- $out = $out | append $q -}}
+{{- end -}}
+{{- /* Label sits on the longest segment unless the spec pins it. */ -}}
+{{- $best := 1 }}{{ $bestLen := -1.0 -}}
+{{- range $i, $p := $pts -}}
+  {{- if gt $i 0 -}}
+    {{- $q := index $pts (sub $i 1) -}}
+    {{- $l := add (math.Abs (sub $p.x $q.x)) (math.Abs (sub $p.y $q.y)) -}}
+    {{- if gt $l $bestLen }}{{ $best = $i }}{{ $bestLen = $l }}{{ end -}}
+  {{- end -}}
+{{- end -}}
+{{- $seg := int ($e.label_segment | default $best) -}}
+{{- if ge $seg (len $pts) }}{{ errorf "diagram %q: edge %s → %s: label_segment %d, but the route has %d segments" .name $e.from $e.to $seg (sub (len $pts) 1) }}{{ end -}}
+{{- $p1 := index $pts (sub $seg 1) }}{{ $p2 := index $pts $seg -}}
+{{- $orient := cond (eq $p1.y $p2.y) "h" "v" -}}
+{{- $seglen := add (math.Abs (sub $p2.x $p1.x)) (math.Abs (sub $p2.y $p1.y)) -}}
+{{- return dict "pts" $out "lx" (div (add $p1.x $p2.x) 2.0) "ly" (div (add $p1.y $p2.y) 2.0) "orient" $orient "seglen" $seglen -}}

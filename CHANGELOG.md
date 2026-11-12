@@ -5,12 +5,97 @@ top and ships with the next tag.
 
 Releasing: bump the PATCH version by default. A minor or major tier requires
 the owner's explicit agreement for that specific release, recorded in the
-release PR — "publish this" authorizes a release, never the tier.
+release PR — "publish this" authorizes a release, never the tier. Each release
+also tags `hugo/diagrams/v<same version>` on the release commit, so Hugo sites can
+pin the diagrams module.
 
 ## [Unreleased]
 
-## v0.9.4 — 2026-09-22
+## v0.9.4 — 2026-11-12
 
+- fix(taste): **a judgment with almost no budget left says the budget ran out, not that git
+  failed.** The shared 5000ms judgment budget granted whatever was left, so a judgment that
+  started with a few milliseconds remaining ran `git diff` under that deadline and was reported
+  as `git could not be run … — no output`. Below 1000ms left, the budget now grants nothing and
+  the judgment reports the budget-spent notice without starting git or the provider. A git or
+  provider step that times out because the budget clamped it below its own cap reports the
+  budget as spent too; a timeout at the step's own cap, or a provider error, still names git or
+  the provider. A timeout counts as the budget's only when the budget cut the step's deadline
+  by at least 100ms; within that, it is timer jitter and the step's own timeout. On the
+  merge-request occasion, a git call that gives no answer while finding the target branch is
+  reported as itself, budget or git, instead of as `no default branch to compare against`, and
+  is not followed by further git calls that would blame the budget for it. The notice no
+  longer claims an earlier taste used the time, since one taste can spend it alone. Allow and
+  deny are unchanged: an unchecked judgment still allows with an UNCHECKED notice. The
+  command-lane judgment tests moved to `tests/taste/judgment-lane.test.ts`, with shared helpers
+  in `tests/taste/judgment-fixtures.ts`.
+- fix(editor-police): **the gate answers inside its timeout on a stock Mac, and refuses when it
+  cannot parse.** A hook that runs past its 10-second timeout lets the command through, and on
+  macOS's bash 3.2 and awk 20200816 the gate could. The 1500-statement limit only fired after
+  1500 statements had been parsed, each forking a subshell and, in bash 3.2, writing a temp file
+  for a here-string; under load that took 8.7 s for a command the limit should refuse at once.
+  The awk tokenizer also read the command with `substr` and grew tokens one character at a
+  time, both of which measure or copy the whole string on every call in that awk: a 150 KB
+  single word took 2.5 s and a 1 MB one more than 60 s. The hook now refuses, before
+  tokenizing, a command over 262144 bytes or 12000 statement separators, and refuses past 100
+  nested `bash -c` or `eval` commands. It splits segments without a fork or temp file and
+  tokenizes in one linear pass: a 250 KB word takes 0.7 s on Apple's awk 20200816. Any command
+  that mentions `commit` and crosses a bound is refused wherever it runs, once a repo is
+  configured; with none configured the hook exits before any of this. Two ways a commit could
+  pass unjudged are closed: a 0x01-0x07 byte in the command, which the tokenizer uses as a
+  marker and which restarted its quote state, is now refused, and a tokenizer that dies
+  part-way now refuses instead of reading as allow. Timing tests measure against half the
+  timeout the harness is actually given.
+- fix(tests): **the full suite passes on a Mac with no system Node.js.** The Hugo check-script
+  test ran `node` from a temp site outside the repo. Under proto, the shim there finds no pin.
+  On hosted macOS a system `node` answered, so the test passed there on an unpinned Node; on a
+  machine without one the shim failed with `proto::detect::failed`. The test now resolves `node` inside the repo and hands the script
+  that binary alone, through a scratch directory, so no other tool on PATH moves. The figure-fit
+  tests compared sizes the browser derives from a ratio (345.6px, 299.67px) with the rounded
+  quotient, and one browser's box rounded to 345 instead of 346; they now accept either integer
+  next to the quotient, while the column width stays exact, so a height cap that shrank the
+  wide figure still fails.
+- fix(ci): **a test slice passes only when its tests ran.** `scripts/check-test-slices.ts`
+  forwarded bun's exit code, so a test file that called `process.exit(0)` while loading ended
+  the run green with its tests unrun. The runner now streams bun's output as before and fails
+  a zero exit unless bun's closing summary, read from stderr only, reports at least one test;
+  a run ended by a signal fails too. The full-suite runner (`scripts/run-test-slices.ts`) applies
+  the same rule per file, so a file that defines no tests now fails there too, and it reads the
+  last count line, so a count printed by a test no longer stands in for bun's tally. Both pass
+  bun `./`-prefixed paths, which it matches exactly instead of as substring filters, and refuse
+  a summary whose "across M files" differs from the files they gave it. One case stays open: a
+  test that writes a summary with the right file count to stderr and then exits still passes,
+  because bun's output offers nothing to tell that line from bun's own.
+- fix(diagram): **every box and group in a Hugo figure has its own tooltip.** Nodes and groups
+  carry a `<title>` (label, plus `description` when set), so hovering one no longer shows the
+  figure's title;
+  where a description exists the script shows its own tip and drops the native one. A viewBox
+  may use commas or extra spaces, and one without four numbers, with a number out of range, or
+  with zero width or height is refused instead of crashing or mis-centring the icon. An unknown icon reports one error. Logo
+  ids are prefixed per drawn icon, so a page never repeats an id, and the enlarged copy rewrites
+  every `url(#…)` reference along with the ids. A bare `{{< diagram name >}}` counts as using
+  the spec in `/architecture.json`.
+- feat(diagram): **a Hugo module that draws docs figures from data at build time.** `hugo/diagrams/`
+  is its own Go module, imported as `github.com/developerinlondon/agentkit/hugo/diagrams` (tags
+  `hugo/diagrams/vX.Y.Z`). A figure is a YAML spec in a site's `data/diagrams/`, placed with
+  `{{< diagram "name" >}}`: flows on an explicit grid (groups, labelled orthogonal edges, notes)
+  and sequences (actors, messages, alt/else). The build renders inline SVG in the house style with
+  `<title>`/`<desc>`, a generated text version, and `/architecture.json` for agents; it fails on a
+  Mermaid code block, invalid specs, and a canvas whose smallest label would show below 8 px in
+  the text column. A small script highlights a node's connections on hover, tap or focus and opens any
+  figure at 1:1 in a full-viewport dialog. Icon layers: heroicons, plus the skill's CC0
+  simple-icons and logos packs (one source, `scripts/sync-hugo-diagram-icons.ts`), plus a
+  project's own packs as `@pack/name`. Project design tokens (colours, fonts, radii, light and
+  dark) restyle every figure; full-colour vendor logos are never recoloured. The `diagram` skill now
+  routes Hugo docs figures to the module and never to Mermaid, and the `documentation` skill no
+  longer tells agents to write Mermaid fences on Hugo docs sites. A project icon must be
+  well-formed XML; the module parses it and rebuilds it from an allowlist of shape elements and
+  attributes, each value checked against its own grammar, so no raw icon text reaches a page.
+  Common exports build as they are: a byte-order mark, comments and editor data are dropped, a
+  `style` attribute becomes presentation attributes, and the root's presentation attributes carry
+  over, chained gradients are resolved at build time, and prefixes bound to the SVG namespace
+  are read as SVG; the README's "Preparing icons" gives an svgo config for the rest. Design tokens are checked
+  against per-field grammars and font names are quoted by the module. Requires Hugo 0.164 or later. CI installs a pinned Hugo for the module's tests.
 - fix(install): **agent CLIs started from an IDE terminal run in the session slice again.** The
   installer wrote the shim PATH block to `~/.bashrc` only, and skipped it when the block was already
   there. A stock `~/.profile` sources `.bashrc` first and then prepends `~/.local/bin`, so a login

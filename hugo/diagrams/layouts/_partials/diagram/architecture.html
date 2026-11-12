@@ -1,0 +1,14 @@
+{{- /* Publishes /architecture.json once per build: every spec, validated even
+       when no page uses it, with the pages that do. Called through
+       partialCached from the first figure rendered. */ -}}
+{{- $out := slice -}}
+{{- range $name, $spec := hugo.Data.diagrams -}}
+  {{- partial "diagram/validate.html" (dict "name" $name "spec" $spec) -}}
+  {{- $pages := slice -}}
+  {{- $q := replaceRE `[.*+?^$(){}|\[\]\\]` `\$0` $name -}}
+  {{- $needle := printf `\{\{[<%%]-?\s*diagram\s+(?:"%s"|'%s'|%s%s%s|%s)\s*-?[>%%]\}\}` $q $q "`" $q "`" $q -}}
+  {{- range site.Pages }}{{ if findRE $needle .RawContent 1 }}{{ $pages = $pages | append .Permalink }}{{ end }}{{ end -}}
+  {{- $out = $out | append (merge $spec (dict "name" $name "pages" $pages)) -}}
+{{- end -}}
+{{- $json := dict "site" site.Title "url" site.BaseURL "schema" "Each diagram is the YAML spec the figure was rendered from: nodes (id, label, sublabel, body, kind, shape, icon, group, col, row), groups, edges (from, to, label, style), notes; sequences have actors and messages." "diagrams" $out | jsonify (dict "indent" "  ") -}}
+{{- (resources.FromString "architecture.json" $json).Publish -}}

@@ -1,0 +1,42 @@
+{{- $spec := .spec -}}
+{{- $names := dict -}}
+{{- range $spec.nodes }}{{ $names = merge $names (dict .id (partial "diagram/plain.html" .label)) }}{{ end -}}
+{{- range $spec.groups }}{{ $names = merge $names (dict .id (partial "diagram/plain.html" .label)) }}{{ end -}}
+{{- range $spec.actors }}{{ $names = merge $names (dict .id (partial "diagram/plain.html" .label)) }}{{ end -}}
+<details class="dg-text"><summary>Text version</summary>
+<div class="dg-text-body">
+{{- if eq ($spec.kind | default "flow") "sequence" -}}
+<p class="dg-text-h">Participants</p><ul>
+{{- range $spec.actors }}<li>{{ partial "diagram/plain.html" .label }}{{ with .sublabel }} ({{ partial "diagram/plain.html" . }}){{ end }}{{ with .description }}: {{ . }}{{ end }}</li>{{ end -}}
+</ul><p class="dg-text-h">Steps</p><ol>
+{{- range $spec.messages -}}
+  {{- if .alt -}}
+    {{- range .alt -}}
+      <li>If {{ .label }}:<ol>{{ range .messages }}{{ partial "diagram/text-step.html" (dict "m" . "names" $names) }}{{ end }}</ol></li>
+    {{- end -}}
+  {{- else -}}
+    {{- partial "diagram/text-step.html" (dict "m" . "names" $names) -}}
+  {{- end -}}
+{{- end -}}
+</ol>
+{{- else -}}
+<p class="dg-text-h">Parts</p><ul>
+{{- range $spec.nodes -}}
+  {{- $extra := slice -}}
+  {{- with .body }}{{ $extra = $extra | append (partial "diagram/plain.html" .) }}{{ end -}}
+  {{- with .sublabel }}{{ $extra = $extra | append (partial "diagram/plain.html" .) }}{{ end -}}
+  <li>{{ partial "diagram/plain.html" .label }}{{ with $extra }} ({{ delimit . "; " }}){{ end }}{{ with .group }}, in {{ index $names . }}{{ end }}{{ with .description }}: {{ . }}{{ end }}</li>
+{{- end -}}
+</ul>
+{{- with $spec.edges -}}
+<p class="dg-text-h">Connections</p><ul>
+{{- range . -}}
+  <li>{{ index $names .from }} {{ if eq .arrow "both" }}↔{{ else if eq .arrow "none" }}—{{ else }}→{{ end }} {{ index $names .to }}{{ with .label }}: {{ partial "diagram/plain.html" . }}{{ end }}{{ if or (eq .style "async") .dashed }} (indirect){{ end }}</li>
+{{- end -}}
+</ul>
+{{- end -}}
+{{- with $spec.notes -}}
+<p class="dg-text-h">Notes</p><ul>{{ range . }}<li>{{ partial "diagram/plain.html" .text }}</li>{{ end }}</ul>
+{{- end -}}
+{{- end -}}
+</div></details>

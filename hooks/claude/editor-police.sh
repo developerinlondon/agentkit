@@ -77,6 +77,29 @@ load_config() {
 }
 load_config
 case "$(printf '%s' "$ENABLED" | tr '[:upper:]' '[:lower:]')" in false | no | off | 0) exit 0 ;; esac
+((${#REPOS[@]})) || exit 0
+
+# The 10-second hook timeout is a pass, not a refusal, so a command too big to
+# judge in time is refused up front. The bounds are sized for macOS's bash 3.2
+# and awk 20200816, the slowest pair the hook runs on.
+MAX_BYTES=262144
+MAX_SEPARATORS=12000
+MAX_SEGMENTS=1500
+MAX_NESTED=100
+deny_unchecked() {
+	agentkit_deny_json "EDITOR GATE UNCHECKED (editor-police)
+$1"
+	exit 0
+}
+deny_budget() {
+	deny_unchecked "This command is larger than the gate can check inside its time budget ($1). Split it up, or write it to a script file and run that."
+}
+command_bytes() { local LC_ALL=C; BYTES=${#COMMAND}; }
+command_bytes
+((BYTES <= MAX_BYTES)) || deny_budget "more than $MAX_BYTES bytes"
+# The tokenizer's own record and field markers; bash treats them as ordinary
+# characters, so one inside the command would desynchronise the parse.
+[[ "$COMMAND" != *[$'\001\002\003\004\005\006\007']* ]] || deny_unchecked "This command contains a control character (0x01-0x07) the gate cannot parse. Remove it, or write the command to a script file and run that."
 
 # Which repo each commit targets is resolved from the command the way git-police
 # does it, not pattern-matched over the raw text. One linear awk pass splits the
@@ -89,43 +112,47 @@ case "$(printf '%s' "$ENABLED" | tr '[:upper:]' '[:lower:]')" in false | no | of
 # quote-parse it, so on << the delimiter is noted and the body lines are
 # swallowed at the next unquoted newline. A segment still inside an open quote
 # at the end is marked with a leading \005 and skipped, because bash refuses
-# such a command outright.
+# such a command outright. More separators than the budget allows yields a lone
+# \006 record before any tokenising. A BSD awk measures the whole string on
+# every substr and copies it on every concatenation, so characters are read
+# from a split array and output is collected in one, never grown in place.
 glob_to_regex() { local g="$1"; g="${g//./\\.}"; g="${g//\*/[^/]+}"; printf '%s' "$g"; }
 
 tokenize() {
-	LC_ALL=C awk 'BEGIN { RS = "\001" }
+	LC_ALL=C awk -v maxsep="$MAX_SEPARATORS" '
+	function put(x) { buf[++nb] = x }
+	function endtok() { if (intok) { put("\003"); intok = 0 } }
+	function flush(mark, k) { printf "%s", mark; for (k = 1; k <= nb; k++) printf "%s", buf[k]; printf "\002"; nb = 0 }
+	BEGIN { RS = "\001" }
 	{
-		s = $0; n = length(s); seg = ""; tok = ""; intok = 0; q = ""; nhd = 0; reopen = 0
+		s = $0; n = split(s, ch, ""); nb = 0; intok = 0; q = ""; nhd = 0; reopen = 0
+		if (gsub(/[;&|(){}`\n]|<</, "&", s) > maxsep) { printf "\006\002"; exit }
 		for (i = 1; i <= n; i++) {
-			c = substr(s, i, 1)
+			c = ch[i]
 			if (q == "" && c == "#" && !intok) {
-				j = index(substr(s, i), "\n"); i = (j ? i + j - 2 : n); continue
+				while (i < n && ch[i + 1] != "\n") i++
+				continue
 			}
-			if (q == "" && c == "<" && substr(s, i + 1, 1) == "<" && substr(s, i + 2, 1) == "<") {
-				if (intok) { seg = seg tok "\003"; tok = ""; intok = 0 }
-				i += 2; continue
+			if (q == "" && c == "<" && ch[i + 1] == "<" && ch[i + 2] == "<") {
+				endtok(); i += 2; continue
 			}
-			if (q == "" && c == "<" && substr(s, i + 1, 1) == "<") {
-				if (intok) { seg = seg tok "\003"; tok = ""; intok = 0 }
-				i += 2; if (substr(s, i, 1) == "-") i++
-				while (substr(s, i, 1) == " " || substr(s, i, 1) == "\t") i++
-				d = ""
-				while (i <= n) {
-					c = substr(s, i, 1)
+			if (q == "" && c == "<" && ch[i + 1] == "<") {
+				endtok()
+				i += 2; if (ch[i] == "-") i++
+				while (ch[i] == " " || ch[i] == "\t") i++
+				for (j = i; j <= n; j++) {
+					c = ch[j]
 					if (c == " " || c == "\t" || c == "\n" || c == ";" || c == "|" || c == "&" || c == ")") break
-					if (c != "\047" && c != "\"" && c != "\\") d = d c
-					i++
 				}
-				hd[++nhd] = d; i--; continue
+				d = substr(s, i, j - i); gsub(/[\047"\\]/, "", d)
+				hd[++nhd] = d; i = j - 1; continue
 			}
 			if (q == "" && c == "\n" && nhd > 0) {
-				if (intok) { seg = seg tok "\003"; tok = ""; intok = 0 }
-				printf "%s\002", seg; seg = ""
+				endtok(); flush("")
 				for (h = 1; h <= nhd; h++) {
 					while (i <= n) {
-						j = index(substr(s, i + 1), "\n")
-						line = (j ? substr(s, i + 1, j - 1) : substr(s, i + 1))
-						i = (j ? i + j : n + 1)
+						for (j = i + 1; j <= n && ch[j] != "\n"; j++) ;
+						line = substr(s, i + 1, j - i - 1); i = j
 						t = line; sub(/^\t+/, "", t)
 						if (t == hd[h]) break
 					}
@@ -134,33 +161,32 @@ tokenize() {
 			}
 			if (q != "") {
 				if (c == q) { q = "" }
-				else if (q == "\"" && (c == "`" || (c == "$" && substr(s, i + 1, 1) == "("))) {
-					if (intok) { seg = seg tok "\003"; tok = ""; intok = 0 }
-					printf "%s\002", seg; seg = ""; q = ""; reopen = 1
+				else if (q == "\"" && (c == "`" || (c == "$" && ch[i + 1] == "("))) {
+					endtok(); flush(""); q = ""; reopen = 1
 					if (c == "$") i++
 				}
-				else if (q == "\"" && c == "\\" && substr(s, i + 1, 1) == "\n") { i++ }
-				else if (q == "\"" && c == "\\") { i++; tok = tok substr(s, i, 1) }
-				else { tok = tok c }
+				else if (q == "\"" && c == "\\" && ch[i + 1] == "\n") { i++ }
+				else if (q == "\"" && c == "\\") { i++; put(ch[i]) }
+				else { put(c) }
 				intok = 1; continue
 			}
 			if (c == "\047" || c == "\"") { q = c; intok = 1; continue }
-			if (c == "\\" && substr(s, i + 1, 1) == "\n") { i++; continue }
-			if (c == "\\") { i++; tok = tok substr(s, i, 1); intok = 1; continue }
-			if (c == " " || c == "\t") { if (intok) { seg = seg tok "\003"; tok = ""; intok = 0 }; continue }
+			if (c == "\\" && ch[i + 1] == "\n") { i++; continue }
+			if (c == "\\") { i++; put(ch[i]); intok = 1; continue }
+			if (c == " " || c == "\t") { endtok(); continue }
 			if (c == ";" || c == "|" || c == "&" || c == "(" || c == ")" || c == "{" || c == "}" || c == "`" || c == "\n") {
-				if (intok) { seg = seg tok "\003"; tok = ""; intok = 0 }
-				printf "%s\002", seg; seg = ""
+				endtok(); flush("")
 				if (reopen && (c == "`" || c == ")")) { q = "\""; reopen = 0; intok = 1; continue }
-				d = substr(s, i + 1, 1)
+				d = ch[i + 1]
 				if ((c == "&" && d == "&") || (c == "|" && d == "|")) i++
 				continue
 			}
-			tok = tok c; intok = 1
+			put(c); intok = 1
 		}
-		if (intok) seg = seg tok "\003"
-		if (q != "") printf "\005%s\002", seg; else printf "%s\002", seg
-	}'
+		endtok()
+		flush(q != "" ? "\005" : "")
+	}
+	END { printf "\007\002" }'
 }
 
 abs_path() {
@@ -276,9 +302,9 @@ TRAILER=""
 # sh -c '…', eval "…". Judged like the outer one, with its own cd tracking.
 nested_command() {
 	local i=0 t
-	GIT_DIR=""; skip_prefix; i=$PREFIX_END
+	GIT_DIR=""; NESTED=""; skip_prefix; i=$PREFIX_END
 	case "${TOKS[i]:-}" in
-	eval) printf '%s' "${TOKS[*]:i+1}"; return 0 ;;
+	eval) NESTED="${TOKS[*]:i+1}"; return 0 ;;
 	bash | sh | zsh | dash | ksh) ;;
 	*) return 1 ;;
 	esac
@@ -286,7 +312,7 @@ nested_command() {
 		t="${TOKS[i]}"
 		case "$t" in
 		--*) ;;
-		-*c*) printf '%s' "${TOKS[i + 1]:-}"; return 0 ;;
+		-*c*) NESTED="${TOKS[i + 1]:-}"; return 0 ;;
 		-*) ;;
 		*) return 1 ;;
 		esac
@@ -295,17 +321,19 @@ nested_command() {
 }
 
 SEGMENTS=0
+NESTED_RUNS=0
 judge() {
-	local depth="$2" rec inner saved_cwd roots root
+	local depth="$2" rec saved_cwd roots root ended=0
 	while IFS= read -r -d $'\002' rec || [[ -n "$rec" ]]; do
+		[[ "$rec" == $'\006' ]] && deny_budget "more than $MAX_SEPARATORS statement separators"
+		if [[ "$rec" == $'\007' ]]; then ended=1; continue; fi
 		[[ -z "$rec" || "$rec" == $'\005'* ]] && continue
-		if ((++SEGMENTS > 1500)); then
-			agentkit_deny_json "EDITOR GATE UNCHECKED (editor-police)
-This command has more than 1500 shell statements, more than the gate can check inside its time budget. Split it up, or write it to a script file and run that."
-			exit 0
-		fi
-		TOKS=()
-		IFS=$'\003' read -r -d $'\004' -a TOKS <<<"${rec}"$'\004'
+		((++SEGMENTS <= MAX_SEGMENTS)) || deny_budget "more than $MAX_SEGMENTS shell statements"
+		# A here-string is a temp file per segment in bash 3.2; splitting is not.
+		set -f; IFS=$'\003'
+		# shellcheck disable=SC2206
+		TOKS=($rec)
+		IFS=$' \t\n'; set +f
 		((${#TOKS[@]})) || continue
 		if [[ "${TOKS[0]}" == cd || "${TOKS[0]}" == pushd || "${TOKS[0]}" == popd ]]; then
 			if [[ "${TOKS[0]}" == popd || "${TOKS[1]:-}" == - ]]; then
@@ -315,9 +343,10 @@ This command has more than 1500 shell statements, more than the gate can check i
 			fi
 			continue
 		fi
-		if ((depth < 3)) && inner="$(nested_command)"; then
+		if ((depth < 3)) && nested_command; then
+			((++NESTED_RUNS <= MAX_NESTED)) || deny_budget "more than $MAX_NESTED nested shell commands"
 			saved_cwd="$CWD"
-			judge "$inner" $((depth + 1))
+			judge "$NESTED" $((depth + 1))
 			CWD="$saved_cwd"
 			continue
 		fi
@@ -341,6 +370,8 @@ Add exactly this to the git commit that targets $root:
 If someone else is editing now, first run: wiki-editor set <name> --session $SESSION"
 		exit 0
 	done < <(printf '%s' "$1" | tokenize)
+	# A tokenizer that died part-way has said nothing, and nothing reads as allow.
+	((ended)) || deny_unchecked "The gate's parser stopped before the end of this command, so it could not be checked. Check that awk works (LC_ALL=C awk), then retry."
 }
 
 judge "$COMMAND" 0

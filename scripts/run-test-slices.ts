@@ -2,10 +2,12 @@ import { statSync } from 'node:fs';
 import { cpus } from 'node:os';
 import { join } from 'node:path';
 import {
-  DEFAULT_TEST_TIMEOUT_MS,
   TEST_SLICES,
   type TestSlice,
+  bunSummary,
+  bunTestCommand,
   discoverTestFiles,
+  plainOutput,
   validateTestSlices,
 } from './check-test-slices';
 
@@ -28,7 +30,7 @@ export const soloFiles = new Set([
 // bun caps a test declaring no timeout at 5s; several that shell out to an
 // external binary sit close enough that contention pushes them over. A test
 // wanting a real bound declares one, and that still wins.
-interface Unit {
+export interface Unit {
   slice: TestSlice;
   file: string;
   bytes: number;
@@ -45,6 +47,7 @@ interface UnitResult {
   skip: number;
   todo: number;
   completed: boolean;
+  ranTests: boolean;
   seconds: number;
 }
 
@@ -128,22 +131,17 @@ export async function schedule<T>(
   await Promise.all(Array.from({ length: Math.max(1, lanes) }, () => lane()));
 }
 
-// A colored summary defeats the anchored counters, and FORCE_COLOR reaches the
-// children through the inherited environment.
-function plain(output: string): string {
-  return output.replaceAll(/\u001b\[[0-9;]*m/g, '');
-}
-
+// The last count line is bun's own tally; earlier ones can come from test output.
 function count(summary: string, label: string): number {
-  const match = new RegExp(`^\\s*(\\d+) ${label}$`, 'm').exec(summary);
-  return match ? Number(match[1]) : 0;
+  const lines = [...summary.matchAll(new RegExp(`^\\s*(\\d+) ${label}$`, 'gm'))];
+  return lines.length > 0 ? Number(lines[lines.length - 1][1]) : 0;
 }
 
-async function runUnit(unit: Unit, stream: boolean): Promise<UnitResult> {
+export async function runUnit(unit: Unit, stream: boolean, cwd = repoRoot): Promise<UnitResult> {
   const started = Bun.nanoseconds();
   const child = Bun.spawn({
-    cmd: [process.execPath, 'test', `--timeout=${DEFAULT_TEST_TIMEOUT_MS}`, unit.file],
-    cwd: repoRoot,
+    cmd: bunTestCommand([unit.file]),
+    cwd,
     env: process.env,
     stdout: stream ? 'inherit' : 'pipe',
     stderr: stream ? 'inherit' : 'pipe',
@@ -160,7 +158,8 @@ async function runUnit(unit: Unit, stream: boolean): Promise<UnitResult> {
   // version banner on stdout, so folding the two together would let a test that
   // prints "0 fail" — or a whole fake summary — outrank the real one and pass
   // the died-mid-run check on output the child never produced.
-  const summary = plain(stderr);
+  const summary = plainOutput(stderr);
+  const ran = bunSummary(summary);
 
   return {
     unit,
@@ -172,15 +171,20 @@ async function runUnit(unit: Unit, stream: boolean): Promise<UnitResult> {
     skip: count(summary, 'skip'),
     todo: count(summary, 'todo'),
     // Bun prints this only once the file is done, so its absence is the one
-    // signal separating a finished child from one that was killed mid-run.
-    completed: stream || /^Ran \d+ tests? across \d+ files?\./m.test(summary),
+    // signal separating a finished child from one that was killed mid-run. A
+    // summary over any other file count was echoed by the test, not bun's; one
+    // echoed with the right count to stderr before an exit cannot be told apart.
+    completed: stream || ran?.files === 1,
+    // A file that defines no tests exits 0 with a summary, green and empty.
+    ranTests: stream || (ran?.tests ?? 0) > 0,
     seconds: (Bun.nanoseconds() - started) / 1e9,
   };
 }
 
-function broke(result: UnitResult): boolean {
+export function broke(result: UnitResult): boolean {
   return (
-    result.exitCode !== 0 || result.signal !== null || !result.completed || result.fail > 0
+    result.exitCode !== 0 || result.signal !== null || !result.completed || !result.ranTests
+    || result.fail > 0
   );
 }
 
@@ -191,7 +195,11 @@ function report(result: UnitResult, stream: boolean): void {
   }
   if (!broke(result)) return;
   const cause = result.signal ?? `exit ${result.exitCode}`;
-  const died = result.completed ? '' : ' — no completion summary, the child died mid-run';
+  const died = !result.completed
+    ? ' — no completion summary, the child died mid-run'
+    : result.ranTests
+    ? ''
+    : ' — the file ran no tests';
   process.stdout.write(
     `!!!!! FAILED ${result.unit.slice} :: ${result.unit.file} (${cause})${died}\n`,
   );

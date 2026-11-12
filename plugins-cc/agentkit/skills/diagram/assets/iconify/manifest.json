@@ -5,6 +5,12 @@
     "file": "logos/ansible.svg",
     "license": "CC0-1.0"
   },
+  "anthropic": {
+    "set": "simple-icons",
+    "name": "anthropic",
+    "file": "simple-icons/anthropic.svg",
+    "license": "CC0-1.0"
+  },
   "api gateway": {
     "set": "logos",
     "name": "aws-api-gateway",
@@ -197,6 +203,12 @@
     "file": "logos/jenkins.svg",
     "license": "CC0-1.0"
   },
+  "claude": {
+    "set": "simple-icons",
+    "name": "claude",
+    "file": "simple-icons/claude.svg",
+    "license": "CC0-1.0"
+  },
   "clickhouse": {
     "set": "simple-icons",
     "name": "clickhouse",
@@ -279,6 +291,12 @@
     "set": "logos",
     "name": "google-cloud",
     "file": "logos/google-cloud.svg",
+    "license": "CC0-1.0"
+  },
+  "github": {
+    "set": "simple-icons",
+    "name": "github",
+    "file": "simple-icons/github.svg",
     "license": "CC0-1.0"
   },
   "github-icon": {
@@ -1037,10 +1055,22 @@
     "file": "simple-icons/istio.svg",
     "license": "CC0-1.0"
   },
+  "simple-icons:anthropic": {
+    "set": "simple-icons",
+    "name": "anthropic",
+    "file": "simple-icons/anthropic.svg",
+    "license": "CC0-1.0"
+  },
   "simple-icons:argo": {
     "set": "simple-icons",
     "name": "argo",
     "file": "simple-icons/argo.svg",
+    "license": "CC0-1.0"
+  },
+  "simple-icons:claude": {
+    "set": "simple-icons",
+    "name": "claude",
+    "file": "simple-icons/claude.svg",
     "license": "CC0-1.0"
   },
   "simple-icons:clickhouse": {
@@ -1053,6 +1083,18 @@
     "set": "simple-icons",
     "name": "digitalocean",
     "file": "simple-icons/digitalocean.svg",
+    "license": "CC0-1.0"
+  },
+  "simple-icons:github": {
+    "set": "simple-icons",
+    "name": "github",
+    "file": "simple-icons/github.svg",
+    "license": "CC0-1.0"
+  },
+  "simple-icons:gitlab": {
+    "set": "simple-icons",
+    "name": "gitlab",
+    "file": "simple-icons/gitlab.svg",
     "license": "CC0-1.0"
   },
   "simple-icons:istio": {
@@ -1071,6 +1113,12 @@
     "set": "simple-icons",
     "name": "opentelemetry",
     "file": "simple-icons/opentelemetry.svg",
+    "license": "CC0-1.0"
+  },
+  "simple-icons:postgresql": {
+    "set": "simple-icons",
+    "name": "postgresql",
+    "file": "simple-icons/postgresql.svg",
     "license": "CC0-1.0"
   },
   "simple-icons:traefikproxy": {

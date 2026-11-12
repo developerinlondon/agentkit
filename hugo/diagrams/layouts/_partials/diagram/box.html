@@ -1,0 +1,31 @@
+{{- /* Node geometry. (col, row) is the node's centre in grid units. */ -}}
+{{- $n := .n -}}
+{{- $lt := partial "diagram/lines.html" $n.label -}}
+{{- $lb := partial "diagram/lines.html" $n.body -}}
+{{- $ls := partial "diagram/lines.html" $n.sublabel -}}
+{{- $icons := partial "diagram/lines.html" $n.icon -}}
+{{- $bold := cond (isset $n "bold") $n.bold (or (gt (len $lb) 0) (gt (len $ls) 0)) -}}
+{{- $parts := slice -}}
+{{- if $icons }}{{ $parts = $parts | append 18 }}{{ end -}}
+{{- if $lt }}{{ $parts = $parts | append (mul 16 (len $lt)) }}{{ end -}}
+{{- if $lb }}{{ $parts = $parts | append (mul 18 (len $lb)) }}{{ end -}}
+{{- if $ls }}{{ $parts = $parts | append (mul 15 (len $ls)) }}{{ end -}}
+{{- $content := 0.0 -}}
+{{- range $parts }}{{ $content = add $content (float .) }}{{ end -}}
+{{- $content = add $content (mul 5.0 (math.Max 0 (sub (len $parts) 1))) -}}
+{{- $tw := math.Max (partial "diagram/textw.html" (dict "s" $lt "size" 13 "bold" $bold)) (partial "diagram/textw.html" (dict "s" $lb "size" 13)) -}}
+{{- $tw = math.Max $tw (partial "diagram/textw.html" (dict "s" $ls "size" 11 "mono" true)) -}}
+{{- $shape := $n.shape | default "rect" -}}
+{{- $w := 0.0 -}}{{- $h := 0.0 -}}
+{{- if eq $shape "diamond" -}}
+  {{- $w = float ($n.w | default (add (mul $tw 1.7) 24)) -}}
+  {{- $h = float ($n.h | default (add (mul $content 1.9) 24)) -}}
+{{- else -}}
+  {{- $w = float ($n.w | default (math.Max .dw (add $tw 28))) -}}
+  {{- $h = float ($n.h | default (math.Max 42 (add $content 22))) -}}
+{{- end -}}
+{{- $cx := mul (float $n.col) .cw -}}
+{{- $cy := mul (float $n.row) .rh -}}
+{{- $x := sub $cx (div $w 2.0) -}}
+{{- $y := sub $cy (div $h 2.0) -}}
+{{- return dict "id" $n.id "x" $x "y" $y "w" $w "h" $h "cx" $cx "cy" $cy "r" (add $x $w) "b" (add $y $h) "shape" $shape "lt" $lt "lb" $lb "ls" $ls "icons" $icons "bold" $bold "content" $content "tw" $tw -}}

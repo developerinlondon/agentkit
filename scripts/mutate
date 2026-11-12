@@ -64,7 +64,7 @@ parse_args() {
 			;;
 		--sed)
 			[[ $# -ge 2 ]] || usage
-			SED_EXPRS[$SED_COUNT]="$2"
+			SED_EXPRS[SED_COUNT]="$2"
 			SED_COUNT=$((SED_COUNT + 1))
 			shift 2
 			;;
@@ -139,6 +139,7 @@ BEFORE="$(digest "$FILE")"
 # condition rather than as a bare statement that set -e would abort the trap on,
 # leaving the file mutated and the exit code reading as a verdict. The scratch
 # copy survives a failed restore: it is the only remaining good copy.
+# shellcheck disable=SC2329  # invoked by the EXIT trap below
 restore() {
 	local status=$?
 	if ! cp "$BACKUP" "$FILE"; then
@@ -180,7 +181,7 @@ case "$VERDICT" in
 	exit 1
 	;;
 1)
-	printf 'mutate: CAUGHT — %s pass / %s fail\n' "$TEST_VERDICT_PASS" "$TEST_VERDICT_FAIL" >&2
+	printf 'mutate: CAUGHT — %s pass / %s fail / %s load errors\n' "$TEST_VERDICT_PASS" "$TEST_VERDICT_FAIL" "$TEST_VERDICT_ERRORS" >&2
 	exit 0
 	;;
 *)

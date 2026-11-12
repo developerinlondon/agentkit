@@ -1,0 +1,6 @@
+{{- $m := .m -}}
+{{- if isset $m "note" -}}
+<li>Note on {{ delimit (apply (partial "diagram/lines.html" $m.over) "index" .names ".") " and " }}: {{ partial "diagram/plain.html" $m.note }}</li>
+{{- else -}}
+<li>{{ index .names $m.from }} → {{ index .names $m.to }}: {{ partial "diagram/plain.html" $m.label }}{{ if eq $m.style "reply" }} (reply){{ end }}</li>
+{{- end -}}
