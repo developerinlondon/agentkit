@@ -11,6 +11,11 @@ pin the diagrams module.
 
 ## [Unreleased]
 
+## v0.9.5 — 2026-11-12
+
+v0.9.4 was tagged but never published: its tag run failed on the fix below, so no GitHub
+Release or docs went out. v0.9.5 carries every v0.9.4 entry plus this fix.
+
 - fix(release): **a release commit that also carries the diagrams module tag resolves to the
   release.** Each release tags `hugo/diagrams/vX.Y.Z` on the same commit as `vX.Y.Z`, and
   `git describe --tags` prefers the newer of two annotated tags. On v0.9.4 it named the module
@@ -21,6 +26,8 @@ pin the diagrams module.
   guard fails any `git describe --tags` in the repo that is not limited to release tags.
 
 ## v0.9.4 — 2026-11-12
+
+Tagged, never published. These changes ship in v0.9.5.
 
 - fix(taste): **a judgment with almost no budget left says the budget ran out, not that git
   failed.** The shared 5000ms judgment budget granted whatever was left, so a judgment that
