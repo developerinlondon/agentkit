@@ -273,7 +273,7 @@ describe('test slice routing', () => {
   });
 
   test('a direct slice run checks bun\'s summary against that slice\'s file count', () => {
-    expect(sliceRun('docs')).toEqual({ cmd: sliceCommand('docs'), files: 4 });
+    expect(sliceRun('docs')).toEqual({ cmd: sliceCommand('docs'), files: 5 });
   });
 
   test('the slice CLI hands the runner that slice\'s file count', async () => {
@@ -284,7 +284,7 @@ describe('test slice routing', () => {
     });
     expect(code).toBe(7);
     expect(calls).toHaveLength(1);
-    expect(calls[0].slice(0, 4)).toEqual([sliceCommand('docs'), join(import.meta.dir, '..'), 'docs', 4]);
+    expect(calls[0].slice(0, 4)).toEqual([sliceCommand('docs'), join(import.meta.dir, '..'), 'docs', 5]);
   });
 
   test('assigns every test file to exactly one slice', () => {

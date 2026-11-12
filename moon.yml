@@ -87,6 +87,7 @@ fileGroups:
     - "skills/**/*"
     - "tools/**/*"
     - "tests/docs/**/*"
+    - "tests/fixtures/release-tags.ts"
 
   diagramInputs:
     - "bun.lock"
@@ -146,6 +147,9 @@ fileGroups:
     - "tests/install-shared-root.test.ts"
     - "tests/install-tools.test.ts"
     - "tests/install/**/*"
+    - "tests/fixtures/release-tags.ts"
+    - "docs/hextra/scripts/versions.ts"
+    - "pages/site/build.sh"
     - "tools/**/*"
 
   integrationInputs:

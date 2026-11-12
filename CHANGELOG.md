@@ -11,6 +11,15 @@ pin the diagrams module.
 
 ## [Unreleased]
 
+- fix(release): **a release commit that also carries the diagrams module tag resolves to the
+  release.** Each release tags `hugo/diagrams/vX.Y.Z` on the same commit as `vX.Y.Z`, and
+  `git describe --tags` prefers the newer of two annotated tags. On v0.9.4 it named the module
+  tag: the install stamp read `hugo/diagrams/v0.9.4`, and the docs build stopped with
+  `versions: hugo/diagrams/v0.9.4 is not a version this script understands`. The install stamp,
+  the docs version list and the marketing site's version now describe only `v[0-9]*` tags. Tests
+  put both tags on one commit, with the module tag newer, and fail against the old resolvers. A
+  guard fails any `git describe --tags` in the repo that is not limited to release tags.
+
 ## v0.9.4 — 2026-11-12
 
 - fix(taste): **a judgment with almost no budget left says the budget ran out, not that git
